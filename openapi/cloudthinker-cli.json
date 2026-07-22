@@ -1,0 +1,1368 @@
+{
+  "components": {
+    "schemas": {
+      "AgentRunStatus": {
+        "description": "Lifecycle state of a background agent run.\n\nValues are deliberately identical to TaskScheduleStatus (app/models/tasks.py)\nso AgentExecutionResult.status needs zero remapping when origins migrate onto\nAgentRun (plan decision, plans/product-cli-mr-c-agentrun.md).",
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "failed",
+          "required_approval"
+        ],
+        "title": "AgentRunStatus",
+        "type": "string"
+      },
+      "ApplyFixDisabledReason": {
+        "enum": [
+          "unsupported_provider"
+        ],
+        "title": "ApplyFixDisabledReason",
+        "type": "string"
+      },
+      "AutofixDisabledReason": {
+        "enum": [
+          "unsupported_provider",
+          "no_unresolved_findings"
+        ],
+        "title": "AutofixDisabledReason",
+        "type": "string"
+      },
+      "CliTokenRequest": {
+        "description": "Token-exchange request: the one-time code plus the PKCE verifier.",
+        "properties": {
+          "code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "code_verifier": {
+            "maxLength": 128,
+            "minLength": 43,
+            "title": "Code Verifier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "code_verifier"
+        ],
+        "title": "CliTokenRequest",
+        "type": "object"
+      },
+      "CodeReviewCategoryCounts": {
+        "description": "Unresolved findings per cited-rule category, for the review-summary panel.\n\nA finding joins a category by citing a rule of that category, so only\nrule-citing findings count here (mirrors the \"Rules cited\" row, not\n\"Findings\"). Counts are UNRESOLVED only, matching `severity_counts` \u2014\na fixed finding is not work left to do.",
+        "properties": {
+          "correctness": {
+            "default": 0,
+            "title": "Correctness",
+            "type": "integer"
+          },
+          "patterns": {
+            "default": 0,
+            "title": "Patterns",
+            "type": "integer"
+          },
+          "performance": {
+            "default": 0,
+            "title": "Performance",
+            "type": "integer"
+          },
+          "security": {
+            "default": 0,
+            "title": "Security",
+            "type": "integer"
+          }
+        },
+        "title": "CodeReviewCategoryCounts",
+        "type": "object"
+      },
+      "CodeReviewCitedRule": {
+        "description": "A convention rule a finding cited, surfaced as a \"Cites <slug>\" chip.",
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/ConventionRuleCategory",
+            "nullable": true
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name"
+        ],
+        "title": "CodeReviewCitedRule",
+        "type": "object"
+      },
+      "CodeReviewDetailFinding": {
+        "description": "A finding plus the source it replaces, for the detail page's diff.\n\nExtends rather than widening `CodeReviewFindingPublic`: that schema also\nserves pipeline findings, which are not anchored to an `old_string` and so\ncan never carry a snapshot. Adding the fields there would hand every\nconsumer three columns that are permanently null on half the rows.\n\nAll three are absent together or present together \u2014 a finding anchored by\n`posting_range` has no snapshot row, and the card falls back to rendering the\nreplacement alone.",
+        "properties": {
+          "apply_fix_disabled_reason": {
+            "$ref": "#/components/schemas/ApplyFixDisabledReason",
+            "nullable": true
+          },
+          "can_apply_fix": {
+            "default": false,
+            "title": "Can Apply Fix",
+            "type": "boolean"
+          },
+          "category": {
+            "nullable": true,
+            "title": "Category",
+            "type": "string"
+          },
+          "code_review_merge_request_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Code Review Merge Request Id",
+            "type": "string"
+          },
+          "code_review_pipeline_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Code Review Pipeline Id",
+            "type": "string"
+          },
+          "comment_posted_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Comment Posted At",
+            "type": "string"
+          },
+          "context_after": {
+            "nullable": true,
+            "title": "Context After",
+            "type": "string"
+          },
+          "context_before": {
+            "nullable": true,
+            "title": "Context Before",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "external_comment_id": {
+            "nullable": true,
+            "title": "External Comment Id",
+            "type": "string"
+          },
+          "external_note_id": {
+            "nullable": true,
+            "title": "External Note Id",
+            "type": "string"
+          },
+          "file_change_type": {
+            "$ref": "#/components/schemas/SnapshotFileChangeType",
+            "nullable": true
+          },
+          "file_path": {
+            "nullable": true,
+            "title": "File Path",
+            "type": "string"
+          },
+          "finding_index": {
+            "title": "Finding Index",
+            "type": "integer"
+          },
+          "finding_source": {
+            "default": "code_review",
+            "title": "Finding Source",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "issue_description": {
+            "title": "Issue Description",
+            "type": "string"
+          },
+          "issue_title": {
+            "title": "Issue Title",
+            "type": "string"
+          },
+          "line_number": {
+            "nullable": true,
+            "title": "Line Number",
+            "type": "integer"
+          },
+          "original_code": {
+            "nullable": true,
+            "title": "Original Code",
+            "type": "string"
+          },
+          "original_end_line": {
+            "nullable": true,
+            "title": "Original End Line",
+            "type": "integer"
+          },
+          "original_start_line": {
+            "nullable": true,
+            "title": "Original Start Line",
+            "type": "integer"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "resolved": {
+            "title": "Resolved",
+            "type": "boolean"
+          },
+          "resolved_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Resolved At",
+            "type": "string"
+          },
+          "resolved_by": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Resolved By",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "severity_emoji": {
+            "title": "Severity Emoji",
+            "type": "string"
+          },
+          "side": {
+            "nullable": true,
+            "title": "Side",
+            "type": "string"
+          },
+          "specialist": {
+            "nullable": true,
+            "title": "Specialist",
+            "type": "string"
+          },
+          "suggested_fix": {
+            "nullable": true,
+            "title": "Suggested Fix",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "finding_index",
+          "severity",
+          "severity_emoji",
+          "specialist",
+          "file_path",
+          "line_number",
+          "side",
+          "issue_title",
+          "issue_description",
+          "suggested_fix",
+          "resolved",
+          "resolved_at",
+          "resolved_by",
+          "provider",
+          "external_comment_id",
+          "external_note_id",
+          "comment_posted_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CodeReviewDetailFinding",
+        "type": "object"
+      },
+      "CodeReviewMergeRequestDetail": {
+        "description": "Single merge-request review detail (header + stats + findings).",
+        "properties": {
+          "author_avatar_url": {
+            "nullable": true,
+            "title": "Author Avatar Url",
+            "type": "string"
+          },
+          "author_name": {
+            "nullable": true,
+            "title": "Author Name",
+            "type": "string"
+          },
+          "author_username": {
+            "nullable": true,
+            "title": "Author Username",
+            "type": "string"
+          },
+          "autofix_disabled_reason": {
+            "$ref": "#/components/schemas/AutofixDisabledReason",
+            "nullable": true
+          },
+          "can_trigger_autofix": {
+            "default": false,
+            "title": "Can Trigger Autofix",
+            "type": "boolean"
+          },
+          "can_trigger_manual_review": {
+            "default": false,
+            "title": "Can Trigger Manual Review",
+            "type": "boolean"
+          },
+          "category_counts": {
+            "$ref": "#/components/schemas/CodeReviewCategoryCounts"
+          },
+          "citations": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/CodeReviewCitedRule"
+              },
+              "type": "array"
+            },
+            "title": "Citations",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "files_changed": {
+            "default": 0,
+            "title": "Files Changed",
+            "type": "integer"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/CodeReviewDetailFinding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "findings_count": {
+            "default": 0,
+            "title": "Findings Count",
+            "type": "integer"
+          },
+          "follow_up_mr_url": {
+            "nullable": true,
+            "title": "Follow Up Mr Url",
+            "type": "string"
+          },
+          "has_conflicts": {
+            "nullable": true,
+            "title": "Has Conflicts",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lines_added": {
+            "default": 0,
+            "title": "Lines Added",
+            "type": "integer"
+          },
+          "lines_deleted": {
+            "default": 0,
+            "title": "Lines Deleted",
+            "type": "integer"
+          },
+          "manual_trigger_disabled_reason": {
+            "$ref": "#/components/schemas/ManualTriggerDisabledReason",
+            "nullable": true
+          },
+          "merge_status": {
+            "nullable": true,
+            "title": "Merge Status",
+            "type": "string"
+          },
+          "mr_closed_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Mr Closed At",
+            "type": "string"
+          },
+          "mr_created_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Mr Created At",
+            "type": "string"
+          },
+          "mr_iid": {
+            "title": "Mr Iid",
+            "type": "integer"
+          },
+          "mr_merged_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Mr Merged At",
+            "type": "string"
+          },
+          "mr_state": {
+            "$ref": "#/components/schemas/MRState"
+          },
+          "my_finding_feedback": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "My Finding Feedback",
+            "type": "object"
+          },
+          "my_review_stars": {
+            "nullable": true,
+            "title": "My Review Stars",
+            "type": "integer"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/CodeReviewProvider"
+          },
+          "repository_name": {
+            "title": "Repository Name",
+            "type": "string"
+          },
+          "repository_path": {
+            "nullable": true,
+            "title": "Repository Path",
+            "type": "string"
+          },
+          "review_conversation_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Review Conversation Id",
+            "type": "string"
+          },
+          "review_status": {
+            "$ref": "#/components/schemas/ReviewStatus"
+          },
+          "rules_cited_count": {
+            "default": 0,
+            "title": "Rules Cited Count",
+            "type": "integer"
+          },
+          "score": {
+            "nullable": true,
+            "title": "Score",
+            "type": "integer"
+          },
+          "severity_counts": {
+            "$ref": "#/components/schemas/CodeReviewSeverityCounts"
+          },
+          "source_branch": {
+            "nullable": true,
+            "title": "Source Branch",
+            "type": "string"
+          },
+          "target_branch": {
+            "nullable": true,
+            "title": "Target Branch",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "unresolved_findings_count": {
+            "default": 0,
+            "title": "Unresolved Findings Count",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "nullable": true,
+            "title": "Url",
+            "type": "string"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/CodeReviewOverviewVerdict"
+          }
+        },
+        "required": [
+          "id",
+          "mr_iid",
+          "title",
+          "repository_name",
+          "provider",
+          "mr_state",
+          "review_status",
+          "verdict",
+          "severity_counts",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CodeReviewMergeRequestDetail",
+        "type": "object"
+      },
+      "CodeReviewOverviewVerdict": {
+        "enum": [
+          "in_review",
+          "approved",
+          "review_suggested",
+          "changes_requested",
+          "failed",
+          "filtered"
+        ],
+        "title": "CodeReviewOverviewVerdict",
+        "type": "string"
+      },
+      "CodeReviewProvider": {
+        "description": "Supported code review providers",
+        "enum": [
+          "gitlab",
+          "github",
+          "bitbucket",
+          "azure_devops",
+          "aws_codecommit"
+        ],
+        "title": "CodeReviewProvider",
+        "type": "string"
+      },
+      "CodeReviewSeverityCounts": {
+        "description": "Unresolved finding counts per severity, for the review-summary panel.\n\nSeverity is chosen over specialist deliberately: FAST reviews write\n`specialist='main_agent'` for every finding, so a specialist breakdown reads\n100% \"other\" on them. Severity is set on every finding in every review mode.\n\nCounts are UNRESOLVED only, matching `unresolved_findings_count` and the\nverdict rules \u2014 a fixed finding is not work left to do.",
+        "properties": {
+          "critical": {
+            "default": 0,
+            "title": "Critical",
+            "type": "integer"
+          },
+          "high": {
+            "default": 0,
+            "title": "High",
+            "type": "integer"
+          },
+          "low": {
+            "default": 0,
+            "title": "Low",
+            "type": "integer"
+          },
+          "medium": {
+            "default": 0,
+            "title": "Medium",
+            "type": "integer"
+          }
+        },
+        "title": "CodeReviewSeverityCounts",
+        "type": "object"
+      },
+      "ConventionRuleCategory": {
+        "enum": [
+          "security",
+          "performance",
+          "patterns",
+          "correctness"
+        ],
+        "title": "ConventionRuleCategory",
+        "type": "string"
+      },
+      "FinishReason": {
+        "description": "Why a streamed message ended.\n\n`None` (default) means \"completed naturally\" \u2014 set only on non-natural endings\nso existing rows don't need a backfill.",
+        "enum": [
+          "stopped_by_user",
+          "error"
+        ],
+        "title": "FinishReason",
+        "type": "string"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HeadlessRunStatus": {
+        "description": "200 response for polling a headless run.\n\n`answer` carries the extracted final assistant text only once the run has\nSUCCEEDED; every other status leaves it null (the CLI keeps polling / reads\n`web_url` for REQUIRED_APPROVAL).",
+        "properties": {
+          "answer": {
+            "nullable": true,
+            "title": "Answer",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "end_time": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "End Time",
+            "type": "string"
+          },
+          "failure_kind": {
+            "nullable": true,
+            "title": "Failure Kind",
+            "type": "string"
+          },
+          "message": {
+            "nullable": true,
+            "title": "Message",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "start_time": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Start Time",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentRunStatus"
+          },
+          "web_url": {
+            "nullable": true,
+            "title": "Web Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "conversation_id",
+          "status",
+          "answer",
+          "message",
+          "failure_kind",
+          "web_url",
+          "created_at",
+          "start_time",
+          "end_time"
+        ],
+        "title": "HeadlessRunStatus",
+        "type": "object"
+      },
+      "HeadlessRunSubmitted": {
+        "description": "202 response for a submitted headless run.",
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentRunStatus"
+          },
+          "web_url": {
+            "title": "Web Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "conversation_id",
+          "status",
+          "web_url"
+        ],
+        "title": "HeadlessRunSubmitted",
+        "type": "object"
+      },
+      "MRState": {
+        "enum": [
+          "open",
+          "merged",
+          "closed",
+          "locked",
+          "unknown"
+        ],
+        "title": "MRState",
+        "type": "string"
+      },
+      "ManualTriggerDisabledReason": {
+        "enum": [
+          "unsupported_provider",
+          "review_in_progress"
+        ],
+        "title": "ManualTriggerDisabledReason",
+        "type": "string"
+      },
+      "Message": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deliverable_files": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "Deliverable Files",
+            "type": "array"
+          },
+          "finish_reason": {
+            "$ref": "#/components/schemas/FinishReason",
+            "nullable": true
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "interrupt_message": {
+            "nullable": true,
+            "title": "Interrupt Message",
+            "type": "string"
+          },
+          "interrupt_reasoning": {
+            "nullable": true,
+            "title": "Interrupt Reasoning",
+            "type": "string"
+          },
+          "interrupt_response": {
+            "additionalProperties": true,
+            "nullable": true,
+            "title": "Interrupt Response",
+            "type": "object"
+          },
+          "interrupt_response_timestamp": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Interrupt Response Timestamp",
+            "type": "string"
+          },
+          "interrupt_response_user_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Interrupt Response User Id",
+            "type": "string"
+          },
+          "is_deleted": {
+            "default": false,
+            "title": "Is Deleted",
+            "type": "boolean"
+          },
+          "is_interrupt": {
+            "default": false,
+            "title": "Is Interrupt",
+            "type": "boolean"
+          },
+          "plan_steps": {
+            "items": {},
+            "nullable": true,
+            "title": "Plan Steps",
+            "type": "array"
+          },
+          "redis_metadata": {
+            "nullable": true,
+            "title": "Redis Metadata",
+            "type": "string"
+          },
+          "role": {
+            "default": "user",
+            "maxLength": 50,
+            "title": "Role",
+            "type": "string"
+          },
+          "stopped_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Stopped At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "User who sent this message (only for role='user')",
+            "format": "uuid",
+            "nullable": true,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content",
+          "conversation_id"
+        ],
+        "title": "Message",
+        "type": "object"
+      },
+      "RefreshTokenRequest": {
+        "description": "Request to refresh access token.\n\nAttributes:\n    refresh_token: The refresh token JWT. Optional \u2014 the cookie-auth flow\n        sends it as an httpOnly cookie and omits the body field.\n    workspace_id: Optional workspace context to include in new access token.\n        The organization_id is derived from the workspace's organization.",
+        "properties": {
+          "refresh_token": {
+            "nullable": true,
+            "title": "Refresh Token",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "title": "RefreshTokenRequest",
+        "type": "object"
+      },
+      "ReviewStatus": {
+        "enum": [
+          "in_review",
+          "review_complete",
+          "filtered",
+          "failed"
+        ],
+        "title": "ReviewStatus",
+        "type": "string"
+      },
+      "RevokeTokenRequest": {
+        "properties": {
+          "refresh_token": {
+            "nullable": true,
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "title": "RevokeTokenRequest",
+        "type": "object"
+      },
+      "SnapshotFileChangeType": {
+        "description": "Whether the file the finding sits in was added or modified by the MR.\n\nDrives how the detail page tints the finding's lines: a newly-added file\nreads as green (its lines are additions, matching the provider's own diff),\na modified file reads as a red \"current\" line the fix replaces. Stored as its\nstring value in a VARCHAR column, never a native Postgres enum, so\nUPPER()/LOWER() and enum-type migrations (DB-02) never enter the picture.\n\nAbsent (NULL) when the file's status could not be determined at review time,\nor for a `posting_range` finding that has no snapshot row at all.",
+        "enum": [
+          "added",
+          "modified"
+        ],
+        "title": "SnapshotFileChangeType",
+        "type": "string"
+      },
+      "SubmitHeadlessRunRequest": {
+        "description": "Body for `POST /cli/runs`.\n\n`agent_mode` is intentionally NOT exposed in V1 \u2014 the server picks the tier\n(Starter is coerced to Light at submit; every other plan runs the default).",
+        "properties": {
+          "prompt": {
+            "maxLength": 50000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "title": "SubmitHeadlessRunRequest",
+        "type": "object"
+      },
+      "Token": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "app_id": {
+            "nullable": true,
+            "title": "App Id",
+            "type": "string"
+          },
+          "backup_codes_remaining": {
+            "nullable": true,
+            "title": "Backup Codes Remaining",
+            "type": "integer"
+          },
+          "device_trust_token": {
+            "nullable": true,
+            "title": "Device Trust Token",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Expires At",
+            "type": "string"
+          },
+          "invitation_accepted": {
+            "default": false,
+            "title": "Invitation Accepted",
+            "type": "boolean"
+          },
+          "is_first_login": {
+            "default": false,
+            "title": "Is First Login",
+            "type": "boolean"
+          },
+          "mfa_session_token": {
+            "nullable": true,
+            "title": "Mfa Session Token",
+            "type": "string"
+          },
+          "organization_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "organizations": {
+            "items": {
+              "$ref": "#/components/schemas/UserOrganizationMinimal"
+            },
+            "nullable": true,
+            "title": "Organizations",
+            "type": "array"
+          },
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          },
+          "slack_oauth": {
+            "default": false,
+            "title": "Slack Oauth",
+            "type": "boolean"
+          },
+          "team_id": {
+            "nullable": true,
+            "title": "Team Id",
+            "type": "string"
+          },
+          "token_type": {
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "nullable": true,
+            "title": "Warnings",
+            "type": "array"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token"
+        ],
+        "title": "Token",
+        "type": "object"
+      },
+      "UserOrganizationMinimal": {
+        "description": "Minimal organization info for user's organization list",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_owner": {
+            "title": "Is Owner",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "is_owner"
+        ],
+        "title": "UserOrganizationMinimal",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Cloud Thinker",
+    "version": "0.1.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/api/v1/cli/runs": {
+      "post": {
+        "operationId": "cli-submit_headless_run",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitHeadlessRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeadlessRunSubmitted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Headless Run",
+        "tags": [
+          "cli"
+        ]
+      }
+    },
+    "/api/v1/cli/runs/{run_id}": {
+      "get": {
+        "operationId": "cli-get_headless_run",
+        "parameters": [
+          {
+            "description": "Headless AgentRun id",
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "description": "Headless AgentRun id",
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeadlessRunStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Headless Run",
+        "tags": [
+          "cli"
+        ]
+      }
+    },
+    "/api/v1/code-review/merge-requests/lookup": {
+      "get": {
+        "description": "Resolve a CLI-pasted MR URL's coordinates to its tracked review detail.\n\nDeclared BEFORE /merge-requests/{merge_request_id} - FastAPI matches path\nsegments in registration order, so a route below that one would swallow\n\"lookup\" as a UUID path param and 422 instead of matching here.",
+        "operationId": "code-review-lookup_code_review_merge_request",
+        "parameters": [
+          {
+            "description": "Code review provider parsed from the MR URL",
+            "in": "query",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CodeReviewProvider"
+            }
+          },
+          {
+            "description": "Provider project path parsed from the MR URL",
+            "in": "query",
+            "name": "project_path",
+            "required": true,
+            "schema": {
+              "description": "Provider project path parsed from the MR URL",
+              "title": "Project Path",
+              "type": "string"
+            }
+          },
+          {
+            "description": "MR/PR number parsed from the MR URL",
+            "in": "query",
+            "name": "mr_iid",
+            "required": true,
+            "schema": {
+              "description": "MR/PR number parsed from the MR URL",
+              "title": "Mr Iid",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeReviewMergeRequestDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Lookup Code Review Merge Request",
+        "tags": [
+          "code-review"
+        ]
+      }
+    },
+    "/api/v1/login/cli/token": {
+      "post": {
+        "description": "Exchange a one-time code + PKCE verifier for a Token.\n\nAny failure (missing / expired code, verifier mismatch) returns the same\ngeneric 400 so a stolen code cannot be probed for its state (CA-SP-3).",
+        "operationId": "login-exchange_cli_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CliTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Exchange Cli Token",
+        "tags": [
+          "login"
+        ]
+      }
+    },
+    "/api/v1/login/logout": {
+      "post": {
+        "description": "Logout user by revoking refresh token.\n\nThis is a best-effort operation that always succeeds. The refresh token is\nread from the httpOnly cookie first, falling back to the body for legacy\nclients. Auth cookies are always cleared. If the refresh token is invalid\nor already revoked, we still return success.",
+        "operationId": "login-logout",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevokeTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "login"
+        ]
+      }
+    },
+    "/api/v1/login/refresh": {
+      "post": {
+        "description": "Refresh access token with mandatory rotation.\nFollowing Auth0 best practices.\n\nThe refresh token is read from the httpOnly cookie first, falling back to\nthe request body for legacy header-based clients during the migration. The\norganization_id is derived from the workspace_id. If no workspace is\nprovided, falls back to the user's oldest active organization membership.",
+        "operationId": "login-refresh_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Token",
+        "tags": [
+          "login"
+        ]
+      }
+    }
+  }
+}

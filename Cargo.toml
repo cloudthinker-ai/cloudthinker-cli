@@ -1,0 +1,62 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/cloudthinker-api",
+    "crates/cloudthinker-client",
+    "crates/cloudthinker-cli",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.90"
+license = "Apache-2.0"
+# The standalone GitHub repo this workspace is split into for releases; cargo-dist
+# bakes owner/repo into the installer download URLs, so it MUST be the GitHub repo
+# artifacts are published from, NOT the GitLab monorepo this file lives in.
+repository = "https://github.com/cloudthinker-ai/cloudthinker-cli"
+
+# reqwest is pinned to the version the generated `cloudthinker-api` crate emits
+# (see `make gen`). The hand-written client hands a `reqwest::Client` to the
+# generated `Client::new_with_client`, so both crates MUST resolve to one reqwest
+# instance — a version skew makes the two `reqwest::Client` types incompatible.
+[workspace.dependencies]
+cloudthinker-api = { path = "crates/cloudthinker-api" }
+cloudthinker-client = { path = "crates/cloudthinker-client" }
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+base64 = "0.22"
+sha2 = "0.10"
+rand = "0.8"
+url = "2"
+clap = { version = "4", features = ["derive", "env", "wrap_help"] }
+
+# Copied verbatim from tools/ct-cli/Cargo.toml: hand-written crates opt in with
+# `[lints] workspace = true`; the generated `cloudthinker-api` crate does NOT
+# (it relaxes these at its crate root instead).
+[workspace.lints.rust]
+unsafe_code = "forbid"
+unused_crate_dependencies = "deny"
+
+[workspace.lints.clippy]
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+undocumented_unsafe_blocks = "deny"
+unimplemented = "deny"
+unwrap_used = "deny"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+codegen-units = 1
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

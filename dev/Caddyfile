@@ -1,0 +1,23 @@
+# Single-origin dev proxy — serves the consent page and the API from ONE origin
+# so `cloudthinker login` (PKCE) is testable locally.
+#
+# Without it, local splits origins (frontend :3000, backend :8000) while the CLI
+# derives BOTH `{base}/auth/cli` and `{base}/api/v1/...` from a single --url.
+#
+# Upstreams: backend runs in compose (service DNS), frontend runs on the host
+# (`pnpm dev`, port 5173), reached through the host-gateway alias.
+#
+# The dev server must be started with NEXT_PUBLIC_API_URL=http://localhost:8080
+# so the browser calls the API on this origin instead of :8000 directly.
+
+:8080 {
+	handle /api/* {
+		reverse_proxy {$BACKEND_UPSTREAM:backend:8000}
+	}
+
+	# Everything else is Next.js, including its HMR websocket (reverse_proxy
+	# upgrades automatically).
+	handle {
+		reverse_proxy {$FRONTEND_UPSTREAM:host.docker.internal:5173}
+	}
+}

@@ -1,0 +1,17 @@
+[workspace]
+members = ["cargo:."]
+
+# Config for 'dist'
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.32.0"
+# CI backends to support
+ci = "github"
+# curl one-liner (install.sh) is primary; PowerShell covers the Windows target.
+# Homebrew is deferred — it needs a separate `cloudthinker-ai/homebrew-tap` repo.
+installers = ["shell", "powershell"]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# Install to a Rust-independent location (customers may not have cargo); the
+# installer appends it to PATH.
+install-path = "~/.local/bin"
