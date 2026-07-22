@@ -23,7 +23,10 @@ sha2.workspace = true
 rand.workspace = true
 url.workspace = true
 axum = { version = "0.8", default-features = false, features = ["tokio", "http1", "query"] }
-keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+# `vendored` statically links libdbus into the Linux binary (via dbus-secret-service):
+# the release runners have no `libdbus-1-dev`, and it keeps the published Linux archive
+# self-contained instead of depending on the target's system libdbus.
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "vendored"] }
 dirs = "6"
 
 [dev-dependencies]
