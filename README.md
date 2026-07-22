@@ -36,8 +36,10 @@ lives in `dist-workspace.toml`, the release pipeline in
 `dist generate`, never hand-edit the workflow.
 
 This workspace is the root of the standalone GitHub repo
-`cloudthinker-ai/cloudthinker-cli` (split out of the GitLab monorepo). A release is a
-pushed semver tag:
+`cloudthinker-ai/cloudthinker-cli`, a **publish mirror** of the `cli/` tree in the
+GitLab monorepo (the source of truth). Never edit here directly — changes land in the
+monorepo and are pushed with `make -C cli release-sync`. A release is a pushed semver
+tag:
 
 ```sh
 # bump `version` in crates/cloudthinker-cli/Cargo.toml, commit, then:

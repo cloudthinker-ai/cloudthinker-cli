@@ -15,7 +15,7 @@ BUILD := $(CLI_DIR)/.gen
 # Nightly rustfmt: progenitor emits unstable fmt options that stable rustfmt panics on.
 NIGHTLY_RUSTFMT := $(shell rustup which rustfmt --toolchain nightly)
 
-.PHONY: gen check fmt clippy test clean-gen
+.PHONY: gen check fmt clippy test clean-gen release-sync
 
 gen:
 	@mkdir -p $(BUILD) $(CLI_DIR)/openapi
@@ -54,3 +54,9 @@ test:
 
 clean-gen:
 	rm -rf $(BUILD)
+
+# Publish this cli/ tree to the standalone GitHub release repo
+# (cloudthinker-ai/cloudthinker-cli). One-directional mirror; the monorepo is the
+# source of truth. Needs a gh account with push access. See scripts/release-sync.sh.
+release-sync:
+	bash $(CLI_DIR)/scripts/release-sync.sh
