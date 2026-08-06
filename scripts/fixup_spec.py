@@ -21,6 +21,11 @@ blockers (arch plan §Codegen spike) plus one determinism fix:
    supports one typed error body per operation; retaining the meaningful 400
    device-poll response gives the client typed RFC 8628 errors, while malformed
    local input is rejected before the request is sent.
+6. Remove a 422 response when its JSON schema is identical to the default error
+   response. Keeping both makes progenitor count two error variants and abort.
+7. Remove generic ApiErrorResponse defaults and ranges. Progenitor discards the
+   HTTP status when a typed error body fails to decode, so undeclared generic
+   errors must stay UnexpectedResponse during detail-only response migration.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ import sys
 # Environment-independent spec identity; see fix 4 above.
 SPEC_TITLE = "Cloud Thinker"
 DEVICE_TOKEN_PATH = "/api/v1/login/cli/device/token"
+API_ERROR_REF = "#/components/schemas/ApiErrorResponse"
 
 
 def _fix_nullable(node: object) -> object:
@@ -120,12 +126,48 @@ def _keep_typed_device_poll_error(spec: dict) -> None:
         responses.pop("422", None)
 
 
+def _response_json_schema(response: object) -> object | None:
+    if not isinstance(response, dict):
+        return None
+    content = response.get("content")
+    if not isinstance(content, dict):
+        return None
+    media_type = content.get("application/json")
+    if not isinstance(media_type, dict):
+        return None
+    return media_type.get("schema")
+
+
+def _is_generic_api_error(response: object) -> bool:
+    return _response_json_schema(response) == {"$ref": API_ERROR_REF}
+
+
+def _normalize_error_responses(spec: dict) -> None:
+    for path_item in spec.get("paths", {}).values():
+        if not isinstance(path_item, dict):
+            continue
+        for operation in path_item.values():
+            if not isinstance(operation, dict):
+                continue
+            responses = operation.get("responses")
+            if not isinstance(responses, dict):
+                continue
+            validation_schema = _response_json_schema(responses.get("422"))
+            default_schema = _response_json_schema(responses.get("default"))
+            if validation_schema is not None and validation_schema == default_schema:
+                responses.pop("422")
+            for status in ("default", "4XX", "5XX"):
+                if _is_generic_api_error(responses.get(status)):
+                    responses.pop(status)
+
+
 def fixup(spec: dict) -> dict:
     spec = _fix_nullable(spec)  # returns a rebuilt tree
     _fix_exclusive_bounds(spec)
     _dedupe_operation_ids(spec)
     _pin_title(spec)
     _keep_typed_device_poll_error(spec)
+    _normalize_error_responses(spec)
     return spec
 
 
@@ -138,7 +180,7 @@ def main() -> None:
     with open(sys.argv[2], "w") as fh:
         json.dump(spec, fh, indent=2, sort_keys=True)
         fh.write("\n")
-    print("fixup_spec: applied nullable + exclusive-bound fixes")
+    print("fixup_spec: applied CLI codegen compatibility fixes")
 
 
 if __name__ == "__main__":

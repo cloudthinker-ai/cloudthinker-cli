@@ -58,6 +58,8 @@ enum Command {
     Chat(ChatArgs),
     /// Inspect or watch a tracked code review by its merge-request URL.
     Review(ReviewArgs),
+    /// Update `cloudthinker` to the latest GitHub release.
+    Update(UpdateArgs),
 }
 
 #[derive(Debug, Args)]
@@ -145,6 +147,17 @@ enum ReviewSub {
     },
 }
 
+#[derive(Debug, Args)]
+struct UpdateArgs {
+    /// Install the latest release even when already up to date.
+    #[arg(long)]
+    force: bool,
+
+    /// Emit a JSON envelope on stdout instead of plain text.
+    #[arg(long)]
+    json: bool,
+}
+
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
@@ -214,6 +227,9 @@ async fn dispatch(cli: Cli) -> ExitCode {
                     .await
             }
         },
+        // Self-update talks to GitHub releases, not the CloudThinker API; it
+        // ignores the global `--url`/`--workspace` selectors by design.
+        Command::Update(args) => commands::update::run(args.force, args.json).await,
     }
 }
 

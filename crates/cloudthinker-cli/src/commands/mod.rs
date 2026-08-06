@@ -4,6 +4,7 @@ pub mod chat;
 pub mod login;
 pub mod logout;
 pub mod review;
+pub mod update;
 pub mod whoami;
 
 use cloudthinker_client::{CtClient, CtError, resolve_store};

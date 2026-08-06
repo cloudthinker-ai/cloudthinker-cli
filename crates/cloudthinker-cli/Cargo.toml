@@ -1,6 +1,6 @@
 [package]
 name = "cloudthinker-cli"
-version = "0.2.0"
+version = "0.2.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -25,6 +25,10 @@ rand.workspace = true
 open = "5"
 owo-colors = "4"
 supports-color = "3"
+# Self-update: the crate cargo-dist itself uses for its updater binary. The
+# network lives inside axoupdater (GitHub releases API + installer download),
+# so the "no reqwest in commands" rule stays intact for hand-written code.
+axoupdater = "0.10"
 
 [dev-dependencies]
 assert_cmd = "2"

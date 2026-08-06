@@ -8,6 +8,7 @@
 
 // This integration target links the whole crate's dependency set but only needs
 // a few; silence `unused_crate_dependencies` for the bin-only deps.
+use axoupdater as _;
 use clap as _;
 use cloudthinker_client as _;
 use open as _;
@@ -360,4 +361,336 @@ fn chat_without_prompt_is_usage_error() {
         .arg("chat")
         .assert()
         .code(2);
+}
+
+// ---------------------------------------------------------------------------
+// `update` self-update (CA-UP-*) — driven through axoupdater's test hooks:
+//   - AXOUPDATER_CONFIG_PATH  → where the install receipt is looked up
+//   - CLOUDTHINKER_CLI_INSTALLER_GHE_BASE_URL → the GitHub API base (mock)
+// The receipt's install_prefix must match the spawned binary's real location
+// (axoupdater verifies the exe came from the receipt before updating).
+// ---------------------------------------------------------------------------
+
+/// The axoupdater app name; must equal the receipt filename stem and the
+/// release-asset prefix the installer looks for.
+const UPDATE_APP: &str = "cloudthinker-cli";
+
+/// Release JSON for the GitHub API `releases/latest` endpoint, with the
+/// installer asset pointing back at the mock server.
+fn release_body(mock_base: &str, tag: &str) -> String {
+    format!(
+        r#"{{"tag_name":"{tag}","name":"{tag}","url":"{mock_base}/releases/{tag}","assets":[{{"name":"{UPDATE_APP}-installer.sh","url":"{mock_base}/installer.sh","browser_download_url":"{mock_base}/installer.sh"}}],"prerelease":false}}"#
+    )
+}
+
+/// Writes a cargo-dist install receipt for the spawned binary's real location
+/// and returns its directory (to pass as AXOUPDATER_CONFIG_PATH). `tag` makes
+/// the directory unique per test so parallel runs never clobber each other.
+fn write_receipt(tag: &str, version: &str, install_prefix: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "ct-update-receipt-{}-{tag}-{}",
+        std::process::id(),
+        version.replace('.', "_")
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let receipt = format!(
+        r#"{{"binaries":["cloudthinker"],"install_prefix":"{install_prefix}","provider":{{"source":"cargo-dist","version":"0.32.0"}},"source":{{"release_type":"github","owner":"cloudthinker-ai","name":"{UPDATE_APP}","app_name":"{UPDATE_APP}"}},"version":"{version}"}}"#
+    );
+    std::fs::write(dir.join(format!("{UPDATE_APP}-receipt.json")), receipt).unwrap();
+    dir
+}
+
+/// The real install prefix the exe-matches-receipt check expects: the parent
+/// of the built binary, canonicalized (axoupdater canonicalizes both sides).
+fn real_install_prefix() -> String {
+    let bin = assert_cmd::cargo::cargo_bin("cloudthinker");
+    bin.parent()
+        .unwrap()
+        .canonicalize()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string()
+}
+
+/// Canned server for `update` tests: serves the releases API under /api/v3
+/// (axoupdater's GHE base-url override appends that prefix) and the installer
+/// script the updater downloads and executes.
+struct MockReleases {
+    base_url: String,
+    stop: Arc<AtomicBool>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl MockReleases {
+    /// `installer_script` is served as the release's installer; give it a
+    /// side effect (e.g. touch a marker) to prove it actually executed.
+    fn start(tag: &str, installer_script: String) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_thread = stop.clone();
+        let base_url = format!("http://{addr}");
+        let release_body = release_body(&base_url, tag);
+
+        let handle = std::thread::spawn(move || {
+            while !stop_thread.load(Ordering::SeqCst) {
+                match listener.accept() {
+                    Ok((mut socket, _)) => {
+                        socket.set_nonblocking(false).ok();
+                        socket
+                            .set_read_timeout(Some(Duration::from_millis(100)))
+                            .ok();
+                        let mut data = Vec::new();
+                        let mut buf = [0u8; 4096];
+                        loop {
+                            match socket.read(&mut buf) {
+                                Ok(0) => break,
+                                Ok(n) => data.extend_from_slice(&buf[..n]),
+                                Err(_) => break,
+                            }
+                        }
+                        let request = String::from_utf8_lossy(&data);
+                        let first_line = request.lines().next().unwrap_or_default();
+                        let (status, body, content_type) = if first_line.contains("/api/v3/repos/")
+                        {
+                            ("200 OK", release_body.clone(), "application/json")
+                        } else if first_line.contains("/installer.sh") {
+                            ("200 OK", installer_script.clone(), "text/plain")
+                        } else {
+                            ("404 Not Found", String::new(), "text/plain")
+                        };
+                        let response = format!(
+                            "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                        let _ = socket.write_all(response.as_bytes());
+                        let _ = socket.flush();
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        Self {
+            base_url,
+            stop,
+            handle: Some(handle),
+        }
+    }
+}
+
+impl Drop for MockReleases {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+/// Spawn the real binary with the axoupdater test hooks pointed at the mock.
+fn update_cli(receipt_dir: &std::path::Path, releases: &MockReleases, marker: &str) -> Command {
+    let mut cmd = Command::cargo_bin("cloudthinker").unwrap();
+    cmd.env("AXOUPDATER_CONFIG_PATH", receipt_dir)
+        .env(
+            "CLOUDTHINKER_CLI_INSTALLER_GHE_BASE_URL",
+            &releases.base_url,
+        )
+        .env("CT_UPDATE_TEST_MARKER", marker)
+        .env_remove("NO_COLOR");
+    cmd
+}
+
+/// Fake installer: writes a marker file whose path arrives via env, so tests
+/// can prove the updater downloaded AND executed the installer.
+fn marker_installer_script() -> String {
+    "#!/bin/sh\ntouch \"$CT_UPDATE_TEST_MARKER\"\n".to_string()
+}
+
+fn marker_path(name: &str) -> String {
+    std::env::temp_dir()
+        .join(format!("ct-update-marker-{}-{name}", std::process::id()))
+        .to_str()
+        .unwrap()
+        .to_string()
+}
+
+// CA-UP-1: an update is available → the installer runs and the outcome line
+// lands on stdout, exit 0.
+#[test]
+fn ca_up_1_update_available_installs_and_exits_0() {
+    let marker = marker_path("up1");
+    let _ = std::fs::remove_file(&marker);
+    let releases = MockReleases::start("v0.2.0", marker_installer_script());
+    let receipt_dir = write_receipt("up1", "0.1.0", &real_install_prefix());
+
+    update_cli(&receipt_dir, &releases, &marker)
+        .arg("update")
+        .assert()
+        .success()
+        .stdout("Updated cloudthinker from 0.1.0 to 0.2.0\n");
+    assert!(
+        std::path::Path::new(&marker).exists(),
+        "installer must have run"
+    );
+    let _ = std::fs::remove_file(&marker);
+}
+
+// CA-UP-2: already on the latest release → no installer run, exit 0.
+#[test]
+fn ca_up_2_already_up_to_date_exits_0() {
+    let marker = marker_path("up2");
+    let _ = std::fs::remove_file(&marker);
+    let releases = MockReleases::start("v0.2.0", marker_installer_script());
+    let receipt_dir = write_receipt("up2", "0.2.0", &real_install_prefix());
+
+    update_cli(&receipt_dir, &releases, &marker)
+        .arg("update")
+        .assert()
+        .success()
+        .stdout("cloudthinker is already up to date\n");
+    assert!(
+        !std::path::Path::new(&marker).exists(),
+        "installer must NOT run when up to date"
+    );
+    let _ = std::fs::remove_file(&marker);
+}
+
+// CA-UP-3: no install receipt → refuse with the manual reinstall command,
+// exit 1, nothing on stdout.
+#[test]
+fn ca_up_3_missing_receipt_refuses_without_stdout() {
+    let marker = marker_path("up3");
+    let _ = std::fs::remove_file(&marker);
+    let releases = MockReleases::start("v0.2.0", marker_installer_script());
+    let empty_dir =
+        std::env::temp_dir().join(format!("ct-update-receipt-{}-empty", std::process::id()));
+    std::fs::create_dir_all(&empty_dir).unwrap();
+
+    update_cli(&empty_dir, &releases, &marker)
+        .arg("update")
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(predicates::str::contains("cannot self-update this installation"))
+        .stderr(predicates::str::contains(
+            "https://github.com/cloudthinker-ai/cloudthinker-cli/releases/latest/download/cloudthinker-cli-installer.sh",
+        ));
+    assert!(!std::path::Path::new(&marker).exists());
+    let _ = std::fs::remove_file(&marker);
+}
+
+// CA-UP-4: `--json` on an update prints exactly one envelope, exit 0.
+#[test]
+fn ca_up_4_json_update_available_emits_envelope() {
+    let marker = marker_path("up4");
+    let _ = std::fs::remove_file(&marker);
+    let releases = MockReleases::start("v0.2.0", marker_installer_script());
+    let receipt_dir = write_receipt("up4", "0.1.0", &real_install_prefix());
+
+    let assert = update_cli(&receipt_dir, &releases, &marker)
+        .args(["update", "--json"])
+        .assert()
+        .success();
+    let stdout = assert.get_output().stdout.clone();
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&stdout).expect("stdout must be one JSON envelope");
+    assert_eq!(envelope["updated"], true);
+    assert_eq!(envelope["old_version"], "0.1.0");
+    assert_eq!(envelope["new_version"], "0.2.0");
+    assert!(
+        std::path::Path::new(&marker).exists(),
+        "installer must have run"
+    );
+    let _ = std::fs::remove_file(&marker);
+}
+
+// CA-UP-5: `--json` when already current reports updated:false, exit 0.
+#[test]
+fn ca_up_5_json_up_to_date_emits_envelope() {
+    let marker = marker_path("up5");
+    let _ = std::fs::remove_file(&marker);
+    let releases = MockReleases::start("v0.2.0", marker_installer_script());
+    let receipt_dir = write_receipt("up5", "0.2.0", &real_install_prefix());
+
+    let assert = update_cli(&receipt_dir, &releases, &marker)
+        .args(["update", "--json"])
+        .assert()
+        .success();
+    let stdout = assert.get_output().stdout.clone();
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&stdout).expect("stdout must be one JSON envelope");
+    assert_eq!(envelope["updated"], false);
+    assert_eq!(envelope["old_version"], serde_json::Value::Null);
+    assert_eq!(envelope["new_version"], serde_json::Value::Null);
+    assert!(!std::path::Path::new(&marker).exists());
+    let _ = std::fs::remove_file(&marker);
+}
+
+// CA-UP-6: `--force` reinstalls the same version, exit 0.
+#[test]
+fn ca_up_6_force_reinstalls_when_up_to_date() {
+    let marker = marker_path("up6");
+    let _ = std::fs::remove_file(&marker);
+    let releases = MockReleases::start("v0.2.0", marker_installer_script());
+    let receipt_dir = write_receipt("up6", "0.2.0", &real_install_prefix());
+
+    update_cli(&receipt_dir, &releases, &marker)
+        .args(["update", "--force"])
+        .assert()
+        .success()
+        .stdout("Updated cloudthinker from 0.2.0 to 0.2.0\n");
+    assert!(
+        std::path::Path::new(&marker).exists(),
+        "installer must have run"
+    );
+    let _ = std::fs::remove_file(&marker);
+}
+
+// CA-UP-7: a binary that does not match the receipt (different install
+// prefix) is refused instead of misreported as up to date.
+#[test]
+fn ca_up_7_exe_mismatch_refuses() {
+    let marker = marker_path("up7");
+    let _ = std::fs::remove_file(&marker);
+    let releases = MockReleases::start("v0.2.0", marker_installer_script());
+    let receipt_dir = write_receipt("up7", "0.1.0", "/nonexistent/install/prefix");
+
+    update_cli(&receipt_dir, &releases, &marker)
+        .arg("update")
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(predicates::str::contains(
+            "the running binary does not match the install receipt",
+        ));
+    assert!(!std::path::Path::new(&marker).exists());
+    let _ = std::fs::remove_file(&marker);
+}
+
+// CA-UP-8: axoupdater env overrides present at runtime are surfaced on
+// stderr — a shared/CI environment gets a warning instead of a silent
+// redirect of where the receipt is read and where the installer is fetched.
+#[test]
+fn ca_up_8_env_overrides_warn_on_stderr() {
+    let marker = marker_path("up8");
+    let _ = std::fs::remove_file(&marker);
+    let releases = MockReleases::start("v0.2.0", marker_installer_script());
+    let receipt_dir = write_receipt("up8", "0.2.0", &real_install_prefix());
+
+    update_cli(&receipt_dir, &releases, &marker)
+        .arg("update")
+        .assert()
+        .success()
+        .stdout("cloudthinker is already up to date\n")
+        .stderr(predicates::str::contains("AXOUPDATER_CONFIG_PATH"))
+        .stderr(predicates::str::contains(
+            "CLOUDTHINKER_CLI_INSTALLER_GHE_BASE_URL",
+        ));
+    let _ = std::fs::remove_file(&marker);
 }

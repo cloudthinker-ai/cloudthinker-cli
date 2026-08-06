@@ -98,6 +98,12 @@ pub fn terminal_text(value: &str) -> String {
         .collect()
 }
 
+/// Write one human-mode result line to stdout (`update`'s outcome message).
+pub fn print_update_result(message: &str) -> Result<(), String> {
+    let mut out = std::io::stdout().lock();
+    write_line(&mut out, message)
+}
+
 /// Human summary for `chat status` (goes to stdout — it is the command's output).
 pub fn print_status_summary(view: &RunView) -> Result<(), String> {
     let mut out = std::io::stdout().lock();
