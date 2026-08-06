@@ -33,7 +33,7 @@ impl ExitCode {
 /// Map a client error to its exit code — pure, so it is table-testable.
 pub fn code_for(err: &CtError) -> ExitCode {
     match err {
-        CtError::Auth(_) => ExitCode::Auth,
+        CtError::Auth(_) | CtError::ObsoleteCredentials => ExitCode::Auth,
         CtError::Usage(_) => ExitCode::Usage,
         CtError::Timeout(_) => ExitCode::Timeout,
         CtError::LoginDenied => ExitCode::JobFailed,
@@ -42,7 +42,11 @@ pub fn code_for(err: &CtError) -> ExitCode {
             422 => ExitCode::Usage,
             _ => ExitCode::JobFailed,
         },
-        CtError::Transport(_) | CtError::Store(_) | CtError::Login(_) => ExitCode::JobFailed,
+        CtError::Transport(_)
+        | CtError::Store(_)
+        | CtError::Login(_)
+        | CtError::Logout(_)
+        | CtError::Protocol(_) => ExitCode::JobFailed,
     }
 }
 
@@ -72,11 +76,14 @@ mod tests {
     fn error_to_code_mapping_table() {
         let cases = [
             (CtError::Auth("x".into()), ExitCode::Auth),
+            (CtError::ObsoleteCredentials, ExitCode::Auth),
             (CtError::Usage("x".into()), ExitCode::Usage),
             (CtError::Timeout("x".into()), ExitCode::Timeout),
             (CtError::LoginDenied, ExitCode::JobFailed),
             (CtError::Transport("x".into()), ExitCode::JobFailed),
             (CtError::Store("x".into()), ExitCode::JobFailed),
+            (CtError::Protocol("x".into()), ExitCode::JobFailed),
+            (CtError::Logout("x".into()), ExitCode::JobFailed),
             (
                 CtError::Api {
                     status: 401,

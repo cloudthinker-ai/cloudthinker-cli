@@ -13,6 +13,102 @@
         "title": "AgentRunStatus",
         "type": "string"
       },
+      "ApiErrorDetail": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "context": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "default": null,
+            "nullable": true,
+            "title": "Context",
+            "type": "object"
+          },
+          "field_errors": {
+            "default": null,
+            "items": {
+              "$ref": "#/components/schemas/ApiFieldError"
+            },
+            "nullable": true,
+            "title": "Field Errors",
+            "type": "array"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ApiErrorDetail",
+        "type": "object"
+      },
+      "ApiErrorResponse": {
+        "properties": {
+          "detail": {
+            "description": "Deprecated compatibility payload. New clients consume error.",
+            "title": "Detail"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ApiErrorDetail"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "request_id",
+          "detail"
+        ],
+        "title": "ApiErrorResponse",
+        "type": "object"
+      },
+      "ApiFieldError": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "path": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Path",
+            "type": "array"
+          }
+        },
+        "required": [
+          "path",
+          "code",
+          "message"
+        ],
+        "title": "ApiFieldError",
+        "type": "object"
+      },
       "ApplyFixDisabledReason": {
         "enum": [
           "unsupported_provider"
@@ -27,6 +123,84 @@
         ],
         "title": "AutofixDisabledReason",
         "type": "string"
+      },
+      "CliDeviceAuthorizationResponse": {
+        "description": "Short user code plus the private device credential used for polling.",
+        "properties": {
+          "device_code": {
+            "title": "Device Code",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "interval": {
+            "title": "Interval",
+            "type": "integer"
+          },
+          "user_code": {
+            "title": "User Code",
+            "type": "string"
+          },
+          "verification_uri": {
+            "title": "Verification Uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_code",
+          "user_code",
+          "verification_uri",
+          "expires_in",
+          "interval"
+        ],
+        "title": "CliDeviceAuthorizationResponse",
+        "type": "object"
+      },
+      "CliDeviceTokenError": {
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/CliDeviceTokenErrorCode"
+          },
+          "interval": {
+            "nullable": true,
+            "title": "Interval",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "CliDeviceTokenError",
+        "type": "object"
+      },
+      "CliDeviceTokenErrorCode": {
+        "description": "RFC 8628-shaped terminal and polling responses.",
+        "enum": [
+          "authorization_pending",
+          "slow_down",
+          "access_denied",
+          "expired_token"
+        ],
+        "title": "CliDeviceTokenErrorCode",
+        "type": "string"
+      },
+      "CliDeviceTokenRequest": {
+        "description": "Poll a device authorization using its high-entropy private code.",
+        "properties": {
+          "device_code": {
+            "maxLength": 128,
+            "minLength": 43,
+            "title": "Device Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_code"
+        ],
+        "title": "CliDeviceTokenRequest",
+        "type": "object"
       },
       "CliTokenRequest": {
         "description": "Token-exchange request: the one-time code plus the PKCE verifier.",
@@ -50,6 +224,47 @@
         ],
         "title": "CliTokenRequest",
         "type": "object"
+      },
+      "CliWhoAmIResponse": {
+        "description": "Live identity resolved from the active CLI bearer credential.",
+        "properties": {
+          "organization_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "user_email": {
+            "format": "email",
+            "title": "User Email",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          },
+          "workspace_name": {
+            "title": "Workspace Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_email",
+          "workspace_id",
+          "workspace_name"
+        ],
+        "title": "CliWhoAmIResponse",
+        "type": "object"
+      },
+      "CloudProvider": {
+        "enum": [
+          "AWS",
+          "GCP",
+          "AZURE"
+        ],
+        "title": "CloudProvider",
+        "type": "string"
       },
       "CodeReviewCategoryCounts": {
         "description": "Unresolved findings per cited-rule category, for the review-summary panel.\n\nA finding joins a category by citing a rule of that category, so only\nrule-citing findings count here (mirrors the \"Rules cited\" row, not\n\"Findings\"). Counts are UNRESOLVED only, matching `severity_counts` \u2014\na fixed finding is not work left to do.",
@@ -289,6 +504,12 @@
       "CodeReviewMergeRequestDetail": {
         "description": "Single merge-request review detail (header + stats + findings).",
         "properties": {
+          "ask_conversation_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Ask Conversation Id",
+            "type": "string"
+          },
           "author_avatar_url": {
             "nullable": true,
             "title": "Author Avatar Url",
@@ -442,8 +663,17 @@
             "title": "Review Conversation Id",
             "type": "string"
           },
+          "review_effort": {
+            "$ref": "#/components/schemas/ReviewEffort",
+            "nullable": true
+          },
           "review_status": {
             "$ref": "#/components/schemas/ReviewStatus"
+          },
+          "review_summary": {
+            "nullable": true,
+            "title": "Review Summary",
+            "type": "string"
           },
           "rules_cited_count": {
             "default": 0,
@@ -466,6 +696,20 @@
           "target_branch": {
             "nullable": true,
             "title": "Target Branch",
+            "type": "string"
+          },
+          "ticket_compliance": {
+            "$ref": "#/components/schemas/TicketComplianceStatus",
+            "nullable": true
+          },
+          "ticket_compliance_notes": {
+            "nullable": true,
+            "title": "Ticket Compliance Notes",
+            "type": "string"
+          },
+          "ticket_key": {
+            "nullable": true,
+            "title": "Ticket Key",
             "type": "string"
           },
           "title": {
@@ -566,15 +810,6 @@
           "correctness"
         ],
         "title": "ConventionRuleCategory",
-        "type": "string"
-      },
-      "FinishReason": {
-        "description": "Why a streamed message ended.\n\n`None` (default) means \"completed naturally\" \u2014 set only on non-natural endings\nso existing rows don't need a backfill.",
-        "enum": [
-          "stopped_by_user",
-          "error"
-        ],
-        "title": "FinishReason",
         "type": "string"
       },
       "HTTPValidationError": {
@@ -690,6 +925,7 @@
         "title": "HeadlessRunSubmitted",
         "type": "object"
       },
+      "JsonValue": {},
       "MRState": {
         "enum": [
           "open",
@@ -709,120 +945,6 @@
         "title": "ManualTriggerDisabledReason",
         "type": "string"
       },
-      "Message": {
-        "properties": {
-          "content": {
-            "title": "Content",
-            "type": "string"
-          },
-          "conversation_id": {
-            "format": "uuid",
-            "title": "Conversation Id",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "deliverable_files": {
-            "items": {
-              "type": "string"
-            },
-            "nullable": true,
-            "title": "Deliverable Files",
-            "type": "array"
-          },
-          "finish_reason": {
-            "$ref": "#/components/schemas/FinishReason",
-            "nullable": true
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "interrupt_message": {
-            "nullable": true,
-            "title": "Interrupt Message",
-            "type": "string"
-          },
-          "interrupt_reasoning": {
-            "nullable": true,
-            "title": "Interrupt Reasoning",
-            "type": "string"
-          },
-          "interrupt_response": {
-            "additionalProperties": true,
-            "nullable": true,
-            "title": "Interrupt Response",
-            "type": "object"
-          },
-          "interrupt_response_timestamp": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "Interrupt Response Timestamp",
-            "type": "string"
-          },
-          "interrupt_response_user_id": {
-            "format": "uuid",
-            "nullable": true,
-            "title": "Interrupt Response User Id",
-            "type": "string"
-          },
-          "is_deleted": {
-            "default": false,
-            "title": "Is Deleted",
-            "type": "boolean"
-          },
-          "is_interrupt": {
-            "default": false,
-            "title": "Is Interrupt",
-            "type": "boolean"
-          },
-          "plan_steps": {
-            "items": {},
-            "nullable": true,
-            "title": "Plan Steps",
-            "type": "array"
-          },
-          "redis_metadata": {
-            "nullable": true,
-            "title": "Redis Metadata",
-            "type": "string"
-          },
-          "role": {
-            "default": "user",
-            "maxLength": 50,
-            "title": "Role",
-            "type": "string"
-          },
-          "stopped_at": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "Stopped At",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          },
-          "user_id": {
-            "description": "User who sent this message (only for role='user')",
-            "format": "uuid",
-            "nullable": true,
-            "title": "User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "content",
-          "conversation_id"
-        ],
-        "title": "Message",
-        "type": "object"
-      },
       "RefreshTokenRequest": {
         "description": "Request to refresh access token.\n\nAttributes:\n    refresh_token: The refresh token JWT. Optional \u2014 the cookie-auth flow\n        sends it as an httpOnly cookie and omits the body field.\n    workspace_id: Optional workspace context to include in new access token.\n        The organization_id is derived from the workspace's organization.",
         "properties": {
@@ -840,6 +962,16 @@
         },
         "title": "RefreshTokenRequest",
         "type": "object"
+      },
+      "ReviewEffort": {
+        "description": "How much reviewer attention a change likely demands, as a triage badge.\n\nA single glance signal next to the verdict: LIGHT changes can be skimmed,\nHEAVY ones deserve a careful pass. Derived from diff size (files + lines) in\n`domain/review_effort.py`, NOT the AI quality `score` \u2014 a small change can be\nlow-quality and a huge one clean, so effort and score are orthogonal axes.\n\nAbsent (NULL on the detail) when no diff-stats were ever recorded, so the\nbadge stays hidden rather than mislabelling an unmeasured MR as LIGHT.",
+        "enum": [
+          "light",
+          "moderate",
+          "heavy"
+        ],
+        "title": "ReviewEffort",
+        "type": "string"
       },
       "ReviewStatus": {
         "enum": [
@@ -862,6 +994,20 @@
         "title": "RevokeTokenRequest",
         "type": "object"
       },
+      "SimpleMessage": {
+        "description": "Simple message response schema.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "SimpleMessage",
+        "type": "object"
+      },
       "SnapshotFileChangeType": {
         "description": "Whether the file the finding sits in was added or modified by the MR.\n\nDrives how the detail page tints the finding's lines: a newly-added file\nreads as green (its lines are additions, matching the provider's own diff),\na modified file reads as a red \"current\" line the fix replaces. Stored as its\nstring value in a VARCHAR column, never a native Postgres enum, so\nUPPER()/LOWER() and enum-type migrations (DB-02) never enter the picture.\n\nAbsent (NULL) when the file's status could not be determined at review time,\nor for a `posting_range` finding that has no snapshot row at all.",
         "enum": [
@@ -874,6 +1020,13 @@
       "SubmitHeadlessRunRequest": {
         "description": "Body for `POST /cli/runs`.\n\n`agent_mode` is intentionally NOT exposed in V1 \u2014 the server picks the tier\n(Starter is coerced to Light at submit; every other plan runs the default).",
         "properties": {
+          "idempotency_key": {
+            "description": "Optional caller-supplied key (workspace-scoped). A retried submit with the same key returns the original run instead of creating a duplicate. Omit for at-least-once submit.",
+            "maxLength": 255,
+            "nullable": true,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
           "prompt": {
             "maxLength": 50000,
             "minLength": 1,
@@ -886,6 +1039,16 @@
         ],
         "title": "SubmitHeadlessRunRequest",
         "type": "object"
+      },
+      "TicketComplianceStatus": {
+        "description": "How well the MR satisfies its linked ticket's acceptance criteria.\n\nOnly meaningful when the review found a linked Jira/Linear ticket and read\nits acceptance criteria (the reviewer already fetches these via the\nreviewing-jira / reviewing-linear skill). Absent (NULL) when no ticket was\nlinked \u2014 the detail's compliance card then hides rather than claiming\ncoverage it never assessed.\n\nStored as its string value in a VARCHAR column, never a native Postgres\nenum, so UPPER()/LOWER() and enum-type migrations (DB-02) never enter the\npicture \u2014 same treatment as the sibling SnapshotFileChangeType. Lives here\n(data/models) rather than in api/schemas so the column can be typed with it\nand the write path stops passing bare strings; api/schemas re-exports it for\nthe response model. The agent-facing tool declares the same value set as an\ninline Literal (the repo prefers inline Literals in model-visible schemas\nover $ref/$defs); a parity test pins the two equal.",
+        "enum": [
+          "fully",
+          "partially",
+          "not_compliant"
+        ],
+        "title": "TicketComplianceStatus",
+        "type": "string"
       },
       "Token": {
         "properties": {
@@ -1049,6 +1212,313 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "WorkspaceCreate": {
+        "properties": {
+          "description": {
+            "nullable": true,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "organization_name": {
+            "nullable": true,
+            "title": "Organization Name",
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/CloudProvider"
+          }
+        },
+        "required": [
+          "name",
+          "provider"
+        ],
+        "title": "WorkspaceCreate",
+        "type": "object"
+      },
+      "WorkspacePublic": {
+        "properties": {
+          "auto_mode_enabled": {
+            "default": false,
+            "title": "Auto Mode Enabled",
+            "type": "boolean"
+          },
+          "brand_chart_colors": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "Brand Chart Colors",
+            "type": "array"
+          },
+          "brand_company_name": {
+            "nullable": true,
+            "title": "Brand Company Name",
+            "type": "string"
+          },
+          "brand_logo_storage_key": {
+            "nullable": true,
+            "title": "Brand Logo Storage Key",
+            "type": "string"
+          },
+          "brand_primary_color": {
+            "nullable": true,
+            "title": "Brand Primary Color",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 1000,
+            "nullable": true,
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "interrupt_approver_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Interrupt Approver Ids",
+            "type": "array"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "is_deleted": {
+            "default": false,
+            "title": "Is Deleted",
+            "type": "boolean"
+          },
+          "member_count": {
+            "default": 0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "notification_additional_emails": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notification Additional Emails",
+            "type": "array"
+          },
+          "organization_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "organization_name": {
+            "nullable": true,
+            "title": "Organization Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/CloudProvider",
+            "nullable": true
+          },
+          "pulse_auto_subscribe": {
+            "default": false,
+            "title": "Pulse Auto Subscribe",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "id",
+          "is_default"
+        ],
+        "title": "WorkspacePublic",
+        "type": "object"
+      },
+      "WorkspaceRole": {
+        "description": "Workspace-level roles for RBAC.\n\nRole hierarchy (highest to lowest):\n- ADMIN: Full control within workspace\n- DEVELOPER: Can use chat, view resources, manage recommendations\n- VIEWER: Read-only access\n\nNote: OWNER is deprecated. Use organization-level roles instead:\n- ORG_OWNER/ORG_ADMIN inherit to ADMIN in all workspaces\n- ORG_DEVELOPER inherits to DEVELOPER in all workspaces\n- ORG_VIEWER inherits to VIEWER in all workspaces",
+        "enum": [
+          "OWNER",
+          "ADMIN",
+          "DEVELOPER",
+          "VIEWER"
+        ],
+        "title": "WorkspaceRole",
+        "type": "string"
+      },
+      "WorkspaceWithRolePublic": {
+        "description": "WorkspacePublic with the current user's role in the workspace.",
+        "properties": {
+          "auto_mode_enabled": {
+            "default": false,
+            "title": "Auto Mode Enabled",
+            "type": "boolean"
+          },
+          "brand_chart_colors": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "Brand Chart Colors",
+            "type": "array"
+          },
+          "brand_company_name": {
+            "nullable": true,
+            "title": "Brand Company Name",
+            "type": "string"
+          },
+          "brand_logo_storage_key": {
+            "nullable": true,
+            "title": "Brand Logo Storage Key",
+            "type": "string"
+          },
+          "brand_primary_color": {
+            "nullable": true,
+            "title": "Brand Primary Color",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_user_role": {
+            "$ref": "#/components/schemas/WorkspaceRole"
+          },
+          "description": {
+            "maxLength": 1000,
+            "nullable": true,
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "interrupt_approver_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Interrupt Approver Ids",
+            "type": "array"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "is_deleted": {
+            "default": false,
+            "title": "Is Deleted",
+            "type": "boolean"
+          },
+          "member_count": {
+            "default": 0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "notification_additional_emails": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notification Additional Emails",
+            "type": "array"
+          },
+          "organization_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Organization Id",
+            "type": "string"
+          },
+          "organization_name": {
+            "nullable": true,
+            "title": "Organization Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/CloudProvider",
+            "nullable": true
+          },
+          "pulse_auto_subscribe": {
+            "default": false,
+            "title": "Pulse Auto Subscribe",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "id",
+          "is_default",
+          "current_user_role"
+        ],
+        "title": "WorkspaceWithRolePublic",
+        "type": "object"
+      },
+      "WorkspacesWithRolePublic": {
+        "description": "List of workspaces with the current user's role.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceWithRolePublic"
+            },
+            "title": "Data",
+            "type": "array"
+          }
+        },
+        "required": [
+          "data",
+          "count"
+        ],
+        "title": "WorkspacesWithRolePublic",
+        "type": "object"
       }
     }
   },
@@ -1092,16 +1562,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "summary": "Submit Headless Run",
@@ -1146,21 +1606,33 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "summary": "Get Headless Run",
         "tags": [
           "cli"
+        ]
+      }
+    },
+    "/api/v1/cli/whoami": {
+      "get": {
+        "description": "Resolve the live account and workspace bound to a CLI credential.",
+        "operationId": "login-cli_whoami",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliWhoAmIResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Cli Whoami",
+        "tags": [
+          "login"
         ]
       }
     },
@@ -1220,21 +1692,76 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "summary": "Lookup Code Review Merge Request",
         "tags": [
           "code-review"
+        ]
+      }
+    },
+    "/api/v1/login/cli/device/start": {
+      "post": {
+        "description": "Create a short-lived device authorization for an outbound-only CLI.",
+        "operationId": "login-start_cli_device_authorization",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliDeviceAuthorizationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Start Cli Device Authorization",
+        "tags": [
+          "login"
+        ]
+      }
+    },
+    "/api/v1/login/cli/device/token": {
+      "post": {
+        "description": "Poll until approved, denied, expired, or asked to slow down.",
+        "operationId": "login-poll_cli_device_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CliDeviceTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Token"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliDeviceTokenError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "summary": "Poll Cli Device Token",
+        "tags": [
+          "login",
+          "cli-device-protocol"
         ]
       }
     },
@@ -1262,16 +1789,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "summary": "Exchange Cli Token",
@@ -1299,21 +1816,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Message"
+                  "$ref": "#/components/schemas/SimpleMessage"
                 }
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "summary": "Logout",
@@ -1346,21 +1853,98 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "summary": "Refresh Token",
         "tags": [
           "login"
+        ]
+      }
+    },
+    "/api/v1/workspaces/": {
+      "get": {
+        "description": "Get workspaces - both owned and invited (non-deleted only).\nFiltered by current organization context from token.\nSupports search by workspace name.",
+        "operationId": "workspaces-get_workspaces",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "skip",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Skip",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Search",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspacesWithRolePublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Workspaces",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "post": {
+        "description": "Create new workspace. Requires WORKSPACE_CREATE permission.\nUsers with workspace quota can create workspaces if they have owner-level permissions.\nWorkspace is created in the current organization context from token.",
+        "operationId": "workspaces-create_workspace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspacePublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Create Workspace",
+        "tags": [
+          "workspaces"
         ]
       }
     }

@@ -64,7 +64,8 @@ pub fn stored(access: &str, refresh: &str) -> StoredToken {
         access_token: access.to_string(),
         refresh_token: Some(refresh.to_string()),
         expires_at: None,
-        workspace_id: None,
+        workspace_id: Some(uuid::Uuid::from_u128(1)),
+        workspace_name: Some("Test Workspace".into()),
     }
 }
 
@@ -74,6 +75,7 @@ pub fn token_json(access: &str, refresh: &str) -> serde_json::Value {
         "access_token": access,
         "refresh_token": refresh,
         "token_type": "bearer",
+        "workspace_id": "00000000-0000-0000-0000-000000000001",
     })
 }
 

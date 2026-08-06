@@ -1,10 +1,11 @@
-//! Access-token refresh with single-flight + guarded disk reload.
+//! Access-token refresh with process and interprocess serialization.
 //!
 //! LOAD-BEARING: the backend runs rotating refresh-token *family* reuse
 //! detection — two processes refreshing the same token concurrently trips it and
 //! revokes the whole family (a random logout). Two guards prevent that:
 //!   * process-local single-flight (a `tokio::Mutex`) serialises refreshes;
-//!   * a guarded disk reload re-reads the store under the lock — if the stored
+//!   * an origin-scoped file lock serialises separate CLI processes;
+//!   * a guarded store reload re-reads credentials under both locks — if the stored
 //!     access token already differs from the one that 401'd, another process
 //!     rotated it, so we adopt that token and skip the network entirely.
 
@@ -12,7 +13,7 @@ use std::sync::Arc;
 
 use chrono::Duration as ChronoDuration;
 
-use crate::auth::store::{StoredToken, TokenStore};
+use crate::auth::store::{StoredToken, TokenStore, acquire_credential_lock};
 use crate::error::{CtError, CtResult, to_ct_error};
 
 /// Proactively refresh when the access token is within this window of expiry.
@@ -45,8 +46,9 @@ impl RefreshCoordinator {
     /// rotation; the rest converge on its result.
     pub async fn refresh(&self, stale_access: &str) -> CtResult<StoredToken> {
         let _guard = self.lock.lock().await;
+        let store_lock = acquire_credential_lock(self.store.clone()).await?;
 
-        let current = self.store.load()?.ok_or_else(|| {
+        let current = self.store.load_locked(&store_lock)?.ok_or_else(|| {
             CtError::Auth("no stored credentials; run `cloudthinker login`".into())
         })?;
 
@@ -83,8 +85,9 @@ impl RefreshCoordinator {
             }
         };
 
-        let rotated = StoredToken::from_token(&token);
-        self.store.save(&rotated)?;
+        let mut rotated = StoredToken::from_token(&token);
+        rotated.workspace_name = current.workspace_name;
+        self.store.save_locked(&store_lock, &rotated)?;
         Ok(rotated)
     }
 
@@ -97,12 +100,13 @@ impl RefreshCoordinator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::store::FileStore;
     use crate::test_support::{MockTokenStore, stored, token_json};
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    // CA-CLI-7: concurrent refreshers of the same stale token hit the network
-    // exactly once — the rest adopt the rotated token via the guarded reload.
+    // CA-CLI-7: independent coordinators model separate CLI processes. Their
+    // shared origin lock ensures the stale token reaches the network once.
     #[tokio::test]
     async fn ca_cli_7_concurrent_refresh_hits_network_once() {
         let server = MockServer::start().await;
@@ -115,16 +119,30 @@ mod tests {
             .mount(&server)
             .await;
 
-        let store = Arc::new(MockTokenStore::new(Some(stored("stale-access", "r"))));
-        let coord = Arc::new(RefreshCoordinator::new(
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(FileStore::new(
+            dir.path().join("credentials.json"),
+            "test-origin",
+        ));
+        store.save(&stored("stale-access", "r")).unwrap();
+        let first = Arc::new(RefreshCoordinator::new(
+            server.uri(),
+            store.clone(),
+            reqwest::Client::new(),
+        ));
+        let second = Arc::new(RefreshCoordinator::new(
             server.uri(),
             store.clone(),
             reqwest::Client::new(),
         ));
 
         let mut handles = Vec::new();
-        for _ in 0..8 {
-            let coord = coord.clone();
+        for index in 0..8 {
+            let coord = if index % 2 == 0 {
+                first.clone()
+            } else {
+                second.clone()
+            };
             handles.push(tokio::spawn(
                 async move { coord.refresh("stale-access").await },
             ));
@@ -156,14 +174,16 @@ mod tests {
         assert_eq!(store.save_count(), 0, "adoption must not re-save");
     }
 
-    // CA-CLI-9: a rejected refresh (revoked family) surfaces as an auth error so
-    // the CLI tells the user to log in again.
+    // CA-CLI-9: a legacy detail-only rejection still surfaces as an auth error
+    // so the CLI tells the user to log in again.
     #[tokio::test]
     async fn ca_cli_9_refresh_rejection_maps_to_auth() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/api/v1/login/refresh"))
-            .respond_with(ResponseTemplate::new(401))
+            .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+                "detail": "Authentication required."
+            })))
             .mount(&server)
             .await;
 

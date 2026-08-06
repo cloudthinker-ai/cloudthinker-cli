@@ -142,6 +142,154 @@ pub mod types {
         }
     }
 
+    ///`ApiErrorDetail`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ApiErrorDetail",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "code",
+    ///    "message"
+    ///  ],
+    ///  "properties": {
+    ///    "code": {
+    ///      "title": "Code",
+    ///      "type": "string"
+    ///    },
+    ///    "context": {
+    ///      "title": "Context",
+    ///      "type": [
+    ///        "object",
+    ///        "null"
+    ///      ],
+    ///      "additionalProperties": {
+    ///        "$ref": "#/components/schemas/JsonValue"
+    ///      }
+    ///    },
+    ///    "field_errors": {
+    ///      "title": "Field Errors",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ApiFieldError"
+    ///      }
+    ///    },
+    ///    "message": {
+    ///      "title": "Message",
+    ///      "type": "string"
+    ///    },
+    ///    "retryable": {
+    ///      "title": "Retryable",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct ApiErrorDetail {
+        pub code: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub context:
+            ::std::option::Option<::std::collections::HashMap<::std::string::String, JsonValue>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub field_errors: ::std::option::Option<::std::vec::Vec<ApiFieldError>>,
+        pub message: ::std::string::String,
+        #[serde(default)]
+        pub retryable: bool,
+    }
+
+    ///`ApiErrorResponse`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ApiErrorResponse",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "detail",
+    ///    "error",
+    ///    "request_id"
+    ///  ],
+    ///  "properties": {
+    ///    "detail": {
+    ///      "title": "Detail",
+    ///      "description": "Deprecated compatibility payload. New clients
+    /// consume error."
+    ///    },
+    ///    "error": {
+    ///      "$ref": "#/components/schemas/ApiErrorDetail"
+    ///    },
+    ///    "request_id": {
+    ///      "title": "Request Id",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct ApiErrorResponse {
+        ///Deprecated compatibility payload. New clients consume error.
+        pub detail: ::serde_json::Value,
+        pub error: ApiErrorDetail,
+        pub request_id: ::std::string::String,
+    }
+
+    ///`ApiFieldError`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ApiFieldError",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "code",
+    ///    "message",
+    ///    "path"
+    ///  ],
+    ///  "properties": {
+    ///    "code": {
+    ///      "title": "Code",
+    ///      "type": "string"
+    ///    },
+    ///    "message": {
+    ///      "title": "Message",
+    ///      "type": "string"
+    ///    },
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "anyOf": [
+    ///          {
+    ///            "type": "string"
+    ///          },
+    ///          {
+    ///            "type": "integer"
+    ///          }
+    ///        ]
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct ApiFieldError {
+        pub code: ::std::string::String,
+        pub message: ::std::string::String,
+        pub path: ::std::vec::Vec<PathItem>,
+    }
+
     ///`ApplyFixDisabledReason`
     ///
     /// <details><summary>JSON schema</summary>
@@ -295,6 +443,209 @@ pub mod types {
         }
     }
 
+    ///Short user code plus the private device credential used for polling.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliDeviceAuthorizationResponse",
+    ///  "description": "Short user code plus the private device credential used
+    /// for polling.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "device_code",
+    ///    "expires_in",
+    ///    "interval",
+    ///    "user_code",
+    ///    "verification_uri"
+    ///  ],
+    ///  "properties": {
+    ///    "device_code": {
+    ///      "title": "Device Code",
+    ///      "type": "string"
+    ///    },
+    ///    "expires_in": {
+    ///      "title": "Expires In",
+    ///      "type": "integer"
+    ///    },
+    ///    "interval": {
+    ///      "title": "Interval",
+    ///      "type": "integer"
+    ///    },
+    ///    "user_code": {
+    ///      "title": "User Code",
+    ///      "type": "string"
+    ///    },
+    ///    "verification_uri": {
+    ///      "title": "Verification Uri",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct CliDeviceAuthorizationResponse {
+        pub device_code: ::std::string::String,
+        pub expires_in: i64,
+        pub interval: i64,
+        pub user_code: ::std::string::String,
+        pub verification_uri: ::std::string::String,
+    }
+
+    ///`CliDeviceTokenError`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliDeviceTokenError",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "error"
+    ///  ],
+    ///  "properties": {
+    ///    "error": {
+    ///      "$ref": "#/components/schemas/CliDeviceTokenErrorCode"
+    ///    },
+    ///    "interval": {
+    ///      "title": "Interval",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct CliDeviceTokenError {
+        pub error: CliDeviceTokenErrorCode,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub interval: ::std::option::Option<i64>,
+    }
+
+    ///RFC 8628-shaped terminal and polling responses.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliDeviceTokenErrorCode",
+    ///  "description": "RFC 8628-shaped terminal and polling responses.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "authorization_pending",
+    ///    "slow_down",
+    ///    "access_denied",
+    ///    "expired_token"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum CliDeviceTokenErrorCode {
+        #[serde(rename = "authorization_pending")]
+        AuthorizationPending,
+        #[serde(rename = "slow_down")]
+        SlowDown,
+        #[serde(rename = "access_denied")]
+        AccessDenied,
+        #[serde(rename = "expired_token")]
+        ExpiredToken,
+    }
+
+    impl ::std::fmt::Display for CliDeviceTokenErrorCode {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::AuthorizationPending => f.write_str("authorization_pending"),
+                Self::SlowDown => f.write_str("slow_down"),
+                Self::AccessDenied => f.write_str("access_denied"),
+                Self::ExpiredToken => f.write_str("expired_token"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for CliDeviceTokenErrorCode {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "authorization_pending" => Ok(Self::AuthorizationPending),
+                "slow_down" => Ok(Self::SlowDown),
+                "access_denied" => Ok(Self::AccessDenied),
+                "expired_token" => Ok(Self::ExpiredToken),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliDeviceTokenErrorCode {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliDeviceTokenErrorCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliDeviceTokenErrorCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///Poll a device authorization using its high-entropy private code.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliDeviceTokenRequest",
+    ///  "description": "Poll a device authorization using its high-entropy
+    /// private code.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "device_code"
+    ///  ],
+    ///  "properties": {
+    ///    "device_code": {
+    ///      "title": "Device Code",
+    ///      "type": "string",
+    ///      "maxLength": 128,
+    ///      "minLength": 43
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct CliDeviceTokenRequest {
+        pub device_code: DeviceCode,
+    }
+
     ///Token-exchange request: the one-time code plus the PKCE verifier.
     ///
     /// <details><summary>JSON schema</summary>
@@ -330,6 +681,141 @@ pub mod types {
     pub struct CliTokenRequest {
         pub code: Code,
         pub code_verifier: CodeVerifier,
+    }
+
+    ///Live identity resolved from the active CLI bearer credential.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliWhoAmIResponse",
+    ///  "description": "Live identity resolved from the active CLI bearer
+    /// credential.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "user_email",
+    ///    "workspace_id",
+    ///    "workspace_name"
+    ///  ],
+    ///  "properties": {
+    ///    "organization_id": {
+    ///      "title": "Organization Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "user_email": {
+    ///      "title": "User Email",
+    ///      "type": "string",
+    ///      "format": "email"
+    ///    },
+    ///    "workspace_id": {
+    ///      "title": "Workspace Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "workspace_name": {
+    ///      "title": "Workspace Name",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct CliWhoAmIResponse {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub organization_id: ::std::option::Option<::uuid::Uuid>,
+        pub user_email: ::std::string::String,
+        pub workspace_id: ::uuid::Uuid,
+        pub workspace_name: ::std::string::String,
+    }
+
+    ///`CloudProvider`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CloudProvider",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "AWS",
+    ///    "GCP",
+    ///    "AZURE"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum CloudProvider {
+        #[serde(rename = "AWS")]
+        Aws,
+        #[serde(rename = "GCP")]
+        Gcp,
+        #[serde(rename = "AZURE")]
+        Azure,
+    }
+
+    impl ::std::fmt::Display for CloudProvider {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Aws => f.write_str("AWS"),
+                Self::Gcp => f.write_str("GCP"),
+                Self::Azure => f.write_str("AZURE"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for CloudProvider {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "AWS" => Ok(Self::Aws),
+                "GCP" => Ok(Self::Gcp),
+                "AZURE" => Ok(Self::Azure),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CloudProvider {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CloudProvider {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CloudProvider {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
     }
 
     ///`Code`
@@ -828,6 +1314,14 @@ pub mod types {
     ///    "verdict"
     ///  ],
     ///  "properties": {
+    ///    "ask_conversation_id": {
+    ///      "title": "Ask Conversation Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
     ///    "author_avatar_url": {
     ///      "title": "Author Avatar Url",
     ///      "type": [
@@ -1003,8 +1497,18 @@ pub mod types {
     ///      ],
     ///      "format": "uuid"
     ///    },
+    ///    "review_effort": {
+    ///      "$ref": "#/components/schemas/ReviewEffort"
+    ///    },
     ///    "review_status": {
     ///      "$ref": "#/components/schemas/ReviewStatus"
+    ///    },
+    ///    "review_summary": {
+    ///      "title": "Review Summary",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
     ///    },
     ///    "rules_cited_count": {
     ///      "title": "Rules Cited Count",
@@ -1030,6 +1534,23 @@ pub mod types {
     ///    },
     ///    "target_branch": {
     ///      "title": "Target Branch",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "ticket_compliance": {
+    ///      "$ref": "#/components/schemas/TicketComplianceStatus"
+    ///    },
+    ///    "ticket_compliance_notes": {
+    ///      "title": "Ticket Compliance Notes",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "ticket_key": {
+    ///      "title": "Ticket Key",
     ///      "type": [
     ///        "string",
     ///        "null"
@@ -1065,6 +1586,8 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CodeReviewMergeRequestDetail {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub ask_conversation_id: ::std::option::Option<::uuid::Uuid>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub author_avatar_url: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -1128,7 +1651,11 @@ pub mod types {
         pub repository_path: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub review_conversation_id: ::std::option::Option<::uuid::Uuid>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub review_effort: ::std::option::Option<ReviewEffort>,
         pub review_status: ReviewStatus,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub review_summary: ::std::option::Option<::std::string::String>,
         #[serde(default)]
         pub rules_cited_count: i64,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -1138,6 +1665,12 @@ pub mod types {
         pub source_branch: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub target_branch: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub ticket_compliance: ::std::option::Option<TicketComplianceStatus>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub ticket_compliance_notes: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub ticket_key: ::std::option::Option<::std::string::String>,
         pub title: ::std::string::String,
         #[serde(default)]
         pub unresolved_findings_count: i64,
@@ -1581,74 +2114,52 @@ pub mod types {
         }
     }
 
-    ///Why a streamed message ended.
-    ///
-    ///`None` (default) means "completed naturally" — set only on non-natural
-    /// endings so existing rows don't need a backfill.
+    ///`Description`
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "title": "FinishReason",
-    ///  "description": "Why a streamed message ended.\n\n`None` (default) means
-    /// \"completed naturally\" — set only on non-natural endings\nso existing
-    /// rows don't need a backfill.",
+    ///  "title": "Description",
     ///  "type": "string",
-    ///  "enum": [
-    ///    "stopped_by_user",
-    ///    "error"
-    ///  ]
+    ///  "maxLength": 1000
     ///}
     /// ```
     /// </details>
-    #[derive(
-        :: serde :: Deserialize,
-        :: serde :: Serialize,
-        Clone,
-        Copy,
-        Debug,
-        Eq,
-        Hash,
-        Ord,
-        PartialEq,
-        PartialOrd,
-    )]
-    pub enum FinishReason {
-        #[serde(rename = "stopped_by_user")]
-        StoppedByUser,
-        #[serde(rename = "error")]
-        Error,
-    }
-
-    impl ::std::fmt::Display for FinishReason {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            match *self {
-                Self::StoppedByUser => f.write_str("stopped_by_user"),
-                Self::Error => f.write_str("error"),
-            }
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct Description(::std::string::String);
+    impl ::std::ops::Deref for Description {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
         }
     }
 
-    impl ::std::str::FromStr for FinishReason {
+    impl ::std::convert::From<Description> for ::std::string::String {
+        fn from(value: Description) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for Description {
         type Err = self::error::ConversionError;
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            match value {
-                "stopped_by_user" => Ok(Self::StoppedByUser),
-                "error" => Ok(Self::Error),
-                _ => Err("invalid value".into()),
+            if value.chars().count() > 1000usize {
+                return Err("longer than 1000 characters".into());
             }
+            Ok(Self(value.to_string()))
         }
     }
 
-    impl ::std::convert::TryFrom<&str> for FinishReason {
+    impl ::std::convert::TryFrom<&str> for Description {
         type Error = self::error::ConversionError;
         fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
     }
 
-    impl ::std::convert::TryFrom<&::std::string::String> for FinishReason {
+    impl ::std::convert::TryFrom<&::std::string::String> for Description {
         type Error = self::error::ConversionError;
         fn try_from(
             value: &::std::string::String,
@@ -1657,12 +2168,105 @@ pub mod types {
         }
     }
 
-    impl ::std::convert::TryFrom<::std::string::String> for FinishReason {
+    impl ::std::convert::TryFrom<::std::string::String> for Description {
         type Error = self::error::ConversionError;
         fn try_from(
             value: ::std::string::String,
         ) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for Description {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`DeviceCode`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Device Code",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 43
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct DeviceCode(::std::string::String);
+    impl ::std::ops::Deref for DeviceCode {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<DeviceCode> for ::std::string::String {
+        fn from(value: DeviceCode) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for DeviceCode {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 128usize {
+                return Err("longer than 128 characters".into());
+            }
+            if value.chars().count() < 43usize {
+                return Err("shorter than 43 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for DeviceCode {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for DeviceCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for DeviceCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for DeviceCode {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
         }
     }
 
@@ -1857,6 +2461,117 @@ pub mod types {
         }
     }
 
+    ///Optional caller-supplied key (workspace-scoped). A retried submit with
+    /// the same key returns the original run instead of creating a duplicate.
+    /// Omit for at-least-once submit.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Idempotency Key",
+    ///  "description": "Optional caller-supplied key (workspace-scoped). A
+    /// retried submit with the same key returns the original run instead of
+    /// creating a duplicate. Omit for at-least-once submit.",
+    ///  "type": "string",
+    ///  "maxLength": 255
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct IdempotencyKey(::std::string::String);
+    impl ::std::ops::Deref for IdempotencyKey {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<IdempotencyKey> for ::std::string::String {
+        fn from(value: IdempotencyKey) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for IdempotencyKey {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 255usize {
+                return Err("longer than 255 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for IdempotencyKey {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for IdempotencyKey {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for IdempotencyKey {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for IdempotencyKey {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`JsonValue`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(transparent)]
+    pub struct JsonValue(pub ::serde_json::Value);
+    impl ::std::ops::Deref for JsonValue {
+        type Target = ::serde_json::Value;
+        fn deref(&self) -> &::serde_json::Value {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<JsonValue> for ::serde_json::Value {
+        fn from(value: JsonValue) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::convert::From<::serde_json::Value> for JsonValue {
+        fn from(value: ::serde_json::Value) -> Self {
+            Self(value)
+        }
+    }
+
     ///`LocationItem`
     ///
     /// <details><summary>JSON schema</summary>
@@ -1975,189 +2690,6 @@ pub mod types {
         }
     }
 
-    ///`Message`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "title": "Message",
-    ///  "type": "object",
-    ///  "required": [
-    ///    "content",
-    ///    "conversation_id"
-    ///  ],
-    ///  "properties": {
-    ///    "content": {
-    ///      "title": "Content",
-    ///      "type": "string"
-    ///    },
-    ///    "conversation_id": {
-    ///      "title": "Conversation Id",
-    ///      "type": "string",
-    ///      "format": "uuid"
-    ///    },
-    ///    "created_at": {
-    ///      "title": "Created At",
-    ///      "type": "string",
-    ///      "format": "date-time"
-    ///    },
-    ///    "deliverable_files": {
-    ///      "title": "Deliverable Files",
-    ///      "type": [
-    ///        "array",
-    ///        "null"
-    ///      ],
-    ///      "items": {
-    ///        "type": "string"
-    ///      }
-    ///    },
-    ///    "finish_reason": {
-    ///      "$ref": "#/components/schemas/FinishReason"
-    ///    },
-    ///    "id": {
-    ///      "title": "Id",
-    ///      "type": "string",
-    ///      "format": "uuid"
-    ///    },
-    ///    "interrupt_message": {
-    ///      "title": "Interrupt Message",
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ]
-    ///    },
-    ///    "interrupt_reasoning": {
-    ///      "title": "Interrupt Reasoning",
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ]
-    ///    },
-    ///    "interrupt_response": {
-    ///      "title": "Interrupt Response",
-    ///      "type": [
-    ///        "object",
-    ///        "null"
-    ///      ],
-    ///      "additionalProperties": true
-    ///    },
-    ///    "interrupt_response_timestamp": {
-    ///      "title": "Interrupt Response Timestamp",
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ],
-    ///      "format": "date-time"
-    ///    },
-    ///    "interrupt_response_user_id": {
-    ///      "title": "Interrupt Response User Id",
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ],
-    ///      "format": "uuid"
-    ///    },
-    ///    "is_deleted": {
-    ///      "title": "Is Deleted",
-    ///      "default": false,
-    ///      "type": "boolean"
-    ///    },
-    ///    "is_interrupt": {
-    ///      "title": "Is Interrupt",
-    ///      "default": false,
-    ///      "type": "boolean"
-    ///    },
-    ///    "plan_steps": {
-    ///      "title": "Plan Steps",
-    ///      "type": [
-    ///        "array",
-    ///        "null"
-    ///      ],
-    ///      "items": {}
-    ///    },
-    ///    "redis_metadata": {
-    ///      "title": "Redis Metadata",
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ]
-    ///    },
-    ///    "role": {
-    ///      "title": "Role",
-    ///      "default": "user",
-    ///      "type": "string",
-    ///      "maxLength": 50
-    ///    },
-    ///    "stopped_at": {
-    ///      "title": "Stopped At",
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ],
-    ///      "format": "date-time"
-    ///    },
-    ///    "updated_at": {
-    ///      "title": "Updated At",
-    ///      "type": "string",
-    ///      "format": "date-time"
-    ///    },
-    ///    "user_id": {
-    ///      "title": "User Id",
-    ///      "description": "User who sent this message (only for role='user')",
-    ///      "type": [
-    ///        "string",
-    ///        "null"
-    ///      ],
-    ///      "format": "uuid"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct Message {
-        pub content: ::std::string::String,
-        pub conversation_id: ::uuid::Uuid,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub created_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub deliverable_files: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub finish_reason: ::std::option::Option<FinishReason>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub interrupt_message: ::std::option::Option<::std::string::String>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub interrupt_reasoning: ::std::option::Option<::std::string::String>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub interrupt_response:
-            ::std::option::Option<::serde_json::Map<::std::string::String, ::serde_json::Value>>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub interrupt_response_timestamp:
-            ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub interrupt_response_user_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(default)]
-        pub is_deleted: bool,
-        #[serde(default)]
-        pub is_interrupt: bool,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub plan_steps: ::std::option::Option<::std::vec::Vec<::serde_json::Value>>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub redis_metadata: ::std::option::Option<::std::string::String>,
-        #[serde(default = "defaults::message_role")]
-        pub role: Role,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub stopped_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub updated_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        ///User who sent this message (only for role='user')
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub user_id: ::std::option::Option<::uuid::Uuid>,
-    }
-
     ///`MrState`
     ///
     /// <details><summary>JSON schema</summary>
@@ -2249,6 +2781,125 @@ pub mod types {
             value: ::std::string::String,
         ) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
+        }
+    }
+
+    ///`Name`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Name",
+    ///  "type": "string",
+    ///  "maxLength": 255,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct Name(::std::string::String);
+    impl ::std::ops::Deref for Name {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<Name> for ::std::string::String {
+        fn from(value: Name) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for Name {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 255usize {
+                return Err("longer than 255 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for Name {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for Name {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for Name {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for Name {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`PathItem`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "string"
+    ///    },
+    ///    {
+    ///      "type": "integer"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(untagged)]
+    pub enum PathItem {
+        String(::std::string::String),
+        Integer(i64),
+    }
+
+    impl ::std::fmt::Display for PathItem {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match self {
+                Self::String(x) => x.fmt(f),
+                Self::Integer(x) => x.fmt(f),
+            }
+        }
+    }
+
+    impl ::std::convert::From<i64> for PathItem {
+        fn from(value: i64) -> Self {
+            Self::Integer(value)
         }
     }
 
@@ -2390,6 +3041,108 @@ pub mod types {
         }
     }
 
+    ///How much reviewer attention a change likely demands, as a triage badge.
+    ///
+    ///A single glance signal next to the verdict: LIGHT changes can be
+    /// skimmed, HEAVY ones deserve a careful pass. Derived from diff size
+    /// (files + lines) in `domain/review_effort.py`, NOT the AI quality
+    /// `score` — a small change can be low-quality and a huge one clean, so
+    /// effort and score are orthogonal axes.
+    ///
+    ///Absent (NULL on the detail) when no diff-stats were ever recorded, so
+    /// the badge stays hidden rather than mislabelling an unmeasured MR as
+    /// LIGHT.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ReviewEffort",
+    ///  "description": "How much reviewer attention a change likely demands, as
+    /// a triage badge.\n\nA single glance signal next to the verdict: LIGHT
+    /// changes can be skimmed,\nHEAVY ones deserve a careful pass. Derived from
+    /// diff size (files + lines) in\n`domain/review_effort.py`, NOT the AI
+    /// quality `score` — a small change can be\nlow-quality and a huge one
+    /// clean, so effort and score are orthogonal axes.\n\nAbsent (NULL on the
+    /// detail) when no diff-stats were ever recorded, so the\nbadge stays
+    /// hidden rather than mislabelling an unmeasured MR as LIGHT.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "light",
+    ///    "moderate",
+    ///    "heavy"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ReviewEffort {
+        #[serde(rename = "light")]
+        Light,
+        #[serde(rename = "moderate")]
+        Moderate,
+        #[serde(rename = "heavy")]
+        Heavy,
+    }
+
+    impl ::std::fmt::Display for ReviewEffort {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Light => f.write_str("light"),
+                Self::Moderate => f.write_str("moderate"),
+                Self::Heavy => f.write_str("heavy"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ReviewEffort {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "light" => Ok(Self::Light),
+                "moderate" => Ok(Self::Moderate),
+                "heavy" => Ok(Self::Heavy),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ReviewEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ReviewEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ReviewEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///`ReviewStatus`
     ///
     /// <details><summary>JSON schema</summary>
@@ -2513,87 +3266,30 @@ pub mod types {
         }
     }
 
-    ///`Role`
+    ///Simple message response schema.
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "title": "Role",
-    ///  "default": "user",
-    ///  "type": "string",
-    ///  "maxLength": 50
+    ///  "title": "SimpleMessage",
+    ///  "description": "Simple message response schema.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "message"
+    ///  ],
+    ///  "properties": {
+    ///    "message": {
+    ///      "title": "Message",
+    ///      "type": "string"
+    ///    }
+    ///  }
     ///}
     /// ```
     /// </details>
-    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    #[serde(transparent)]
-    pub struct Role(::std::string::String);
-    impl ::std::ops::Deref for Role {
-        type Target = ::std::string::String;
-        fn deref(&self) -> &::std::string::String {
-            &self.0
-        }
-    }
-
-    impl ::std::convert::From<Role> for ::std::string::String {
-        fn from(value: Role) -> Self {
-            value.0
-        }
-    }
-
-    impl ::std::default::Default for Role {
-        fn default() -> Self {
-            Role("user".to_string())
-        }
-    }
-
-    impl ::std::str::FromStr for Role {
-        type Err = self::error::ConversionError;
-        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            if value.chars().count() > 50usize {
-                return Err("longer than 50 characters".into());
-            }
-            Ok(Self(value.to_string()))
-        }
-    }
-
-    impl ::std::convert::TryFrom<&str> for Role {
-        type Error = self::error::ConversionError;
-        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<&::std::string::String> for Role {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: &::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<::std::string::String> for Role {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: ::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl<'de> ::serde::Deserialize<'de> for Role {
-        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-        where
-            D: ::serde::Deserializer<'de>,
-        {
-            ::std::string::String::deserialize(deserializer)?
-                .parse()
-                .map_err(|e: self::error::ConversionError| {
-                    <D::Error as ::serde::de::Error>::custom(e.to_string())
-                })
-        }
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct SimpleMessage {
+        pub message: ::std::string::String,
     }
 
     ///Whether the file the finding sits in was added or modified by the MR.
@@ -2714,6 +3410,17 @@ pub mod types {
     ///    "prompt"
     ///  ],
     ///  "properties": {
+    ///    "idempotency_key": {
+    ///      "title": "Idempotency Key",
+    ///      "description": "Optional caller-supplied key (workspace-scoped). A
+    /// retried submit with the same key returns the original run instead of
+    /// creating a duplicate. Omit for at-least-once submit.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 255
+    ///    },
     ///    "prompt": {
     ///      "title": "Prompt",
     ///      "type": "string",
@@ -2726,7 +3433,127 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SubmitHeadlessRunRequest {
+        ///Optional caller-supplied key (workspace-scoped). A retried submit
+        /// with the same key returns the original run instead of creating a
+        /// duplicate. Omit for at-least-once submit.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub idempotency_key: ::std::option::Option<IdempotencyKey>,
         pub prompt: Prompt,
+    }
+
+    ///How well the MR satisfies its linked ticket's acceptance criteria.
+    ///
+    ///Only meaningful when the review found a linked Jira/Linear ticket and
+    /// read its acceptance criteria (the reviewer already fetches these via
+    /// the reviewing-jira / reviewing-linear skill). Absent (NULL) when no
+    /// ticket was linked — the detail's compliance card then hides rather
+    /// than claiming coverage it never assessed.
+    ///
+    ///Stored as its string value in a VARCHAR column, never a native Postgres
+    ///enum, so UPPER()/LOWER() and enum-type migrations (DB-02) never enter
+    /// the picture — same treatment as the sibling SnapshotFileChangeType.
+    /// Lives here (data/models) rather than in api/schemas so the column
+    /// can be typed with it and the write path stops passing bare strings;
+    /// api/schemas re-exports it for the response model. The agent-facing
+    /// tool declares the same value set as an inline Literal (the repo
+    /// prefers inline Literals in model-visible schemas over $ref/$defs); a
+    /// parity test pins the two equal.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TicketComplianceStatus",
+    ///  "description": "How well the MR satisfies its linked ticket's
+    /// acceptance criteria.\n\nOnly meaningful when the review found a linked
+    /// Jira/Linear ticket and read\nits acceptance criteria (the reviewer
+    /// already fetches these via the\nreviewing-jira / reviewing-linear skill).
+    /// Absent (NULL) when no ticket was\nlinked — the detail's compliance card
+    /// then hides rather than claiming\ncoverage it never assessed.\n\nStored
+    /// as its string value in a VARCHAR column, never a native Postgres\nenum,
+    /// so UPPER()/LOWER() and enum-type migrations (DB-02) never enter
+    /// the\npicture — same treatment as the sibling SnapshotFileChangeType.
+    /// Lives here\n(data/models) rather than in api/schemas so the column can
+    /// be typed with it\nand the write path stops passing bare strings;
+    /// api/schemas re-exports it for\nthe response model. The agent-facing tool
+    /// declares the same value set as an\ninline Literal (the repo prefers
+    /// inline Literals in model-visible schemas\nover $ref/$defs); a parity
+    /// test pins the two equal.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "fully",
+    ///    "partially",
+    ///    "not_compliant"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum TicketComplianceStatus {
+        #[serde(rename = "fully")]
+        Fully,
+        #[serde(rename = "partially")]
+        Partially,
+        #[serde(rename = "not_compliant")]
+        NotCompliant,
+    }
+
+    impl ::std::fmt::Display for TicketComplianceStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Fully => f.write_str("fully"),
+                Self::Partially => f.write_str("partially"),
+                Self::NotCompliant => f.write_str("not_compliant"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for TicketComplianceStatus {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "fully" => Ok(Self::Fully),
+                "partially" => Ok(Self::Partially),
+                "not_compliant" => Ok(Self::NotCompliant),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TicketComplianceStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for TicketComplianceStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TicketComplianceStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
     }
 
     ///`Token`
@@ -2989,14 +3816,574 @@ pub mod types {
         pub type_: ::std::string::String,
     }
 
+    ///`WorkspaceCreate`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspaceCreate",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "name",
+    ///    "provider"
+    ///  ],
+    ///  "properties": {
+    ///    "description": {
+    ///      "title": "Description",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "organization_name": {
+    ///      "title": "Organization Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "provider": {
+    ///      "$ref": "#/components/schemas/CloudProvider"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct WorkspaceCreate {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub description: ::std::option::Option<::std::string::String>,
+        pub name: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub organization_name: ::std::option::Option<::std::string::String>,
+        pub provider: CloudProvider,
+    }
+
+    ///`WorkspacePublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspacePublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "id",
+    ///    "is_default",
+    ///    "name"
+    ///  ],
+    ///  "properties": {
+    ///    "auto_mode_enabled": {
+    ///      "title": "Auto Mode Enabled",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "brand_chart_colors": {
+    ///      "title": "Brand Chart Colors",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "brand_company_name": {
+    ///      "title": "Brand Company Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "brand_logo_storage_key": {
+    ///      "title": "Brand Logo Storage Key",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "brand_primary_color": {
+    ///      "title": "Brand Primary Color",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "description": {
+    ///      "title": "Description",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 1000
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "interrupt_approver_ids": {
+    ///      "title": "Interrupt Approver Ids",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string",
+    ///        "format": "uuid"
+    ///      }
+    ///    },
+    ///    "is_default": {
+    ///      "title": "Is Default",
+    ///      "type": "boolean"
+    ///    },
+    ///    "is_deleted": {
+    ///      "title": "Is Deleted",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "member_count": {
+    ///      "title": "Member Count",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string",
+    ///      "maxLength": 255,
+    ///      "minLength": 1
+    ///    },
+    ///    "notification_additional_emails": {
+    ///      "title": "Notification Additional Emails",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "organization_id": {
+    ///      "title": "Organization Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "organization_name": {
+    ///      "title": "Organization Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "owner_id": {
+    ///      "title": "Owner Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "provider": {
+    ///      "$ref": "#/components/schemas/CloudProvider"
+    ///    },
+    ///    "pulse_auto_subscribe": {
+    ///      "title": "Pulse Auto Subscribe",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "updated_at": {
+    ///      "title": "Updated At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct WorkspacePublic {
+        #[serde(default)]
+        pub auto_mode_enabled: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub brand_chart_colors: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub brand_company_name: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub brand_logo_storage_key: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub brand_primary_color: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub created_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub description: ::std::option::Option<Description>,
+        pub id: ::uuid::Uuid,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub interrupt_approver_ids: ::std::vec::Vec<::uuid::Uuid>,
+        pub is_default: bool,
+        #[serde(default)]
+        pub is_deleted: bool,
+        #[serde(default)]
+        pub member_count: i64,
+        pub name: Name,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub notification_additional_emails: ::std::vec::Vec<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub organization_id: ::std::option::Option<::uuid::Uuid>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub organization_name: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub owner_id: ::std::option::Option<::uuid::Uuid>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub provider: ::std::option::Option<CloudProvider>,
+        #[serde(default)]
+        pub pulse_auto_subscribe: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub updated_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+    }
+
+    ///Workspace-level roles for RBAC.
+    ///
+    ///Role hierarchy (highest to lowest):
+    /// - ADMIN: Full control within workspace
+    /// - DEVELOPER: Can use chat, view resources, manage recommendations
+    /// - VIEWER: Read-only access
+    ///
+    ///Note: OWNER is deprecated. Use organization-level roles instead:
+    /// - ORG_OWNER/ORG_ADMIN inherit to ADMIN in all workspaces
+    /// - ORG_DEVELOPER inherits to DEVELOPER in all workspaces
+    /// - ORG_VIEWER inherits to VIEWER in all workspaces
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspaceRole",
+    ///  "description": "Workspace-level roles for RBAC.\n\nRole hierarchy
+    /// (highest to lowest):\n- ADMIN: Full control within workspace\n-
+    /// DEVELOPER: Can use chat, view resources, manage recommendations\n-
+    /// VIEWER: Read-only access\n\nNote: OWNER is deprecated. Use
+    /// organization-level roles instead:\n- ORG_OWNER/ORG_ADMIN inherit to
+    /// ADMIN in all workspaces\n- ORG_DEVELOPER inherits to DEVELOPER in all
+    /// workspaces\n- ORG_VIEWER inherits to VIEWER in all workspaces",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "OWNER",
+    ///    "ADMIN",
+    ///    "DEVELOPER",
+    ///    "VIEWER"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum WorkspaceRole {
+        #[serde(rename = "OWNER")]
+        Owner,
+        #[serde(rename = "ADMIN")]
+        Admin,
+        #[serde(rename = "DEVELOPER")]
+        Developer,
+        #[serde(rename = "VIEWER")]
+        Viewer,
+    }
+
+    impl ::std::fmt::Display for WorkspaceRole {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Owner => f.write_str("OWNER"),
+                Self::Admin => f.write_str("ADMIN"),
+                Self::Developer => f.write_str("DEVELOPER"),
+                Self::Viewer => f.write_str("VIEWER"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for WorkspaceRole {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "OWNER" => Ok(Self::Owner),
+                "ADMIN" => Ok(Self::Admin),
+                "DEVELOPER" => Ok(Self::Developer),
+                "VIEWER" => Ok(Self::Viewer),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for WorkspaceRole {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkspaceRole {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for WorkspaceRole {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///WorkspacePublic with the current user's role in the workspace.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspaceWithRolePublic",
+    ///  "description": "WorkspacePublic with the current user's role in the
+    /// workspace.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "current_user_role",
+    ///    "id",
+    ///    "is_default",
+    ///    "name"
+    ///  ],
+    ///  "properties": {
+    ///    "auto_mode_enabled": {
+    ///      "title": "Auto Mode Enabled",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "brand_chart_colors": {
+    ///      "title": "Brand Chart Colors",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "brand_company_name": {
+    ///      "title": "Brand Company Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "brand_logo_storage_key": {
+    ///      "title": "Brand Logo Storage Key",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "brand_primary_color": {
+    ///      "title": "Brand Primary Color",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "current_user_role": {
+    ///      "$ref": "#/components/schemas/WorkspaceRole"
+    ///    },
+    ///    "description": {
+    ///      "title": "Description",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 1000
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "interrupt_approver_ids": {
+    ///      "title": "Interrupt Approver Ids",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string",
+    ///        "format": "uuid"
+    ///      }
+    ///    },
+    ///    "is_default": {
+    ///      "title": "Is Default",
+    ///      "type": "boolean"
+    ///    },
+    ///    "is_deleted": {
+    ///      "title": "Is Deleted",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "member_count": {
+    ///      "title": "Member Count",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string",
+    ///      "maxLength": 255,
+    ///      "minLength": 1
+    ///    },
+    ///    "notification_additional_emails": {
+    ///      "title": "Notification Additional Emails",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "organization_id": {
+    ///      "title": "Organization Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "organization_name": {
+    ///      "title": "Organization Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "owner_id": {
+    ///      "title": "Owner Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "provider": {
+    ///      "$ref": "#/components/schemas/CloudProvider"
+    ///    },
+    ///    "pulse_auto_subscribe": {
+    ///      "title": "Pulse Auto Subscribe",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "updated_at": {
+    ///      "title": "Updated At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct WorkspaceWithRolePublic {
+        #[serde(default)]
+        pub auto_mode_enabled: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub brand_chart_colors: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub brand_company_name: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub brand_logo_storage_key: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub brand_primary_color: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub created_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub current_user_role: WorkspaceRole,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub description: ::std::option::Option<Description>,
+        pub id: ::uuid::Uuid,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub interrupt_approver_ids: ::std::vec::Vec<::uuid::Uuid>,
+        pub is_default: bool,
+        #[serde(default)]
+        pub is_deleted: bool,
+        #[serde(default)]
+        pub member_count: i64,
+        pub name: Name,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub notification_additional_emails: ::std::vec::Vec<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub organization_id: ::std::option::Option<::uuid::Uuid>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub organization_name: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub owner_id: ::std::option::Option<::uuid::Uuid>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub provider: ::std::option::Option<CloudProvider>,
+        #[serde(default)]
+        pub pulse_auto_subscribe: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub updated_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+    }
+
+    ///List of workspaces with the current user's role.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspacesWithRolePublic",
+    ///  "description": "List of workspaces with the current user's role.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "count",
+    ///    "data"
+    ///  ],
+    ///  "properties": {
+    ///    "count": {
+    ///      "title": "Count",
+    ///      "type": "integer"
+    ///    },
+    ///    "data": {
+    ///      "title": "Data",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/WorkspaceWithRolePublic"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct WorkspacesWithRolePublic {
+        pub count: i64,
+        pub data: ::std::vec::Vec<WorkspaceWithRolePublic>,
+    }
+
     /// Generation of default values for serde.
     pub mod defaults {
         pub(super) fn code_review_detail_finding_finding_source() -> ::std::string::String {
             "code_review".to_string()
-        }
-
-        pub(super) fn message_role() -> super::Role {
-            super::Role("user".to_string())
         }
 
         pub(super) fn token_token_type() -> ::std::string::String {
@@ -3075,7 +4462,7 @@ impl Client {
         &'a self,
         workspace_id: Option<&'a ::serde_json::Value>,
         body: &'a types::SubmitHeadlessRunRequest,
-    ) -> Result<ResponseValue<types::HeadlessRunSubmitted>, Error<types::HttpValidationError>> {
+    ) -> Result<ResponseValue<types::HeadlessRunSubmitted>, Error<()>> {
         let url = format!("{}/api/v1/cli/runs", self.baseurl,);
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(
@@ -3106,9 +4493,6 @@ impl Client {
         let response = result?;
         match response.status().as_u16() {
             202u16 => ResponseValue::from_response(response).await,
-            422u16 => Err(Error::ErrorResponse(
-                ResponseValue::from_response(response).await?,
-            )),
             _ => Err(Error::UnexpectedResponse(response)),
         }
     }
@@ -3124,7 +4508,7 @@ impl Client {
         &'a self,
         run_id: &'a ::uuid::Uuid,
         workspace_id: Option<&'a ::serde_json::Value>,
-    ) -> Result<ResponseValue<types::HeadlessRunStatus>, Error<types::HttpValidationError>> {
+    ) -> Result<ResponseValue<types::HeadlessRunStatus>, Error<()>> {
         let url = format!(
             "{}/api/v1/cli/runs/{}",
             self.baseurl,
@@ -3158,9 +4542,43 @@ impl Client {
         let response = result?;
         match response.status().as_u16() {
             200u16 => ResponseValue::from_response(response).await,
-            422u16 => Err(Error::ErrorResponse(
-                ResponseValue::from_response(response).await?,
-            )),
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Cli Whoami
+    ///
+    ///Resolve the live account and workspace bound to a CLI credential.
+    ///
+    ///Sends a `GET` request to `/api/v1/cli/whoami`
+    pub async fn login_cli_whoami<'a>(
+        &'a self,
+    ) -> Result<ResponseValue<types::CliWhoAmIResponse>, Error<()>> {
+        let url = format!("{}/api/v1/cli/whoami", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "login_cli_whoami",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
             _ => Err(Error::UnexpectedResponse(response)),
         }
     }
@@ -3187,8 +4605,7 @@ impl Client {
         project_path: &'a str,
         provider: types::CodeReviewProvider,
         workspace_id: Option<&'a ::serde_json::Value>,
-    ) -> Result<ResponseValue<types::CodeReviewMergeRequestDetail>, Error<types::HttpValidationError>>
-    {
+    ) -> Result<ResponseValue<types::CodeReviewMergeRequestDetail>, Error<()>> {
         let url = format!("{}/api/v1/code-review/merge-requests/lookup", self.baseurl,);
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(
@@ -3224,7 +4641,83 @@ impl Client {
         let response = result?;
         match response.status().as_u16() {
             200u16 => ResponseValue::from_response(response).await,
-            422u16 => Err(Error::ErrorResponse(
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Start Cli Device Authorization
+    ///
+    ///Create a short-lived device authorization for an outbound-only CLI.
+    ///
+    ///Sends a `POST` request to `/api/v1/login/cli/device/start`
+    pub async fn login_start_cli_device_authorization<'a>(
+        &'a self,
+    ) -> Result<ResponseValue<types::CliDeviceAuthorizationResponse>, Error<()>> {
+        let url = format!("{}/api/v1/login/cli/device/start", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "login_start_cli_device_authorization",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Poll Cli Device Token
+    ///
+    ///Poll until approved, denied, expired, or asked to slow down.
+    ///
+    ///Sends a `POST` request to `/api/v1/login/cli/device/token`
+    pub async fn login_poll_cli_device_token<'a>(
+        &'a self,
+        body: &'a types::CliDeviceTokenRequest,
+    ) -> Result<ResponseValue<types::Token>, Error<types::CliDeviceTokenError>> {
+        let url = format!("{}/api/v1/login/cli/device/token", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "login_poll_cli_device_token",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            400u16 => Err(Error::ErrorResponse(
                 ResponseValue::from_response(response).await?,
             )),
             _ => Err(Error::UnexpectedResponse(response)),
@@ -3242,7 +4735,7 @@ impl Client {
     pub async fn login_exchange_cli_token<'a>(
         &'a self,
         body: &'a types::CliTokenRequest,
-    ) -> Result<ResponseValue<types::Token>, Error<types::HttpValidationError>> {
+    ) -> Result<ResponseValue<types::Token>, Error<()>> {
         let url = format!("{}/api/v1/login/cli/token", self.baseurl,);
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(
@@ -3269,9 +4762,6 @@ impl Client {
         let response = result?;
         match response.status().as_u16() {
             200u16 => ResponseValue::from_response(response).await,
-            422u16 => Err(Error::ErrorResponse(
-                ResponseValue::from_response(response).await?,
-            )),
             _ => Err(Error::UnexpectedResponse(response)),
         }
     }
@@ -3289,7 +4779,7 @@ impl Client {
     pub async fn login_logout<'a>(
         &'a self,
         body: &'a types::RevokeTokenRequest,
-    ) -> Result<ResponseValue<types::Message>, Error<types::HttpValidationError>> {
+    ) -> Result<ResponseValue<types::SimpleMessage>, Error<()>> {
         let url = format!("{}/api/v1/login/logout", self.baseurl,);
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(
@@ -3316,9 +4806,6 @@ impl Client {
         let response = result?;
         match response.status().as_u16() {
             200u16 => ResponseValue::from_response(response).await,
-            422u16 => Err(Error::ErrorResponse(
-                ResponseValue::from_response(response).await?,
-            )),
             _ => Err(Error::UnexpectedResponse(response)),
         }
     }
@@ -3338,7 +4825,7 @@ impl Client {
     pub async fn login_refresh_token<'a>(
         &'a self,
         body: &'a types::RefreshTokenRequest,
-    ) -> Result<ResponseValue<types::Token>, Error<types::HttpValidationError>> {
+    ) -> Result<ResponseValue<types::Token>, Error<()>> {
         let url = format!("{}/api/v1/login/refresh", self.baseurl,);
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(
@@ -3365,9 +4852,93 @@ impl Client {
         let response = result?;
         match response.status().as_u16() {
             200u16 => ResponseValue::from_response(response).await,
-            422u16 => Err(Error::ErrorResponse(
-                ResponseValue::from_response(response).await?,
-            )),
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Get Workspaces
+    ///
+    ///Get workspaces - both owned and invited (non-deleted only).
+    ///Filtered by current organization context from token.
+    ///Supports search by workspace name.
+    ///
+    ///Sends a `GET` request to `/api/v1/workspaces/`
+    pub async fn workspaces_get_workspaces<'a>(
+        &'a self,
+        limit: Option<::std::num::NonZeroU64>,
+        search: Option<&'a str>,
+        skip: Option<u64>,
+    ) -> Result<ResponseValue<types::WorkspacesWithRolePublic>, Error<()>> {
+        let url = format!("{}/api/v1/workspaces/", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new("limit", &limit))
+            .query(&progenitor_client::QueryParam::new("search", &search))
+            .query(&progenitor_client::QueryParam::new("skip", &skip))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "workspaces_get_workspaces",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Create Workspace
+    ///
+    ///Create new workspace. Requires WORKSPACE_CREATE permission.
+    ///Users with workspace quota can create workspaces if they have
+    /// owner-level permissions. Workspace is created in the current
+    /// organization context from token.
+    ///
+    ///Sends a `POST` request to `/api/v1/workspaces/`
+    pub async fn workspaces_create_workspace<'a>(
+        &'a self,
+        body: &'a types::WorkspaceCreate,
+    ) -> Result<ResponseValue<types::WorkspacePublic>, Error<()>> {
+        let url = format!("{}/api/v1/workspaces/", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "workspaces_create_workspace",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
             _ => Err(Error::UnexpectedResponse(response)),
         }
     }

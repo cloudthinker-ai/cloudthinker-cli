@@ -1,14 +1,20 @@
-# Single-origin dev proxy — serves the consent page and the API from ONE origin
-# so `cloudthinker login` (PKCE) is testable locally.
+# Single-origin dev proxy — serves the consent page and the API from ONE origin.
 #
-# Without it, local splits origins (frontend :3000, backend :8000) while the CLI
-# derives BOTH `{base}/auth/cli` and `{base}/api/v1/...` from a single --url.
+# Two callers depend on that:
+#  - `cloudthinker login` (PKCE), which derives BOTH `{base}/auth/cli` and
+#    `{base}/api/v1/...` from a single --url, while local dev otherwise splits
+#    origins (frontend :5173, backend :8000);
+#  - multi-worktree dev, where each worktree browses its own `<slug>.localhost`
+#    so auth cookies (host-only, port-blind) stay in separate jars.
 #
-# Upstreams: backend runs in compose (service DNS), frontend runs on the host
-# (`pnpm dev`, port 5173), reached through the host-gateway alias.
+# Upstreams are env-injected by docker-compose.override.yml. Defaults: backend
+# over compose service DNS, frontend on the host through the host-gateway alias.
+# `WORKTREE_MODE=fe` repoints BACKEND_UPSTREAM at another worktree's published
+# backend port, so this proxy plus `pnpm dev` is the whole local footprint.
 #
-# The dev server must be started with NEXT_PUBLIC_API_URL=http://localhost:8080
-# so the browser calls the API on this origin instead of :8000 directly.
+# The dev server must be started with NEXT_PUBLIC_API_URL pointing at this origin
+# so the browser calls the API here instead of the backend port directly;
+# scripts/development/worktree-stack.sh writes that into frontend/.env.local.
 
 :8080 {
 	handle /api/* {

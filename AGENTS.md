@@ -1,6 +1,6 @@
 # CloudThinker CLI
 
-Customer-facing `cloudthinker` binary (browser login + headless `chat -p`) as a Cargo workspace; a thin job-runner over the backend's CLI endpoints. Concept: [[concepts/cli/README]].
+Customer-facing `cloudthinker` binary (browser or device-code login + headless `chat -p`) as a Cargo workspace; a thin job-runner over the backend's CLI endpoints. Concept: [[concepts/cli/README]].
 
 ## Boundaries
 
@@ -27,9 +27,10 @@ Customer-facing `cloudthinker` binary (browser login + headless `chat -p`) as a 
 
 ## Architecture
 
-Three crates: `cloudthinker-api` (progenitor-generated from a pruned OpenAPI snapshot), `cloudthinker-client` (thiserror; PKCE login, token store/refresh, typed `CtClient`), `cloudthinker-cli` (anyhow-free clap dispatch + `engine/{output,watch,exit}`). `make gen` = dump spec → `prune_spec.py` → down-convert 3.1→3.0 → `fixup_spec.py` → progenitor → inject relaxed-lint header; idempotent.
+Three crates: `cloudthinker-api` (progenitor-generated from a pruned OpenAPI snapshot), `cloudthinker-client` (thiserror; PKCE login, workspace-keyed token store/refresh, typed `CtClient`), `cloudthinker-cli` (anyhow-free clap dispatch + `engine/{output,watch,exit}`). Authenticated commands accept global `--workspace <id|name>`; `whoami` proves the resolved live identity. `make gen` = dump spec → `prune_spec.py` → down-convert 3.1→3.0 → `fixup_spec.py` → progenitor → inject relaxed-lint header; idempotent.
 
 ## Gotchas
 
 - The generated client already includes `/api/v1` in each path, so the base URL passed to it is the bare origin (e.g. `https://app.cloudthinker.io`), not `{base}/api/v1`.
-- A 422 secret-gate body is `{"detail": "<string>"}`, which fails the typed validation-array shape and arrives as `InvalidResponsePayload`; `error.rs` treats that as a 422 and parses the string detail.
+- Generic API errors stay undeclared in the pruned CLI schema so progenitor returns `UnexpectedResponse` with the real HTTP status during the detail-only compatibility window. `error.rs` reads either `error.message` or legacy `detail`; declared bodies that fail to decode remain `CtError::Protocol`.
+- The device-token poll keeps its RFC-shaped 400 body but drops the generic 422 during spec pruning because progenitor supports one typed error body per operation; run `make -C cli gen` twice after auth schema changes to prove generation is idempotent.

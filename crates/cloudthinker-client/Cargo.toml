@@ -28,8 +28,9 @@ axum = { version = "0.8", default-features = false, features = ["tokio", "http1"
 # self-contained instead of depending on the target's system libdbus.
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "vendored"] }
 dirs = "6"
+fs2 = "0.4"
 
 [dev-dependencies]
 wiremock = "0.6"
 tempfile = "3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net", "test-util"] }

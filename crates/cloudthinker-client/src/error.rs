@@ -16,8 +16,13 @@ pub enum CtError {
     #[error("not authenticated: {0}")]
     Auth(String),
 
-    /// A structured API error carrying the HTTP status and (when present) the
-    /// backend `detail`. The exit-code mapping keys off `status`.
+    /// Persisted credentials predate workspace-keyed storage. They are never
+    /// migrated or used; a new login replaces them.
+    #[error("stored credentials use an obsolete format; run `cloudthinker login`")]
+    ObsoleteCredentials,
+
+    /// A structured API error carrying the HTTP status and safe backend
+    /// message. The exit-code mapping keys off `status`.
     #[error("API error {status}{}", .detail.as_deref().map(|d| format!(": {d}")).unwrap_or_default())]
     Api { status: u16, detail: Option<String> },
 
@@ -46,6 +51,18 @@ pub enum CtError {
     /// Login PKCE / loopback plumbing failure.
     #[error("login failed: {0}")]
     Login(String),
+
+    /// Local credentials were cleared, but one or more server sessions could
+    /// not be revoked.
+    #[error("logout incomplete: {0}")]
+    Logout(String),
+
+    /// A response body that failed to parse into either the documented success
+    /// or error shape — the server sent something we don't understand rather
+    /// than the user giving bad input. Kept distinct from `Api` so scripts
+    /// don't treat "server sent garbage" as "bad user input".
+    #[error("malformed response: {0}")]
+    Protocol(String),
 }
 
 impl CtError {
@@ -56,13 +73,20 @@ impl CtError {
     }
 }
 
-/// Parse a FastAPI error body's `detail` into human text.
+/// Parse safe human text from a current or legacy API error body.
 ///
-/// `detail` is either a plain string (a raised `HTTPException`, e.g. the
-/// secret-gate 422) or the validation array (`[{msg, loc, ...}]`). Both shapes
-/// are flattened to a single line.
-pub(crate) fn parse_detail(body: &str) -> Option<String> {
+/// Current responses use `error.message`. Legacy `detail` may be a string or a
+/// validation array; validation messages are flattened to one line.
+pub(crate) fn parse_error_message(body: &str) -> Option<String> {
     let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    if let Some(message) = value
+        .get("error")
+        .and_then(|error| error.get("message"))
+        .and_then(|message| message.as_str())
+        .filter(|message| !message.trim().is_empty())
+    {
+        return Some(message.to_string());
+    }
     let detail = value.get("detail")?;
     match detail {
         serde_json::Value::String(s) => Some(s.clone()),
@@ -84,45 +108,36 @@ pub(crate) fn parse_detail(body: &str) -> Option<String> {
 
 /// Convert a generated-client error into a `CtError`.
 ///
-/// Async because `UnexpectedResponse` (any status the spec did not declare —
-/// 400/401/404 on our surface) still has an unread body we want the `detail`
-/// from. `InvalidResponsePayload` fires when a *documented* non-2xx body failed
-/// to match its typed shape; on our surface the only documented non-2xx is 422,
-/// so that branch is the secret-gate string-detail case.
-pub(crate) async fn to_ct_error(
-    err: ApiError<cloudthinker_api::types::HttpValidationError>,
-) -> CtError {
+/// Generic HTTP failures stay `UnexpectedResponse` so their status remains
+/// available while old servers may still return detail-only bodies. Reading
+/// that response body makes this conversion async. `InvalidResponsePayload`
+/// only represents a declared body that could not be decoded.
+pub(crate) async fn to_ct_error(err: ApiError<()>) -> CtError {
     match err {
         ApiError::ErrorResponse(rv) => {
             let status = rv.status().as_u16();
-            let detail = validation_detail(rv.into_inner());
-            CtError::Api { status, detail }
+            CtError::Api {
+                status,
+                detail: None,
+            }
         }
         ApiError::UnexpectedResponse(resp) => {
             let status = resp.status().as_u16();
-            let detail = resp.text().await.ok().as_deref().and_then(parse_detail);
+            let detail = resp
+                .text()
+                .await
+                .ok()
+                .as_deref()
+                .and_then(parse_error_message);
             CtError::Api { status, detail }
         }
-        ApiError::InvalidResponsePayload(bytes, _) => {
-            let text = String::from_utf8_lossy(&bytes);
-            CtError::Api {
-                status: 422,
-                detail: parse_detail(&text),
-            }
+        ApiError::InvalidResponsePayload(_, parse_err) => {
+            CtError::Protocol(format!("unreadable response body: {parse_err}"))
         }
         ApiError::CommunicationError(e) => CtError::Transport(e.to_string()),
         ApiError::ResponseBodyError(e) => CtError::Transport(e.to_string()),
         ApiError::InvalidUpgrade(e) => CtError::Transport(e.to_string()),
         ApiError::InvalidRequest(s) => CtError::Transport(s),
         ApiError::Custom(s) => CtError::Transport(s),
-    }
-}
-
-fn validation_detail(body: cloudthinker_api::types::HttpValidationError) -> Option<String> {
-    let msgs: Vec<String> = body.detail.into_iter().map(|v| v.msg).collect();
-    if msgs.is_empty() {
-        None
-    } else {
-        Some(msgs.join("; "))
     }
 }

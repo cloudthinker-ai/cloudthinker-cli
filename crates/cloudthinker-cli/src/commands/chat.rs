@@ -12,8 +12,14 @@ use crate::engine::watch::{Poll, WatchConfig, watch};
 use super::build_client;
 
 /// Submit a prompt, watch to a terminal state, print the result.
-pub async fn run_prompt(base_url: &str, prompt: &str, json: bool, timeout_secs: u64) -> ExitCode {
-    let client = match build_client(base_url) {
+pub async fn run_prompt(
+    base_url: &str,
+    workspace: Option<&str>,
+    prompt: &str,
+    json: bool,
+    timeout_secs: u64,
+) -> ExitCode {
+    let client = match build_client(base_url, workspace) {
         Ok(client) => client,
         Err(err) => return exit::report(&err),
     };
@@ -54,17 +60,25 @@ pub async fn run_prompt(base_url: &str, prompt: &str, json: bool, timeout_secs: 
 }
 
 /// Show a single run's current status.
-pub async fn run_status(base_url: &str, run_id: Uuid, json: bool) -> ExitCode {
-    let client = match build_client(base_url) {
+pub async fn run_status(
+    base_url: &str,
+    workspace: Option<&str>,
+    run_id: Uuid,
+    json: bool,
+) -> ExitCode {
+    let client = match build_client(base_url, workspace) {
         Ok(client) => client,
         Err(err) => return exit::report(&err),
     };
 
     match client.get_run(run_id).await {
         Ok(view) => {
-            if !json {
-                output::print_status_summary(&view);
-            } else if let Err(err) = output::emit_json(&ChatEnvelope::from_view(&view)) {
+            let result = if json {
+                output::emit_json(&ChatEnvelope::from_view(&view))
+            } else {
+                output::print_status_summary(&view)
+            };
+            if let Err(err) = result {
                 output::eprintln_error(&err);
                 return ExitCode::JobFailed;
             }
@@ -91,7 +105,10 @@ fn finish(view: &RunView, json: bool) -> ExitCode {
         RunStatus::Succeeded => {
             if !json {
                 // CA-CLI-10: the answer is the ONLY thing on stdout.
-                output::print_answer(view.answer.as_deref().unwrap_or_default());
+                if let Err(err) = output::print_answer(view.answer.as_deref().unwrap_or_default()) {
+                    output::eprintln_error(&err);
+                    return ExitCode::JobFailed;
+                }
             }
             ExitCode::Ok
         }

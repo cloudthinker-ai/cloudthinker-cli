@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Patch the 3.0 gaps `@apiture/openapi-down-convert` leaves behind.
 
-Run AFTER the 3.1→3.0 down-convert, on the pruned doc. Three fixes, each a
-progenitor blocker if left (arch plan §Codegen spike):
+Run AFTER the 3.1→3.0 down-convert, on the pruned doc. Three progenitor
+blockers (arch plan §Codegen spike) plus one determinism fix:
 
 1. `anyOf`/`oneOf` carrying a `{"type": "null"}` member — Pydantic v2's nullable
    idiom. Collapse to the single non-null subschema + `nullable: true`; a bare
@@ -13,12 +13,24 @@ progenitor blocker if left (arch plan §Codegen spike):
 3. Duplicate `operationId`s → de-duplicate by suffixing. The live app dedupes
    via `custom_generate_unique_id`, so this is a no-op safety net (asserts none
    were actually renamed unless the spec regresses).
+4. `info.title` → pinned constant. FastAPI takes it from `PROJECT_NAME`, which
+   differs per environment (CI exports `cloudthinker-ci`), so an unpinned title
+   makes the snapshot a function of the dumping env and `validate:cli-spec-drift`
+   reports drift on every run. The CLI's spec identity is fixed, not deploy-local.
+5. Remove the device-token endpoint's generic 422 response. Progenitor 0.14
+   supports one typed error body per operation; retaining the meaningful 400
+   device-poll response gives the client typed RFC 8628 errors, while malformed
+   local input is rejected before the request is sent.
 """
 
 from __future__ import annotations
 
 import json
 import sys
+
+# Environment-independent spec identity; see fix 4 above.
+SPEC_TITLE = "Cloud Thinker"
+DEVICE_TOKEN_PATH = "/api/v1/login/cli/device/token"
 
 
 def _fix_nullable(node: object) -> object:
@@ -94,10 +106,26 @@ def _dedupe_operation_ids(spec: dict) -> None:
         print(f"fixup_spec: WARNING deduped operationIds: {renamed}", file=sys.stderr)
 
 
+def _pin_title(spec: dict) -> None:
+    """Pin `info.title` so the snapshot does not depend on the dumping env."""
+    info = spec.get("info")
+    if isinstance(info, dict):
+        info["title"] = SPEC_TITLE
+
+
+def _keep_typed_device_poll_error(spec: dict) -> None:
+    operation = spec.get("paths", {}).get(DEVICE_TOKEN_PATH, {}).get("post", {})
+    responses = operation.get("responses")
+    if isinstance(responses, dict):
+        responses.pop("422", None)
+
+
 def fixup(spec: dict) -> dict:
     spec = _fix_nullable(spec)  # returns a rebuilt tree
     _fix_exclusive_bounds(spec)
     _dedupe_operation_ids(spec)
+    _pin_title(spec)
+    _keep_typed_device_poll_error(spec)
     return spec
 
 

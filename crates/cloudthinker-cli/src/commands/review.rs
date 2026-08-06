@@ -15,14 +15,38 @@ use super::build_client;
 /// Show a review's current status. A read: exits 0 on any successful fetch —
 /// the review's own status/verdict is advisory, not failure (CA-RV-SP5,
 /// mirrors `chat status` CA-CLI-16).
-pub async fn run_status(base_url: &str, url: &str, json: bool) -> ExitCode {
-    fetch_and_render(base_url, url, json, output::print_review_status_summary).await
+pub async fn run_status(
+    base_url: &str,
+    workspace: Option<&str>,
+    url: &str,
+    json: bool,
+) -> ExitCode {
+    fetch_and_render(
+        base_url,
+        workspace,
+        url,
+        json,
+        output::print_review_status_summary,
+    )
+    .await
 }
 
 /// List a review's findings, worst-severity first (CA-RV-2). Also a read
 /// (CA-RV-SP5).
-pub async fn run_findings(base_url: &str, url: &str, json: bool) -> ExitCode {
-    fetch_and_render(base_url, url, json, output::print_review_findings).await
+pub async fn run_findings(
+    base_url: &str,
+    workspace: Option<&str>,
+    url: &str,
+    json: bool,
+) -> ExitCode {
+    fetch_and_render(
+        base_url,
+        workspace,
+        url,
+        json,
+        output::print_review_findings,
+    )
+    .await
 }
 
 /// Poll a review to a terminal state, printing the final verdict.
@@ -30,12 +54,18 @@ pub async fn run_findings(base_url: &str, url: &str, json: bool) -> ExitCode {
 /// Exit 0 on any terminal outcome except `ReviewStatus::Failed` (exit 1,
 /// CA-RV-3). A client-side deadline prints a resume hint and exits 4
 /// (CA-RV-SP6); the review keeps running server-side.
-pub async fn run_watch(base_url: &str, url: &str, json: bool, timeout_secs: u64) -> ExitCode {
+pub async fn run_watch(
+    base_url: &str,
+    workspace: Option<&str>,
+    url: &str,
+    json: bool,
+    timeout_secs: u64,
+) -> ExitCode {
     let coords = match parse_mr_url(url) {
         Ok(coords) => coords,
         Err(err) => return exit::report(&err),
     };
-    let client = match build_client(base_url) {
+    let client = match build_client(base_url, workspace) {
         Ok(client) => client,
         Err(err) => return exit::report(&err),
     };
@@ -73,15 +103,16 @@ pub async fn run_watch(base_url: &str, url: &str, json: bool, timeout_secs: u64)
 /// Shared body for `status`/`findings`: parse the URL, fetch once, render.
 async fn fetch_and_render(
     base_url: &str,
+    workspace: Option<&str>,
     url: &str,
     json: bool,
-    human: fn(&ReviewView),
+    human: fn(&ReviewView) -> Result<(), String>,
 ) -> ExitCode {
     let coords = match parse_mr_url(url) {
         Ok(coords) => coords,
         Err(err) => return exit::report(&err),
     };
-    let client = match build_client(base_url) {
+    let client = match build_client(base_url, workspace) {
         Ok(client) => client,
         Err(err) => return exit::report(&err),
     };
@@ -92,26 +123,28 @@ async fn fetch_and_render(
     }
 }
 
-fn render(view: &ReviewView, json: bool, human: fn(&ReviewView)) -> ExitCode {
-    if json {
-        if let Err(err) = output::emit_json(&ReviewEnvelope::from_view(view)) {
-            output::eprintln_error(&err);
-            return ExitCode::JobFailed;
-        }
+fn render(view: &ReviewView, json: bool, human: fn(&ReviewView) -> Result<(), String>) -> ExitCode {
+    let result = if json {
+        output::emit_json(&ReviewEnvelope::from_view(view))
     } else {
-        human(view);
+        human(view)
+    };
+    if let Err(err) = result {
+        output::eprintln_error(&err);
+        return ExitCode::JobFailed;
     }
     ExitCode::Ok
 }
 
 fn finish_watch(view: &ReviewView, json: bool) -> ExitCode {
-    if json {
-        if let Err(err) = output::emit_json(&ReviewEnvelope::from_view(view)) {
-            output::eprintln_error(&err);
-            return ExitCode::JobFailed;
-        }
+    let result = if json {
+        output::emit_json(&ReviewEnvelope::from_view(view))
     } else {
-        output::print_review_status_summary(view);
+        output::print_review_status_summary(view)
+    };
+    if let Err(err) = result {
+        output::eprintln_error(&err);
+        return ExitCode::JobFailed;
     }
     match view.status {
         ReviewStatus::Failed => ExitCode::JobFailed,

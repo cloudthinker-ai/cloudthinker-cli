@@ -145,6 +145,50 @@ fn cli(base_url: &str) -> Command {
     cmd
 }
 
+#[test]
+fn whoami_prints_one_live_identity_line() {
+    let api = MockApi::start(
+        r#"{"user_email":"duc@example.com","workspace_id":"11111111-1111-4111-8111-111111111111","workspace_name":"Production","organization_id":null}"#.into(),
+    );
+
+    cli(&api.base_url)
+        .arg("whoami")
+        .assert()
+        .success()
+        .stdout(predicates::str::is_match(
+            r"^host=http://127\.0\.0\.1:[0-9]+ email=duc@example\.com workspace=Production \(11111111-1111-4111-8111-111111111111\)\n$",
+        ).unwrap());
+}
+
+#[test]
+fn workspace_with_environment_token_is_usage_error_without_stdout() {
+    let api = MockApi::start("{}".into());
+
+    cli(&api.base_url)
+        .args(["--workspace", "Production", "whoami"])
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicates::str::contains(
+            "--workspace cannot be used with CLOUDTHINKER_TOKEN",
+        ));
+}
+
+#[test]
+fn whoami_with_revoked_credential_is_auth_error_without_stdout() {
+    let api = MockApi::start_with_status(
+        "401 Unauthorized",
+        r#"{"error":{"code":"unauthorized","message":"expired","retryable":false},"detail":"expired"}"#.into(),
+    );
+
+    cli(&api.base_url)
+        .arg("whoami")
+        .assert()
+        .code(3)
+        .stdout("")
+        .stderr(predicates::str::contains("not authenticated"));
+}
+
 const MR_URL: &str = "https://gitlab.example.com/group/my-repo/-/merge_requests/42";
 
 fn review_body(review_status: &str, verdict: &str, findings_count: i64) -> String {
@@ -212,8 +256,8 @@ fn ca_rv_sp1_unparseable_url_is_usage_before_any_request() {
         .code(2);
 }
 
-// CA-RV-SP4: unknown coordinates (404) print the review-specific message and
-// exit 1.
+// CA-RV-SP4: legacy detail-only unknown coordinates keep their 404 status,
+// print the review-specific message, and exit 1.
 #[test]
 fn ca_rv_sp4_unknown_coordinates_prints_message_and_exits_1() {
     let api = MockApi::start_with_status(

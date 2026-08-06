@@ -43,40 +43,47 @@ pub fn parse_mr_url(url: &str) -> CtResult<MrCoordinates> {
     if let Some(idx) = segments.iter().position(|s| *s == "-")
         && segments.get(idx + 1) == Some(&"merge_requests")
     {
-        let project_path = segments[..idx].join("/");
-        let mr_iid = segments
-            .get(idx + 2)
-            .ok_or_else(|| unparseable(url))?
-            .parse::<i64>()
-            .map_err(|_| unparseable(url))?;
-        if project_path.is_empty() {
-            return Err(unparseable(url));
-        }
-        return Ok(MrCoordinates {
-            provider: MrProvider::Gitlab,
-            project_path,
-            mr_iid,
-        });
+        return build_coordinates(
+            &segments[..idx],
+            segments.get(idx + 2).copied(),
+            MrProvider::Gitlab,
+            url,
+        );
     }
 
     if let Some(idx) = segments.iter().position(|s| *s == "pull") {
-        let project_path = segments[..idx].join("/");
-        let mr_iid = segments
-            .get(idx + 1)
-            .ok_or_else(|| unparseable(url))?
-            .parse::<i64>()
-            .map_err(|_| unparseable(url))?;
-        if project_path.is_empty() {
-            return Err(unparseable(url));
-        }
-        return Ok(MrCoordinates {
-            provider: MrProvider::Github,
-            project_path,
-            mr_iid,
-        });
+        return build_coordinates(
+            &segments[..idx],
+            segments.get(idx + 1).copied(),
+            MrProvider::Github,
+            url,
+        );
     }
 
     Err(unparseable(url))
+}
+
+/// Shared GitLab/GitHub coordinate builder: `project_segments` is everything
+/// before the provider's marker segment, `iid_segment` the MR/PR number.
+fn build_coordinates(
+    project_segments: &[&str],
+    iid_segment: Option<&str>,
+    provider: MrProvider,
+    url: &str,
+) -> CtResult<MrCoordinates> {
+    let project_path = project_segments.join("/");
+    let mr_iid = iid_segment
+        .ok_or_else(|| unparseable(url))?
+        .parse::<i64>()
+        .map_err(|_| unparseable(url))?;
+    if project_path.is_empty() {
+        return Err(unparseable(url));
+    }
+    Ok(MrCoordinates {
+        provider,
+        project_path,
+        mr_iid,
+    })
 }
 
 fn unparseable(url: &str) -> CtError {

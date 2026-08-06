@@ -166,9 +166,13 @@ struct Shared {
 }
 
 /// Branded loopback page shown in the browser once consent returns. Self-
-/// contained (inline CSS, no network) so it renders even offline; `{accent}`,
-/// `{title}`, and `{body}` are the only per-outcome parts.
-fn close_page(accent: &str, title: &str, body: &str) -> String {
+/// contained (inline CSS, no network) so it renders even offline; `{title}`,
+/// `{body}` and the outcome flag are the only per-outcome parts. `is_error`
+/// drives both the glyph and the accent, so presentation follows the semantic
+/// outcome rather than the reverse.
+fn close_page(title: &str, body: &str, is_error: bool) -> String {
+    let accent = if is_error { "#dc2626" } else { "#0d9488" };
+    let glyph = if is_error { "&times;" } else { "&check;" };
     format!(
         "<!doctype html><html lang=en><meta charset=utf-8>\
 <meta name=viewport content=\"width=device-width,initial-scale=1\">\
@@ -182,33 +186,25 @@ font-size:26px;line-height:1\">{glyph}</div>\
 <h1 style=\"font-size:1.5rem;font-weight:600;letter-spacing:-.01em;margin:0 0 .5rem\">{title}</h1>\
 <p style=\"font-size:.95rem;color:#52525b;margin:0;line-height:1.5\">{body}</p>\
 </main></body></html>",
-        accent = accent,
-        title = title,
-        body = body,
-        glyph = if accent == "#dc2626" {
-            "&times;"
-        } else {
-            "&check;"
-        },
     )
 }
 
 fn close_html(outcome: &CallbackOutcome) -> String {
     match outcome {
         CallbackOutcome::Code(_) => close_page(
-            "#0d9488",
             "You&rsquo;re all set",
             "CloudThinker CLI is signed in. You can close this window and return to your terminal.",
+            false,
         ),
         CallbackOutcome::Denied => close_page(
-            "#dc2626",
             "Sign-in denied",
             "No access was granted. You can close this window and return to your terminal.",
+            true,
         ),
         CallbackOutcome::StateMismatch => close_page(
-            "#dc2626",
             "Sign-in couldn&rsquo;t complete",
             "This sign-in link is invalid or expired. Run cloudthinker login again from your terminal.",
+            true,
         ),
     }
 }

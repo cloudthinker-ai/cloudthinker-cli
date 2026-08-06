@@ -16,15 +16,17 @@ mod review_url;
 #[cfg(test)]
 mod test_support;
 
+pub use auth::device::wait_for_device_token;
 pub use auth::pkce::{Loopback, PkceChallenge, consent_url};
 pub use auth::refresh::{PROACTIVE_REFRESH_SKEW_SECS, RefreshCoordinator};
 pub use auth::store::{
     AutoStore, EnvTokenStore, FileStore, KeyringStore, SaveLocation, StoredToken, TOKEN_ENV_VAR,
-    TokenStore,
+    TokenStore, WorkspaceSelector,
 };
 pub use client::{
-    CtClient, ReviewFinding, ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView,
-    RunStatus, RunView, SubmittedRun, host_of, persistent_store, resolve_store,
+    CliIdentity, CtClient, DeviceAuthorization, DeviceTokenPoll, ReviewFinding,
+    ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView, RunStatus, RunView,
+    SubmittedRun, origin_of, persistent_store, resolve_store,
 };
 pub use error::{CtError, CtResult};
 pub use review_url::{MrCoordinates, MrProvider, parse_mr_url};

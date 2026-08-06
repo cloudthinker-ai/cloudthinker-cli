@@ -4,15 +4,28 @@
 //! stdout so the result is pipeable. Progress, status, warnings, and errors all
 //! go to stderr. `--json` writes exactly one envelope to stdout.
 
-use std::io::Write;
+use std::io::{self, Write};
 
 use cloudthinker_client::{
-    ReviewFinding, ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView, RunStatus,
-    RunView,
+    CliIdentity, ReviewFinding, ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView,
+    RunStatus, RunView,
 };
-use owo_colors::OwoColorize;
+use owo_colors::{AnsiColors, OwoColorize};
 use serde::Serialize;
 use uuid::Uuid;
+
+/// Write one line to `out`, treating a broken pipe (the reader hung up, e.g.
+/// piping into `head`) as success per Unix convention rather than an error
+/// for the caller to report. Any other write failure surfaces so the
+/// automation contract holds: a script can trust that a non-zero exit means
+/// the output didn't make it out.
+fn write_line(out: &mut impl Write, line: &str) -> Result<(), String> {
+    match writeln!(out, "{line}") {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
 
 /// The `--json` envelope, using the API's field names verbatim.
 #[derive(Debug, Serialize)]
@@ -37,36 +50,73 @@ impl ChatEnvelope {
 }
 
 /// The single JSON output path (no per-command `--json` branches beyond this).
+/// Shares `write_line`'s broken-pipe tolerance with human-mode output, so
+/// `cloudthinker ... --json | head` exits 0 the same way human mode does.
 pub fn emit_json<T: Serialize>(value: &T) -> Result<(), String> {
-    let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
     let mut out = std::io::stdout().lock();
-    writeln!(out, "{text}").map_err(|e| e.to_string())
+    emit_json_to(&mut out, value)
+}
+
+/// Writer-generic core of [`emit_json`], extracted for testing.
+fn emit_json_to<T: Serialize>(out: &mut impl Write, value: &T) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
+    write_line(out, &text)
 }
 
 /// Write the bare answer to stdout (`chat -p` human mode). Nothing else.
-pub fn print_answer(answer: &str) {
+pub fn print_answer(answer: &str) -> Result<(), String> {
     let mut out = std::io::stdout().lock();
-    let _ = writeln!(out, "{answer}");
+    write_line(&mut out, answer)
+}
+
+pub fn print_whoami(identity: &CliIdentity) -> Result<(), String> {
+    let mut out = std::io::stdout().lock();
+    write_line(&mut out, &format_whoami(identity))
+}
+
+fn format_whoami(identity: &CliIdentity) -> String {
+    format!(
+        "host={} email={} workspace={} ({})",
+        terminal_text(&identity.host),
+        terminal_text(&identity.user_email),
+        terminal_text(&identity.workspace_name),
+        identity.workspace_id
+    )
+}
+
+/// Strip terminal control and Unicode bidi-control characters from server text.
+pub fn terminal_text(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| {
+            !character.is_control()
+                && !matches!(
+                    character,
+                    '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+                )
+        })
+        .collect()
 }
 
 /// Human summary for `chat status` (goes to stdout — it is the command's output).
-pub fn print_status_summary(view: &RunView) {
+pub fn print_status_summary(view: &RunView) -> Result<(), String> {
     let mut out = std::io::stdout().lock();
-    let _ = writeln!(out, "run:    {}", view.run_id);
-    let _ = writeln!(out, "status: {}", status_label(view.status));
+    write_line(&mut out, &format!("run:    {}", view.run_id))?;
+    write_line(&mut out, &format!("status: {}", status_label(view.status)))?;
     if let Some(kind) = &view.failure_kind {
-        let _ = writeln!(out, "reason: {kind}");
+        write_line(&mut out, &format!("reason: {kind}"))?;
     }
     if let Some(url) = &view.web_url
         && view.status == RunStatus::RequiredApproval
     {
-        let _ = writeln!(out, "approve: {url}");
+        write_line(&mut out, &format!("approve: {url}"))?;
     }
     if view.status == RunStatus::Succeeded
         && let Some(answer) = &view.answer
     {
-        let _ = writeln!(out, "\n{answer}");
+        write_line(&mut out, &format!("\n{answer}"))?;
     }
+    Ok(())
 }
 
 /// The `review` `--json` envelope, using the API's field names verbatim.
@@ -103,25 +153,34 @@ impl ReviewEnvelope {
 
 /// Human summary for `review status`/`review watch` (goes to stdout — it is
 /// the command's output).
-pub fn print_review_status_summary(view: &ReviewView) {
+pub fn print_review_status_summary(view: &ReviewView) -> Result<(), String> {
     let mut out = std::io::stdout().lock();
-    let _ = writeln!(out, "mr:       {} ({})", view.mr_iid, view.provider);
-    let _ = writeln!(out, "title:    {}", view.title);
-    let _ = writeln!(out, "status:   {}", review_status_label(view.status));
-    let _ = writeln!(out, "verdict:  {}", review_verdict_label(view.verdict));
-    let _ = writeln!(out, "findings: {}", view.findings_count);
+    write_line(
+        &mut out,
+        &format!("mr:       {} ({})", view.mr_iid, view.provider),
+    )?;
+    write_line(&mut out, &format!("title:    {}", view.title))?;
+    write_line(
+        &mut out,
+        &format!("status:   {}", review_status_label(view.status)),
+    )?;
+    write_line(
+        &mut out,
+        &format!("verdict:  {}", review_verdict_label(view.verdict)),
+    )?;
+    write_line(&mut out, &format!("findings: {}", view.findings_count))?;
     if let Some(url) = &view.url {
-        let _ = writeln!(out, "url:      {url}");
+        write_line(&mut out, &format!("url:      {url}"))?;
     }
+    Ok(())
 }
 
 /// Human findings list for `review findings` (stdout), worst-severity first —
 /// `view.findings` is already sorted that way (CA-RV-2).
-pub fn print_review_findings(view: &ReviewView) {
+pub fn print_review_findings(view: &ReviewView) -> Result<(), String> {
     let mut out = std::io::stdout().lock();
     if view.findings.is_empty() {
-        let _ = writeln!(out, "no findings.");
-        return;
+        return write_line(&mut out, "no findings.");
     }
     for finding in &view.findings {
         let location = match (&finding.file_path, finding.line_number) {
@@ -131,12 +190,15 @@ pub fn print_review_findings(view: &ReviewView) {
         };
         let category = finding.category.as_deref().unwrap_or("uncategorized");
         let resolved = if finding.resolved { " [resolved]" } else { "" };
-        let _ = writeln!(
-            out,
-            "[{}] {} ({}) — {}{}",
-            finding.severity, location, category, finding.issue_title, resolved
-        );
+        write_line(
+            &mut out,
+            &format!(
+                "[{}] {} ({}) — {}{}",
+                finding.severity, location, category, finding.issue_title, resolved
+            ),
+        )?;
     }
+    Ok(())
 }
 
 fn review_status_label(status: ReviewStatus) -> &'static str {
@@ -164,22 +226,23 @@ pub fn progress(message: &str) {
     eprintln!("{message}");
 }
 
-/// A colored error line to stderr; color is suppressed off-TTY and under NO_COLOR.
-pub fn eprintln_error(message: &str) {
+/// One labeled stderr line; color is suppressed off-TTY and under NO_COLOR.
+fn labeled_eprintln(label: &str, color: AnsiColors, message: &str) {
     if stderr_supports_color() {
-        eprintln!("{} {message}", "error:".red().bold());
+        eprintln!("{} {message}", label.color(color).bold());
     } else {
-        eprintln!("error: {message}");
+        eprintln!("{label} {message}");
     }
+}
+
+/// A one-line error to stderr.
+pub fn eprintln_error(message: &str) {
+    labeled_eprintln("error:", AnsiColors::Red, message);
 }
 
 /// A one-line warning to stderr.
 pub fn warn(message: &str) {
-    if stderr_supports_color() {
-        eprintln!("{} {message}", "warning:".yellow().bold());
-    } else {
-        eprintln!("warning: {message}");
-    }
+    labeled_eprintln("warning:", AnsiColors::Yellow, message);
 }
 
 fn status_label(status: RunStatus) -> &'static str {
@@ -194,4 +257,68 @@ fn status_label(status: RunStatus) -> &'static str {
 
 fn stderr_supports_color() -> bool {
     supports_color::on(supports_color::Stream::Stderr).is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A `Write` double that always fails with the configured error kind.
+    struct FailingWriter(io::ErrorKind);
+
+    impl Write for FailingWriter {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::from(self.0))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    // [ISSUE-4]: a broken pipe (the reader hung up, e.g. `| head`) is the
+    // normal Unix shutdown path for a pipeline, not a failure the CLI should
+    // report or exit non-zero for.
+    #[test]
+    fn write_line_treats_broken_pipe_as_success() {
+        let mut out = FailingWriter(io::ErrorKind::BrokenPipe);
+        assert_eq!(write_line(&mut out, "hello"), Ok(()));
+    }
+
+    // Any other write failure must surface so a script relying on the exit
+    // code can tell the output didn't make it out.
+    #[test]
+    fn write_line_surfaces_other_errors() {
+        let mut out = FailingWriter(io::ErrorKind::PermissionDenied);
+        assert!(write_line(&mut out, "hello").is_err());
+    }
+
+    // `--json` and human output must agree on broken-pipe tolerance,
+    // otherwise `chat -p --json | head` exits non-zero for a successful run.
+    #[test]
+    fn emit_json_treats_broken_pipe_as_success() {
+        let mut out = FailingWriter(io::ErrorKind::BrokenPipe);
+        assert_eq!(emit_json_to(&mut out, &"hello"), Ok(()));
+    }
+
+    #[test]
+    fn emit_json_surfaces_other_errors() {
+        let mut out = FailingWriter(io::ErrorKind::PermissionDenied);
+        assert!(emit_json_to(&mut out, &"hello").is_err());
+    }
+
+    #[test]
+    fn whoami_strips_terminal_and_bidi_controls_from_server_text() {
+        let identity = CliIdentity {
+            host: "api.example\nforged".into(),
+            user_email: "user\u{1b}]0;owned\u{7}@example.com".into(),
+            workspace_id: Uuid::from_u128(1),
+            workspace_name: "Prod\u{202e}txt".into(),
+        };
+
+        assert_eq!(
+            format_whoami(&identity),
+            "host=api.exampleforged email=user]0;owned@example.com workspace=Prodtxt (00000000-0000-0000-0000-000000000001)"
+        );
+    }
 }

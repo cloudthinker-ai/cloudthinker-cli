@@ -21,9 +21,25 @@ The installer drops the `cloudthinker` binary in `~/.local/bin` and adds it to y
 
 ```sh
 cloudthinker login          # browser PKCE login
+cloudthinker whoami         # live host, account, and active workspace
 cloudthinker chat -p "..."  # headless one-shot
 cloudthinker review <MR_URL> status
 ```
+
+When an account can access several workspaces, login asks which workspace to
+authorize. Each workspace credential remains available for the same host:
+
+```sh
+cloudthinker --workspace Production whoami
+cloudthinker --workspace 11111111-1111-4111-8111-111111111111 chat -p "..."
+cloudthinker logout                 # selected or active workspace only
+cloudthinker logout --all           # every workspace for this host
+```
+
+`CLOUDTHINKER_TOKEN` overrides stored credentials. Do not combine it with
+`--workspace`. The file fallback lives in the operating system's config
+directory under `cloudthinker/credentials.json`; the CLI uses the OS keyring
+when available.
 
 Supported targets: macOS (Apple Silicon + Intel), Linux (x86_64 + arm64), Windows
 (x86_64).

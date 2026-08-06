@@ -24,10 +24,14 @@ import sys
 ALLOWED_PATHS = frozenset(
     {
         "/api/v1/login/cli/token",
+        "/api/v1/login/cli/device/start",
+        "/api/v1/login/cli/device/token",
         "/api/v1/login/refresh",
         "/api/v1/login/logout",
+        "/api/v1/cli/whoami",
         "/api/v1/cli/runs",
         "/api/v1/cli/runs/{run_id}",
+        "/api/v1/workspaces/",
         # `review` command: coordinate -> review-detail lookup (MR-F).
         "/api/v1/code-review/merge-requests/lookup",
     }

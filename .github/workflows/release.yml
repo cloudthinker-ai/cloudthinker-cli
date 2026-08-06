@@ -14,8 +14,13 @@
 # title/body based on your changelogs.
 
 name: Release
+# Least-privilege default: read-only for the workflow so the build jobs (where
+# untrusted Cargo build scripts compile) never see a repo-write token. Only the
+# publication jobs (`plan` creates the release draft, `host` creates the
+# release) opt into `contents: write` below. NOTE: cargo-dist regenerates this
+# file — re-apply this scoping if you re-run `dist generate-ci`.
 permissions:
-  "contents": "write"
+  "contents": "read"
 
 # This task will run whenever you push a git tag that looks like a version
 # like "1.0.0", "v0.1.0-prerelease.1", "my-app/0.1.0", "releases/v1.0.0", etc.
@@ -48,6 +53,9 @@ jobs:
   # Run 'dist plan' (or host) to determine what tasks we need to do
   plan:
     runs-on: "ubuntu-22.04"
+    # Publishing: `dist host --steps=create` creates the GitHub release draft.
+    permissions:
+      contents: write
     outputs:
       val: ${{ steps.plan.outputs.manifest }}
       tag: ${{ !github.event.pull_request && github.ref_name || '' }}
@@ -109,8 +117,9 @@ jobs:
       matrix: ${{ fromJson(needs.plan.outputs.val).ci.github.artifacts_matrix }}
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.container && matrix.container.image || null }}
+    # No GH_TOKEN here: this job compiles dependencies (untrusted build.rs runs);
+    # it only uploads to workflow scratch storage, never to the GitHub release.
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       BUILD_MANIFEST_NAME: target/distrib/${{ join(matrix.targets, '-') }}-dist-manifest.json
     steps:
       - name: enable windows longpaths
@@ -171,8 +180,9 @@ jobs:
       - plan
       - build-local-artifacts
     runs-on: "ubuntu-22.04"
+    # No GH_TOKEN here: global artifacts (checksums/installers) only read local
+    # artifacts and upload to workflow scratch storage, never to the release.
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       BUILD_MANIFEST_NAME: target/distrib/global-dist-manifest.json
     steps:
       - uses: actions/checkout@v6
@@ -219,6 +229,9 @@ jobs:
       - build-global-artifacts
     # Only run if we're "publishing", and only if plan, local and global didn't fail (skipped is fine)
     if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
+    # Publication: uploads assets and creates the GitHub Release.
+    permissions:
+      contents: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     runs-on: "ubuntu-22.04"
