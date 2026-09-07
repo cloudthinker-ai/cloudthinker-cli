@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Publish the monorepo's cli/ into the standalone release repo
-# github.com/cloudthinker-ai/cloudthinker-cli.
+# Publish the monorepo's cli/ into the private source repo
+# github.com/cloudthinker-ai/cloudthinker-cli-src, whose release workflow publishes
+# the public releases to github.com/cloudthinker-ai/cloudthinker-cli.
 #
 # The GitLab monorepo is the source of truth; this pushes a one-directional
 # snapshot so cargo-dist can cross-build + release it. Never edit the GitHub repo
@@ -13,13 +14,27 @@
 # (e.g. `gh auth switch --user duc-cloudthinker`). Run: `make -C cli release-sync`.
 set -euo pipefail
 
-REPO="cloudthinker-ai/cloudthinker-cli"
+REPO="cloudthinker-ai/cloudthinker-cli-src"
 CLI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AGENT_CLI_DIR="$(cd "$CLI_DIR/../agent-cli" && pwd)"
 MONO_SHA="$(git -C "$CLI_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
 command -v gh >/dev/null || { echo "error: gh CLI required" >&2; exit 1; }
 command -v rsync >/dev/null || { echo "error: rsync required" >&2; exit 1; }
+
+dist_config="$CLI_DIR/dist-workspace.toml"
+grep -qx 'github-releases-repo = "cloudthinker-ai/cloudthinker-cli"' "$dist_config" || {
+  echo "error: $dist_config must set github-releases-repo = \"cloudthinker-ai/cloudthinker-cli\"" >&2
+  exit 1
+}
+grep -qx 'source-tarball = false' "$dist_config" || {
+  echo "error: $dist_config must set source-tarball = false" >&2
+  exit 1
+}
+grep -q 'GH_TOKEN: \${{ secrets.GH_RELEASES_TOKEN }}' "$CLI_DIR/.github/workflows/release.yml" || {
+  echo "error: release.yml must create the release with secrets.GH_RELEASES_TOKEN; rerun dist generate --mode ci" >&2
+  exit 1
+}
 
 # Preflight: the active gh account must be able to push to the release repo.
 push=$(gh api "/repos/$REPO" --jq '.permissions.push' 2>/dev/null || echo false)
@@ -59,4 +74,4 @@ git -c user.name="cloudthinker-release-bot" \
     commit -q -m "sync: cli/ from monorepo @ $MONO_SHA"
 git push -q origin HEAD
 echo ">> pushed to github.com/$REPO (source monorepo @ $MONO_SHA)"
-echo ">> next: bump crates/cloudthinker-cli/Cargo.toml version, tag vX.Y.Z, push the tag to release"
+echo ">> next: bump crates/cloudthinker-cli/Cargo.toml version, tag vX.Y.Z, push the tag to $REPO; the release lands on cloudthinker-ai/cloudthinker-cli"

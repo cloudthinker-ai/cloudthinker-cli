@@ -98,11 +98,11 @@ lives in `dist-workspace.toml`, the release pipeline in
 `.github/workflows/release.yml`. Both are generated — edit the config and rerun
 `dist generate`, never hand-edit the workflow.
 
-This workspace is the root of the standalone GitHub repo
-`cloudthinker-ai/cloudthinker-cli`, a **publish mirror** of the `cli/` tree in the
+This workspace is the root of the private GitHub repo
+`cloudthinker-ai/cloudthinker-cli-src`, a **publish mirror** of the `cli/` tree in the
 GitLab monorepo (the source of truth). Never edit here directly — changes land in the
 monorepo and are pushed with `make -C cli release-sync`. A release is a pushed semver
-tag:
+tag on the source repo:
 
 ```sh
 # bump `version` in crates/cloudthinker-cli/Cargo.toml, commit, then:
@@ -110,8 +110,12 @@ git tag v0.1.0 && git push origin v0.1.0
 ```
 
 The tag triggers `release.yml`, which cross-builds every target and publishes a
-GitHub Release carrying the platform archives plus `cloudthinker-cli-installer.sh`
-and `cloudthinker-cli-installer.ps1`.
+GitHub Release on the public repo `cloudthinker-ai/cloudthinker-cli` carrying the
+platform archives plus `cloudthinker-cli-installer.sh` and
+`cloudthinker-cli-installer.ps1` (`github-releases-repo` in `dist-workspace.toml`;
+the source repo holds the `GH_RELEASES_TOKEN` secret that writes there). The public
+repo carries releases only, so the source stays private while every download URL
+stays public.
 
 ### Vanity install URL
 
