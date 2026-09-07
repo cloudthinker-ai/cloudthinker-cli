@@ -19,3 +19,19 @@ targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-da
 # Install to a Rust-independent location (customers may not have cargo); the
 # installer appends it to PATH.
 install-path = "~/.local/bin"
+
+# The @cloudthinker/agent tarballs ride this release. The build script path resolves
+# against the release mirror, whose root is this monorepo's cli/ directory, so
+# agent-cli/ sits beside crates/ there and nowhere in the monorepo.
+[[dist.extra-artifacts]]
+build = ["bash", "agent-cli/scripts/release-artifacts.sh"]
+artifacts = [
+    "agent-cli/packages/agent/dist/cloudthinker-agent-aarch64-apple-darwin.tar.gz",
+    "agent-cli/packages/agent/dist/cloudthinker-agent-aarch64-apple-darwin.tar.gz.sha256",
+    "agent-cli/packages/agent/dist/cloudthinker-agent-x86_64-apple-darwin.tar.gz",
+    "agent-cli/packages/agent/dist/cloudthinker-agent-x86_64-apple-darwin.tar.gz.sha256",
+    "agent-cli/packages/agent/dist/cloudthinker-agent-aarch64-unknown-linux-gnu.tar.gz",
+    "agent-cli/packages/agent/dist/cloudthinker-agent-aarch64-unknown-linux-gnu.tar.gz.sha256",
+    "agent-cli/packages/agent/dist/cloudthinker-agent-x86_64-unknown-linux-gnu.tar.gz",
+    "agent-cli/packages/agent/dist/cloudthinker-agent-x86_64-unknown-linux-gnu.tar.gz.sha256",
+]

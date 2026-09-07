@@ -19,10 +19,11 @@ use supports_color as _;
 use tokio as _;
 use uuid as _;
 
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -122,6 +123,92 @@ impl Drop for MockApi {
     }
 }
 
+struct RecordingApi {
+    base_url: String,
+    requests: Arc<Mutex<Vec<String>>>,
+    stop: Arc<AtomicBool>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl RecordingApi {
+    fn start(responses: Vec<(&str, String)>) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_thread = stop.clone();
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let requests_thread = requests.clone();
+        let mut responses: VecDeque<(String, String)> = responses
+            .into_iter()
+            .map(|(status, body)| (status.to_string(), body))
+            .collect();
+
+        let handle = std::thread::spawn(move || {
+            while !stop_thread.load(Ordering::SeqCst) {
+                match listener.accept() {
+                    Ok((mut socket, _)) => {
+                        socket.set_nonblocking(false).ok();
+                        socket
+                            .set_read_timeout(Some(Duration::from_millis(100)))
+                            .ok();
+                        let mut data = Vec::new();
+                        let mut buf = [0u8; 4096];
+                        loop {
+                            match socket.read(&mut buf) {
+                                Ok(0) => break,
+                                Ok(n) => data.extend_from_slice(&buf[..n]),
+                                Err(_) => break,
+                            }
+                        }
+                        let request = String::from_utf8_lossy(&data).into_owned();
+                        requests_thread.lock().unwrap().push(request);
+                        let (status, body) = responses
+                            .pop_front()
+                            .unwrap_or_else(|| ("500 Internal Server Error".into(), "{}".into()));
+                        let response = format!(
+                            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                        let _ = socket.write_all(response.as_bytes());
+                        let _ = socket.flush();
+                    }
+                    Err(ref error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
+        Self {
+            base_url: format!("http://{addr}"),
+            requests,
+            stop,
+            handle: Some(handle),
+        }
+    }
+
+    fn requests(&self) -> Vec<String> {
+        self.requests.lock().unwrap().clone()
+    }
+}
+
+impl Drop for RecordingApi {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+fn submitted_body() -> String {
+    format!(
+        r#"{{"run_id":"{RUN_ID}","conversation_id":"{CONV_ID}","status":"pending","web_url":"https://app.example.com/c/{CONV_ID}"}}"#
+    )
+}
+
 fn status_body(status: &str, answer: &str, failure_kind: &str) -> String {
     let answer_json = if answer.is_empty() {
         "null".to_string()
@@ -142,15 +229,17 @@ fn cli(base_url: &str) -> Command {
     let mut cmd = Command::cargo_bin("cloudthinker").unwrap();
     cmd.env("CLOUDTHINKER_TOKEN", "test-access-token")
         .env("CLOUDTHINKER_URL", base_url)
-        .env_remove("NO_COLOR");
+        .env_remove("NO_COLOR")
+        .env_remove("CLOUDTHINKER_WORKSPACE")
+        .env_remove("CLOUDTHINKER_AGENT_BIN");
     cmd
 }
 
+const WHOAMI_BODY: &str = r#"{"user_email":"duc@example.com","workspace_id":"11111111-1111-4111-8111-111111111111","workspace_name":"Production","organization_id":null}"#;
+
 #[test]
 fn whoami_prints_one_live_identity_line() {
-    let api = MockApi::start(
-        r#"{"user_email":"duc@example.com","workspace_id":"11111111-1111-4111-8111-111111111111","workspace_name":"Production","organization_id":null}"#.into(),
-    );
+    let api = MockApi::start(WHOAMI_BODY.into());
 
     cli(&api.base_url)
         .arg("whoami")
@@ -188,6 +277,22 @@ fn whoami_with_revoked_credential_is_auth_error_without_stdout() {
         .code(3)
         .stdout("")
         .stderr(predicates::str::contains("not authenticated"));
+}
+
+// `auth token` is consumed as `apiKey: "!cloudthinker auth token"`, so stdout
+// carries the token and one newline and nothing else, and stderr stays empty.
+// A closed port proves a live credential needs no request to print.
+#[test]
+fn auth_token_prints_only_the_token_on_stdout() {
+    let mut cmd = Command::cargo_bin("cloudthinker").unwrap();
+    cmd.env("CLOUDTHINKER_TOKEN", "test-access-token")
+        .env("CLOUDTHINKER_URL", "http://127.0.0.1:1")
+        .env_remove("NO_COLOR")
+        .args(["auth", "token"])
+        .assert()
+        .success()
+        .stdout("test-access-token\n")
+        .stderr("");
 }
 
 const MR_URL: &str = "https://gitlab.example.com/group/my-repo/-/merge_requests/42";
@@ -294,7 +399,10 @@ fn ca_cli_10_stdout_is_answer_only() {
         .assert()
         .success()
         .stdout("the final answer\n")
-        .stderr(predicates::str::contains("Submitted"));
+        .stderr(predicates::str::contains("Submitted"))
+        .stderr(predicates::str::contains(format!(
+            "continue_with={CONV_ID} web_url=https://app.example.com/c/{CONV_ID}"
+        )));
 }
 
 // CA-CLI-10 (--json envelope): the JSON envelope carries the API field names.
@@ -327,7 +435,10 @@ fn ca_cli_11_failed_run_exits_1() {
         .args(["chat", "-p", "hello"])
         .assert()
         .code(1)
-        .stderr(predicates::str::contains("provider_error"));
+        .stderr(predicates::str::contains("provider_error"))
+        .stderr(predicates::str::contains(format!(
+            "continue_with={CONV_ID} web_url=https://app.example.com/c/{CONV_ID}"
+        )));
 }
 
 // CA-CLI-12: REQUIRED_APPROVAL exits 5 with the approval URL on stderr.
@@ -338,7 +449,10 @@ fn ca_cli_12_required_approval_exits_5() {
         .args(["chat", "-p", "hello"])
         .assert()
         .code(5)
-        .stderr(predicates::str::contains("Approve"));
+        .stderr(predicates::str::contains("Approve"))
+        .stderr(predicates::str::contains(format!(
+            "continue_with={CONV_ID} web_url=https://app.example.com/c/{CONV_ID}"
+        )));
 }
 
 // CA-CLI-16: `chat status` of a terminal run renders it and exits 0.
@@ -361,6 +475,162 @@ fn chat_without_prompt_is_usage_error() {
         .arg("chat")
         .assert()
         .code(2);
+}
+
+#[test]
+fn ca_cont_12_continue_requires_a_value() {
+    let mut cmd = Command::cargo_bin("cloudthinker").unwrap();
+    cmd.env("CLOUDTHINKER_TOKEN", "test-access-token")
+        .args(["chat", "-p", "hello", "--continue"])
+        .assert()
+        .code(2);
+}
+
+#[test]
+fn continue_run_id_resolves_then_submits_same_conversation() {
+    let api = RecordingApi::start(vec![
+        ("200 OK", status_body("succeeded", "old answer", "")),
+        ("202 Accepted", submitted_body()),
+    ]);
+    cli(&api.base_url)
+        .args([
+            "chat",
+            "-p",
+            "follow up",
+            "--continue",
+            RUN_ID,
+            "--no-wait",
+            "--json",
+        ])
+        .assert()
+        .success();
+
+    let requests = api.requests();
+    assert_eq!(requests.len(), 2);
+    assert!(requests[0].starts_with(&format!("GET /api/v1/cli/runs/{RUN_ID} ")));
+    assert!(requests[1].starts_with("POST /api/v1/cli/runs "));
+    assert!(requests[1].contains(&format!(r#""conversation_id":"{CONV_ID}""#)));
+}
+
+#[test]
+fn continue_conversation_id_falls_through_404_then_submits_it() {
+    let api = RecordingApi::start(vec![
+        (
+            "404 Not Found",
+            serde_json::json!({"detail": "Run not found"}).to_string(),
+        ),
+        ("202 Accepted", submitted_body()),
+    ]);
+    cli(&api.base_url)
+        .args([
+            "chat",
+            "-p",
+            "follow up",
+            "--continue",
+            CONV_ID,
+            "--no-wait",
+        ])
+        .assert()
+        .success();
+
+    let requests = api.requests();
+    assert_eq!(requests.len(), 2);
+    assert!(requests[0].starts_with(&format!("GET /api/v1/cli/runs/{CONV_ID} ")));
+    assert!(requests[1].contains(&format!(r#""conversation_id":"{CONV_ID}""#)));
+}
+
+#[test]
+fn continue_unknown_id_reports_conversation_or_run_not_found() {
+    let api = RecordingApi::start(vec![
+        (
+            "404 Not Found",
+            serde_json::json!({"detail": "Run not found"}).to_string(),
+        ),
+        (
+            "404 Not Found",
+            serde_json::json!({"detail": "Conversation not found"}).to_string(),
+        ),
+    ]);
+    cli(&api.base_url)
+        .args(["chat", "-p", "follow up", "--continue", RUN_ID, "--no-wait"])
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(predicates::str::contains("conversation or run not found"));
+    assert_eq!(api.requests().len(), 2);
+}
+
+#[test]
+fn ca_cont_8_no_wait_prints_submitted_envelope_without_polling() {
+    let api = RecordingApi::start(vec![("202 Accepted", submitted_body())]);
+    let output = cli(&api.base_url)
+        .args(["chat", "-p", "fan out", "--no-wait", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(value["run_id"], RUN_ID);
+    assert_eq!(value["conversation_id"], CONV_ID);
+    assert_eq!(value["status"], "pending");
+    assert_eq!(api.requests().len(), 1);
+}
+
+#[test]
+fn ca_cont_9_status_wait_polls_until_terminal() {
+    let api = RecordingApi::start(vec![
+        ("200 OK", status_body("pending", "", "")),
+        ("200 OK", status_body("succeeded", "collected answer", "")),
+    ]);
+    cli(&api.base_url)
+        .args(["chat", "status", RUN_ID, "--wait"])
+        .assert()
+        .success()
+        .stdout("collected answer\n");
+    assert_eq!(api.requests().len(), 2);
+}
+
+fn list_body() -> String {
+    format!(
+        r#"[{{"run_id":"{RUN_ID}","conversation_id":"{CONV_ID}","status":"succeeded","prompt_preview":"audit production","created_at":"2026-08-06T10:00:00Z","web_url":"https://app.example.com/c/{CONV_ID}"}}]"#
+    )
+}
+
+#[test]
+fn chat_ls_renders_table_and_filter_query() {
+    let api = RecordingApi::start(vec![("200 OK", list_body())]);
+    cli(&api.base_url)
+        .args(["chat", "ls", "--conversation", CONV_ID, "--limit", "1"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("audit production"))
+        .stdout(predicates::str::contains(RUN_ID));
+    let requests = api.requests();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].contains(&format!("conversation_id={CONV_ID}")));
+    assert!(requests[0].contains("limit=1"));
+}
+
+#[test]
+fn chat_ls_json_and_empty_list_exit_zero() {
+    let populated = MockApi::start(list_body());
+    let output = cli(&populated.base_url)
+        .args(["chat", "ls", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(value[0]["prompt_preview"], "audit production");
+
+    let empty = MockApi::start("[]".into());
+    cli(&empty.base_url)
+        .args(["chat", "ls"])
+        .assert()
+        .success()
+        .stdout("");
 }
 
 // ---------------------------------------------------------------------------
@@ -693,4 +963,99 @@ fn ca_up_8_env_overrides_warn_on_stderr() {
             "CLOUDTHINKER_CLI_INSTALLER_GHE_BASE_URL",
         ));
     let _ = std::fs::remove_file(&marker);
+}
+
+/// A stand-in for the released agent binary: it prints the argv it was execed
+/// with, the `CLOUDTHINKER_URL` it received, and whether the workspace
+/// variable is present.
+#[cfg(unix)]
+fn write_agent_stub(name: &str) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("ct-agent-stub-{}-{name}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = dir.join("cloudthinker-agent");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\n\
+         echo \"argv: $*\"\n\
+         echo \"url: $CLOUDTHINKER_URL\"\n\
+         if [ -n \"$CLOUDTHINKER_WORKSPACE\" ]; then echo 'workspace: present'; else echo 'workspace: absent'; fi\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    script
+}
+
+#[test]
+fn agent_with_revoked_credential_is_auth_error_without_stdout() {
+    let api = MockApi::start_with_status(
+        "401 Unauthorized",
+        r#"{"error":{"code":"unauthorized","message":"expired","retryable":false},"detail":"expired"}"#.into(),
+    );
+
+    cli(&api.base_url)
+        .arg("agent")
+        .assert()
+        .code(3)
+        .stdout("")
+        .stderr(predicates::str::contains("not authenticated"))
+        .stderr(predicates::str::contains(
+            "The credential in CLOUDTHINKER_TOKEN is rejected. Replace it, or unset it and run `cloudthinker login`.",
+        ));
+}
+
+#[cfg(unix)]
+#[test]
+fn agent_execs_the_override_binary_with_the_argument_and_env_contract() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+    let stub = write_agent_stub("exec");
+
+    cli(&api.base_url)
+        .env("CLOUDTHINKER_AGENT_BIN", &stub)
+        .args(["agent", "-p", "hello", "--model", "cloudthinker/pro"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "argv: -p hello --model cloudthinker/pro",
+        ))
+        .stdout(predicates::str::contains(format!(
+            "url: {}\n",
+            api.base_url
+        )))
+        .stdout(predicates::str::contains("workspace: absent"))
+        .stderr(predicates::str::contains("CLOUDTHINKER_AGENT_BIN"));
+
+    let _ = std::fs::remove_dir_all(stub.parent().unwrap());
+}
+
+#[cfg(unix)]
+#[test]
+fn agent_reports_a_missing_override_binary_without_stdout() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+
+    cli(&api.base_url)
+        .env("CLOUDTHINKER_AGENT_BIN", "/nonexistent/cloudthinker-agent")
+        .arg("agent")
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(predicates::str::contains(
+            "could not run /nonexistent/cloudthinker-agent",
+        ));
+}
+
+#[test]
+fn workspace_from_the_environment_still_conflicts_with_the_token_variable() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+
+    cli(&api.base_url)
+        .env("CLOUDTHINKER_WORKSPACE", "Production")
+        .arg("whoami")
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicates::str::contains(
+            "--workspace cannot be used with CLOUDTHINKER_TOKEN",
+        ));
 }

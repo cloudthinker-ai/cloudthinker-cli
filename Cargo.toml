@@ -33,6 +33,8 @@ base64 = "0.22"
 sha2 = "0.10"
 rand = "0.8"
 url = "2"
+flate2 = "1"
+tar = { version = "0.4", default-features = false }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 
 # Copied verbatim from tools/ct-cli/Cargo.toml: hand-written crates opt in with

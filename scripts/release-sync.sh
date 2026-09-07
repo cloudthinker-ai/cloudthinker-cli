@@ -15,6 +15,7 @@ set -euo pipefail
 
 REPO="cloudthinker-ai/cloudthinker-cli"
 CLI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+AGENT_CLI_DIR="$(cd "$CLI_DIR/../agent-cli" && pwd)"
 MONO_SHA="$(git -C "$CLI_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 
 command -v gh >/dev/null || { echo "error: gh CLI required" >&2; exit 1; }
@@ -38,6 +39,11 @@ echo ">> mirror cli/ -> clone (drop build dirs, protect the clone's .git)"
 rsync -a --delete \
   --exclude='.git/' --exclude='target/' --exclude='.gen/' --exclude='.DS_Store' \
   "$CLI_DIR"/ "$work/repo"/
+
+echo ">> mirror agent-cli/ -> clone/agent-cli (drop node_modules and build dirs)"
+rsync -a --delete \
+  --exclude='node_modules/' --exclude='dist/' --exclude='.gen/' --exclude='.DS_Store' \
+  "$AGENT_CLI_DIR"/ "$work/repo/agent-cli"/
 
 cd "$work/repo"
 git add -A

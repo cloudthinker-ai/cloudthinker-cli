@@ -825,6 +825,50 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HeadlessRunListItem": {
+        "description": "One recent CLI run; deliberately omits answer and internal failure data.",
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "prompt_preview": {
+            "nullable": true,
+            "title": "Prompt Preview",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentRunStatus"
+          },
+          "web_url": {
+            "nullable": true,
+            "title": "Web Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "conversation_id",
+          "status",
+          "prompt_preview",
+          "created_at",
+          "web_url"
+        ],
+        "title": "HeadlessRunListItem",
+        "type": "object"
+      },
       "HeadlessRunStatus": {
         "description": "200 response for polling a headless run.\n\n`answer` carries the extracted final assistant text only once the run has\nSUCCEEDED; every other status leaves it null (the CLI keeps polling / reads\n`web_url` for REQUIRED_APPROVAL).",
         "properties": {
@@ -1020,6 +1064,13 @@
       "SubmitHeadlessRunRequest": {
         "description": "Body for `POST /cli/runs`.\n\n`agent_mode` is intentionally NOT exposed in V1 \u2014 the server picks the tier\n(Starter is coerced to Light at submit; every other plan runs the default).",
         "properties": {
+          "conversation_id": {
+            "description": "Optional. Continue this existing conversation (a run is attached to it) instead of creating a new one. Must belong to the authenticated workspace and be a chat-type conversation (HEADLESS or CHAT).",
+            "format": "uuid",
+            "nullable": true,
+            "title": "Conversation Id",
+            "type": "string"
+          },
           "idempotency_key": {
             "description": "Optional caller-supplied key (workspace-scoped). A retried submit with the same key returns the original run instead of creating a duplicate. Omit for at-least-once submit.",
             "maxLength": 255,
@@ -1529,6 +1580,63 @@
   "openapi": "3.0.3",
   "paths": {
     "/api/v1/cli/runs": {
+      "get": {
+        "operationId": "cli-list_headless_runs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "nullable": true,
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HeadlessRunListItem"
+                  },
+                  "title": "Response Cli-List Headless Runs",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Headless Runs",
+        "tags": [
+          "cli"
+        ]
+      },
       "post": {
         "operationId": "cli-submit_headless_run",
         "parameters": [

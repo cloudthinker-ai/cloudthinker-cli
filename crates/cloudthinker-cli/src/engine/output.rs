@@ -8,7 +8,7 @@ use std::io::{self, Write};
 
 use cloudthinker_client::{
     CliIdentity, ReviewFinding, ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView,
-    RunStatus, RunView,
+    RunListItem, RunStatus, RunView, SubmittedRun,
 };
 use owo_colors::{AnsiColors, OwoColorize};
 use serde::Serialize;
@@ -49,6 +49,26 @@ impl ChatEnvelope {
     }
 }
 
+/// The immediate `chat -p --no-wait --json` response.
+#[derive(Debug, Serialize)]
+pub struct ChatSubmittedEnvelope {
+    pub run_id: Uuid,
+    pub conversation_id: Uuid,
+    pub status: RunStatus,
+    pub web_url: String,
+}
+
+impl From<&SubmittedRun> for ChatSubmittedEnvelope {
+    fn from(run: &SubmittedRun) -> Self {
+        Self {
+            run_id: run.run_id,
+            conversation_id: run.conversation_id,
+            status: run.status,
+            web_url: run.web_url.clone(),
+        }
+    }
+}
+
 /// The single JSON output path (no per-command `--json` branches beyond this).
 /// Shares `write_line`'s broken-pipe tolerance with human-mode output, so
 /// `cloudthinker ... --json | head` exits 0 the same way human mode does.
@@ -67,6 +87,75 @@ fn emit_json_to<T: Serialize>(out: &mut impl Write, value: &T) -> Result<(), Str
 pub fn print_answer(answer: &str) -> Result<(), String> {
     let mut out = std::io::stdout().lock();
     write_line(&mut out, answer)
+}
+
+/// Write the raw access token to stdout, verbatim and alone. It is a secret a
+/// caller pipes into a bearer header, so it is never labeled, colored, or
+/// sanitized, and it never reaches stderr or a log.
+pub fn print_access_token(token: &str) -> Result<(), String> {
+    let mut out = std::io::stdout().lock();
+    write_line(&mut out, token)
+}
+
+/// Write the identifiers needed to observe an asynchronously submitted run.
+pub fn print_submitted(run: &SubmittedRun) -> Result<(), String> {
+    let mut out = std::io::stdout().lock();
+    write_line(
+        &mut out,
+        &format!(
+            "run_id={} conversation_id={} status={} web_url={}",
+            run.run_id,
+            run.conversation_id,
+            status_label(run.status),
+            terminal_text(&run.web_url)
+        ),
+    )
+}
+
+/// Human table for `chat ls`. An empty result produces empty stdout.
+pub fn print_run_list(runs: &[RunListItem]) -> Result<(), String> {
+    if runs.is_empty() {
+        return Ok(());
+    }
+
+    let mut out = std::io::stdout().lock();
+    write_line(
+        &mut out,
+        "RUN ID\tCONVERSATION ID\tSTATUS\tPROMPT\tCREATED AT\tWEB URL",
+    )?;
+    for run in runs {
+        let conversation_id = run
+            .conversation_id
+            .map_or_else(|| "-".to_string(), |id| id.to_string());
+        let preview = run
+            .prompt_preview
+            .as_deref()
+            .map_or_else(|| "-".to_string(), terminal_text);
+        let web_url = run
+            .web_url
+            .as_deref()
+            .map_or_else(|| "-".to_string(), terminal_text);
+        write_line(
+            &mut out,
+            &format!(
+                "{}\t{}\t{}\t{}\t{}\t{}",
+                run.run_id,
+                conversation_id,
+                status_label(run.status),
+                preview,
+                run.created_at.to_rfc3339(),
+                web_url
+            ),
+        )?;
+    }
+    Ok(())
+}
+
+/// Stable machine-readable continuation hint for every terminal run.
+pub fn continuation_hint(conversation_id: Option<Uuid>, web_url: Option<&str>) {
+    let conversation_id = conversation_id.map_or_else(|| "-".to_string(), |id| id.to_string());
+    let web_url = web_url.map_or_else(|| "-".to_string(), terminal_text);
+    eprintln!("continue_with={conversation_id} web_url={web_url}",);
 }
 
 pub fn print_whoami(identity: &CliIdentity) -> Result<(), String> {

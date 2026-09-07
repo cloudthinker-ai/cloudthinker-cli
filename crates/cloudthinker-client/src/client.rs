@@ -4,9 +4,11 @@
 //! and owns the 401-retry / proactive-refresh dance so commands never touch
 //! reqwest, serde, or refresh logic directly.
 
+use std::num::NonZeroU64;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -95,6 +97,30 @@ impl SubmittedRun {
             run_id: api.run_id,
             conversation_id: api.conversation_id,
             status: api.status.into(),
+            web_url: api.web_url,
+        }
+    }
+}
+
+/// One recent headless run returned by `GET /cli/runs`.
+#[derive(Debug, Clone, Serialize)]
+pub struct RunListItem {
+    pub run_id: Uuid,
+    pub conversation_id: Option<Uuid>,
+    pub status: RunStatus,
+    pub prompt_preview: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub web_url: Option<String>,
+}
+
+impl From<cloudthinker_api::types::HeadlessRunListItem> for RunListItem {
+    fn from(api: cloudthinker_api::types::HeadlessRunListItem) -> Self {
+        Self {
+            run_id: api.run_id,
+            conversation_id: api.conversation_id,
+            status: api.status.into(),
+            prompt_preview: api.prompt_preview,
+            created_at: api.created_at,
             web_url: api.web_url,
         }
     }
@@ -321,11 +347,16 @@ impl CtClient {
     // -- authenticated calls -------------------------------------------------
 
     /// Submit a headless run for `prompt`. Returns 202 identifiers.
-    pub async fn submit_run(&self, prompt: &str) -> CtResult<SubmittedRun> {
+    pub async fn submit_run(
+        &self,
+        prompt: &str,
+        conversation_id: Option<Uuid>,
+    ) -> CtResult<SubmittedRun> {
         let prompt_field = prompt
             .parse::<cloudthinker_api::types::Prompt>()
             .map_err(|_| CtError::Usage("prompt must be 1–50000 characters".into()))?;
         let body = cloudthinker_api::types::SubmitHeadlessRunRequest {
+            conversation_id,
             // V1 submits are at-least-once: the CLI does not retry a submit, so
             // there is no key to replay against.
             idempotency_key: None,
@@ -337,6 +368,35 @@ impl CtClient {
             })
             .await?;
         Ok(SubmittedRun::from_api(submitted))
+    }
+
+    /// Resolve a `--continue` UUID. A known run maps to its conversation; a
+    /// 404 means the caller supplied a conversation UUID directly.
+    pub async fn resolve_conversation_id(&self, id: Uuid) -> CtResult<Uuid> {
+        match self.get_run(id).await {
+            Ok(run) => run
+                .conversation_id
+                .ok_or_else(|| CtError::Protocol(format!("run {id} has no conversation id"))),
+            Err(CtError::Api { status: 404, .. }) => Ok(id),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// List recent headless runs for the selected workspace.
+    pub async fn list_runs(
+        &self,
+        limit: u64,
+        conversation_id: Option<Uuid>,
+    ) -> CtResult<Vec<RunListItem>> {
+        let limit = NonZeroU64::new(limit)
+            .ok_or_else(|| CtError::Usage("--limit must be between 1 and 50".into()))?;
+        let runs = self
+            .authed(async |c: cloudthinker_api::Client| {
+                c.cli_list_headless_runs(conversation_id.as_ref(), Some(limit), None)
+                    .await
+            })
+            .await?;
+        Ok(runs.into_iter().map(RunListItem::from).collect())
     }
 
     /// Poll one run's current status.
@@ -534,6 +594,24 @@ impl CtClient {
         Ok(())
     }
 
+    /// The current access token, refreshed proactively when it is within the
+    /// skew window of expiry. A secret: callers hand it to a bearer header or
+    /// to `cloudthinker auth token`'s stdout, never to a log.
+    pub async fn access_token(&self) -> CtResult<String> {
+        let current = self
+            .store
+            .load()?
+            .ok_or_else(|| CtError::Auth("not logged in; run `cloudthinker login`".into()))?;
+        if self.store.refresh_enabled()
+            && current.expires_within(RefreshCoordinator::proactive_skew())
+        {
+            let rotated = self.refresh.refresh(&current.access_token).await?;
+            Ok(rotated.access_token)
+        } else {
+            Ok(current.access_token)
+        }
+    }
+
     async fn revoke(&self, refresh_token: Option<String>) -> bool {
         let Some(refresh_token) = refresh_token else {
             return true;
@@ -550,7 +628,7 @@ impl CtClient {
     // -- internals -----------------------------------------------------------
 
     /// Run `call` with a fresh bearer, retrying exactly once through a refresh
-    /// on a 401. Proactive refresh happens in `ensure_fresh` before the first
+    /// on a 401. Proactive refresh happens in `access_token` before the first
     /// attempt.
     async fn authed<T, F>(&self, call: F) -> CtResult<T>
     where
@@ -559,7 +637,7 @@ impl CtClient {
         )
             -> Result<cloudthinker_api::ResponseValue<T>, cloudthinker_api::Error<()>>,
     {
-        let access = self.ensure_fresh().await?;
+        let access = self.access_token().await?;
         let client = self.api_client(&access)?;
         match call(client).await {
             Ok(rv) => Ok(rv.into_inner()),
@@ -576,23 +654,6 @@ impl CtClient {
                     Err(reclassify(to_ct_error(err).await))
                 }
             }
-        }
-    }
-
-    /// Load the current access token, refreshing proactively when it is within
-    /// the skew window of expiry.
-    async fn ensure_fresh(&self) -> CtResult<String> {
-        let current = self
-            .store
-            .load()?
-            .ok_or_else(|| CtError::Auth("not logged in; run `cloudthinker login`".into()))?;
-        if self.store.refresh_enabled()
-            && current.expires_within(RefreshCoordinator::proactive_skew())
-        {
-            let rotated = self.refresh.refresh(&current.access_token).await?;
-            Ok(rotated.access_token)
-        } else {
-            Ok(current.access_token)
         }
     }
 
@@ -737,6 +798,7 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
 
     use super::*;
+    use crate::auth::refresh::PROACTIVE_REFRESH_SKEW_SECS;
     use crate::auth::store::SaveLocation;
     use crate::test_support::{MockTokenStore, stored, token_json};
     use wiremock::matchers::{method, path, query_param};
@@ -1073,7 +1135,10 @@ mod tests {
             Arc::new(MockTokenStore::new(Some(stored("access", "r")))),
         )
         .unwrap();
-        let err = client.submit_run("here is my aws key").await.unwrap_err();
+        let err = client
+            .submit_run("here is my aws key", None)
+            .await
+            .unwrap_err();
         match err {
             CtError::Api { status, detail } => {
                 assert_eq!(status, 422);
@@ -1101,7 +1166,10 @@ mod tests {
             Arc::new(MockTokenStore::new(Some(stored("access", "r")))),
         )
         .unwrap();
-        let err = client.submit_run("here is my prompt").await.unwrap_err();
+        let err = client
+            .submit_run("here is my prompt", None)
+            .await
+            .unwrap_err();
         assert!(matches!(err, CtError::Protocol(_)), "got {err:?}");
     }
 
@@ -1113,8 +1181,68 @@ mod tests {
             Arc::new(MockTokenStore::new(Some(stored("access", "r")))),
         )
         .unwrap();
-        let err = client.submit_run("").await.unwrap_err();
+        let err = client.submit_run("", None).await.unwrap_err();
         assert!(matches!(err, CtError::Usage(_)), "got {err:?}");
+    }
+
+    fn expiring_in(seconds: i64) -> StoredToken {
+        let mut token = stored("live-access", "r");
+        token.expires_at = Some(Utc::now() + chrono::Duration::seconds(seconds));
+        token
+    }
+
+    // `cloudthinker auth token` hands this value to another process, so an
+    // access token outside the skew window is returned untouched.
+    #[tokio::test]
+    async fn access_token_returns_the_stored_token_when_fresh() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/login/refresh"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(token_json("rotated", "r2")))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let store = Arc::new(MockTokenStore::new(Some(expiring_in(
+            PROACTIVE_REFRESH_SKEW_SECS + 300,
+        ))));
+
+        let client = CtClient::new(server.uri(), store).unwrap();
+
+        assert_eq!(client.access_token().await.unwrap(), "live-access");
+    }
+
+    // Inside the skew window the caller must receive the rotated token, not one
+    // that expires between this print and the consumer's first request.
+    #[tokio::test]
+    async fn access_token_returns_the_rotated_token_inside_the_skew_window() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/login/refresh"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(token_json("rotated-access", "rotated-refresh")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let store = Arc::new(MockTokenStore::new(Some(expiring_in(
+            PROACTIVE_REFRESH_SKEW_SECS - 30,
+        ))));
+
+        let client = CtClient::new(server.uri(), store).unwrap();
+
+        assert_eq!(client.access_token().await.unwrap(), "rotated-access");
+    }
+
+    // No credential is an auth error, which `auth token` reports as exit code 3.
+    #[tokio::test]
+    async fn access_token_without_a_credential_is_an_auth_error() {
+        let server = MockServer::start().await;
+
+        let client = CtClient::new(server.uri(), Arc::new(MockTokenStore::new(None))).unwrap();
+
+        let err = client.access_token().await.unwrap_err();
+        assert!(matches!(err, CtError::Auth(_)), "got {err:?}");
     }
 
     // CA-CLI-18: with a read-only (env) credential, a 401 does NOT trigger a

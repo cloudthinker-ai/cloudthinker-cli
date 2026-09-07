@@ -1,0 +1,49 @@
+# Agent CLI
+
+A pnpm workspace of two packages. `@cloudthinker/pi` in `packages/pi/` carries the CloudThinker provider, the cloud tools, the session mirror, and the workspace skills. `@cloudthinker/agent` in `packages/agent/` hosts pi's `main` with that package baked in and compiles one binary per platform. Concept: wiki `cli/agent-cli`.
+
+## Boundaries
+
+### ALWAYS
+
+- Reach the backend through `src/client.ts`. It owns the bearer, the `/api/v1` join, per-call timeouts, and the `error.message` / `detail` unwrap; a second `fetch` re-invents all four.
+- Keep the bearer out of this package's own memory where pi can hold it instead: the provider registers `$CLOUDTHINKER_TOKEN` or `!cloudthinker auth token` and pi re-resolves it per request; `--workspace` rides on that shell line only when the id is a UUID. Never put a token in a log line, a status string, an error message, a test fixture, or a session entry.
+- Run every cloud call the turn does not need detached, with its own error handling. `session_start` awaits only the session link, the identity, and the Connection context (`GET /agent-cli/connections`: chat's `<connections_context>` xml plus the prefix allowlist), because the system-prompt append names them. `before_agent_start` re-fetches that context every turn and keeps the last value when the fetch fails. `buildPromptBlock` escapes every block tag (`cloudthinker`, `memory_index`, `user_notes`, `connections_context`) inside the text it splices, keeping only the server's own outer `<connections_context>` wrapper, so a poisoned note cannot close a block.
+- Send `X-CloudThinker-Conversation` from `before_provider_headers`, not from the static provider `headers`: the conversation does not exist when the provider is registered, and the header must not ride along to another provider.
+- Map a pi entry as `{entry_id: entry.id, parent_id: entry.parentId ?? null, entry_type: entry.type, payload: entry}` and send it oldest first in batches of at most 200. The server keys idempotency on `entry_id`.
+- Unpack a workspace skill under `<agentDir>/cloudthinker/skills/<workspace_id>/`: the workspace id must be a UUID, the skill name a plain identifier (`skillTarget`), and every zip entry must resolve inside that skill's own directory; a name that fails is skipped through the per-skill error callback, never the whole refresh.
+- Keep the pi attribution in the header, `/cloudthinker about`, and the tarball `NOTICE`; the product is a fork of MIT-licensed pi and the notice is the license condition. pi ships no LICENSE file, so `build.sh` writes the MIT text itself and takes the version, repository, and author from pi's own `package.json`.
+- Read pi's version and repository at runtime from the sidecar `package.json`'s `piVersion` and `piRepository`, which `build.sh` writes. A bun binary resolves `getPackageDir()` to its own directory, so pi's manifest is not there to read.
+- Write erasable TypeScript. `node --test` strips types natively, so a parameter property or an enum breaks the test run even though `tsc` is happy.
+- Keep the compiled artifact contract exactly as `packages/agent/scripts/build.sh` writes it: `cloudthinker-agent-<rust triple>.tar.gz`, a `.sha256` sidecar in `sha256sum` line format, a `cloudthinker-agent/` top-level directory, and the sidecar `package.json` whose `piConfig` names the product. The Rust wrapper downloads by those names.
+- Ship pi's sidecar assets beside the binary. A bun binary resolves themes and templates from `dirname(process.execPath)`, so a compile alone dies in `initTheme`.
+- Decide a waiting `ct_cloud_write` in the terminal first: `askInTerminal` draws the card above the editor and offers approve, approve-and-trust, decline, or the browser (escape declines). A 403 on a trust decision applied nothing, so `decideInTerminal` asks again without the trust option; a 403 on a plain decision (the developer is not a workspace approver) falls back to polling the browser link. Headless mode has no UI, so it writes the browser link to stderr and waits there.
+
+### NEVER
+
+- Block a turn on the mirror. A transport failure, a 401, a 429, or any 5xx goes to the outbox with backoff and a status warning; the session file stays the source of truth and the next `link` re-reads what the server already has. A failed `link` reports the mirror offline the same way, and the next `flush` re-links under the same backoff.
+- Retry a 4xx the server will only repeat. Any 4xx other than 401 and 429 is terminal for that chunk: its entries are marked rejected, they never reach the outbox, the remaining chunks still ship, and the status line counts them.
+- Put a healthy state in the footer. `formatMirrorStatus` returns `undefined` while the mirror is keeping up, including with entries still in flight, so the status appears only when the developer has to act on it: the mirror is offline, or entries were truncated or rejected.
+- Unpack skills into `<agentDir>/skills/`. pi scans that directory itself, so a second workspace's skills would load into this session.
+- Register a model `cost` with pi, or price a tier in the models payload. pi renders a model price as a dollar amount and this surface is billed in credits, so every mode registers `NO_PRICE` and the spend comes from `GET /agent-cli/sessions/{id}/credits`, the ledger's own number, read once at link and once per `agent_end`. `/session` is rewritten to `/cloudthinker session` for the same reason, and `build.sh` drops the dollar row from pi's HTML export template.
+- Add a `/model` command. pi's own `/model` cycles the registered modes, and the vendor model is never exposed.
+- Change a theme color without its platform token. `packages/agent/themes/*.json` `vars` are named after `frontend/styles/variables.css` (`--primary`, `--foreground`, `--muted-foreground`, `--border`, `--success`, `--info`, `--warning`, `--destructive`, `--card`, `--secondary`) converted from Tailwind's oklch primitives, and the syntax colors are the platform's shiki themes, `github-dark` and `one-light`.
+- Write the user's `settings.json` to make `cloudthinker-dark` the default. `main.ts` passes `--theme` for each bundled file and `--use-theme` only when the user saved none, because pi resolves the theme before any extension loads and `/settings` must still win.
+- Remove a pi built-in by patching its source text. `packages/agent/src/guard.ts` wraps the prototype and splices the exported array at runtime, and it throws when the seam is gone so an upstream change fails loudly instead of silently restoring the command.
+- Send a state-changing script through `ct_cloud_read`. One command goes to `ct_cloud_write`, which the workspace decides; multi-step work goes to `ct_ask`.
+- Say a notification was sent when an Anna run pauses for approval; none is. The widget line and the `ct_ask` result point at `/cloudthinker notify`, which resends the approval to the approvers of the current ask thread.
+- Keep a session-local Auto Mode override. `/cloudthinker auto on|off` patches the workspace, and every `ct_cloud_write` verdict re-syncs `runtime.autoMode` (`auto_mode_disabled` means Manual), so the header, the prompt line, and the summary prefix always read the workspace's own state; a changed mode appends a fresh `cloudthinker` session entry so a resume reads the latest.
+- Re-send a script to run an approved write. `runWrite` carries only the `write_id`, and the server executes the script it stored at request time, so an approval can never be spent on a different command.
+
+### ASK FIRST
+
+- Adding a tool. The five tools mirror the backend lanes and nothing else; `read_task_output` keeps chat's own tool name on purpose, because it mirrors the `computer_use` contracts.
+- Depending on a package other than `fflate`. pi's own packages stay peer dependencies with a `*` range, as `docs/packages.md` requires.
+
+## Gotchas
+
+- `resources_discover` fires immediately after `session_start`, before the detached skills refresh finishes, so a start serves the previous cache and a newly enabled skill appears on the next start.
+- A pi `/fork` copies every entry, including the `cloudthinker` one. A fork therefore reads that entry as its `source_conversation_id` and opens a new conversation instead of writing into the parent's.
+- The gateway rejects a request with no conversation header, so a session that could not be created has no model either. That is the documented offline edge, not a bug to paper over.
+- A failed `GET /agent-cli/models` registers no provider at all, so `cloudthinker/*` does not resolve and pi may exit before `session_start` runs the notification. There is no hardcoded mode list to fall back to: the caps and the credit weights are the server's.
+- An entry whose payload passes 1 MB is not dropped. It ships with its payload cut to the pi entry's own scalar fields plus `truncated: true`, so the viewer's `parent_id` walk from the leaf stays unbroken.

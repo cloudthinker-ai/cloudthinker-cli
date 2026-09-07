@@ -2270,6 +2270,74 @@ pub mod types {
         }
     }
 
+    ///One recent CLI run; deliberately omits answer and internal failure data.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "HeadlessRunListItem",
+    ///  "description": "One recent CLI run; deliberately omits answer and
+    /// internal failure data.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "conversation_id",
+    ///    "created_at",
+    ///    "prompt_preview",
+    ///    "run_id",
+    ///    "status",
+    ///    "web_url"
+    ///  ],
+    ///  "properties": {
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "prompt_preview": {
+    ///      "title": "Prompt Preview",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "run_id": {
+    ///      "title": "Run Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/AgentRunStatus"
+    ///    },
+    ///    "web_url": {
+    ///      "title": "Web Url",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct HeadlessRunListItem {
+        pub conversation_id: ::std::option::Option<::uuid::Uuid>,
+        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub prompt_preview: ::std::option::Option<::std::string::String>,
+        pub run_id: ::uuid::Uuid,
+        pub status: AgentRunStatus,
+        pub web_url: ::std::option::Option<::std::string::String>,
+    }
+
     ///200 response for polling a headless run.
     ///
     ///`answer` carries the extracted final assistant text only once the run
@@ -3410,6 +3478,18 @@ pub mod types {
     ///    "prompt"
     ///  ],
     ///  "properties": {
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "description": "Optional. Continue this existing conversation (a
+    /// run is attached to it) instead of creating a new one. Must belong to the
+    /// authenticated workspace and be a chat-type conversation (HEADLESS or
+    /// CHAT).",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
     ///    "idempotency_key": {
     ///      "title": "Idempotency Key",
     ///      "description": "Optional caller-supplied key (workspace-scoped). A
@@ -3433,6 +3513,11 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SubmitHeadlessRunRequest {
+        ///Optional. Continue this existing conversation (a run is attached to
+        /// it) instead of creating a new one. Must belong to the authenticated
+        /// workspace and be a chat-type conversation (HEADLESS or CHAT).
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub conversation_id: ::std::option::Option<::uuid::Uuid>,
         ///Optional caller-supplied key (workspace-scoped). A retried submit
         /// with the same key returns the original run instead of creating a
         /// duplicate. Omit for at-least-once submit.
@@ -4455,6 +4540,53 @@ impl ClientInfo<()> for Client {
 impl ClientHooks<()> for &Client {}
 #[allow(clippy::all)]
 impl Client {
+    ///List Headless Runs
+    ///
+    ///Sends a `GET` request to `/api/v1/cli/runs`
+    pub async fn cli_list_headless_runs<'a>(
+        &'a self,
+        conversation_id: Option<&'a ::uuid::Uuid>,
+        limit: Option<::std::num::NonZeroU64>,
+        workspace_id: Option<&'a ::serde_json::Value>,
+    ) -> Result<ResponseValue<::std::vec::Vec<types::HeadlessRunListItem>>, Error<()>> {
+        let url = format!("{}/api/v1/cli/runs", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new(
+                "conversation_id",
+                &conversation_id,
+            ))
+            .query(&progenitor_client::QueryParam::new("limit", &limit))
+            .query(&progenitor_client::QueryParam::new(
+                "workspace_id",
+                &workspace_id,
+            ))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "cli_list_headless_runs",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
     ///Submit Headless Run
     ///
     ///Sends a `POST` request to `/api/v1/cli/runs`

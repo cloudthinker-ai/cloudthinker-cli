@@ -1,36 +1,46 @@
 # CloudThinker CLI
 
-Customer-facing `cloudthinker` binary (browser or device-code login + headless `chat -p`) as a Cargo workspace; a thin job-runner over the backend's CLI endpoints. Concept: [[concepts/cli/README]].
+The customer-facing `cloudthinker` binary, built as a Cargo workspace. It logs in through the browser or a device code, and runs headless with `chat -p`. It is a thin job runner over the backend CLI endpoints. Concept: [[concepts/cli/README]].
 
 ## Boundaries
 
 ### ALWAYS
 
-- Regenerate the wire crate with `make -C cli gen` after the backend's CLI endpoints change; commit both `openapi/cloudthinker-cli.json` and `crates/cloudthinker-api/`. Never hand-edit `cloudthinker-api` — it is generated.
-- Keep all wire + auth in `cloudthinker-client`; commands go through it and never import `reqwest`/`serde_json` directly.
-- Build a serializable output and render it through the one `engine/output.rs` helper — no per-command `--json` branch.
-- Return an `engine/exit.rs::ExitCode`; never call `process::exit`. The exit-code table is a stable contract (a test pins it).
-- `chat -p` writes ONLY the answer to stdout; progress/status/errors go to stderr (a test pins stdout purity).
-- Pass `make -C cli check` (fmt + clippy `-D warnings` + tests) before done; every `CA-CLI-*` case keeps a traced test.
+- Regenerate the wire crate with `make -C cli gen` after the backend CLI endpoints change. Commit both `openapi/cloudthinker-cli.json` and `crates/cloudthinker-api/`. Never edit `cloudthinker-api` by hand, because a generator writes it.
+- Keep all wire and auth code in `cloudthinker-client`. Each command calls that crate and never imports `reqwest` or `serde_json` directly.
+- Build a serializable output and render it through the one helper in `engine/output.rs`. Do not add a `--json` branch to a command.
+- Return an `engine/exit.rs::ExitCode`. Never call `process::exit`. The exit-code table is a stable contract, and a test pins it.
+- With `chat -p`, write only the answer to stdout. Send progress, status, and errors to stderr. A test pins the purity of stdout.
+- Run `make -C cli check` before you finish. It runs fmt, clippy with `-D warnings`, and the tests. Every `CA-CLI-*` case keeps a traced test.
+- Keep `agent-cli/scripts/release-artifacts.sh` reachable from the mirror root. `release-sync.sh` copies the monorepo's `agent-cli/` to `<mirror>/agent-cli/`, so the `[[dist.extra-artifacts]]` build path in `dist-workspace.toml` resolves there and nowhere in the monorepo, where that directory is a sibling of `cli/` rather than a child.
 
 ### NEVER
 
-- Add a workspace lint opt-in (`[lints] workspace = true`) to `cloudthinker-api`; it stays relaxed-lint (generated).
-- Change the reqwest major/features out of lockstep with what `make gen` emits — the client hands its `reqwest::Client` to the generated `Client`, so a skew breaks the type.
-- Touch the real OS keyring in tests; use `MockTokenStore` / a boxed keyring double.
-- Bypass the refresh single-flight + guarded disk reload — concurrent refresh trips the backend's token-family reuse detection.
+- Add a workspace lint opt-in (`[lints] workspace = true`) to `cloudthinker-api`. It stays on relaxed lints, because a generator writes it.
+- Change the reqwest major version or its features away from what `make gen` emits. The client gives its `reqwest::Client` to the generated `Client`, so a version difference breaks the type.
+- Touch the real OS keyring in a test. Use `MockTokenStore` or a boxed keyring double.
+- Bypass the single-flight refresh and the guarded disk reload. A concurrent refresh triggers the backend detection of token-family reuse.
+- Let an access token reach anywhere but `auth token`'s stdout. It is a secret, so no progress line, error message, log, or file may carry it.
+- Start a browser login from a command other than `login` and `agent`. `agent` opens one because it is the first interactive command a new user runs, and only on a TTY with no `CLOUDTHINKER_TOKEN`; every other command prints the command to run.
+- Hand the `agent` child process a token. It inherits `CLOUDTHINKER_TOKEN` when the parent ran on one, and otherwise shells back out to `cloudthinker auth token`.
 
 ### ASK FIRST
 
-- Adding a new command, crate, or backend endpoint to the OpenAPI allowlist (`scripts/prune_spec.py`).
+- Adding a new command, a new crate, or a backend endpoint to the OpenAPI allowlist (`scripts/prune_spec.py`).
+- Changing the eight `@cloudthinker/agent` asset names in `dist-workspace.toml`. The wrapper downloads them by name from the release.
 - Changing the default base URL or the exit-code mapping.
 
 ## Architecture
 
-Three crates: `cloudthinker-api` (progenitor-generated from a pruned OpenAPI snapshot), `cloudthinker-client` (thiserror; PKCE login, workspace-keyed token store/refresh, typed `CtClient`), `cloudthinker-cli` (anyhow-free clap dispatch + `engine/{output,watch,exit}`). Authenticated commands accept global `--workspace <id|name>`; `whoami` proves the resolved live identity. `make gen` = dump spec → `prune_spec.py` → down-convert 3.1→3.0 → `fixup_spec.py` → progenitor → inject relaxed-lint header; idempotent.
+The workspace has three crates. `cloudthinker-api` is generated by progenitor from a pruned OpenAPI snapshot. `cloudthinker-client` uses thiserror and holds PKCE login, the workspace-keyed token store and refresh, and the typed `CtClient`. `cloudthinker-cli` holds the clap dispatch, which does not use anyhow, plus `engine/{output,watch,exit}`. Each authenticated command accepts the global option `--workspace <id|name>`. The `whoami` command proves the live identity that the CLI resolved, and `auth token` prints the resolved access token for a tool that shells out for a bearer. The `agent` command proves the login with `whoami` and runs the login itself when there is none, installs the released agent bundle on first run, and `exec`s it with every trailing argument verbatim; the download, digest check, and extraction live in `cloudthinker-client`'s `agent_release`, because `update.rs` delegates only the CLI's own binary to `axoupdater`. `make gen` dumps the spec, runs `prune_spec.py`, converts it from 3.1 to 3.0, runs `fixup_spec.py`, runs progenitor, and injects the relaxed-lint header. The result is idempotent.
 
 ## Gotchas
 
-- The generated client already includes `/api/v1` in each path, so the base URL passed to it is the bare origin (e.g. `https://app.cloudthinker.io`), not `{base}/api/v1`.
-- Generic API errors stay undeclared in the pruned CLI schema so progenitor returns `UnexpectedResponse` with the real HTTP status during the detail-only compatibility window. `error.rs` reads either `error.message` or legacy `detail`; declared bodies that fail to decode remain `CtError::Protocol`.
-- The device-token poll keeps its RFC-shaped 400 body but drops the generic 422 during spec pruning because progenitor supports one typed error body per operation; run `make -C cli gen` twice after auth schema changes to prove generation is idempotent.
+- Each path in the generated client already contains `/api/v1`. Pass the bare origin as the base URL, for example `https://app.cloudthinker.io`, not `{base}/api/v1`.
+- The pruned CLI schema declares no generic API error, so progenitor returns `UnexpectedResponse` with the real HTTP status during the compatibility window for detail-only bodies. `error.rs` reads `error.message` or the legacy `detail`. A declared body that fails to decode stays a `CtError::Protocol`.
+- `agent` installs the whole `cloudthinker-agent/` directory into `~/.cloudthinker/agent/bin/<cli version>/`, never the bare executable: the binary resolves its sidecar assets from its own dirname. The version is this crate's `CARGO_PKG_VERSION`, so bumping it forces a fresh download, and the install prunes every other version.
+- `agent` decides what to do about a missing login in `engine/login_guide.rs`, which is pure: an authentication failure on a TTY opens the login and retries `whoami`, the same failure with `CLOUDTHINKER_TOKEN` set says to replace that token instead, and off a TTY it prints the login command and exits 3.
+- `agent` gives the child `CLOUDTHINKER_URL`, plus `CLOUDTHINKER_WORKSPACE` only when the parent did not run on `CLOUDTHINKER_TOKEN`. That is why `--workspace` reads `CLOUDTHINKER_WORKSPACE`: the child's own `cloudthinker auth token` resolves the workspace the parent resolved. Setting both variables is the same usage error as passing both flags.
+- `CLOUDTHINKER_AGENT_BIN=<path>` execs that path and skips the install, with a stderr warning naming the variable. It is the dev override, so a test drives `agent` without a release.
+- `agent` captures its trailing arguments with `trailing_var_arg`, which still lets a global option name bind to the wrapper when it leads the tail. `cloudthinker agent -- --url ...` forces the pass-through, and a parse test pins it.
+- The device-token poll keeps its RFC-shaped 400 body, but spec pruning drops the generic 422, because progenitor supports one typed error body per operation. After you change the auth schema, run `make -C cli gen` twice to prove that generation is idempotent.

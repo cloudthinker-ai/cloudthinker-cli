@@ -1,6 +1,6 @@
 # cloudthinker
 
-The CloudThinker command-line interface: browser login plus headless `chat`, `review`, and job-runner commands over the CloudThinker backend.
+The CloudThinker command-line interface: browser login, the local coding agent, plus headless `chat`, `review`, and job-runner commands over the CloudThinker backend.
 
 ## Install
 
@@ -22,9 +22,46 @@ The installer drops the `cloudthinker` binary in `~/.local/bin` and adds it to y
 ```sh
 cloudthinker login          # browser PKCE login
 cloudthinker whoami         # live host, account, and active workspace
-cloudthinker chat -p "..."  # headless one-shot
+cloudthinker chat -p "..."  # start a headless conversation
 cloudthinker review <MR_URL> status
+cloudthinker agent          # run the local coding agent in this directory
 ```
+
+`agent` runs the CloudThinker coding agent on your machine: it edits files and
+runs shells locally, while the model and the workspace Connections stay in the
+cloud. Every argument after `agent` reaches the agent verbatim:
+
+```sh
+cloudthinker agent -p "Add a health check to main.tf" --model cloudthinker/pro
+cloudthinker --workspace Production agent          # the CLI's own options come first
+cloudthinker agent -- --url http://localhost:3000  # after `--`, everything is the agent's
+```
+
+The first run downloads the agent build for your platform from the same GitHub
+release as this binary, checks it against the release's SHA-256 sidecar, and
+installs it under `~/.cloudthinker/agent/bin/<version>/`. Later runs reuse it,
+and a version bump replaces it. macOS and Linux only for now.
+
+Continue a thread with either a run UUID or conversation UUID. The CLI prints
+`continue_with=<conversation_id>` on stderr after each terminal run:
+
+```sh
+cloudthinker chat -p "Draft the rollout plan"
+cloudthinker chat -p "Remove the risky step" --continue <run-or-conversation-uuid>
+```
+
+Submit without waiting, collect a run later, or recover an ID from recent runs:
+
+```sh
+cloudthinker chat -p "Audit production" --no-wait --json
+cloudthinker chat status <run-uuid> --wait
+cloudthinker chat ls --limit 10
+cloudthinker chat ls --conversation <conversation-uuid> --json
+```
+
+Human `chat -p` output remains pipeable: stdout contains only Anna's final
+answer. Progress and continuation hints use stderr. `--no-wait` prints the
+submitted run identifiers because no answer exists yet.
 
 When an account can access several workspaces, login asks which workspace to
 authorize. Each workspace credential remains available for the same host:
@@ -35,6 +72,16 @@ cloudthinker --workspace 11111111-1111-4111-8111-111111111111 chat -p "..."
 cloudthinker logout                 # selected or active workspace only
 cloudthinker logout --all           # every workspace for this host
 ```
+
+A tool that needs its own bearer reads one from the CLI. `auth token` prints the
+current access token on stdout and nothing else, refreshing it first when it is
+close to expiry:
+
+```sh
+cloudthinker auth token
+```
+
+Treat that value as a secret: it authenticates as you until it expires.
 
 `CLOUDTHINKER_TOKEN` overrides stored credentials. Do not combine it with
 `--workspace`. The file fallback lives in the operating system's config

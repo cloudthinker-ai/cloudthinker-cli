@@ -27,3 +27,11 @@
 		reverse_proxy {$FRONTEND_UPSTREAM:host.docker.internal:5173}
 	}
 }
+
+# Storybook on the same published port, host-routed, so a tunnel that forwards
+# only this stack's origin port also reaches it. Storybook must listen on a
+# host interface the container can reach; `pnpm storybook` binds 0.0.0.0 for
+# this, because a 127.0.0.1-only bind is invisible behind host.docker.internal.
+http://storybook.localhost:8080 {
+	reverse_proxy {$STORYBOOK_UPSTREAM:host.docker.internal:6006}
+}

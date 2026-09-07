@@ -57,6 +57,12 @@ pub enum CtError {
     #[error("logout incomplete: {0}")]
     Logout(String),
 
+    /// The released `cloudthinker-agent` bundle could not be resolved,
+    /// downloaded, verified, or installed. Distinct from `Transport` so a bad
+    /// digest or a tampered archive never reads as a flaky network.
+    #[error("agent install failed: {0}")]
+    AgentInstall(String),
+
     /// A response body that failed to parse into either the documented success
     /// or error shape — the server sent something we don't understand rather
     /// than the user giving bad input. Kept distinct from `Api` so scripts

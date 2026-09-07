@@ -46,6 +46,7 @@ pub fn code_for(err: &CtError) -> ExitCode {
         | CtError::Store(_)
         | CtError::Login(_)
         | CtError::Logout(_)
+        | CtError::AgentInstall(_)
         | CtError::Protocol(_) => ExitCode::JobFailed,
     }
 }
@@ -84,6 +85,7 @@ mod tests {
             (CtError::Store("x".into()), ExitCode::JobFailed),
             (CtError::Protocol("x".into()), ExitCode::JobFailed),
             (CtError::Logout("x".into()), ExitCode::JobFailed),
+            (CtError::AgentInstall("x".into()), ExitCode::JobFailed),
             (
                 CtError::Api {
                     status: 401,
