@@ -63,7 +63,7 @@ function reader(states: CloudWrite[]): { getWrite(): Promise<CloudWrite>; calls:
 	return box;
 }
 
-const theme = { fg: (_color: string, value: string) => value } as never;
+const theme = { fg: (_color: string, value: string) => value, bold: (value: string) => value } as never;
 
 test("polling stops on the first state that is no longer waiting", async () => {
 	const client = reader([write("required_approval"), write("required_approval"), write("approved")]);
@@ -113,7 +113,7 @@ test("an executed write renders the approver and the sandbox output", () => {
 	});
 	assert.match(body, /status: executed/);
 	assert.match(body, /approved_by: Duc Bui/);
-	assert.match(body, /stdout:\nok/);
+	assert.ok(body.endsWith("\n\nok"), body);
 	assert.equal(
 		writeSummary({ write: write("executed", { decided_by_name: "Duc Bui" }), execution: null, elapsed_ms: 1500 }, theme),
 		"auto: needs approval · approved by Duc Bui · ran in CloudThinker Sandbox · 1.5s",
@@ -359,7 +359,7 @@ test("a write the workspace allows runs on the first call and returns executed",
 	);
 	const details = result.details as WriteOutcome;
 	assert.equal(details.write.status, "executed");
-	assert.match(resultBody(result), /status: executed[\s\S]*stdout:\ntagged/);
+	assert.match(resultBody(result), /status: executed[\s\S]*\n\ntagged$/);
 	assert.deepEqual(calls, ["request:aws ec2 create-tags"]);
 });
 
@@ -384,6 +384,21 @@ test("a resumed write_id reads the write and runs it once it is approved, re-sen
 	assert.equal(details.write.status, "executed");
 	assert.match(resultBody(result), /approved_by: Hao/);
 	assert.deepEqual(calls, ["get:w-1", "run:w-1:60"]);
+});
+
+test("a fresh write without a reasoning is refused before any request leaves", async () => {
+	const calls: unknown[] = [];
+	const { tool, ctx } = registered({
+		requestWrite: async () => {
+			calls.push("request");
+			return executed;
+		},
+	});
+	await assert.rejects(
+		tool.execute("call-3", { connection_list: ["aws"], script: "aws ec2 create-tags" }, undefined, undefined, ctx),
+		/reasoning is required unless write_id resumes an earlier write/,
+	);
+	assert.deepEqual(calls, []);
 });
 
 test("a 422 for an unconnected prefix names the requested and connected prefixes", async () => {
@@ -423,4 +438,20 @@ test("a write the Sandbox could not start says so and asks for no retry by id", 
 		writeSummary({ write: failed, execution: null }, theme),
 		"auto: allowed (trusted command) · the Sandbox could not start it",
 	);
+});
+
+test("the call line shows the reasoning for the approver, and the command only when expanded", () => {
+	const { tool } = registered({});
+	assert.ok(tool.renderCall);
+	const params = {
+		connection_list: ["aws"],
+		reasoning: "Tag the orphaned instance with its owner.",
+		script: "aws ec2 create-tags --resources i-1 --tags Key=owner,Value=duc",
+	};
+	const [collapsed] = tool.renderCall(params, theme, { expanded: false } as never).render(200);
+	assert.match(collapsed ?? "", /ct_sandbox_write {2}aws {2}Tag the orphaned instance with its owner\.$/);
+	const expanded = tool.renderCall(params, theme, { expanded: true } as never).render(200);
+	assert.deepEqual(expanded.slice(1).map((line) => line.trimEnd()), [params.script]);
+	const [resumed] = tool.renderCall({ write_id: "w-1" }, theme, { expanded: true } as never).render(200);
+	assert.match(resumed ?? "", /resume w-1$/);
 });

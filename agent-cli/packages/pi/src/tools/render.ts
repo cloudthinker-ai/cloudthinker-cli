@@ -28,11 +28,19 @@ export function callLine(theme: Theme, name: string, ...rest: string[]): string 
 	return tail.length > 0 ? `${title}  ${tail}` : title;
 }
 
-export function callComponent(line: string): Component {
-	return {
+export function callComponent(line: string, expandedDetail?: string): Component {
+	const container = new Container();
+	container.addChild({
 		render: (width) => [truncateToWidth(line, width, "…")],
 		invalidate: () => {},
-	};
+	});
+	if (expandedDetail) container.addChild(new Text(expandedDetail, 0, 0));
+	return container;
+}
+
+export function scriptDetail(theme: Theme, script: string, expanded: boolean): string | undefined {
+	const trimmed = script.trim();
+	return expanded && trimmed.length > 0 ? theme.fg("muted", trimmed) : undefined;
 }
 
 export function resultBody(result: AgentToolResult<unknown>): string {

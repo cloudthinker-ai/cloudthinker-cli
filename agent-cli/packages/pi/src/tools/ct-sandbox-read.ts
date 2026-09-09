@@ -11,13 +11,15 @@ import {
 	firstLine,
 	formatElapsed,
 	resultBody,
+	scriptDetail,
 	summaryComponent,
 } from "./render.ts";
-import { explain, section, text } from "./shared.ts";
+import { explain, text } from "./shared.ts";
 
 export const MAX_TIMEOUT_SECONDS = 120;
 export const DEFAULT_TIMEOUT_SECONDS = 60;
 export const SANDBOX_WORKING_MESSAGE = "Running in CloudThinker Sandbox…";
+export const NO_OUTPUT = "(no output)";
 
 const parameters = Type.Object({
 	connection_list: Type.Array(Type.String(), {
@@ -33,6 +35,13 @@ const parameters = Type.Object({
 			"tools (ls, cat, grep, find) are there for the Sandbox's own files. " +
 			"Bound the output yourself (head, --max-items, jq) so a large listing " +
 			"does not fill the context.",
+	}),
+	reasoning: Type.String({
+		description:
+			"A very short phrase of 5-10 words naming what this command reads and " +
+			"why. The user sees it in place of the raw command, so write for a " +
+			"non-technical reader: no tool names, no jargon, no script fragments. " +
+			"Example: 'Checking which subnets the production VPC uses.'",
 	}),
 	timeout: Type.Optional(
 		Type.Integer({
@@ -72,13 +81,10 @@ export function renderExecution(result: ExecutionResult): string {
 			`Call ${READ_TASK_OUTPUT} with task_id "${result.task_id}" to read its output.`,
 		].join("\n");
 	}
-	return [
-		`return_code: ${result.return_code}`,
-		"",
-		section("stdout", result.stdout),
-		"",
-		section("stderr", result.stderr),
-	].join("\n");
+	const stdout = result.stdout.trimEnd();
+	const stderr = result.stderr.trimEnd();
+	if (result.return_code === 0) return stdout || stderr || NO_OUTPUT;
+	return [`exit code ${result.return_code}`, stderr, stdout].filter((part) => part.length > 0).join("\n");
 }
 
 export function registerSandboxRead(runtime: CloudThinkerRuntime): void {
@@ -124,14 +130,15 @@ export function registerSandboxRead(runtime: CloudThinkerRuntime): void {
 				if (ctx.hasUI) ctx.ui.setWorkingMessage();
 			}
 		},
-		renderCall: (params: Static<typeof parameters>, theme) =>
+		renderCall: (params: Static<typeof parameters>, theme, context) =>
 			callComponent(
 				callLine(
 					theme,
 					CT_SANDBOX_READ,
 					params.connection_list?.join(", ") ?? "",
-					firstLine(params.script ?? ""),
+					params.reasoning ?? firstLine(params.script ?? ""),
 				),
+				scriptDetail(theme, params.script ?? "", context.expanded),
 			),
 		renderResult: (result, options, theme) =>
 			summaryComponent(

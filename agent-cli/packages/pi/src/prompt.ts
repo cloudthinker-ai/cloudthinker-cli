@@ -23,9 +23,12 @@ export function guardedConnectionsXml(xml: string): string {
 	return `${wrapped[1]}${neutralizeBlockTags(wrapped[2] ?? "")}${wrapped[3]}`;
 }
 
+export const CONNECTION_SKILLS_DIR = `${SANDBOX_HOME}/_skills/connections`;
+export const CONNECTION_SKILL_LINE = `A \`skill:\` line inside a Connection names that Connection's guide, a SKILL.md in the Sandbox. Before your first command on a Connection, read its guide with ${CT_SANDBOX_READ} and an empty connection_list (\`cat ${CONNECTION_SKILLS_DIR}/*/<skill>/SKILL.md\`), then follow it: its scripts run in the Sandbox through ${CT_SANDBOX_READ} with that Connection, so do not write your own script for what the guide already provides.`;
+
 export function sandboxLayout(runtime: CloudThinkerRuntime): string {
 	if (!runtime.session) return "";
-	return ` Your shell there opens in ${SANDBOX_HOME}/${runtime.session.conversation_id}, this session's own directory, whose \`.memory\`, \`_skills\` and \`_connections\` entries are symlinks up into the shared workspace tree at ${SANDBOX_HOME}. Name a Sandbox file by absolute path; a relative one resolves inside that session directory, not in the workspace tree.`;
+	return ` Your shell there opens in ${SANDBOX_HOME}/${runtime.session.conversation_id}, this session's own directory, whose \`.memory\`, \`_skills\` and \`_connections\` entries are symlinks up into the shared workspace tree at ${SANDBOX_HOME}. Name a Sandbox file by absolute path; a relative one resolves inside that session directory, not in the workspace tree. Put every scratch file under ${SANDBOX_HOME}/${runtime.session.conversation_id}/tmp, never in ${SANDBOX_HOME} itself.`;
 }
 
 export function buildPromptBlock(runtime: CloudThinkerRuntime): string {
@@ -44,7 +47,9 @@ export function buildPromptBlock(runtime: CloudThinkerRuntime): string {
 		`2. The CloudThinker Sandbox: a machine the workspace owns in the cloud. Only ${CT_SANDBOX_READ} and ${CT_SANDBOX_WRITE} run there, with a workspace Connection's credential injected for the run; the credential never leaves the cloud and never reaches this machine.${sandboxLayout(runtime)}`,
 		`Connected workspace Connections: ${neutralizeBlockTags(runtime.connectedPrefixes.join(", ")) || "none"}. A Connection is a credential the Sandbox can use, not a third environment.`,
 	);
-	if (runtime.connections.xml) lines.push(guardedConnectionsXml(runtime.connections.xml));
+	if (runtime.connections.xml) {
+		lines.push(guardedConnectionsXml(runtime.connections.xml), CONNECTION_SKILL_LINE);
+	}
 	lines.push(
 		`For anything that needs one of those, call ${CT_SANDBOX_READ} with connection_list drawn ONLY from that list; it runs in the CloudThinker Sandbox and returns stdout.`,
 		`For ONE state-changing cloud command, call ${CT_SANDBOX_WRITE}; the workspace runs it at once or pauses it for a human to approve, in this terminal or in the browser. That approval is the confirmation, so do not ask for one in chat first.`,

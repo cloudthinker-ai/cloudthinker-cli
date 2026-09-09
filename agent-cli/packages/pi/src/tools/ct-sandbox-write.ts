@@ -19,6 +19,7 @@ import {
 	formatElapsed,
 	link,
 	resultBody,
+	scriptDetail,
 	summaryComponent,
 } from "./render.ts";
 import { explain, pollUntil, text } from "./shared.ts";
@@ -418,14 +419,17 @@ export function registerSandboxWrite(runtime: CloudThinkerRuntime): void {
 				if (ctx.hasUI) ctx.ui.setWorkingMessage();
 			}
 		},
-		renderCall: (params: Params, theme) =>
+		renderCall: (params: Params, theme, context) =>
 			callComponent(
 				callLine(
 					theme,
 					CT_SANDBOX_WRITE,
 					params.connection_list?.join(", ") ?? "",
-					params.write_id ? `resume ${params.write_id}` : firstLine(params.script ?? ""),
+					params.write_id
+						? `resume ${params.write_id}`
+						: (params.reasoning ?? firstLine(params.script ?? "")),
 				),
+				scriptDetail(theme, params.script ?? "", context.expanded),
 			),
 		renderResult: (result, options, theme) =>
 			summaryComponent(

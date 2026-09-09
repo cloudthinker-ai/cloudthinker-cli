@@ -5,6 +5,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import {
 	AUTO_MODE_LINE,
+	CONNECTION_SKILL_LINE,
+	CONNECTION_SKILLS_DIR,
 	MANUAL_MODE_LINE,
 	appendPromptBlock,
 	buildPromptBlock,
@@ -75,7 +77,7 @@ test("the Connection detail follows the prefix line verbatim, and an empty xml a
 	const block = buildPromptBlock(withPrefixes(["aws"], xml));
 	assert.ok(
 		block.includes(
-			`Connected workspace Connections: aws. A Connection is a credential the Sandbox can use, not a third environment.\n${xml}\nFor anything that needs one of those`,
+			`Connected workspace Connections: aws. A Connection is a credential the Sandbox can use, not a third environment.\n${xml}\n${CONNECTION_SKILL_LINE}\nFor anything that needs one of those`,
 		),
 	);
 	const bare = buildPromptBlock(withPrefixes(["aws"]));
@@ -99,6 +101,20 @@ test("the sandbox line names this session's own directory and the tree above it"
 	assert.ok(block.includes("/home/user/c-1, this session's own directory"));
 	assert.ok(block.includes("symlinks up into the shared workspace tree at /home/user"));
 	assert.ok(block.includes("Name a Sandbox file by absolute path"));
+});
+
+test("scratch files go under the session's own tmp directory, never the sandbox home", () => {
+	const block = buildPromptBlock(runtime());
+	assert.ok(block.includes("Put every scratch file under /home/user/c-1/tmp, never in /home/user itself."));
+});
+
+test("a Connection's skill line comes with the Sandbox path to read the guide from", () => {
+	const xml = '<connections_context>\n<connection prefix="grafana">\n  skill: monitoring-grafana (available) — Use when alerts fire.\n</connection>\n</connections_context>';
+	const block = buildPromptBlock(withPrefixes(["grafana"], xml));
+	assert.ok(block.includes(`${xml}\n${CONNECTION_SKILL_LINE}`));
+	assert.ok(CONNECTION_SKILL_LINE.includes(`cat ${CONNECTION_SKILLS_DIR}/*/<skill>/SKILL.md`));
+	assert.ok(CONNECTION_SKILL_LINE.includes("empty connection_list"));
+	assert.ok(!buildPromptBlock(withPrefixes(["grafana"])).includes(CONNECTION_SKILL_LINE));
 });
 
 test("an unlinked session claims no sandbox directory it cannot know", () => {
