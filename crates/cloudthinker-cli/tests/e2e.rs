@@ -1059,3 +1059,152 @@ fn workspace_from_the_environment_still_conflicts_with_the_token_variable() {
             "--workspace cannot be used with CLOUDTHINKER_TOKEN",
         ));
 }
+
+// ---------------------------------------------------------------------------
+// Start-up release offer (CA-UP-9/10) — `agent` runs `update::offer_on_start`
+// before anything else, and that check only speaks on a TTY, so these drive
+// the real binary through a pty. `CLOUDTHINKER_AGENT_BIN` keeps the run inside
+// the stub once the check is done.
+// ---------------------------------------------------------------------------
+
+/// This binary's version, the one the offer compares a release against.
+const RUNNING_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Upper bound on what a pty run may return, so a child that never stops
+/// writing fails the test instead of growing the harness without limit.
+const MAX_PTY_OUTPUT: u64 = 64 * 1024;
+
+/// A release tag strictly newer than `RUNNING_VERSION`, whatever it is today.
+fn newer_tag() -> String {
+    let major: u64 = RUNNING_VERSION
+        .split('.')
+        .next()
+        .unwrap()
+        .parse::<u64>()
+        .unwrap()
+        + 1;
+    format!("v{major}.0.0")
+}
+
+/// Run `cloudthinker agent` on a pty against both mocks and return everything
+/// it wrote to the terminal. `n` is queued on stdin so an offer is declined
+/// rather than installed; when no offer appears the byte is simply never read.
+#[cfg(unix)]
+fn agent_on_a_tty(api: &MockApi, releases: &MockReleases, receipt_dir: &std::path::Path) -> String {
+    use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+
+    let stub = write_agent_stub("tty");
+    let pair = native_pty_system()
+        .openpty(PtySize {
+            rows: 24,
+            cols: 120,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .unwrap();
+
+    let mut cmd = CommandBuilder::new(assert_cmd::cargo::cargo_bin("cloudthinker"));
+    cmd.arg("agent");
+    cmd.env("CLOUDTHINKER_TOKEN", "test-access-token");
+    cmd.env("CLOUDTHINKER_URL", &api.base_url);
+    cmd.env("CLOUDTHINKER_AGENT_BIN", &stub);
+    cmd.env("AXOUPDATER_CONFIG_PATH", receipt_dir);
+    cmd.env(
+        "CLOUDTHINKER_CLI_INSTALLER_GHE_BASE_URL",
+        &releases.base_url,
+    );
+    cmd.env("NO_COLOR", "1");
+    cmd.env_remove("CLOUDTHINKER_NO_UPDATE_CHECK");
+    cmd.env_remove("CLOUDTHINKER_WORKSPACE");
+
+    let mut child = pair.slave.spawn_command(cmd).unwrap();
+    drop(pair.slave);
+
+    let mut writer = pair.master.take_writer().unwrap();
+    writer.write_all(b"n\n").unwrap();
+    drop(writer);
+
+    let mut killer = child.clone_killer();
+    let finished = Arc::new(AtomicBool::new(false));
+    let watchdog_flag = finished.clone();
+    let watchdog = std::thread::spawn(move || {
+        for _ in 0..300 {
+            if watchdog_flag.load(Ordering::SeqCst) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        let _ = killer.kill();
+    });
+
+    let reader = pair.master.try_clone_reader().unwrap();
+    drop(pair.master);
+    let mut output = Vec::new();
+    let _ = reader.take(MAX_PTY_OUTPUT).read_to_end(&mut output);
+    let _ = child.wait();
+    finished.store(true, Ordering::SeqCst);
+    watchdog.join().unwrap();
+
+    let _ = std::fs::remove_dir_all(stub.parent().unwrap());
+    assert!(
+        (output.len() as u64) < MAX_PTY_OUTPUT,
+        "the pty run wrote at least {MAX_PTY_OUTPUT} bytes without finishing"
+    );
+    String::from_utf8_lossy(&output).replace("\r\n", "\n")
+}
+
+// CA-UP-9: a genuinely newer release is offered on the terminal, naming both
+// versions, and declining it still starts the session.
+#[cfg(unix)]
+#[test]
+fn ca_up_9_a_newer_release_is_offered_and_declining_still_starts_the_agent() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+    let tag = newer_tag();
+    let releases = MockReleases::start(&tag, marker_installer_script());
+    let receipt_dir = write_receipt("up6", RUNNING_VERSION, &real_install_prefix());
+
+    let output = agent_on_a_tty(&api, &releases, &receipt_dir);
+
+    assert!(
+        output.contains(&format!(
+            "cloudthinker {} is available (you have {RUNNING_VERSION})",
+            tag.trim_start_matches('v')
+        )),
+        "expected the offer, got:\n{output}"
+    );
+    assert!(
+        output.contains("Install it now? [y/N]"),
+        "expected the prompt, got:\n{output}"
+    );
+    assert!(
+        output.contains("argv: "),
+        "declining must still start the agent, got:\n{output}"
+    );
+}
+
+// CA-UP-10: the release the user is already running is not offered back to
+// them. `query_new_version` reports the latest release and compares nothing,
+// so without our own comparison this prompts "0.5.0 is available (you have
+// 0.5.0)" on every single start.
+#[cfg(unix)]
+#[test]
+fn ca_up_10_the_running_release_is_never_offered_back() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+    let releases = MockReleases::start(&format!("v{RUNNING_VERSION}"), marker_installer_script());
+    let receipt_dir = write_receipt("up7", RUNNING_VERSION, &real_install_prefix());
+
+    let output = agent_on_a_tty(&api, &releases, &receipt_dir);
+
+    assert!(
+        !output.contains("is available"),
+        "the running version must not be offered, got:\n{output}"
+    );
+    assert!(
+        !output.contains("Install it now?"),
+        "no prompt is due, got:\n{output}"
+    );
+    assert!(
+        output.contains("argv: "),
+        "the agent must start, got:\n{output}"
+    );
+}

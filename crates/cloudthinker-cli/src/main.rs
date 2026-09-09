@@ -13,6 +13,8 @@
 #[cfg(test)]
 use assert_cmd as _;
 #[cfg(test)]
+use portable_pty as _;
+#[cfg(test)]
 use predicates as _;
 
 mod commands;

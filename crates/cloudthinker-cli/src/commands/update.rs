@@ -12,7 +12,7 @@
 use std::io::{BufRead, IsTerminal, Write};
 use std::time::Duration;
 
-use axoupdater::AxoUpdater;
+use axoupdater::{AxoUpdater, Version};
 use serde::Serialize;
 
 use crate::engine::exit::ExitCode;
@@ -25,6 +25,9 @@ const APP_NAME: &str = "cloudthinker-cli";
 
 /// Opt out of the start-up release check entirely.
 const UPDATE_CHECK_OPT_OUT: &str = "CLOUDTHINKER_NO_UPDATE_CHECK";
+
+/// The version the start-up offer prints as "you have" and compares against.
+const RUNNING_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// How long the start-up check may take before the agent starts anyway. The
 /// check exists to save a user a stale session, never to delay one.
@@ -179,19 +182,23 @@ async fn newer_release() -> Option<String> {
     if !matches!(updater.check_receipt_is_for_this_executable(), Ok(true)) {
         return None;
     }
-    updater
-        .query_new_version()
-        .await
-        .ok()
-        .flatten()
-        .map(ToString::to_string)
+    newer_than_running(updater.query_new_version().await.ok().flatten()?)
+}
+
+/// The release worth offering, given the latest one the source carries.
+fn newer_than_running(latest: &Version) -> Option<String> {
+    newer_than(latest, &Version::parse(RUNNING_VERSION).ok()?)
+}
+
+/// Whether `latest` is worth offering to a binary at `running`.
+fn newer_than(latest: &Version, running: &Version) -> Option<String> {
+    (latest > running).then(|| latest.to_string())
 }
 
 /// Ask once on the terminal. Anything but an explicit yes keeps the session.
 fn accepts_install(version: &str) -> bool {
-    let current = env!("CARGO_PKG_VERSION");
     output::progress(&format!(
-        "cloudthinker {version} is available (you have {current})"
+        "cloudthinker {version} is available (you have {RUNNING_VERSION})"
     ));
     eprint!("Install it now? [y/N] ");
     if std::io::stderr().flush().is_err() {
@@ -202,4 +209,40 @@ fn accepts_install(version: &str) -> bool {
         return false;
     }
     matches!(answer.trim(), "y" | "Y" | "yes" | "Yes")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RUNNING_VERSION, newer_than, newer_than_running};
+    use axoupdater::Version;
+
+    #[test]
+    fn offers_a_strictly_newer_release() {
+        assert_eq!(
+            newer_than(&Version::new(0, 5, 1), &Version::new(0, 5, 0)),
+            Some("0.5.1".to_string())
+        );
+    }
+
+    #[test]
+    fn offers_nothing_when_the_release_is_the_running_version() {
+        assert_eq!(
+            newer_than(&Version::new(0, 5, 0), &Version::new(0, 5, 0)),
+            None
+        );
+    }
+
+    #[test]
+    fn offers_nothing_when_the_release_is_older() {
+        assert_eq!(
+            newer_than(&Version::new(0, 4, 0), &Version::new(0, 5, 0)),
+            None
+        );
+    }
+
+    #[test]
+    fn compares_against_the_running_binary_version() {
+        let running = Version::parse(RUNNING_VERSION).unwrap();
+        assert_eq!(newer_than_running(&running), None);
+    }
 }

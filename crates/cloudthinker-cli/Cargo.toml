@@ -1,6 +1,6 @@
 [package]
 name = "cloudthinker-cli"
-version = "0.5.0"
+version = "0.5.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -32,4 +32,5 @@ axoupdater = "0.10"
 
 [dev-dependencies]
 assert_cmd = "2"
+portable-pty = "0.9"
 predicates = "3"
