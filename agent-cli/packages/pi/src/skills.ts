@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 import { unzipSync } from "fflate";
@@ -99,7 +99,7 @@ export async function refreshSkills(
 	const indexPath = skillsIndexPath(workspaceId, agentDir);
 	const listed: WorkspaceSkill[] = await client.listSkills();
 	const installable = listed.filter(
-		(skill) => skill.enabled && skill.content_available,
+		(skill) => skill.enabled && skill.content_status === "available",
 	);
 	const cached = await readIndex(indexPath);
 	const onDisk = new Set(await cachedNames(root));
@@ -127,6 +127,18 @@ export async function refreshSkills(
 	}
 	await writeIndex(indexPath, next);
 	return { installed, removed };
+}
+
+export async function hasSkillIndex(
+	workspaceId: string,
+	agentDir?: string,
+): Promise<boolean> {
+	try {
+		await access(skillsIndexPath(workspaceId, agentDir));
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 export async function discoverSkillPaths(

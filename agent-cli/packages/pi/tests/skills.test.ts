@@ -10,6 +10,7 @@ import { skillsIndexPath, skillsRoot } from "../src/paths.ts";
 import {
 	SkillZipError,
 	discoverSkillPaths,
+	hasSkillIndex,
 	readIndex,
 	refreshSkills,
 	skillFiles,
@@ -35,7 +36,7 @@ function listing(overrides: Partial<WorkspaceSkill>[]): WorkspaceSkill[] {
 		description: "d",
 		enabled: true,
 		updated_at: "2026-09-01T00:00:00Z",
-		content_available: true,
+		content_status: "available" as const,
 		...override,
 	}));
 }
@@ -186,7 +187,7 @@ test("a skill with no downloadable content is skipped without an error", async (
 
 			skills = listing([
 				{ name: "alpha" },
-				{ name: "beta", content_available: false },
+				{ name: "beta", content_status: "missing" },
 			]);
 			const first = await refreshSkills(client, WORKSPACE, dir, (name) =>
 				failures.push(name),
@@ -222,7 +223,7 @@ test("a skill that loses its content is dropped from the cache", async () => {
 			await refreshSkills(client, WORKSPACE, dir);
 			assert.deepEqual(await readdir(skillsRoot(WORKSPACE, dir)), ["alpha"]);
 
-			skills = listing([{ name: "alpha", content_available: false }]);
+			skills = listing([{ name: "alpha", content_status: "missing" }]);
 			const second = await refreshSkills(client, WORKSPACE, dir);
 			assert.deepEqual(second.removed, ["alpha"]);
 			assert.deepEqual(
@@ -289,4 +290,59 @@ test("a workspace id that is not a UUID never becomes a path segment", () => {
 	assert.throws(() => skillsRoot("../etc", "/tmp/agent"));
 	assert.throws(() => skillsIndexPath("w-1", "/tmp/agent"));
 	assert.equal(skillsRoot(WORKSPACE, "/tmp/agent"), join("/tmp/agent", "cloudthinker", "skills", WORKSPACE));
+});
+
+test("a cold cache is distinguishable from a workspace whose skills are all gone", async () => {
+	const server = await startFakeServer((request) =>
+		request.path === "/api/v1/custom-skills/" ? { body: [] } : undefined,
+	);
+	try {
+		await withTempDir(async (dir) => {
+			assert.equal(await hasSkillIndex(WORKSPACE, dir), false);
+
+			await refreshSkills(clientFor(server.origin), WORKSPACE, dir);
+
+			assert.equal(await hasSkillIndex(WORKSPACE, dir), true);
+			assert.deepEqual(await discoverSkillPaths(WORKSPACE, dir), []);
+		});
+	} finally {
+		await server.close();
+	}
+});
+
+test("an unprobed skill is not downloaded, so an executor outage is not a 404 storm", async () => {
+	const downloads: string[] = [];
+	const server = await startFakeServer((request) => {
+		if (request.path === "/api/v1/custom-skills/") {
+			return {
+				body: listing([
+					{ name: "alpha", content_status: "unknown" },
+					{ name: "beta", content_status: "invalid" },
+				]),
+			};
+		}
+		const match = /\/api\/v1\/custom-skills\/(.+)\/download$/.exec(request.path);
+		if (match?.[1]) {
+			downloads.push(match[1]);
+			return { status: 404, body: { detail: "Skill not found" } };
+		}
+		return undefined;
+	});
+	try {
+		await withTempDir(async (dir) => {
+			const errors: string[] = [];
+			const result = await refreshSkills(
+				clientFor(server.origin),
+				WORKSPACE,
+				dir,
+				(name) => errors.push(name),
+			);
+
+			assert.deepEqual(downloads, []);
+			assert.deepEqual(result.installed, []);
+			assert.deepEqual(errors, []);
+		});
+	} finally {
+		await server.close();
+	}
 });

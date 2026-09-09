@@ -9,6 +9,9 @@
 //! model as `pi update` re-invoking its package manager), so the running
 //! binary is replaced by the installer, never by this process.
 
+use std::io::{BufRead, IsTerminal, Write};
+use std::time::Duration;
+
 use axoupdater::AxoUpdater;
 use serde::Serialize;
 
@@ -19,6 +22,13 @@ use crate::engine::output;
 /// and the GitHub repo all key off it — keep in lockstep with
 /// `cli/dist-workspace.toml` and the released assets.
 const APP_NAME: &str = "cloudthinker-cli";
+
+/// Opt out of the start-up release check entirely.
+const UPDATE_CHECK_OPT_OUT: &str = "CLOUDTHINKER_NO_UPDATE_CHECK";
+
+/// How long the start-up check may take before the agent starts anyway. The
+/// check exists to save a user a stale session, never to delay one.
+const UPDATE_CHECK_BUDGET: Duration = Duration::from_secs(2);
 
 /// Manual reinstall command, printed when self-update is not possible.
 const REINSTALL_HINT: &str = "reinstall with: curl --proto '=https' --tlsv1.2 -LsSf \
@@ -136,4 +146,60 @@ fn warn_on_env_overrides() {
             ));
         }
     }
+}
+
+/// Offer a newer release before a long interactive session starts.
+///
+/// Every failure path is silent and non-blocking: no receipt, no TTY, a slow
+/// or unreachable release host, or a declined prompt all fall through to the
+/// session. A start-up check that can delay or fail a start is worse than no
+/// check at all, so the network side runs under `UPDATE_CHECK_BUDGET`.
+pub async fn offer_on_start() {
+    if std::env::var_os(UPDATE_CHECK_OPT_OUT).is_some() {
+        return;
+    }
+    if !(std::io::stdin().is_terminal() && std::io::stderr().is_terminal()) {
+        return;
+    }
+    let Ok(Some(version)) = tokio::time::timeout(UPDATE_CHECK_BUDGET, newer_release()).await else {
+        return;
+    };
+    if !accepts_install(&version) {
+        return;
+    }
+    if run(false, false).await == ExitCode::Ok {
+        output::progress("restart cloudthinker to pick up the new version");
+    }
+}
+
+/// The version of a newer release this installation can actually install, if any.
+async fn newer_release() -> Option<String> {
+    let mut updater = AxoUpdater::new_for(APP_NAME);
+    updater.load_receipt().ok()?;
+    if !matches!(updater.check_receipt_is_for_this_executable(), Ok(true)) {
+        return None;
+    }
+    updater
+        .query_new_version()
+        .await
+        .ok()
+        .flatten()
+        .map(ToString::to_string)
+}
+
+/// Ask once on the terminal. Anything but an explicit yes keeps the session.
+fn accepts_install(version: &str) -> bool {
+    let current = env!("CARGO_PKG_VERSION");
+    output::progress(&format!(
+        "cloudthinker {version} is available (you have {current})"
+    ));
+    eprint!("Install it now? [y/N] ");
+    if std::io::stderr().flush().is_err() {
+        return false;
+    }
+    let mut answer = String::new();
+    if std::io::stdin().lock().read_line(&mut answer).is_err() {
+        return false;
+    }
+    matches!(answer.trim(), "y" | "Y" | "yes" | "Yes")
 }

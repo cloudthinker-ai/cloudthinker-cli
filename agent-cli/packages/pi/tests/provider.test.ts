@@ -6,6 +6,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { CloudThinkerClient, TokenSource } from "../src/client.ts";
 import {
 	DEFAULT_MODE,
+	NO_MODES_REASON,
 	NO_PRICE,
 	PROVIDER_ID,
 	apiKeySpec,
@@ -106,6 +107,22 @@ test("a failed model listing registers no provider and reports the reason", asyn
 		assert.equal(failure, "gateway is down");
 		assert.match(modelsUnavailableMessage(failure), /gateway is down/);
 		assert.match(modelsUnavailableMessage(failure), /until you restart/);
+	} finally {
+		await server.close();
+	}
+});
+
+test("an empty model listing registers no provider, so pi never falls back to a vendor model", async () => {
+	const server = await startFakeServer((request) =>
+		request.path === "/api/v1/agent-cli/models" ? { body: { models: [] } } : undefined,
+	);
+	try {
+		const { runtime, registrations } = runtimeFor(server.origin);
+		const failure = await registerProvider(runtime);
+
+		assert.deepEqual(registrations, []);
+		assert.equal(failure, NO_MODES_REASON);
+		assert.match(modelsUnavailableMessage(failure), /no agent mode/);
 	} finally {
 		await server.close();
 	}

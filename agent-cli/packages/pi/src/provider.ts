@@ -10,6 +10,7 @@ export const DEFAULT_MODEL = `${PROVIDER_ID}/${DEFAULT_MODE}`;
 export const CONVERSATION_HEADER = "X-CloudThinker-Conversation";
 
 export const MODELS_UNAVAILABLE_STATUS = "✕ cloud models unavailable";
+export const NO_MODES_REASON = "the server advertised no agent mode";
 
 export function modelsUnavailableMessage(reason: string): string {
 	return `CloudThinker could not list its agent modes, so no cloud model is available until you restart: ${reason}`;
@@ -58,6 +59,7 @@ export async function registerProvider(
 	} catch (error) {
 		return describeError(error);
 	}
+	if (runtime.models.length === 0) return NO_MODES_REASON;
 	register(runtime);
 	return undefined;
 }

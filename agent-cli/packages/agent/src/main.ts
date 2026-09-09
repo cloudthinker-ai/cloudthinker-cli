@@ -10,7 +10,9 @@ import {
 import cloudthinker from "@cloudthinker/pi/src/index.ts";
 
 import { NO_SESSION_REFUSAL, applyGuard, hasNoSessionFlag } from "./guard.ts";
+import { modelScopeArgs } from "./models.ts";
 import { bundledThemePaths, themeArgs } from "./theme.ts";
+import { tuiModeArgs } from "./tui.ts";
 
 process.title = "cloudthinker";
 process.env.PI_CODING_AGENT = "true";
@@ -31,6 +33,6 @@ const themes = themeArgs(
 	SettingsManager.create(process.cwd(), getAgentDir()).getThemeSetting(),
 );
 
-await main([...themes, ...argv], {
+await main([...themes, ...tuiModeArgs(argv), ...modelScopeArgs(argv), ...argv], {
 	extensionFactories: [{ name: "cloudthinker", factory: cloudthinker }],
 });

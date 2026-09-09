@@ -24,6 +24,7 @@ const AGENT_BIN_ENV_VAR: &str = "CLOUDTHINKER_AGENT_BIN";
 const URL_ENV_VAR: &str = "CLOUDTHINKER_URL";
 
 pub async fn run(base_url: &str, workspace: Option<&str>, args: Vec<OsString>) -> ExitCode {
+    crate::commands::update::offer_on_start().await;
     let identity = match resolve_identity(base_url, workspace).await {
         Ok(identity) => identity,
         Err(code) => return code,

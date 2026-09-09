@@ -45,7 +45,7 @@ struct Cli {
     workspace: Option<String>,
 
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -227,13 +227,16 @@ async fn dispatch(cli: Cli) -> ExitCode {
         engine::output::eprintln_error("--workspace cannot be used with CLOUDTHINKER_TOKEN");
         return ExitCode::Usage;
     }
-    if workspace.is_some() && matches!(&cli.command, Command::Login(_)) {
+    let command = cli
+        .command
+        .unwrap_or_else(|| Command::Agent(AgentArgs { args: Vec::new() }));
+    if workspace.is_some() && matches!(&command, Command::Login(_)) {
         engine::output::eprintln_error(
             "--workspace selects stored credentials and cannot be used with login",
         );
         return ExitCode::Usage;
     }
-    match cli.command {
+    match command {
         Command::Login(args) => {
             commands::login::run(&base_url, args.no_browser, args.device_auth).await
         }
@@ -324,7 +327,7 @@ mod tests {
         let cli = Cli::try_parse_from(["cloudthinker", "login", "--device-auth", "--no-browser"])
             .expect("valid login args");
 
-        match cli.command {
+        match cli.command.expect("a named subcommand") {
             Command::Login(args) => {
                 assert!(args.device_auth);
                 assert!(args.no_browser);
@@ -345,7 +348,7 @@ mod tests {
         ])
         .expect("valid agent args");
 
-        match cli.command {
+        match cli.command.expect("a named subcommand") {
             Command::Agent(args) => assert_eq!(
                 args.args,
                 ["-p", "hello", "--model", "cloudthinker/pro"]
@@ -361,7 +364,7 @@ mod tests {
         let cli = Cli::try_parse_from(["cloudthinker", "agent", "--", "--workspace", "mine"])
             .expect("valid agent args");
 
-        match cli.command {
+        match cli.command.expect("a named subcommand") {
             Command::Agent(args) => assert_eq!(
                 args.args,
                 ["--workspace", "mine"].map(OsString::from).to_vec()
@@ -371,10 +374,26 @@ mod tests {
     }
 
     #[test]
+    fn a_bare_invocation_runs_the_agent_with_no_arguments() {
+        let cli = Cli::try_parse_from(["cloudthinker"]).expect("a bare invocation parses");
+
+        assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn a_bare_invocation_keeps_its_global_options() {
+        let cli = Cli::try_parse_from(["cloudthinker", "--workspace", "ops"])
+            .expect("a bare invocation with globals parses");
+
+        assert!(cli.command.is_none());
+        assert_eq!(cli.workspace.as_deref(), Some("ops"));
+    }
+
+    #[test]
     fn auth_token_parses_as_its_own_subcommand() {
         let cli = Cli::try_parse_from(["cloudthinker", "auth", "token"]).expect("valid auth args");
 
-        match cli.command {
+        match cli.command.expect("a named subcommand") {
             Command::Auth(args) => assert!(matches!(args.command, AuthSub::Token)),
             _ => panic!("expected auth command"),
         }

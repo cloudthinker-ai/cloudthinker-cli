@@ -20,7 +20,7 @@ import {
 } from "./provider.ts";
 import { CloudThinkerRuntime, describeError, detach } from "./runtime.ts";
 import { refreshConnections, startSession } from "./session.ts";
-import { discoverSkillPaths, refreshSkills } from "./skills.ts";
+import { discoverSkillPaths, hasSkillIndex, refreshSkills } from "./skills.ts";
 import { registerAsk } from "./tools/ct-ask.ts";
 import { registerCloudRead } from "./tools/ct-cloud-read.ts";
 import { registerCloudWrite } from "./tools/ct-cloud-write.ts";
@@ -99,14 +99,19 @@ export default async function cloudthinker(pi: ExtensionAPI): Promise<void> {
 		detach(async () => {
 			runtime.memory = await fetchMemory(runtime.client, session.conversation_id);
 		}, silent);
-		detach(async () => {
-			const id = workspaceId();
-			if (id) {
-				await refreshSkills(runtime.client, id, undefined, (name, error) => {
+		const skillsWorkspace = workspaceId();
+		if (skillsWorkspace) {
+			const refresh = async (): Promise<void> => {
+				await refreshSkills(runtime.client, skillsWorkspace, undefined, (name, error) => {
 					warn(`skill "${name}"`)(error);
 				});
+			};
+			if (await hasSkillIndex(skillsWorkspace)) {
+				detach(refresh, warn("skills"));
+			} else {
+				await refresh().catch(warn("skills"));
 			}
-		}, warn("skills"));
+		}
 	});
 
 	pi.on("resources_discover", async () => ({
@@ -122,9 +127,9 @@ export default async function cloudthinker(pi: ExtensionAPI): Promise<void> {
 		);
 	});
 
-	pi.on("before_agent_start", async (event, ctx) => {
+	pi.on("before_agent_start", (event, ctx) => {
 		runtime.bind(ctx);
-		await refreshConnections(runtime);
+		detach(() => refreshConnections(runtime), silent);
 		return {
 			systemPrompt: appendPromptBlock(event.systemPrompt, buildPromptBlock(runtime)),
 		};

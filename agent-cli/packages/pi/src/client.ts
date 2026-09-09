@@ -203,12 +203,14 @@ export interface WorkspaceAutoMode {
 	enabled: boolean;
 }
 
+export type SkillContentStatus = "available" | "missing" | "invalid" | "unknown";
+
 export interface WorkspaceSkill {
 	name: string;
 	description: string;
 	enabled: boolean;
 	updated_at: string;
-	content_available: boolean;
+	content_status: SkillContentStatus;
 }
 
 export type RunStatus =

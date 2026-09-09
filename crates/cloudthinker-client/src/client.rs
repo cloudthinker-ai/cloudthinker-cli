@@ -324,7 +324,7 @@ pub struct CtClient {
 
 impl CtClient {
     pub fn new(base_url: impl Into<String>, store: Arc<dyn TokenStore>) -> CtResult<Self> {
-        let base_url = base_url.into();
+        let base_url = normalize_base_url(&base_url.into())?;
         let timeout = Duration::from_secs(REQUEST_TIMEOUT_SECS);
         let anon_http = reqwest::Client::builder()
             .timeout(timeout)
@@ -433,9 +433,10 @@ impl CtClient {
 
     // -- unauthenticated calls -----------------------------------------------
 
-    /// Exchange a one-time code + verifier for a token. Any rejection collapses
-    /// to a single generic auth error (the backend does not distinguish burned
-    /// vs expired codes, CA-CLI-4).
+    /// Exchange a one-time code + verifier for a token. The backend's one
+    /// generic 400 collapses to a single generic auth error (it does not
+    /// distinguish burned vs expired codes, CA-CLI-4); any other status
+    /// surfaces as-is.
     pub async fn exchange_code(&self, code: &str, verifier: &str) -> CtResult<StoredToken> {
         let body = cloudthinker_api::types::CliTokenRequest {
             code: code
@@ -455,10 +456,10 @@ impl CtClient {
                 Ok(token)
             }
             Err(e) => Err(match to_ct_error(e).await {
-                CtError::Transport(m) => CtError::Transport(m),
-                _ => {
+                CtError::Api { status: 400, .. } => {
                     CtError::Auth("could not complete login; run `cloudthinker login` again".into())
                 }
+                other => other,
             }),
         }
     }
@@ -754,6 +755,11 @@ pub fn origin_of(base_url: &str) -> CtResult<String> {
     Ok(format!("{scheme}://{host}:{port}"))
 }
 
+fn normalize_base_url(raw: &str) -> CtResult<String> {
+    origin_of(raw)?;
+    Ok(raw.trim_end_matches('/').to_string())
+}
+
 fn is_loopback_host(url: &url::Url) -> bool {
     match url.host() {
         Some(url::Host::Domain(d)) => d.eq_ignore_ascii_case("localhost"),
@@ -944,7 +950,72 @@ mod tests {
         );
     }
 
-    // CA-CLI-4: any exchange failure collapses to a generic auth error.
+    #[tokio::test]
+    async fn base_url_trailing_slashes_normalize_to_the_bare_origin() {
+        let server = MockServer::start().await;
+        let store = || Arc::new(MockTokenStore::new(None));
+        let bare = CtClient::new(server.uri(), store()).unwrap();
+        let one = CtClient::new(format!("{}/", server.uri()), store()).unwrap();
+        let many = CtClient::new(format!("{}///", server.uri()), store()).unwrap();
+        assert_eq!(bare.base_url(), server.uri());
+        assert_eq!(one.base_url(), server.uri());
+        assert_eq!(many.base_url(), server.uri());
+    }
+
+    #[test]
+    fn base_url_must_be_a_usable_origin() {
+        let store = || Arc::new(MockTokenStore::new(None));
+        for raw in ["", "ftp://app.example.com"] {
+            let err = CtClient::new(raw, store()).err().expect(raw);
+            assert!(matches!(err, CtError::Usage(_)), "{raw}: got {err:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn trailing_slash_base_url_requests_a_single_slash_path() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/cli/whoami"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "user_email": "duc@example.com",
+                "workspace_id": "11111111-1111-4111-8111-111111111111",
+                "workspace_name": "Production",
+                "organization_id": null,
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = CtClient::new(
+            format!("{}/", server.uri()),
+            Arc::new(MockTokenStore::new(Some(stored("access", "r")))),
+        )
+        .unwrap();
+        let identity = client.whoami().await.unwrap();
+        assert_eq!(identity.workspace_name, "Production");
+    }
+
+    #[tokio::test]
+    async fn exchange_code_surfaces_a_non_400_status() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/login/cli/token"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        let client = CtClient::new(server.uri(), Arc::new(MockTokenStore::new(None))).unwrap();
+        let err = client
+            .exchange_code("one-time-code", &valid_verifier())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, CtError::Api { status: 404, .. }),
+            "got {err:?}"
+        );
+    }
+
+    // CA-CLI-4: the backend's one generic 400 collapses to a generic auth error.
     #[tokio::test]
     async fn ca_cli_4_exchange_generic_400_maps_to_auth() {
         let server = MockServer::start().await;
