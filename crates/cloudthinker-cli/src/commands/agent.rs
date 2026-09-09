@@ -53,15 +53,15 @@ async fn resolve_identity(
         Ok(identity) => return Ok(identity),
         Err(error) => error,
     };
-    match login_guide::plan(&error, env_token_is_set(), std::io::stdin().is_terminal()) {
+    let plan = login_guide::plan(&error, env_token_is_set(), std::io::stdin().is_terminal());
+    if let Some((line, next)) = login_guide::explain(&error, plan) {
+        output::eprintln_error(&line);
+        output::progress(next);
+    }
+    match plan {
         login_guide::Plan::Report => Err(exit::report(&error)),
-        login_guide::Plan::Tell(hint) => {
-            output::eprintln_error(&error.to_string());
-            output::progress(hint);
-            Err(ExitCode::Auth)
-        }
+        login_guide::Plan::Tell(_) => Err(ExitCode::Auth),
         login_guide::Plan::LogIn => {
-            output::progress(login_guide::OPENING_LOGIN);
             match crate::commands::login::run(base_url, false, false).await {
                 ExitCode::Ok => {}
                 code => return Err(code),

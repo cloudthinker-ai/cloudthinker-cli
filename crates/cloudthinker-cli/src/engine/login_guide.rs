@@ -34,6 +34,17 @@ pub fn needs_login(error: &CtError) -> bool {
     }
 }
 
+/// What the terminal shows before the plan acts: the error the user must be
+/// able to read, then the line that says what happens next. `Report` prints
+/// nothing here because `exit::report` owns that error.
+pub fn explain(error: &CtError, plan: Plan) -> Option<(String, &'static str)> {
+    match plan {
+        Plan::Report => None,
+        Plan::Tell(hint) => Some((error.to_string(), hint)),
+        Plan::LogIn => Some((error.to_string(), OPENING_LOGIN)),
+    }
+}
+
 pub fn plan(error: &CtError, env_token_is_set: bool, interactive: bool) -> Plan {
     if !needs_login(error) {
         return Plan::Report;
@@ -82,6 +93,24 @@ mod tests {
         assert_eq!(
             plan(&CtError::Transport("down".into()), false, true),
             Plan::Report
+        );
+    }
+
+    #[test]
+    fn a_login_never_hides_the_error_that_caused_it() {
+        let error = CtError::Auth("keyring read: -25293; run `cloudthinker login`".into());
+
+        let (line, next) = explain(&error, Plan::LogIn).unwrap();
+
+        assert_eq!(line, error.to_string());
+        assert_eq!(next, OPENING_LOGIN);
+        assert_eq!(
+            explain(&error, Plan::Tell(LOG_IN_FIRST)),
+            Some((error.to_string(), LOG_IN_FIRST))
+        );
+        assert_eq!(
+            explain(&CtError::Transport("down".into()), Plan::Report),
+            None
         );
     }
 

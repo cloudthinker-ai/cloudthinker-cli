@@ -3,8 +3,8 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::auth::store::{SaveLocation, StoredToken, TokenStore};
-use crate::error::{CtError, CtResult};
+use crate::auth::store::{StoredToken, TokenStore};
+use crate::error::CtResult;
 
 /// In-memory `TokenStore` double. Tracks save calls and supports simulating an
 /// external rotation via [`MockTokenStore::set`].
@@ -42,10 +42,10 @@ impl TokenStore for MockTokenStore {
         Ok(self.inner.lock().expect("mock lock").clone())
     }
 
-    fn save(&self, token: &StoredToken) -> CtResult<SaveLocation> {
+    fn save(&self, token: &StoredToken) -> CtResult<()> {
         self.save_count.fetch_add(1, Ordering::SeqCst);
         *self.inner.lock().expect("mock lock") = Some(token.clone());
-        Ok(SaveLocation::File)
+        Ok(())
     }
 
     fn clear(&self) -> CtResult<()> {
@@ -77,26 +77,4 @@ pub fn token_json(access: &str, refresh: &str) -> serde_json::Value {
         "token_type": "bearer",
         "workspace_id": "00000000-0000-0000-0000-000000000001",
     })
-}
-
-/// A `TokenStore` whose every operation fails — stands in for an unusable OS
-/// keyring so `AutoStore` fallback is testable without the real keyring.
-pub struct FailingStore;
-
-impl TokenStore for FailingStore {
-    fn load(&self) -> CtResult<Option<StoredToken>> {
-        Err(CtError::Store("keyring unavailable".into()))
-    }
-
-    fn save(&self, _token: &StoredToken) -> CtResult<SaveLocation> {
-        Err(CtError::Store("keyring unavailable".into()))
-    }
-
-    fn clear(&self) -> CtResult<()> {
-        Err(CtError::Store("keyring unavailable".into()))
-    }
-
-    fn refresh_enabled(&self) -> bool {
-        true
-    }
 }

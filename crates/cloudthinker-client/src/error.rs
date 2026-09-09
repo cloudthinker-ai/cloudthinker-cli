@@ -44,7 +44,7 @@ pub enum CtError {
     #[error("login was denied in the browser")]
     LoginDenied,
 
-    /// A local token-store failure (keyring + file both unusable).
+    /// A local token-store failure (credentials file unusable).
     #[error("token store error: {0}")]
     Store(String),
 

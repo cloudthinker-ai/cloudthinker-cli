@@ -10,6 +10,7 @@
 //! binary is replaced by the installer, never by this process.
 
 use std::io::{BufRead, IsTerminal, Write};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use axoupdater::{AxoUpdater, Version};
@@ -33,6 +34,9 @@ const RUNNING_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// check exists to save a user a stale session, never to delay one.
 const UPDATE_CHECK_BUDGET: Duration = Duration::from_secs(2);
 
+/// Printed when the freshly installed binary could not take over this start.
+const RESTART_HINT: &str = "restart cloudthinker to pick up the new version";
+
 /// Manual reinstall command, printed when self-update is not possible.
 const REINSTALL_HINT: &str = "reinstall with: curl --proto '=https' --tlsv1.2 -LsSf \
     https://github.com/cloudthinker-ai/cloudthinker-cli/releases/latest/download/cloudthinker-cli-installer.sh | sh";
@@ -55,67 +59,79 @@ fn refuse(reason: &str) -> ExitCode {
     ExitCode::JobFailed
 }
 
-pub async fn run(force: bool, json: bool) -> ExitCode {
-    warn_on_env_overrides();
+/// What one attempt to install the latest release did.
+enum Outcome {
+    Updated { old: Option<String>, new: String },
+    Current,
+    Refused(String),
+    Failed(String),
+}
 
+async fn install_latest(force: bool) -> Outcome {
     let mut updater = AxoUpdater::new_for(APP_NAME);
     if let Err(err) = updater.load_receipt() {
         // No receipt: the binary was not installed by a cargo-dist installer
         // (copied in place, or installed by a future package manager). Refuse
         // rather than guess where to write a replacement (pi's stance).
-        return refuse(&err.to_string());
+        return Outcome::Refused(err.to_string());
     }
     // axoupdater treats an exe/receipt mismatch as "no update needed" — a
     // silent lie for a binary that came from somewhere else. Surface it.
     if !matches!(updater.check_receipt_is_for_this_executable(), Ok(true)) {
-        return refuse("the running binary does not match the install receipt");
+        return Outcome::Refused("the running binary does not match the install receipt".into());
     }
     if force {
         updater.always_update(true);
     }
-
     match updater.run().await {
-        Ok(Some(result)) => {
-            let old = result.old_version.as_ref().map(ToString::to_string);
-            let new = result.new_version.to_string();
-            let human = format!(
-                "Updated cloudthinker from {} to {new}",
-                old.as_deref().unwrap_or("an unknown version")
-            );
-            render(
-                &UpdateEnvelope {
-                    updated: true,
-                    old_version: old,
-                    new_version: Some(new.clone()),
-                },
-                &human,
-                json,
-            )
-        }
-        Ok(None) => render(
-            &UpdateEnvelope {
-                updated: false,
-                old_version: None,
-                new_version: None,
-            },
-            "cloudthinker is already up to date",
-            json,
-        ),
-        Err(err) => {
-            output::eprintln_error(&format!("update failed: {err}"));
-            ExitCode::JobFailed
-        }
+        Ok(Some(result)) => Outcome::Updated {
+            old: result.old_version.as_ref().map(ToString::to_string),
+            new: result.new_version.to_string(),
+        },
+        Ok(None) => Outcome::Current,
+        Err(err) => Outcome::Failed(err.to_string()),
     }
+}
+
+pub async fn run(force: bool, json: bool) -> ExitCode {
+    warn_on_env_overrides();
+    render(&install_latest(force).await, json)
 }
 
 /// The one place owning the stdout-purity + exit-code mapping for an update
 /// outcome: JSON envelope on stdout when `--json`, else the human line; any
 /// render failure goes to stderr and maps to `JobFailed`.
-fn render(envelope: &UpdateEnvelope, human: &str, json: bool) -> ExitCode {
+fn render(outcome: &Outcome, json: bool) -> ExitCode {
+    let (envelope, human) = match outcome {
+        Outcome::Updated { old, new } => (
+            UpdateEnvelope {
+                updated: true,
+                old_version: old.clone(),
+                new_version: Some(new.clone()),
+            },
+            format!(
+                "Updated cloudthinker from {} to {new}",
+                old.as_deref().unwrap_or("an unknown version")
+            ),
+        ),
+        Outcome::Current => (
+            UpdateEnvelope {
+                updated: false,
+                old_version: None,
+                new_version: None,
+            },
+            "cloudthinker is already up to date".to_string(),
+        ),
+        Outcome::Refused(reason) => return refuse(reason),
+        Outcome::Failed(err) => {
+            output::eprintln_error(&format!("update failed: {err}"));
+            return ExitCode::JobFailed;
+        }
+    };
     let rendered = if json {
-        output::emit_json(envelope)
+        output::emit_json(&envelope)
     } else {
-        output::print_update_result(human)
+        output::print_update_result(&human)
     };
     match rendered {
         Ok(()) => ExitCode::Ok,
@@ -170,9 +186,47 @@ pub async fn offer_on_start() {
     if !accepts_install(&version) {
         return;
     }
-    if run(false, false).await == ExitCode::Ok {
-        output::progress("restart cloudthinker to pick up the new version");
+    warn_on_env_overrides();
+    let outcome = install_latest(false).await;
+    render(&outcome, false);
+    if matches!(outcome, Outcome::Updated { .. }) {
+        restart_into_installed_binary();
     }
+}
+
+/// Continue this start in the binary the installer renamed into place: the old
+/// process would run the old agent bundle, and on macOS its first Keychain
+/// read fails once its on-disk code changed (`errSecAuthFailed`).
+#[cfg(unix)]
+fn restart_into_installed_binary() {
+    use std::os::unix::process::CommandExt;
+
+    let Some(binary) = installed_binary_path() else {
+        output::progress(RESTART_HINT);
+        return;
+    };
+    let error = std::process::Command::new(&binary)
+        .args(std::env::args_os().skip(1))
+        .env(UPDATE_CHECK_OPT_OUT, "1")
+        .exec();
+    output::eprintln_error(&format!("could not restart {}: {error}", binary.display()));
+    output::progress(RESTART_HINT);
+}
+
+#[cfg(not(unix))]
+fn restart_into_installed_binary() {
+    output::progress(RESTART_HINT);
+}
+
+/// This executable's directory plus the released name; on Linux `current_exe`
+/// alone names the unlinked inode as `<path> (deleted)`.
+fn installed_binary_path() -> Option<PathBuf> {
+    Some(
+        std::env::current_exe()
+            .ok()?
+            .parent()?
+            .join(env!("CARGO_BIN_NAME")),
+    )
 }
 
 /// The version of a newer release this installation can actually install, if any.

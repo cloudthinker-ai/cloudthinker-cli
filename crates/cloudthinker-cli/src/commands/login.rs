@@ -4,8 +4,8 @@ use std::future::Future;
 use std::time::Duration;
 
 use cloudthinker_client::{
-    CtClient, Loopback, PkceChallenge, SaveLocation, StoredToken, TokenStore, consent_url,
-    persistent_store, wait_for_device_token,
+    CtClient, Loopback, PkceChallenge, StoredToken, TokenStore, consent_url, persistent_store,
+    wait_for_device_token,
 };
 
 use crate::engine::exit::{self, ExitCode};
@@ -119,12 +119,8 @@ fn callback_wait_error(error: cloudthinker_client::CtError) -> cloudthinker_clie
 /// `store.save` must never report a successful login) is unit-testable
 /// without a browser/loopback/network round-trip.
 fn finish_login(store: &dyn TokenStore, token: &StoredToken) -> ExitCode {
-    match store.save(token) {
-        Ok(SaveLocation::File) => {
-            output::warn("OS keyring unavailable; stored credentials in a 0600 file.");
-        }
-        Ok(SaveLocation::Keyring) => {}
-        Err(err) => return exit::report(&err),
+    if let Err(err) = store.save(token) {
+        return exit::report(&err);
     }
 
     match (&token.workspace_name, token.workspace_id) {
@@ -148,8 +144,8 @@ mod tests {
     use super::*;
 
     /// Records every save call so tests can assert the save actually happened
-    /// (not just the exit code). `save_fails` simulates an unusable keyring
-    /// AND file fallback (e.g. disk full, no writable config dir).
+    /// (not just the exit code). `save_fails` simulates an unwritable
+    /// credentials file (e.g. disk full, no writable config dir).
     #[derive(Default)]
     struct FakeStore {
         saved: Mutex<Vec<StoredToken>>,
@@ -170,12 +166,12 @@ mod tests {
             Ok(None)
         }
 
-        fn save(&self, token: &StoredToken) -> CtResult<SaveLocation> {
+        fn save(&self, token: &StoredToken) -> CtResult<()> {
             self.saved.lock().expect("mock lock").push(token.clone());
             if self.save_fails {
                 return Err(CtError::Store("disk full".into()));
             }
-            Ok(SaveLocation::Keyring)
+            Ok(())
         }
 
         fn clear(&self) -> CtResult<()> {

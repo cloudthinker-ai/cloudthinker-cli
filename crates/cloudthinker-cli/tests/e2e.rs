@@ -1091,6 +1091,27 @@ fn newer_tag() -> String {
 /// rather than installed; when no offer appears the byte is simply never read.
 #[cfg(unix)]
 fn agent_on_a_tty(api: &MockApi, releases: &MockReleases, receipt_dir: &std::path::Path) -> String {
+    binary_on_a_tty(
+        &assert_cmd::cargo::cargo_bin("cloudthinker"),
+        &["agent"],
+        b"n\n",
+        api,
+        releases,
+        receipt_dir,
+    )
+}
+
+/// Run `binary` with `args` on a pty against both mocks, queue `answer` on
+/// stdin for the offer prompt, and return everything it wrote to the terminal.
+#[cfg(unix)]
+fn binary_on_a_tty(
+    binary: &std::path::Path,
+    args: &[&str],
+    answer: &[u8],
+    api: &MockApi,
+    releases: &MockReleases,
+    receipt_dir: &std::path::Path,
+) -> String {
     use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
     let stub = write_agent_stub("tty");
@@ -1103,8 +1124,8 @@ fn agent_on_a_tty(api: &MockApi, releases: &MockReleases, receipt_dir: &std::pat
         })
         .unwrap();
 
-    let mut cmd = CommandBuilder::new(assert_cmd::cargo::cargo_bin("cloudthinker"));
-    cmd.arg("agent");
+    let mut cmd = CommandBuilder::new(binary);
+    cmd.args(args);
     cmd.env("CLOUDTHINKER_TOKEN", "test-access-token");
     cmd.env("CLOUDTHINKER_URL", &api.base_url);
     cmd.env("CLOUDTHINKER_AGENT_BIN", &stub);
@@ -1121,7 +1142,7 @@ fn agent_on_a_tty(api: &MockApi, releases: &MockReleases, receipt_dir: &std::pat
     drop(pair.slave);
 
     let mut writer = pair.master.take_writer().unwrap();
-    writer.write_all(b"n\n").unwrap();
+    writer.write_all(answer).unwrap();
     drop(writer);
 
     let mut killer = child.clone_killer();
@@ -1180,6 +1201,80 @@ fn ca_up_9_a_newer_release_is_offered_and_declining_still_starts_the_agent() {
         output.contains("argv: "),
         "declining must still start the agent, got:\n{output}"
     );
+}
+
+/// A private copy of the built binary that a fake installer may replace, plus
+/// the receipt that claims it. The real install location must stay untouched.
+#[cfg(unix)]
+fn installed_copy(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let dir = std::env::temp_dir().join(format!("ct-installed-copy-{}-{tag}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let dir = dir.canonicalize().unwrap();
+    let binary = dir.join("cloudthinker");
+    std::fs::copy(assert_cmd::cargo::cargo_bin("cloudthinker"), &binary).unwrap();
+    let receipt_dir = write_receipt(tag, RUNNING_VERSION, dir.to_str().unwrap());
+    (binary, receipt_dir)
+}
+
+/// Fake installer that does what the real one does to the binary: writes the
+/// new release beside it and renames it over the old path. The "release" is a
+/// script that reports the argv and the update-check opt-out it received.
+#[cfg(unix)]
+fn replacing_installer_script(binary: &std::path::Path) -> String {
+    let path = binary.to_str().unwrap();
+    format!(
+        "#!/bin/sh\n\
+         cat > \"{path}.new\" <<'STUB'\n\
+         #!/bin/sh\n\
+         echo \"reexec argv: $*\"\n\
+         echo \"reexec update check: ${{CLOUDTHINKER_NO_UPDATE_CHECK:-unset}}\"\n\
+         STUB\n\
+         chmod +x \"{path}.new\"\n\
+         mv \"{path}.new\" \"{path}\"\n"
+    )
+}
+
+// CA-UP-11: accepting the offer hands this start to the binary the installer
+// just wrote, with the original arguments, and that binary skips a second
+// check. The old process must not carry on: it would run the old agent bundle,
+// and on macOS its first Keychain read fails once its on-disk code changed.
+#[cfg(unix)]
+#[test]
+fn ca_up_11_an_accepted_offer_continues_in_the_installed_binary() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+    let tag = newer_tag();
+    let (binary, receipt_dir) = installed_copy("up11");
+    let releases = MockReleases::start(&tag, replacing_installer_script(&binary));
+
+    let output = binary_on_a_tty(
+        &binary,
+        &["agent", "--", "--resume"],
+        b"y\n",
+        &api,
+        &releases,
+        &receipt_dir,
+    );
+
+    assert!(
+        output.contains(&format!(
+            "Updated cloudthinker from {RUNNING_VERSION} to {}",
+            tag.trim_start_matches('v')
+        )),
+        "expected the install, got:\n{output}"
+    );
+    assert!(
+        output.contains("reexec argv: agent -- --resume"),
+        "the installed binary must continue this start with the same arguments, got:\n{output}"
+    );
+    assert!(
+        output.contains("reexec update check: 1"),
+        "the installed binary must not offer again, got:\n{output}"
+    );
+    assert!(
+        !output.contains("argv: --resume"),
+        "the old process must not start the agent, got:\n{output}"
+    );
+    let _ = std::fs::remove_dir_all(binary.parent().unwrap());
 }
 
 // CA-UP-10: the release the user is already running is not offered back to

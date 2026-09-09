@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::auth::refresh::RefreshCoordinator;
 use crate::auth::store::{
-    AutoStore, EnvTokenStore, StoredToken, TOKEN_ENV_VAR, TokenStore, WorkspaceSelector,
+    EnvTokenStore, FileStore, StoredToken, TOKEN_ENV_VAR, TokenStore, WorkspaceSelector,
     acquire_credential_lock,
 };
 use crate::error::{CtError, CtResult, to_ct_error};
@@ -770,7 +770,8 @@ fn is_loopback_host(url: &url::Url) -> bool {
 }
 
 /// Resolve the read/refresh store: env override if `CLOUDTHINKER_TOKEN` is set,
-/// otherwise the keyring-preferred `Auto` store.
+/// otherwise the credentials file. Opening the file the first time after the
+/// 0.5.3 upgrade migrates a keyring login into it (`FileStore::open_default`).
 pub fn resolve_store(base_url: &str, workspace: Option<&str>) -> CtResult<Arc<dyn TokenStore>> {
     if let Some(env) = EnvTokenStore::from_env() {
         if workspace.is_some() {
@@ -780,20 +781,20 @@ pub fn resolve_store(base_url: &str, workspace: Option<&str>) -> CtResult<Arc<dy
         }
         return Ok(Arc::new(env));
     }
-    auto_store(base_url, workspace)
+    file_store(base_url, workspace)
 }
 
 /// The persistent store used by `login`/`logout` (never the env override — those
 /// commands must write real credentials).
 pub fn persistent_store(base_url: &str, workspace: Option<&str>) -> CtResult<Arc<dyn TokenStore>> {
-    auto_store(base_url, workspace)
+    file_store(base_url, workspace)
 }
 
-fn auto_store(base_url: &str, workspace: Option<&str>) -> CtResult<Arc<dyn TokenStore>> {
+fn file_store(base_url: &str, workspace: Option<&str>) -> CtResult<Arc<dyn TokenStore>> {
     let selector = workspace.map_or(WorkspaceSelector::Active, |value| {
         WorkspaceSelector::IdOrName(value.to_string())
     });
-    Ok(Arc::new(AutoStore::default_for(
+    Ok(Arc::new(FileStore::open_default(
         origin_of(base_url)?,
         selector,
     )?))
@@ -805,7 +806,6 @@ mod tests {
 
     use super::*;
     use crate::auth::refresh::PROACTIVE_REFRESH_SKEW_SECS;
-    use crate::auth::store::SaveLocation;
     use crate::test_support::{MockTokenStore, stored, token_json};
     use wiremock::matchers::{method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -865,8 +865,8 @@ mod tests {
             Ok(self.tokens.lock().unwrap().clone())
         }
 
-        fn save(&self, _token: &StoredToken) -> CtResult<SaveLocation> {
-            Ok(SaveLocation::File)
+        fn save(&self, _token: &StoredToken) -> CtResult<()> {
+            Ok(())
         }
 
         fn clear(&self) -> CtResult<()> {

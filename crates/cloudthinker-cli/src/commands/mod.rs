@@ -22,7 +22,7 @@ pub(crate) fn env_token_is_set() -> bool {
 }
 
 /// Build a read/refresh client (env override if `CLOUDTHINKER_TOKEN` is set,
-/// otherwise the keyring-preferred store). Shared by every read-only command;
+/// otherwise the credentials file). Shared by every read-only command;
 /// `login`/`logout` use `persistent_store` directly since they write
 /// credentials.
 pub(crate) fn build_client(base_url: &str, workspace: Option<&str>) -> Result<CtClient, CtError> {

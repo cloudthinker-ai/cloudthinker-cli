@@ -1,14 +1,16 @@
-//! Token persistence with codex-style `Auto` resolution.
+//! Token persistence, codex `auth.json` style.
 //!
 //! Resolution order (cheapest / most-explicit first):
 //!   1. env `CLOUDTHINKER_TOKEN` — an access-only override for CI. Read-only,
 //!      refresh disabled; the client never writes or refreshes it.
-//!   2. OS keyring (service `cloudthinker-cli`, account = base-url origin).
-//!   3. the platform config directory's `cloudthinker/credentials.json`, mode
-//!      0600, keyed by origin and workspace id.
+//!   2. the platform config directory's `cloudthinker/credentials.json`, keyed
+//!      by origin and workspace id. Mode 0600 on Unix; on Windows it rests on
+//!      the per-user ACL of `%APPDATA%`, as Codex's `auth.json` does.
 //!
-//! `AutoStore` prefers the keyring and falls back to the file; a later
-//! successful keyring save deletes the migrated file entry.
+//! Releases before 0.5.3 kept the logins in the OS keyring (service
+//! `cloudthinker-cli`, account = origin). `FileStore::open_default` absorbs
+//! that entry into the file once and deletes it, so the first store opened by
+//! 0.5.3, on a read or a write path, migrates the login.
 
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -68,13 +70,6 @@ impl StoredToken {
     }
 }
 
-/// Where a `save` landed — the login command warns when it fell back to a file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SaveLocation {
-    Keyring,
-    File,
-}
-
 /// Exclusive credential-store mutation guard. Stores without persistence use
 /// the empty guard; file-backed stores hold an OS lock for its lifetime.
 pub struct StoreLock {
@@ -106,8 +101,8 @@ pub trait TokenStore: Send + Sync {
     fn load_all_locked(&self, _lock: &StoreLock) -> CtResult<Vec<StoredToken>> {
         self.load_all()
     }
-    fn save(&self, token: &StoredToken) -> CtResult<SaveLocation>;
-    fn save_locked(&self, _lock: &StoreLock, token: &StoredToken) -> CtResult<SaveLocation> {
+    fn save(&self, token: &StoredToken) -> CtResult<()>;
+    fn save_locked(&self, _lock: &StoreLock, token: &StoredToken) -> CtResult<()> {
         self.save(token)
     }
     fn clear(&self) -> CtResult<()>;
@@ -164,10 +159,10 @@ impl TokenStore for EnvTokenStore {
         }))
     }
 
-    fn save(&self, _token: &StoredToken) -> CtResult<SaveLocation> {
+    fn save(&self, _token: &StoredToken) -> CtResult<()> {
         // Read-only override: silently ignore writes so a stray save during an
         // env-pinned session cannot clobber a real credential file.
-        Ok(SaveLocation::File)
+        Ok(())
     }
 
     fn clear(&self) -> CtResult<()> {
@@ -179,104 +174,26 @@ impl TokenStore for EnvTokenStore {
     }
 }
 
-/// Keyring-backed store; account is the API origin so multi-origin logins
-/// coexist without ever crossing scheme or port.
-pub struct KeyringStore {
+/// The keyring entry releases before 0.5.3 kept for an origin: read once so
+/// the credentials file can absorb it, then deleted.
+struct KeyringLogins {
     origin: String,
-    selector: WorkspaceSelector,
 }
 
-impl KeyringStore {
-    pub fn new(origin: impl Into<String>) -> Self {
-        Self {
-            origin: origin.into(),
-            selector: WorkspaceSelector::Active,
+impl KeyringLogins {
+    fn entry(&self) -> Option<keyring::Entry> {
+        keyring::Entry::new(KEYRING_SERVICE, &self.origin).ok()
+    }
+
+    fn take(&self) -> Option<OriginCredentials> {
+        let json = self.entry()?.get_password().ok()?;
+        decode_origin(&json, "keyring").ok()
+    }
+
+    fn delete(&self) {
+        if let Some(entry) = self.entry() {
+            let _ = entry.delete_credential();
         }
-    }
-
-    pub fn with_selector(origin: impl Into<String>, selector: WorkspaceSelector) -> Self {
-        Self {
-            origin: origin.into(),
-            selector,
-        }
-    }
-
-    fn entry(&self) -> CtResult<keyring::Entry> {
-        keyring::Entry::new(KEYRING_SERVICE, &self.origin)
-            .map_err(|e| CtError::Store(format!("keyring open: {e}")))
-    }
-}
-
-impl TokenStore for KeyringStore {
-    fn load(&self) -> CtResult<Option<StoredToken>> {
-        match self.entry()?.get_password() {
-            Ok(json) => decode_origin(&json, "keyring")?.select(&self.selector),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(CtError::Store(format!("keyring read: {e}"))),
-        }
-    }
-
-    fn load_all(&self) -> CtResult<Vec<StoredToken>> {
-        match self.entry()?.get_password() {
-            Ok(json) => Ok(decode_origin(&json, "keyring")?
-                .workspaces
-                .into_values()
-                .collect()),
-            Err(keyring::Error::NoEntry) => Ok(Vec::new()),
-            Err(e) => Err(CtError::Store(format!("keyring read: {e}"))),
-        }
-    }
-
-    fn save(&self, token: &StoredToken) -> CtResult<SaveLocation> {
-        let mut credentials = match self.entry()?.get_password() {
-            Ok(json) => match decode_origin(&json, "keyring") {
-                Ok(credentials) => credentials,
-                Err(CtError::ObsoleteCredentials) => OriginCredentials::default(),
-                Err(error) => return Err(error),
-            },
-            Err(keyring::Error::NoEntry) => OriginCredentials::default(),
-            Err(e) => return Err(CtError::Store(format!("keyring read: {e}"))),
-        };
-        credentials.insert(token)?;
-        let json = serde_json::to_string(&credentials)
-            .map_err(|e| CtError::Store(format!("keyring encode: {e}")))?;
-        self.entry()?
-            .set_password(&json)
-            .map_err(|e| CtError::Store(format!("keyring write: {e}")))?;
-        Ok(SaveLocation::Keyring)
-    }
-
-    fn clear(&self) -> CtResult<()> {
-        let entry = self.entry()?;
-        let json = match entry.get_password() {
-            Ok(json) => json,
-            Err(keyring::Error::NoEntry) => return Ok(()),
-            Err(e) => return Err(CtError::Store(format!("keyring read: {e}"))),
-        };
-        let mut credentials = decode_origin(&json, "keyring")?;
-        credentials.remove(&self.selector)?;
-        if credentials.workspaces.is_empty() {
-            return match entry.delete_credential() {
-                Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-                Err(e) => Err(CtError::Store(format!("keyring delete: {e}"))),
-            };
-        }
-        let json = serde_json::to_string(&credentials)
-            .map_err(|e| CtError::Store(format!("keyring encode: {e}")))?;
-        entry
-            .set_password(&json)
-            .map_err(|e| CtError::Store(format!("keyring write: {e}")))
-    }
-
-    fn clear_all(&self) -> CtResult<()> {
-        match self.entry()?.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(CtError::Store(format!("keyring delete: {e}"))),
-        }
-    }
-
-    fn refresh_enabled(&self) -> bool {
-        true
     }
 }
 
@@ -308,15 +225,49 @@ impl FileStore {
         }
     }
 
-    /// Default location under `~/.config/cloudthinker/credentials.json`.
-    pub fn default_for(origin: impl Into<String>, selector: WorkspaceSelector) -> CtResult<Self> {
+    /// Opens `<config dir>/cloudthinker/credentials.json`. The first open after
+    /// the 0.5.3 upgrade writes: it moves the origin's keyring logins from
+    /// releases before 0.5.3 into the file and deletes the keyring entry, so a
+    /// read-only command keeps the login it had before the upgrade.
+    pub fn open_default(origin: impl Into<String>, selector: WorkspaceSelector) -> CtResult<Self> {
         let base = dirs::config_dir()
             .ok_or_else(|| CtError::Store("no config dir for this platform".into()))?;
-        Ok(Self::with_selector(
+        let store = Self::with_selector(
             base.join("cloudthinker").join("credentials.json"),
             origin,
             selector,
-        ))
+        );
+        store.absorb_keyring_logins()?;
+        Ok(store)
+    }
+
+    fn absorb_keyring_logins(&self) -> CtResult<()> {
+        let keyring = KeyringLogins {
+            origin: self.origin.clone(),
+        };
+        let Some(credentials) = keyring.take() else {
+            return Ok(());
+        };
+        let _lock = self.acquire_mutation_lock()?;
+        self.absorb(credentials)?;
+        keyring.delete();
+        Ok(())
+    }
+
+    /// The file keeps its own logins for this origin when it has any;
+    /// otherwise `credentials` become the file's. True when the file changed.
+    fn absorb(&self, credentials: OriginCredentials) -> CtResult<bool> {
+        let mut all = match self.read_all() {
+            Ok(all) => all,
+            Err(CtError::ObsoleteCredentials) => CredentialsFile::default(),
+            Err(error) => return Err(error),
+        };
+        if all.origins.contains_key(&self.origin) {
+            return Ok(false);
+        }
+        all.origins.insert(self.origin.clone(), credentials);
+        self.write_all(&all)?;
+        Ok(true)
     }
 
     fn read_all(&self) -> CtResult<CredentialsFile> {
@@ -340,7 +291,7 @@ impl FileStore {
         Ok(StoreLock::file(lock))
     }
 
-    fn save_unlocked(&self, token: &StoredToken) -> CtResult<SaveLocation> {
+    fn save_unlocked(&self, token: &StoredToken) -> CtResult<()> {
         let mut all = match self.read_all() {
             Ok(all) => all,
             Err(CtError::ObsoleteCredentials) => CredentialsFile::default(),
@@ -350,8 +301,7 @@ impl FileStore {
             .entry(self.origin.clone())
             .or_default()
             .insert(token)?;
-        self.write_all(&all)?;
-        Ok(SaveLocation::File)
+        self.write_all(&all)
     }
 
     fn clear_unlocked(&self) -> CtResult<()> {
@@ -473,12 +423,12 @@ impl TokenStore for FileStore {
         self.load_all()
     }
 
-    fn save(&self, token: &StoredToken) -> CtResult<SaveLocation> {
+    fn save(&self, token: &StoredToken) -> CtResult<()> {
         let _lock = self.acquire_mutation_lock()?;
         self.save_unlocked(token)
     }
 
-    fn save_locked(&self, _lock: &StoreLock, token: &StoredToken) -> CtResult<SaveLocation> {
+    fn save_locked(&self, _lock: &StoreLock, token: &StoredToken) -> CtResult<()> {
         self.save_unlocked(token)
     }
 
@@ -606,12 +556,6 @@ fn missing_workspace_error(selection: &str) -> CtError {
     ))
 }
 
-fn credentials_differ(left: &StoredToken, right: &StoredToken) -> bool {
-    left.access_token != right.access_token
-        || left.refresh_token != right.refresh_token
-        || left.expires_at != right.expires_at
-}
-
 fn decode_file(text: &str) -> CtResult<CredentialsFile> {
     let file: CredentialsFile =
         serde_json::from_str(text).map_err(|_| CtError::ObsoleteCredentials)?;
@@ -699,219 +643,10 @@ fn open_lock_file(path: &std::path::Path) -> CtResult<File> {
     Ok(lock)
 }
 
-/// Keyring-preferred store with a 0600-file fallback (codex `Auto` mode).
-///
-/// The keyring backend is boxed so tests can substitute a failing double
-/// without touching the real OS keyring.
-pub struct AutoStore {
-    keyring: Box<dyn TokenStore>,
-    file: FileStore,
-    selector: WorkspaceSelector,
-}
-
-impl AutoStore {
-    pub fn from_parts(keyring: Box<dyn TokenStore>, file: FileStore) -> Self {
-        let selector = file.selector.clone();
-        Self {
-            keyring,
-            file,
-            selector,
-        }
-    }
-
-    /// Build the default `Auto` store for an origin (`client::origin_of`).
-    pub fn default_for(
-        origin: impl Into<String> + Clone,
-        selector: WorkspaceSelector,
-    ) -> CtResult<Self> {
-        Ok(Self::from_parts(
-            Box::new(KeyringStore::with_selector(
-                origin.clone(),
-                selector.clone(),
-            )),
-            FileStore::default_for(origin, selector)?,
-        ))
-    }
-}
-
-impl TokenStore for AutoStore {
-    fn acquire_lock(&self) -> CtResult<StoreLock> {
-        self.file.acquire_mutation_lock()
-    }
-
-    fn load(&self) -> CtResult<Option<StoredToken>> {
-        let lock = self.acquire_lock()?;
-        self.load_locked(&lock)
-    }
-
-    fn load_locked(&self, _lock: &StoreLock) -> CtResult<Option<StoredToken>> {
-        let keyring = self.keyring.load();
-        let file = self.file.load();
-        match (keyring, file) {
-            (Err(CtError::ObsoleteCredentials), _) | (_, Err(CtError::ObsoleteCredentials)) => {
-                Err(CtError::ObsoleteCredentials)
-            }
-            (Err(CtError::Store(_)), file) => file,
-            (keyring, Err(CtError::Store(_))) => keyring,
-            (Ok(Some(keyring)), Ok(Some(file))) if keyring.workspace_id != file.workspace_id => {
-                let keyring_id = keyring.workspace_id.ok_or_else(|| {
-                    CtError::Store("keyring credential has no workspace id".into())
-                })?;
-                let file_id = file
-                    .workspace_id
-                    .ok_or_else(|| CtError::Store("file credential has no workspace id".into()))?;
-                match &self.selector {
-                    WorkspaceSelector::Active => Err(CtError::Auth(format!(
-                        "credential stores disagree on the active workspace ({keyring_id}, {file_id}); run `cloudthinker login`"
-                    ))),
-                    WorkspaceSelector::IdOrName(value) => Err(CtError::Usage(format!(
-                        "workspace name `{value}` is ambiguous; use one of these IDs: {keyring_id}, {file_id}"
-                    ))),
-                }
-            }
-            (Ok(Some(keyring)), Ok(Some(file))) if credentials_differ(&keyring, &file) => {
-                let workspace_id = keyring
-                    .workspace_id
-                    .or(file.workspace_id)
-                    .map_or_else(|| "unknown".into(), |id| id.to_string());
-                Err(CtError::Auth(format!(
-                    "credential stores disagree for workspace {workspace_id}; run `cloudthinker login`"
-                )))
-            }
-            (Ok(Some(keyring)), Ok(Some(_))) => Ok(Some(keyring)),
-            (Ok(Some(token)), Ok(None) | Err(CtError::Auth(_)))
-            | (Ok(None) | Err(CtError::Auth(_)), Ok(Some(token))) => Ok(Some(token)),
-            (Ok(Some(_)), Err(error)) | (Err(error), Ok(Some(_))) => Err(error),
-            (Ok(None), Ok(None)) => Ok(None),
-            (Err(error), Ok(None)) | (Ok(None), Err(error)) => Err(error),
-            (Err(error), Err(_)) => Err(error),
-        }
-    }
-
-    fn load_all(&self) -> CtResult<Vec<StoredToken>> {
-        let lock = self.acquire_lock()?;
-        self.load_all_locked(&lock)
-    }
-
-    fn load_all_locked(&self, _lock: &StoreLock) -> CtResult<Vec<StoredToken>> {
-        let keyring = self.keyring.load_all();
-        let file = self.file.load_all();
-        let (keyring, file) = match (keyring, file) {
-            (Err(CtError::ObsoleteCredentials), _) | (_, Err(CtError::ObsoleteCredentials)) => {
-                return Err(CtError::ObsoleteCredentials);
-            }
-            (Err(CtError::Store(_)), Ok(file)) => return Ok(file),
-            (Ok(keyring), Err(CtError::Store(_))) => return Ok(keyring),
-            (Ok(keyring), Ok(file)) => (keyring, file),
-            (Err(error), _) | (_, Err(error)) => return Err(error),
-        };
-        let mut merged = keyring;
-        for token in file {
-            let duplicate = merged.iter().any(|existing| {
-                existing.workspace_id == token.workspace_id
-                    && existing.refresh_token == token.refresh_token
-                    && existing.access_token == token.access_token
-            });
-            if !duplicate {
-                merged.push(token);
-            }
-        }
-        Ok(merged)
-    }
-
-    fn save(&self, token: &StoredToken) -> CtResult<SaveLocation> {
-        let lock = self.acquire_lock()?;
-        self.save_locked(&lock, token)
-    }
-
-    fn save_locked(&self, lock: &StoreLock, token: &StoredToken) -> CtResult<SaveLocation> {
-        let file_tokens = match self.file.load_all_locked(lock) {
-            Ok(tokens) => tokens,
-            Err(CtError::ObsoleteCredentials) => {
-                self.file.save_unlocked(token)?;
-                vec![token.clone()]
-            }
-            Err(CtError::Store(_)) => Vec::new(),
-            Err(error) => return Err(error),
-        };
-
-        let keyring_tokens = match self.keyring.load_all() {
-            Ok(tokens) => tokens,
-            Err(_) => {
-                self.file.save_unlocked(token)?;
-                return Ok(SaveLocation::File);
-            }
-        };
-        let has_divergence = file_tokens.iter().any(|file_token| {
-            file_token.workspace_id != token.workspace_id
-                && keyring_tokens.iter().any(|keyring_token| {
-                    keyring_token.workspace_id == file_token.workspace_id
-                        && credentials_differ(keyring_token, file_token)
-                })
-        });
-        if has_divergence {
-            self.file.save_unlocked(token)?;
-            return Ok(SaveLocation::File);
-        }
-
-        for existing in &file_tokens {
-            let already_in_keyring = keyring_tokens
-                .iter()
-                .any(|keyring_token| keyring_token.workspace_id == existing.workspace_id);
-            if existing.workspace_id == token.workspace_id || already_in_keyring {
-                continue;
-            }
-            if self.keyring.save(existing).is_err() {
-                self.file.save_unlocked(token)?;
-                return Ok(SaveLocation::File);
-            }
-        }
-        match self.keyring.save(token) {
-            Ok(SaveLocation::Keyring) => {
-                self.file.clear_all_unlocked()?;
-                Ok(SaveLocation::Keyring)
-            }
-            Ok(other) => Ok(other),
-            Err(_) => {
-                self.file.save_unlocked(token)?;
-                Ok(SaveLocation::File)
-            }
-        }
-    }
-
-    fn clear(&self) -> CtResult<()> {
-        let lock = self.acquire_lock()?;
-        self.clear_locked(&lock)
-    }
-
-    fn clear_locked(&self, _lock: &StoreLock) -> CtResult<()> {
-        let keyring = self.keyring.clear();
-        let file = self.file.clear_unlocked();
-        keyring.and(file)
-    }
-
-    fn clear_all(&self) -> CtResult<()> {
-        let lock = self.acquire_lock()?;
-        self.clear_all_locked(&lock)
-    }
-
-    fn clear_all_locked(&self, _lock: &StoreLock) -> CtResult<()> {
-        let keyring = self.keyring.clear_all();
-        let file = self.file.clear_all_unlocked();
-        keyring.and(file)
-    }
-
-    fn refresh_enabled(&self) -> bool {
-        true
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
-
     use super::*;
-    use crate::test_support::{FailingStore, MockTokenStore, stored};
+    use crate::test_support::stored;
 
     fn workspace_token(id: u128, name: &str, access: &str) -> StoredToken {
         StoredToken {
@@ -1021,34 +756,24 @@ mod tests {
         );
     }
 
-    // CA-CLI-6: an unusable keyring falls back to the 0600 file without error.
     #[test]
-    fn ca_cli_6_autostore_falls_back_to_file_when_keyring_unavailable() {
+    fn file_store_absorbs_keyring_logins_only_when_it_has_none_for_the_origin() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("credentials.json");
-        let store =
-            AutoStore::from_parts(Box::new(FailingStore), FileStore::new(path, "host.example"));
-        let location = store.save(&stored("a", "r")).unwrap();
-        assert_eq!(location, SaveLocation::File);
-        // load also survives a failing keyring, reading the file instead.
-        assert_eq!(store.load().unwrap(), Some(stored("a", "r")));
-    }
+        let store = FileStore::new(dir.path().join("credentials.json"), "host.example");
+        let mut from_keyring = OriginCredentials::default();
+        from_keyring.insert(&stored("keyring-access", "r")).unwrap();
 
-    #[test]
-    fn autostore_prefers_keyring_over_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("credentials.json");
-        let file = FileStore::new(path, "host.example");
-        let mut file_token = stored("shared-token", "r");
-        file_token.workspace_name = Some("File Name".into());
-        file.save(&file_token).unwrap();
-        let mut keyring_token = stored("shared-token", "r");
-        keyring_token.workspace_name = Some("Keyring Name".into());
-        let keyring = Box::new(MockTokenStore::new(Some(keyring_token)));
-        let store = AutoStore::from_parts(keyring, file);
+        assert!(store.absorb(from_keyring.clone()).unwrap());
         assert_eq!(
-            store.load().unwrap().and_then(|t| t.workspace_name),
-            Some("Keyring Name".to_string())
+            store.load().unwrap().map(|t| t.access_token),
+            Some("keyring-access".to_string())
+        );
+
+        store.save(&stored("newer-access", "r2")).unwrap();
+        assert!(!store.absorb(from_keyring).unwrap());
+        assert_eq!(
+            store.load().unwrap().map(|t| t.access_token),
+            Some("newer-access".to_string())
         );
     }
 
@@ -1190,196 +915,5 @@ mod tests {
         assert_eq!(loaded.access_token, "env-access");
         assert!(loaded.refresh_token.is_none());
         assert!(!store.refresh_enabled());
-    }
-
-    #[test]
-    fn autostore_refuses_divergent_active_workspaces() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("credentials.json");
-        let file = FileStore::new(path, "origin");
-        file.save(&workspace_token(2, "Production", "file"))
-            .unwrap();
-        let keyring = Box::new(MockTokenStore::new(Some(workspace_token(
-            1,
-            "Development",
-            "keyring",
-        ))));
-        let store = AutoStore::from_parts(keyring, file);
-
-        assert!(matches!(store.load(), Err(CtError::Auth(message))
-            if message.contains(&Uuid::from_u128(1).to_string())
-                && message.contains(&Uuid::from_u128(2).to_string())));
-    }
-
-    #[test]
-    fn autostore_refuses_split_token_generations_and_keeps_both_for_revocation() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("credentials.json");
-        let file = FileStore::new(path, "origin");
-        file.save(&workspace_token(1, "Development", "new"))
-            .unwrap();
-        let keyring = Box::new(MockTokenStore::new(Some(workspace_token(
-            1,
-            "Development",
-            "old",
-        ))));
-        let store = AutoStore::from_parts(keyring, file);
-
-        assert!(matches!(store.load(), Err(CtError::Auth(message))
-            if message.contains(&Uuid::from_u128(1).to_string())));
-        let refresh_tokens: Vec<String> = store
-            .load_all()
-            .unwrap()
-            .into_iter()
-            .filter_map(|token| token.refresh_token)
-            .collect();
-        assert_eq!(refresh_tokens, vec!["refresh-old", "refresh-new"]);
-    }
-
-    #[test]
-    fn autostore_detects_workspace_name_ambiguity_across_backends() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("credentials.json");
-        let file =
-            FileStore::with_selector(path, "origin", WorkspaceSelector::IdOrName("Shared".into()));
-        file.save(&workspace_token(2, "Shared", "file")).unwrap();
-        let keyring = Box::new(MockTokenStore::new(Some(workspace_token(
-            1, "Shared", "keyring",
-        ))));
-        let store = AutoStore::from_parts(keyring, file);
-
-        assert!(matches!(store.load(), Err(CtError::Usage(message))
-            if message.contains(&Uuid::from_u128(1).to_string())
-                && message.contains(&Uuid::from_u128(2).to_string())));
-    }
-
-    #[derive(Clone, Default)]
-    struct RecordingMultiStore {
-        tokens: Arc<Mutex<Vec<StoredToken>>>,
-        saves: Arc<Mutex<Vec<Option<Uuid>>>>,
-    }
-
-    impl TokenStore for RecordingMultiStore {
-        fn load(&self) -> CtResult<Option<StoredToken>> {
-            Ok(self.tokens.lock().unwrap().last().cloned())
-        }
-
-        fn load_all(&self) -> CtResult<Vec<StoredToken>> {
-            Ok(self.tokens.lock().unwrap().clone())
-        }
-
-        fn save(&self, token: &StoredToken) -> CtResult<SaveLocation> {
-            self.saves.lock().unwrap().push(token.workspace_id);
-            let mut tokens = self.tokens.lock().unwrap();
-            tokens.retain(|existing| existing.workspace_id != token.workspace_id);
-            tokens.push(token.clone());
-            Ok(SaveLocation::Keyring)
-        }
-
-        fn clear(&self) -> CtResult<()> {
-            self.tokens.lock().unwrap().pop();
-            Ok(())
-        }
-
-        fn clear_all(&self) -> CtResult<()> {
-            self.tokens.lock().unwrap().clear();
-            Ok(())
-        }
-
-        fn refresh_enabled(&self) -> bool {
-            true
-        }
-    }
-
-    #[test]
-    fn autostore_migrates_every_file_workspace_after_keyring_recovers() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("credentials.json");
-        let file = FileStore::new(path, "origin");
-        file.save(&workspace_token(1, "Development", "dev"))
-            .unwrap();
-        let keyring = RecordingMultiStore::default();
-        let recorded = keyring.clone();
-        let store = AutoStore::from_parts(Box::new(keyring), file);
-
-        assert_eq!(
-            store
-                .save(&workspace_token(2, "Production", "prod"))
-                .unwrap(),
-            SaveLocation::Keyring
-        );
-        let ids: Vec<Uuid> = recorded
-            .load_all()
-            .unwrap()
-            .into_iter()
-            .filter_map(|token| token.workspace_id)
-            .collect();
-        assert_eq!(ids, vec![Uuid::from_u128(1), Uuid::from_u128(2)]);
-        assert!(store.file.load_all().unwrap().is_empty());
-    }
-
-    #[test]
-    fn autostore_migrates_only_file_workspaces_missing_from_keyring() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("credentials.json");
-        let file = FileStore::new(path, "origin");
-        file.save(&workspace_token(1, "Development", "dev"))
-            .unwrap();
-        file.save(&workspace_token(2, "Staging", "staging"))
-            .unwrap();
-        let keyring = RecordingMultiStore::default();
-        keyring
-            .save(&workspace_token(1, "Development", "dev"))
-            .unwrap();
-        keyring.saves.lock().unwrap().clear();
-        let recorded = keyring.clone();
-        let store = AutoStore::from_parts(Box::new(keyring), file);
-
-        assert_eq!(
-            store
-                .save(&workspace_token(3, "Production", "prod"))
-                .unwrap(),
-            SaveLocation::Keyring
-        );
-
-        assert_eq!(
-            *recorded.saves.lock().unwrap(),
-            vec![Some(Uuid::from_u128(2)), Some(Uuid::from_u128(3))]
-        );
-        assert!(store.file.load_all().unwrap().is_empty());
-    }
-
-    #[test]
-    fn autostore_does_not_migrate_over_a_divergent_keyring_workspace() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("credentials.json");
-        let file = FileStore::new(path, "origin");
-        file.save(&workspace_token(1, "Development", "file"))
-            .unwrap();
-        let keyring = RecordingMultiStore::default();
-        keyring
-            .save(&workspace_token(1, "Development", "keyring"))
-            .unwrap();
-        keyring.saves.lock().unwrap().clear();
-        let recorded = keyring.clone();
-        let store = AutoStore::from_parts(Box::new(keyring), file);
-
-        assert_eq!(
-            store
-                .save(&workspace_token(2, "Production", "prod"))
-                .unwrap(),
-            SaveLocation::File
-        );
-
-        assert!(recorded.saves.lock().unwrap().is_empty());
-        assert_eq!(recorded.load().unwrap().unwrap().access_token, "keyring");
-        let file_ids: Vec<Uuid> = store
-            .file
-            .load_all()
-            .unwrap()
-            .into_iter()
-            .filter_map(|stored| stored.workspace_id)
-            .collect();
-        assert_eq!(file_ids, vec![Uuid::from_u128(1), Uuid::from_u128(2)]);
     }
 }
