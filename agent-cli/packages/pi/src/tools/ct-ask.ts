@@ -8,7 +8,7 @@ import {
 	type CloudThinkerRuntime,
 	NOTIFY_HINT,
 } from "../runtime.ts";
-import { CT_ASK, CT_CLOUD_READ, CT_CLOUD_WRITE, CT_RUN_STATUS } from "./names.ts";
+import { CT_ASK, CT_SANDBOX_READ, CT_SANDBOX_WRITE, CT_RUN_STATUS } from "./names.ts";
 import {
 	type Elapsed,
 	callComponent,
@@ -50,7 +50,7 @@ const description = [
 	"- open-ended investigations that are not one command: why a latency or cost jumped, what changed at a time, which service owns a symptom.",
 	"- multi-step cloud changes that need her judgment between steps. A human approves each write in the browser before it runs.",
 	"",
-	`A single read-only lookup is faster and cheaper through ${CT_CLOUD_READ}, and a single state-changing command through ${CT_CLOUD_WRITE}; use ${CT_ASK} when a command is not the shape of the answer.`,
+	`A single read-only lookup is faster and cheaper through ${CT_SANDBOX_READ}, and a single state-changing command through ${CT_SANDBOX_WRITE}; use ${CT_ASK} when a command is not the shape of the answer.`,
 	`If she pauses for approval this returns immediately with a link for the user; call ${CT_RUN_STATUS} later with the run_id to pick the answer up.`,
 ].join("\n");
 
@@ -133,7 +133,7 @@ export function registerAsk(runtime: CloudThinkerRuntime): void {
 		promptSnippet:
 			"Ask CloudThinker's SuperAgent Anna for a cloud write or an open-ended investigation",
 		promptGuidelines: [
-			`Never run a state-changing cloud operation through ${CT_CLOUD_READ} and never ask the user to run it themselves; one command goes to ${CT_CLOUD_WRITE}, multi-step work to ${CT_ASK}.`,
+			`Never run a state-changing cloud operation through ${CT_SANDBOX_READ} and never ask the user to run it themselves; one command goes to ${CT_SANDBOX_WRITE}, multi-step work to ${CT_ASK}.`,
 		],
 		parameters,
 		execute: async (

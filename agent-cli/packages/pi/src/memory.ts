@@ -4,7 +4,8 @@ import { sleep } from "./tools/shared.ts";
 
 export const MEMORY_MARKER = "<<<CT_MEMORY_INDEX>>>";
 export const USERS_MARKER = "<<<CT_USER_NOTES>>>";
-export const MEMORY_DIR = "/home/user/.memory";
+export const SANDBOX_HOME = "/home/user";
+export const MEMORY_DIR = `${SANDBOX_HOME}/.memory`;
 export const MAX_BLOCK_CHARS = 20_000;
 
 export const MEMORY_SCRIPT = [

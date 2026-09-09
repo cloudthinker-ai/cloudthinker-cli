@@ -11,7 +11,8 @@ import {
 } from "../src/prompt.ts";
 import { CloudThinkerRuntime } from "../src/runtime.ts";
 import { hostVersionsFrom } from "../src/versions.ts";
-import { CT_ASK, CT_CLOUD_READ, CT_RUN_STATUS } from "../src/tools/names.ts";
+import { MEMORY_DIR } from "../src/memory.ts";
+import { CT_ASK, CT_SANDBOX_READ, CT_RUN_STATUS } from "../src/tools/names.ts";
 
 function runtime(overrides: Partial<CloudThinkerRuntime> = {}): CloudThinkerRuntime {
 	const built = new CloudThinkerRuntime(
@@ -47,7 +48,7 @@ test("the block is one cloudthinker element naming the workspace, prefixes, and 
 	assert.ok(block.includes("acme-prod"));
 	assert.ok(block.includes("dev@acme.io"));
 	assert.ok(block.includes("aws, k8s"));
-	for (const tool of [CT_CLOUD_READ, CT_ASK, CT_RUN_STATUS]) {
+	for (const tool of [CT_SANDBOX_READ, CT_ASK, CT_RUN_STATUS]) {
 		assert.ok(block.includes(tool), tool);
 	}
 	assert.ok(block.includes("http://web/c-1"));
@@ -93,6 +94,28 @@ test("the approval mode line follows the write sentence and names Auto or Manual
 	assert.equal(block.split("Workspace approval mode:").length, 2);
 });
 
+test("the sandbox line names this session's own directory and the tree above it", () => {
+	const block = buildPromptBlock(runtime());
+	assert.ok(block.includes("/home/user/c-1, this session's own directory"));
+	assert.ok(block.includes("symlinks up into the shared workspace tree at /home/user"));
+	assert.ok(block.includes("Name a Sandbox file by absolute path"));
+});
+
+test("an unlinked session claims no sandbox directory it cannot know", () => {
+	const block = buildPromptBlock(runtime({ session: undefined }));
+	assert.ok(block.includes("2. The CloudThinker Sandbox"));
+	assert.ok(!block.includes("this session's own directory"));
+	assert.ok(!block.includes("/home/user/"));
+});
+
+test("the memory guidance points at the sandbox path the index describes", () => {
+	const block = buildPromptBlock(runtime({ memory: { memoryIndex: "- fact one", userNotes: "" } }));
+	assert.ok(block.includes(`It indexes ${MEMORY_DIR}/ in the Sandbox`));
+	assert.ok(block.includes(`\`cat ${MEMORY_DIR}/<path>\`, no Connection needed`));
+	assert.ok(block.includes(CT_SANDBOX_READ));
+	assert.ok(block.includes("read once when this session started"));
+});
+
 test("memory blocks appear only once the sandbox answered", () => {
 	const withMemory = buildPromptBlock(
 		runtime({ memory: { memoryIndex: "- fact one", userNotes: "- dev prefers tf" } }),
@@ -113,7 +136,7 @@ test("an unlinked session omits the mirror line and keeps the tool rules", () =>
 	);
 	assert.ok(!block.includes("mirrored to"));
 	assert.ok(!block.includes("Workspace approval mode"));
-	assert.ok(block.includes(CT_CLOUD_READ));
+	assert.ok(block.includes(CT_SANDBOX_READ));
 });
 
 test("the append leaves pi's own system prompt in front, separated by a blank line", () => {

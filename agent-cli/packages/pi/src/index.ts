@@ -22,8 +22,8 @@ import { CloudThinkerRuntime, describeError, detach } from "./runtime.ts";
 import { refreshConnections, startSession } from "./session.ts";
 import { discoverSkillPaths, hasSkillIndex, refreshSkills } from "./skills.ts";
 import { registerAsk } from "./tools/ct-ask.ts";
-import { registerCloudRead } from "./tools/ct-cloud-read.ts";
-import { registerCloudWrite } from "./tools/ct-cloud-write.ts";
+import { registerSandboxRead } from "./tools/ct-sandbox-read.ts";
+import { registerSandboxWrite } from "./tools/ct-sandbox-write.ts";
 import { registerRunStatus } from "./tools/ct-run-status.ts";
 import { registerReadTaskOutput } from "./tools/read-task-output.ts";
 
@@ -50,8 +50,8 @@ export default async function cloudthinker(pi: ExtensionAPI): Promise<void> {
 
 	const modelsUnavailable = await registerProvider(runtime);
 	let modelsUnavailableAnnounced = false;
-	registerCloudRead(runtime);
-	registerCloudWrite(runtime);
+	registerSandboxRead(runtime);
+	registerSandboxWrite(runtime);
 	registerReadTaskOutput(runtime);
 	registerAsk(runtime);
 	registerRunStatus(runtime);

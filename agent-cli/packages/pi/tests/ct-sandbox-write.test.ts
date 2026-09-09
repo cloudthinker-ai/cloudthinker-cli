@@ -20,12 +20,12 @@ import {
 	decideInTerminal,
 	pollWrite,
 	recentUserMessages,
-	registerCloudWrite,
+	registerSandboxWrite,
 	renderWrite,
 	verdictLabel,
 	writeSummary,
-} from "../src/tools/ct-cloud-write.ts";
-import { CT_CLOUD_WRITE } from "../src/tools/names.ts";
+} from "../src/tools/ct-sandbox-write.ts";
+import { CT_SANDBOX_WRITE } from "../src/tools/names.ts";
 import { resultBody } from "../src/tools/render.ts";
 import { hostVersionsFrom } from "../src/versions.ts";
 
@@ -164,7 +164,7 @@ test("every verdict renders as the mode that decided it, with the trusted reason
 test("a waiting write tells the model to stop and resume by write_id", () => {
 	const body = renderWrite({ write: write("required_approval"), execution: null });
 	assert.match(body, /web_url: http:\/\/web/);
-	assert.match(body, new RegExp(`call ${CT_CLOUD_WRITE} again with only this write_id`));
+	assert.match(body, new RegExp(`call ${CT_SANDBOX_WRITE} again with only this write_id`));
 	assert.match(
 		writeSummary({ write: write("required_approval"), execution: null }, theme),
 		/^auto: needs approval · waiting for approval in browser → /,
@@ -318,8 +318,8 @@ function registered(client: Partial<CloudThinkerClient>) {
 		auto_mode: { enabled: true, can_edit: false },
 	};
 	runtime.connections = { xml: "", prefixes: ["aws"] };
-	registerCloudWrite(runtime);
-	const tool = tools.get(CT_CLOUD_WRITE);
+	registerSandboxWrite(runtime);
+	const tool = tools.get(CT_SANDBOX_WRITE);
 	assert.ok(tool);
 	const ctx = {
 		hasUI: false,

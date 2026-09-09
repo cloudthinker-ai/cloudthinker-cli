@@ -9,8 +9,8 @@ import type {
 
 import { type CloudWrite, CloudThinkerApiError, type WriteOutcome } from "../client.ts";
 import { APPROVAL_KEY, AUTO_MODE_OFF_REASON, type CloudThinkerRuntime } from "../runtime.ts";
-import { DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS, renderExecution } from "./ct-cloud-read.ts";
-import { CT_ASK, CT_CLOUD_READ, CT_CLOUD_WRITE, READ_TASK_OUTPUT } from "./names.ts";
+import { DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS, renderExecution } from "./ct-sandbox-read.ts";
+import { CT_ASK, CT_SANDBOX_READ, CT_SANDBOX_WRITE, READ_TASK_OUTPUT } from "./names.ts";
 import {
 	type Elapsed,
 	callComponent,
@@ -96,7 +96,7 @@ const description = [
 	"The workspace decides whether it runs: a command the workspace already trusts runs at once; anything else pauses until a human approves it, in this terminal or in the browser, then runs here.",
 	"",
 	"The credential stays in the cloud. You never see it, you only get stdout back.",
-	`Read-only lookups (describe, list, get, logs) belong in ${CT_CLOUD_READ}; open-ended, multi-step cloud work belongs in ${CT_ASK}.`,
+	`Read-only lookups (describe, list, get, logs) belong in ${CT_SANDBOX_READ}; open-ended, multi-step cloud work belongs in ${CT_ASK}.`,
 	"",
 	"Name the ONE command that makes the change; the approval card is where the human confirms it. Never batch several changes into one script.",
 	"If the result says the write is still waiting, tell the user and stop; call this tool again later with only write_id to pick it up. Never re-send the same script while a write is waiting.",
@@ -178,7 +178,7 @@ export async function askInTerminal(
 	if (!ctx.hasUI) return { decision: "browser" };
 	ctx.ui.setWidget(APPROVAL_KEY, approvalCard(write), { placement: "aboveEditor" });
 	const choice = await ctx.ui.select(
-		`Cloud write: ${firstLine(write.reasoning)}`,
+		`Sandbox write: ${firstLine(write.reasoning)}`,
 		offerTrust ? TRUST_DECISION_OPTIONS : DECISION_OPTIONS,
 	);
 	if (choice === APPROVE_HERE) return { decision: "approve" };
@@ -260,10 +260,10 @@ export function renderWrite(outcome: WriteOutcome): string {
 		lines.push(
 			"",
 			"This write is waiting for a human to approve it. Tell the user to open the link above and decide,",
-			`then call ${CT_CLOUD_WRITE} again with only this write_id to run it.`,
+			`then call ${CT_SANDBOX_WRITE} again with only this write_id to run it.`,
 		);
 	} else if (write.status === "approved") {
-		lines.push("", `Approved. Call ${CT_CLOUD_WRITE} again with only this write_id to run it.`);
+		lines.push("", `Approved. Call ${CT_SANDBOX_WRITE} again with only this write_id to run it.`);
 	} else if (write.status === "declined") {
 		lines.push(
 			"",
@@ -377,15 +377,15 @@ async function runIfApproved(call: WriteCall, outcome: WriteOutcome): Promise<Wr
 	return runtime.client.runWrite(outcome.write.id, call.timeout, signal);
 }
 
-export function registerCloudWrite(runtime: CloudThinkerRuntime): void {
+export function registerSandboxWrite(runtime: CloudThinkerRuntime): void {
 	runtime.pi.registerTool<typeof parameters, WriteOutcome & Elapsed>({
-		name: CT_CLOUD_WRITE,
-		label: "Cloud write",
+		name: CT_SANDBOX_WRITE,
+		label: "Sandbox write",
 		description,
 		promptSnippet:
 			"Run one state-changing command in CloudThinker's cloud once the workspace approves it",
 		promptGuidelines: [
-			`Route every state-changing cloud command through ${CT_CLOUD_WRITE}, one command per call. A human may have to approve it, in the terminal or in the browser, before it runs.`,
+			`Route every state-changing cloud command through ${CT_SANDBOX_WRITE}, one command per call. A human may have to approve it, in the terminal or in the browser, before it runs.`,
 		],
 		parameters,
 		execute: async (
@@ -422,7 +422,7 @@ export function registerCloudWrite(runtime: CloudThinkerRuntime): void {
 			callComponent(
 				callLine(
 					theme,
-					CT_CLOUD_WRITE,
+					CT_SANDBOX_WRITE,
 					params.connection_list?.join(", ") ?? "",
 					params.write_id ? `resume ${params.write_id}` : firstLine(params.script ?? ""),
 				),

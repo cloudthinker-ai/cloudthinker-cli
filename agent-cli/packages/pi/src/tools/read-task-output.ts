@@ -2,13 +2,13 @@ import { type Static, Type } from "typebox";
 
 import type { ExecutionOutput } from "../client.ts";
 import type { CloudThinkerRuntime } from "../runtime.ts";
-import { CT_CLOUD_READ, READ_TASK_OUTPUT } from "./names.ts";
+import { CT_SANDBOX_READ, READ_TASK_OUTPUT } from "./names.ts";
 import { callComponent, callLine, resultBody, summaryComponent } from "./render.ts";
 import { section, text } from "./shared.ts";
 
 const parameters = Type.Object({
 	task_id: Type.String({
-		description: `The task_id ${CT_CLOUD_READ} returned for a background run.`,
+		description: `The task_id ${CT_SANDBOX_READ} returned for a background run.`,
 	}),
 	since: Type.Optional(
 		Type.Integer({
@@ -21,7 +21,7 @@ const parameters = Type.Object({
 });
 
 const description = [
-	`Read the output of a background ${CT_CLOUD_READ} run.`,
+	`Read the output of a background ${CT_SANDBOX_READ} run.`,
 	"Poll until status is done, error, or cancelled; while it is running the output is whatever has been written so far.",
 	"Pass the previous next_cursor as since so each poll returns only new output.",
 ].join("\n");
