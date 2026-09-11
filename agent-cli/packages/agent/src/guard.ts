@@ -3,6 +3,7 @@ import { InteractiveMode } from "@earendil-works/pi-coding-agent";
 import { PRODUCT_NAME } from "@cloudthinker/pi/src/header.ts";
 
 import { BUILTIN_SLASH_COMMANDS } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/slash-commands.js";
+import { applyReasoningUiGuard } from "./reasoning-ui.ts";
 
 export const NO_SESSION_FLAG = "--no-session";
 export const NO_SESSION_REFUSAL =
@@ -105,4 +106,5 @@ export function applyGuard(): void {
 			`pi's BUILTIN_SLASH_COMMANDS no longer offers ${DISABLED_COMMANDS.join(" and ")}, so the guard removed only ${removed.length}`,
 		);
 	}
+	applyReasoningUiGuard();
 }

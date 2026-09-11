@@ -13,7 +13,7 @@ test("both themes are looked for beside the binary and skipped when absent", () 
 	assert.deepEqual(bundledThemePaths("/opt/cloudthinker-agent/theme", () => false), []);
 });
 
-test("the bundled themes register and the dark one becomes the default", () => {
+test("the bundled themes register with an automatic default", () => {
 	assert.deepEqual(themeArgs(paths, [], undefined), [
 		"--theme",
 		"/opt/cloudthinker-agent/theme/cloudthinker-dark.json",

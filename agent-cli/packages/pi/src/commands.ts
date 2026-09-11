@@ -127,9 +127,25 @@ export function registerCommands(runtime: CloudThinkerRuntime): void {
 	});
 
 	runtime.pi.registerCommand("cloud", {
-		description: "Show the CloudThinker workspace, Connections, and mirror status",
-		handler: async (_args, ctx) => {
-			const lines: string[] = [];
+		description: "Show Cloud status or turn remote commands and Anna delegation on/off",
+		getArgumentCompletions: (prefix) =>
+			["on", "off"].filter((name) => name.startsWith(prefix)).map((name) => ({ value: name, label: name })),
+		handler: async (args, ctx) => {
+			const argument = args.trim();
+			if (argument && argument !== "on" && argument !== "off") {
+				ctx.ui.notify("Usage: /cloud [on|off]", "warning");
+				return;
+			}
+			if (argument) {
+				if (!ctx.isIdle()) {
+					ctx.ui.notify("Wait for this turn to finish or stop it before changing Cloud.", "warning");
+					return;
+				}
+				runtime.bind(ctx);
+				runtime.setCloudEnabled(argument === "on");
+			}
+
+			const lines: string[] = [`Cloud: ${runtime.cloudEnabled ? "On" : "Off"}`, "Change with /cloud on|off. Off disables remote commands and Anna delegation; existing remote work continues."];
 			lines.push(
 				runtime.identity
 					? `Workspace: ${runtime.identity.workspace_name} (${runtime.identity.user_email})`

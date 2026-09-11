@@ -18,7 +18,7 @@ import { explain, text } from "./shared.ts";
 
 export const MAX_TIMEOUT_SECONDS = 120;
 export const DEFAULT_TIMEOUT_SECONDS = 60;
-export const SANDBOX_WORKING_MESSAGE = "Running in CloudThinker Sandbox…";
+export const SANDBOX_WORKING_MESSAGE = "Running in CloudThinker Cloud…";
 export const NO_OUTPUT = "(no output)";
 
 const parameters = Type.Object({
@@ -90,7 +90,7 @@ export function renderExecution(result: ExecutionResult): string {
 export function registerSandboxRead(runtime: CloudThinkerRuntime): void {
 	runtime.pi.registerTool<typeof parameters, ExecutionResult & Elapsed>({
 		name: CT_SANDBOX_READ,
-		label: "Sandbox read",
+		label: "Cloud read",
 		description,
 		promptSnippet:
 			"Run a read-only command on the workspace's CloudThinker Sandbox, with a Connection's credential when the command needs one",

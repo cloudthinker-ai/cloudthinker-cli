@@ -3,6 +3,8 @@ import test from "node:test";
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
+import { CLOUD_ENTRY_TYPE } from "../src/runtime.ts";
+import { CLOUD_TOOLS } from "../src/tools/names.ts";
 import cloudthinker from "../src/index.ts";
 import { startFakeServer } from "./helpers.ts";
 
@@ -52,9 +54,12 @@ test("credits are read once per agent response, the mirror on every event", asyn
 	process.env.CLOUDTHINKER_TOKEN = "t";
 	try {
 		const handlers = new Map<string, Handler>();
+		let activeTools = ["bash", ...CLOUD_TOOLS];
 		const pi = {
 			on: (name: string, handler: Handler) => handlers.set(name, handler),
 			registerProvider: () => {},
+			getActiveTools: () => activeTools,
+			setActiveTools: (names: string[]) => { activeTools = names; },
 			registerTool: () => {},
 			registerCommand: () => {},
 			appendEntry: () => {},
@@ -98,6 +103,16 @@ test("credits are read once per agent response, the mirror on every event", asyn
 		await handlers.get("agent_end")?.({ type: "agent_end" }, ctx);
 		await settle();
 		assert.equal(creditReads(), afterStart + 1);
+
+		entries.push({ type: "custom", customType: CLOUD_ENTRY_TYPE, data: { enabled: false } });
+		await handlers.get("session_start")?.({ type: "session_start", reason: "resume" }, ctx);
+		assert.deepEqual(activeTools, ["bash"]);
+		const offPrompt = await handlers.get("before_agent_start")?.({ systemPrompt: "base" }, ctx) as { systemPrompt: string };
+		assert.match(offPrompt.systemPrompt, /Cloud is off/);
+		entries.length = 0;
+		await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, ctx);
+		assert.deepEqual(activeTools, ["bash", ...CLOUD_TOOLS]);
+		await settle();
 	} finally {
 		if (savedUrl === undefined) delete process.env.CLOUDTHINKER_URL;
 		else process.env.CLOUDTHINKER_URL = savedUrl;

@@ -346,7 +346,6 @@ impl CtClient {
 
     // -- authenticated calls -------------------------------------------------
 
-    /// Submit a headless run for `prompt`. Returns 202 identifiers.
     pub async fn submit_run(
         &self,
         prompt: &str,
@@ -357,10 +356,9 @@ impl CtClient {
             .map_err(|_| CtError::Usage("prompt must be 1–50000 characters".into()))?;
         let body = cloudthinker_api::types::SubmitHeadlessRunRequest {
             conversation_id,
-            // V1 submits are at-least-once: the CLI does not retry a submit, so
-            // there is no key to replay against.
             idempotency_key: None,
             prompt: prompt_field,
+            source_conversation_id: None,
         };
         let submitted = self
             .authed(async |c: cloudthinker_api::Client| {
@@ -1477,6 +1475,8 @@ mod tests {
                     "line_number": 10,
                     "category": "security",
                     "resolved": false,
+                    "acknowledged": false,
+                    "withdrawn": false,
                     "resolved_at": null,
                     "resolved_by": null,
                     "external_comment_id": null,
@@ -1500,6 +1500,8 @@ mod tests {
                     "line_number": 20,
                     "category": "performance",
                     "resolved": false,
+                    "acknowledged": false,
+                    "withdrawn": false,
                     "resolved_at": null,
                     "resolved_by": null,
                     "external_comment_id": null,

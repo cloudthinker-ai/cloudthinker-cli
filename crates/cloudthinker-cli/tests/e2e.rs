@@ -17,7 +17,6 @@ use rand as _;
 use serde as _;
 use supports_color as _;
 use tokio as _;
-use uuid as _;
 
 use std::collections::VecDeque;
 use std::io::{Read, Write};
@@ -299,7 +298,7 @@ const MR_URL: &str = "https://gitlab.example.com/group/my-repo/-/merge_requests/
 
 fn review_body(review_status: &str, verdict: &str, findings_count: i64) -> String {
     format!(
-        r#"{{"id":"33333333-3333-4333-8333-333333333333","created_at":"2026-07-20T00:00:00Z","updated_at":"2026-07-20T00:00:00Z","mr_iid":42,"mr_state":"open","provider":"gitlab","repository_name":"my-repo","repository_path":"group/my-repo","review_status":"{review_status}","severity_counts":{{"critical":1,"high":0,"medium":0,"low":0}},"title":"Fix the bug","verdict":"{verdict}","findings_count":{findings_count},"url":"https://gitlab.example.com/group/my-repo/-/merge_requests/42","findings":[{{"id":"44444444-4444-4444-8444-444444444444","finding_index":0,"issue_title":"possible SQL injection","issue_description":"unsanitized input reaches the query","severity":"critical","severity_emoji":"🔴","provider":"gitlab","file_path":"app/db.py","line_number":10,"category":"security","resolved":false,"resolved_at":null,"resolved_by":null,"external_comment_id":null,"external_note_id":null,"side":null,"specialist":null,"suggested_fix":null,"comment_posted_at":null,"created_at":"2026-07-20T00:00:00Z","updated_at":"2026-07-20T00:00:00Z"}}]}}"#
+        r#"{{"id":"33333333-3333-4333-8333-333333333333","created_at":"2026-07-20T00:00:00Z","updated_at":"2026-07-20T00:00:00Z","mr_iid":42,"mr_state":"open","provider":"gitlab","repository_name":"my-repo","repository_path":"group/my-repo","review_status":"{review_status}","severity_counts":{{"critical":1,"high":0,"medium":0,"low":0}},"title":"Fix the bug","verdict":"{verdict}","findings_count":{findings_count},"url":"https://gitlab.example.com/group/my-repo/-/merge_requests/42","findings":[{{"id":"44444444-4444-4444-8444-444444444444","finding_index":0,"issue_title":"possible SQL injection","issue_description":"unsanitized input reaches the query","severity":"critical","severity_emoji":"🔴","provider":"gitlab","file_path":"app/db.py","line_number":10,"category":"security","resolved":false,"acknowledged":false,"withdrawn":false,"resolved_at":null,"resolved_by":null,"external_comment_id":null,"external_note_id":null,"side":null,"specialist":null,"suggested_fix":null,"comment_posted_at":null,"created_at":"2026-07-20T00:00:00Z","updated_at":"2026-07-20T00:00:00Z"}}]}}"#
     )
 }
 
@@ -965,14 +964,11 @@ fn ca_up_8_env_overrides_warn_on_stderr() {
     let _ = std::fs::remove_file(&marker);
 }
 
-/// A stand-in for the released agent binary: it prints the argv it was execed
-/// with, the `CLOUDTHINKER_URL` it received, and whether the workspace
-/// variable is present.
 #[cfg(unix)]
 fn write_agent_stub(name: &str) -> std::path::PathBuf {
     use std::os::unix::fs::PermissionsExt;
 
-    let dir = std::env::temp_dir().join(format!("ct-agent-stub-{}-{name}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ct-agent-stub-{}-{name}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let script = dir.join("cloudthinker-agent");
     std::fs::write(
@@ -1302,4 +1298,50 @@ fn ca_up_10_the_running_release_is_never_offered_back() {
         output.contains("argv: "),
         "the agent must start, got:\n{output}"
     );
+}
+
+#[test]
+fn ca_cli_skill_exports_bundled_modules_offline() {
+    for (topic, file) in [
+        ("index", "SKILL.md"),
+        ("auth", "auth.md"),
+        ("chat", "chat.md"),
+        ("review", "review.md"),
+    ] {
+        let expected = std::fs::read(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("skills/cloudthinker-cli")
+                .join(file),
+        )
+        .unwrap();
+        let mut command = Command::cargo_bin("cloudthinker").unwrap();
+        command
+            .env("CLOUDTHINKER_URL", "http://127.0.0.1:1")
+            .env_remove("CLOUDTHINKER_TOKEN")
+            .env_remove("CLOUDTHINKER_WORKSPACE")
+            .timeout(Duration::from_secs(5))
+            .arg("--skill");
+        if topic != "index" {
+            command.arg(topic);
+        }
+        command.assert().success().stdout(expected).stderr("");
+    }
+}
+
+#[test]
+fn ca_cli_skill_rejects_unknown_topics_and_execution() {
+    for args in [
+        vec!["--skill", "missing"],
+        vec!["--skill=index", "whoami"],
+        vec!["--skill=chat", "chat", "-p", "do not submit"],
+    ] {
+        Command::cargo_bin("cloudthinker")
+            .unwrap()
+            .env("CLOUDTHINKER_URL", "http://127.0.0.1:1")
+            .args(args)
+            .timeout(Duration::from_secs(5))
+            .assert()
+            .code(2)
+            .stdout("");
+    }
 }

@@ -33,7 +33,8 @@ from __future__ import annotations
 import json
 import sys
 
-# Environment-independent spec identity; see fix 4 above.
+from prune_spec import prune_unused_schemas
+
 SPEC_TITLE = "Cloud Thinker"
 DEVICE_TOKEN_PATH = "/api/v1/login/cli/device/token"
 API_ERROR_REF = "#/components/schemas/ApiErrorResponse"
@@ -162,12 +163,13 @@ def _normalize_error_responses(spec: dict) -> None:
 
 
 def fixup(spec: dict) -> dict:
-    spec = _fix_nullable(spec)  # returns a rebuilt tree
+    spec = _fix_nullable(spec)
     _fix_exclusive_bounds(spec)
     _dedupe_operation_ids(spec)
     _pin_title(spec)
     _keep_typed_device_poll_error(spec)
     _normalize_error_responses(spec)
+    prune_unused_schemas(spec)
     return spec
 
 

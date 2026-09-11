@@ -2,6 +2,29 @@
 
 The CloudThinker command-line interface: browser login, the local coding agent, plus headless `chat`, `review`, and job-runner commands over the CloudThinker backend.
 
+## Agent skill
+
+Read the release-matched usage skill directly from the installed binary:
+
+```sh
+cloudthinker --skill
+cloudthinker --skill auth
+cloudthinker --skill chat
+cloudthinker --skill review
+```
+
+The hub holds shared rules and routes tasks to focused modules. Each command prints
+Markdown and exits without login, network access, or starting the local agent.
+To make the skill discoverable by a coding agent, copy the bundled
+`crates/cloudthinker-cli/skills/cloudthinker-cli/` directory into that agent's skill
+search path. A hub-only installation can also load every module through the CLI.
+For example, to install the hub in a project's shared agent skills directory:
+
+```sh
+mkdir -p .agents/skills/cloudthinker-cli
+cloudthinker --skill > .agents/skills/cloudthinker-cli/SKILL.md
+```
+
 ## Install
 
 macOS / Linux:
@@ -23,7 +46,7 @@ The installer drops the `cloudthinker` binary in `~/.local/bin` and adds it to y
 cloudthinker login          # browser PKCE login
 cloudthinker whoami         # live host, account, and active workspace
 cloudthinker chat -p "..."  # start a headless conversation
-cloudthinker review <MR_URL> status
+cloudthinker review status <MR_URL>
 cloudthinker agent          # run the local coding agent in this directory
 ```
 

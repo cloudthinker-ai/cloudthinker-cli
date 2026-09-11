@@ -19,6 +19,7 @@ use predicates as _;
 
 mod commands;
 mod engine;
+mod skill;
 
 use std::ffi::OsString;
 
@@ -35,9 +36,14 @@ const DEFAULT_TIMEOUT_SECS: u64 = 2400;
     name = "cloudthinker",
     version,
     about = "CloudThinker CLI — headless chat with Anna",
-    disable_help_subcommand = true
+    disable_help_subcommand = true,
+    after_help = "Agent guidance: cloudthinker --skill (then --skill <module> as needed)."
 )]
 struct Cli {
+    #[arg(long, num_args = 0..=1, default_missing_value = "index", value_name = "MODULE",
+        help = "Print the bundled agent skill or one module and exit")]
+    skill: Option<skill::Module>,
+
     /// API base URL (consent page + `/api/v1` live under it).
     #[arg(long, env = "CLOUDTHINKER_URL", default_value = DEFAULT_BASE_URL, global = true)]
     url: String,
@@ -223,6 +229,19 @@ async fn main() -> std::process::ExitCode {
 }
 
 async fn dispatch(cli: Cli) -> ExitCode {
+    if let Some(module) = cli.skill {
+        if cli.command.is_some() {
+            engine::output::eprintln_error("--skill cannot be combined with a command");
+            return ExitCode::Usage;
+        }
+        return match engine::output::print_document(module.document()) {
+            Ok(()) => ExitCode::Ok,
+            Err(error) => {
+                engine::output::eprintln_error(&error);
+                ExitCode::JobFailed
+            }
+        };
+    }
     let base_url = cli.url;
     let workspace = cli.workspace;
     if workspace.is_some() && commands::env_token_is_set() {
@@ -335,6 +354,17 @@ mod tests {
                 assert!(args.no_browser);
             }
             _ => panic!("expected login command"),
+        }
+    }
+
+    #[test]
+    fn ca_cli_skill_keeps_agent_arguments_verbatim() {
+        let cli = Cli::try_parse_from(["cloudthinker", "agent", "--skill", "chat"])
+            .expect("valid agent args");
+        assert!(cli.skill.is_none());
+        match cli.command.expect("a named subcommand") {
+            Command::Agent(args) => assert_eq!(args.args, ["--skill", "chat"].map(OsString::from)),
+            _ => panic!("expected agent command"),
         }
     }
 

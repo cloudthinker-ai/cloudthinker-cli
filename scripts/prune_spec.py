@@ -71,36 +71,39 @@ def _transitive_schemas(seeds: set[str], schemas: dict[str, object]) -> set[str]
     return seen
 
 
+def prune_unused_schemas(spec: dict) -> None:
+    components = spec.get("components")
+    if not isinstance(components, dict) or "schemas" not in components:
+        return
+    seeds: set[str] = set()
+    _collect_refs(spec.get("paths", {}), seeds)
+    schemas = components["schemas"]
+    kept = _transitive_schemas(seeds, schemas)
+    components["schemas"] = {name: schemas[name] for name in sorted(kept)}
+
+
 def prune(spec: dict) -> dict:
     missing = ALLOWED_PATHS - set(spec.get("paths", {}))
     if missing:
         raise SystemExit(f"prune_spec: allowlisted paths absent from spec: {sorted(missing)}")
 
     kept_paths: dict[str, dict] = {}
-    seeds: set[str] = set()
     for path in ALLOWED_PATHS:
         item = dict(spec["paths"][path])
         for method in list(item):
             if method.lower() in _HTTP_METHODS:
                 op = dict(item[method])
-                # Auth is a client-injected Bearer header, not a codegen concern.
                 op.pop("security", None)
                 item[method] = op
-        _collect_refs(item, seeds)
         kept_paths[path] = item
-
-    all_schemas = spec.get("components", {}).get("schemas", {})
-    kept_names = _transitive_schemas(seeds, all_schemas)
-    kept_schemas = {name: all_schemas[name] for name in sorted(kept_names)}
 
     pruned = dict(spec)
     pruned["paths"] = {p: kept_paths[p] for p in sorted(kept_paths)}
     components = dict(spec.get("components", {}))
-    components["schemas"] = kept_schemas
-    # Client injects auth; drop the scheme so operations take no auth params.
     components.pop("securitySchemes", None)
     pruned["components"] = components
     pruned.pop("security", None)
+    prune_unused_schemas(pruned)
     return pruned
 
 

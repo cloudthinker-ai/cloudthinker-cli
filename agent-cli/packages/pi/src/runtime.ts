@@ -9,8 +9,12 @@ import {
 	type SessionCreated,
 	type SessionCredits,
 } from "./client.ts";
+import { CLOUD_TOOLS } from "./tools/names.ts";
 import { PRODUCT_NAME, SessionHeader } from "./header.ts";
 import { type HostVersions, readHostVersions } from "./versions.ts";
+
+export const CLOUD_ENTRY_TYPE = "cloudthinker.cloud";
+export const CLOUD_OFF_MESSAGE = "Cloud is off. Use /cloud on to enable remote commands and Anna delegation.";
 
 export const SESSION_ENTRY_TYPE = "cloudthinker";
 export const LOCATION_ENTRY_TYPE = "cloudthinker.location";
@@ -51,6 +55,8 @@ export interface MemorySnapshot {
 }
 
 export class CloudThinkerRuntime {
+	cloudEnabled = true;
+	private disabledCloudTools: string[] = [];
 	readonly client: CloudThinkerClient;
 	session: SessionCreated | undefined;
 	identity: Identity | undefined;
@@ -81,6 +87,23 @@ export class CloudThinkerRuntime {
 
 	bind(context: ExtensionContext): void {
 		this.context = context;
+	}
+
+	setCloudEnabled(enabled: boolean, persist = true): void {
+		const active = this.pi.getActiveTools();
+		if (!enabled) {
+			this.disabledCloudTools = [...new Set([
+				...this.disabledCloudTools,
+				...active.filter((name) => CLOUD_TOOLS.includes(name)),
+			])];
+			this.pi.setActiveTools(active.filter((name) => !CLOUD_TOOLS.includes(name)));
+		} else {
+			this.pi.setActiveTools([...new Set([...active, ...this.disabledCloudTools])]);
+			this.disabledCloudTools = [];
+		}
+		this.cloudEnabled = enabled;
+		this.context?.ui.setStatus(CLOUD_ENTRY_TYPE, enabled ? undefined : "Cloud: Off");
+		if (persist) this.pi.appendEntry(CLOUD_ENTRY_TYPE, { enabled });
 	}
 
 	get connectedPrefixes(): string[] {
@@ -141,6 +164,7 @@ export class CloudThinkerRuntime {
 	}
 
 	requireSession(): SessionCreated {
+		if (!this.cloudEnabled) throw new CloudThinkerApiError(0, CLOUD_OFF_MESSAGE);
 		if (!this.session) {
 			throw new CloudThinkerApiError(
 				0,

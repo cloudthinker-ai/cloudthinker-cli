@@ -354,6 +354,14 @@ fn stderr_supports_color() -> bool {
     supports_color::on(supports_color::Stream::Stderr).is_some()
 }
 
+pub fn print_document(document: &str) -> Result<(), String> {
+    match std::io::stdout().lock().write_all(document.as_bytes()) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

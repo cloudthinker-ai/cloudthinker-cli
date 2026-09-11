@@ -32,6 +32,9 @@ export function sandboxLayout(runtime: CloudThinkerRuntime): string {
 }
 
 export function buildPromptBlock(runtime: CloudThinkerRuntime): string {
+	if (!runtime.cloudEnabled) {
+		return "<cloudthinker>\nYou are CloudThinker Agent, running in the developer's terminal. Cloud is off for this session. Remote commands and Anna delegation are unavailable. Use local tools for local work. Do not work around this setting. The user can enable Cloud with /cloud on.\n</cloudthinker>";
+	}
 	const lines: string[] = [];
 	if (runtime.identity) {
 		lines.push(

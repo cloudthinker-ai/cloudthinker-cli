@@ -18,7 +18,7 @@ import {
 	pinProviderWorkspace,
 	registerProvider,
 } from "./provider.ts";
-import { CloudThinkerRuntime, describeError, detach } from "./runtime.ts";
+import { CLOUD_ENTRY_TYPE, CloudThinkerRuntime, describeError, detach } from "./runtime.ts";
 import { refreshConnections, startSession } from "./session.ts";
 import { discoverSkillPaths, hasSkillIndex, refreshSkills } from "./skills.ts";
 import { registerAsk } from "./tools/ct-ask.ts";
@@ -69,6 +69,11 @@ export default async function cloudthinker(pi: ExtensionAPI): Promise<void> {
 		runtime.bind(ctx);
 		mirror.unlink();
 		runtime.reset();
+		const cloudEntry = ctx.sessionManager.getEntries().findLast(
+			(entry) => entry.type === "custom" && entry.customType === CLOUD_ENTRY_TYPE,
+		);
+		const cloudData = cloudEntry?.type === "custom" ? cloudEntry.data as { enabled?: unknown } | undefined : undefined;
+		runtime.setCloudEnabled(cloudData?.enabled !== false, false);
 		locations.reset();
 		if (ctx.mode === "tui") {
 			runtime.setTitle(sessionTitle(ctx.cwd, undefined));

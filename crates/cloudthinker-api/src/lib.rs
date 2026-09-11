@@ -142,154 +142,6 @@ pub mod types {
         }
     }
 
-    ///`ApiErrorDetail`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "title": "ApiErrorDetail",
-    ///  "type": "object",
-    ///  "required": [
-    ///    "code",
-    ///    "message"
-    ///  ],
-    ///  "properties": {
-    ///    "code": {
-    ///      "title": "Code",
-    ///      "type": "string"
-    ///    },
-    ///    "context": {
-    ///      "title": "Context",
-    ///      "type": [
-    ///        "object",
-    ///        "null"
-    ///      ],
-    ///      "additionalProperties": {
-    ///        "$ref": "#/components/schemas/JsonValue"
-    ///      }
-    ///    },
-    ///    "field_errors": {
-    ///      "title": "Field Errors",
-    ///      "type": [
-    ///        "array",
-    ///        "null"
-    ///      ],
-    ///      "items": {
-    ///        "$ref": "#/components/schemas/ApiFieldError"
-    ///      }
-    ///    },
-    ///    "message": {
-    ///      "title": "Message",
-    ///      "type": "string"
-    ///    },
-    ///    "retryable": {
-    ///      "title": "Retryable",
-    ///      "default": false,
-    ///      "type": "boolean"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct ApiErrorDetail {
-        pub code: ::std::string::String,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub context:
-            ::std::option::Option<::std::collections::HashMap<::std::string::String, JsonValue>>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub field_errors: ::std::option::Option<::std::vec::Vec<ApiFieldError>>,
-        pub message: ::std::string::String,
-        #[serde(default)]
-        pub retryable: bool,
-    }
-
-    ///`ApiErrorResponse`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "title": "ApiErrorResponse",
-    ///  "type": "object",
-    ///  "required": [
-    ///    "detail",
-    ///    "error",
-    ///    "request_id"
-    ///  ],
-    ///  "properties": {
-    ///    "detail": {
-    ///      "title": "Detail",
-    ///      "description": "Deprecated compatibility payload. New clients
-    /// consume error."
-    ///    },
-    ///    "error": {
-    ///      "$ref": "#/components/schemas/ApiErrorDetail"
-    ///    },
-    ///    "request_id": {
-    ///      "title": "Request Id",
-    ///      "type": "string"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct ApiErrorResponse {
-        ///Deprecated compatibility payload. New clients consume error.
-        pub detail: ::serde_json::Value,
-        pub error: ApiErrorDetail,
-        pub request_id: ::std::string::String,
-    }
-
-    ///`ApiFieldError`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "title": "ApiFieldError",
-    ///  "type": "object",
-    ///  "required": [
-    ///    "code",
-    ///    "message",
-    ///    "path"
-    ///  ],
-    ///  "properties": {
-    ///    "code": {
-    ///      "title": "Code",
-    ///      "type": "string"
-    ///    },
-    ///    "message": {
-    ///      "title": "Message",
-    ///      "type": "string"
-    ///    },
-    ///    "path": {
-    ///      "title": "Path",
-    ///      "type": "array",
-    ///      "items": {
-    ///        "anyOf": [
-    ///          {
-    ///            "type": "string"
-    ///          },
-    ///          {
-    ///            "type": "integer"
-    ///          }
-    ///        ]
-    ///      }
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct ApiFieldError {
-        pub code: ::std::string::String,
-        pub message: ::std::string::String,
-        pub path: ::std::vec::Vec<PathItem>,
-    }
-
     ///`ApplyFixDisabledReason`
     ///
     /// <details><summary>JSON schema</summary>
@@ -373,6 +225,7 @@ pub mod types {
     ///  "title": "AutofixDisabledReason",
     ///  "type": "string",
     ///  "enum": [
+    ///    "merge_request_merged",
     ///    "unsupported_provider",
     ///    "no_unresolved_findings"
     ///  ]
@@ -392,6 +245,8 @@ pub mod types {
         PartialOrd,
     )]
     pub enum AutofixDisabledReason {
+        #[serde(rename = "merge_request_merged")]
+        MergeRequestMerged,
         #[serde(rename = "unsupported_provider")]
         UnsupportedProvider,
         #[serde(rename = "no_unresolved_findings")]
@@ -401,6 +256,7 @@ pub mod types {
     impl ::std::fmt::Display for AutofixDisabledReason {
         fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
             match *self {
+                Self::MergeRequestMerged => f.write_str("merge_request_merged"),
                 Self::UnsupportedProvider => f.write_str("unsupported_provider"),
                 Self::NoUnresolvedFindings => f.write_str("no_unresolved_findings"),
             }
@@ -411,6 +267,7 @@ pub mod types {
         type Err = self::error::ConversionError;
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
             match value {
+                "merge_request_merged" => Ok(Self::MergeRequestMerged),
                 "unsupported_provider" => Ok(Self::UnsupportedProvider),
                 "no_unresolved_findings" => Ok(Self::NoUnresolvedFindings),
                 _ => Err("invalid value".into()),
@@ -898,20 +755,19 @@ pub mod types {
         }
     }
 
-    ///Unresolved findings per cited-rule category, for the review-summary
-    /// panel.
+    ///Unresolved findings per cited-Learning category in the review summary.
     ///
-    ///A finding joins a category by citing a rule of that category, so only
-    ///rule-citing findings count here (mirrors the "Rules cited" row, not
-    ///"Findings"). Counts are UNRESOLVED only, matching `severity_counts` —
-    ///a fixed finding is not work left to do.
+    ///A finding joins a category by citing a Learning of that category, so
+    /// only Learning-citing findings count here (mirrors the "Learnings
+    /// cited" row, not "Findings"). Counts are UNRESOLVED only, matching
+    /// `severity_counts` — a fixed finding is not work left to do.
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
     ///  "title": "CodeReviewCategoryCounts",
-    ///  "description": "Unresolved findings per cited-rule category, for the review-summary panel.\n\nA finding joins a category by citing a rule of that category, so only\nrule-citing findings count here (mirrors the \"Rules cited\" row, not\n\"Findings\"). Counts are UNRESOLVED only, matching `severity_counts` —\na fixed finding is not work left to do.",
+    ///  "description": "Unresolved findings per cited-Learning category in the review summary.\n\nA finding joins a category by citing a Learning of that category, so only\nLearning-citing findings count here (mirrors the \"Learnings cited\" row, not\n\"Findings\"). Counts are UNRESOLVED only, matching `severity_counts` —\na fixed finding is not work left to do.",
     ///  "type": "object",
     ///  "properties": {
     ///    "correctness": {
@@ -961,15 +817,15 @@ pub mod types {
         }
     }
 
-    ///A convention rule a finding cited, surfaced as a "Cites <slug>" chip.
+    ///A Learning a finding cited, surfaced as a "Cites <slug>" chip.
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
     ///  "title": "CodeReviewCitedRule",
-    ///  "description": "A convention rule a finding cited, surfaced as a
-    /// \"Cites <slug>\" chip.",
+    ///  "description": "A Learning a finding cited, surfaced as a \"Cites
+    /// <slug>\" chip.",
     ///  "type": "object",
     ///  "required": [
     ///    "name",
@@ -1026,6 +882,7 @@ pub mod types {
     /// falls back to rendering the\nreplacement alone.",
     ///  "type": "object",
     ///  "required": [
+    ///    "acknowledged",
     ///    "comment_posted_at",
     ///    "created_at",
     ///    "external_comment_id",
@@ -1045,9 +902,34 @@ pub mod types {
     ///    "side",
     ///    "specialist",
     ///    "suggested_fix",
-    ///    "updated_at"
+    ///    "updated_at",
+    ///    "withdrawn"
     ///  ],
     ///  "properties": {
+    ///    "acknowledged": {
+    ///      "title": "Acknowledged",
+    ///      "description": "The developer accepted this finding and kept the
+    /// code as it is.\n\nDistinct from `withdrawn`: the finding was correct. A
+    /// client that showed\nboth as one \"closed without a fix\" state would be
+    /// telling the reader the\nreview made a mistake it did not make.",
+    ///      "readOnly": true,
+    ///      "type": "boolean"
+    ///    },
+    ///    "acknowledged_at": {
+    ///      "title": "Acknowledged At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "acknowledged_reason": {
+    ///      "title": "Acknowledged Reason",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "apply_fix_disabled_reason": {
     ///      "$ref": "#/components/schemas/ApplyFixDisabledReason"
     ///    },
@@ -1159,6 +1041,13 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "observed_head_sha": {
+    ///      "title": "Observed Head Sha",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "original_code": {
     ///      "title": "Original Code",
     ///      "type": [
@@ -1183,6 +1072,16 @@ pub mod types {
     ///    "provider": {
     ///      "title": "Provider",
     ///      "type": "string"
+    ///    },
+    ///    "publication_attempts": {
+    ///      "title": "Publication Attempts",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "publication_status": {
+    ///      "$ref": "#/components/schemas/FindingPublicationStatus"
     ///    },
     ///    "resolved": {
     ///      "title": "Resolved",
@@ -1237,6 +1136,27 @@ pub mod types {
     ///      "title": "Updated At",
     ///      "type": "string",
     ///      "format": "date-time"
+    ///    },
+    ///    "withdrawn": {
+    ///      "title": "Withdrawn",
+    ///      "description": "The agent accepted a rebuttal and retracted this finding.\n\nDerived here so no client re-derives it from a timestamp.",
+    ///      "readOnly": true,
+    ///      "type": "boolean"
+    ///    },
+    ///    "withdrawn_at": {
+    ///      "title": "Withdrawn At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "withdrawn_reason": {
+    ///      "title": "Withdrawn Reason",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
     ///    }
     ///  }
     ///}
@@ -1244,6 +1164,17 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CodeReviewDetailFinding {
+        ///The developer accepted this finding and kept the code as it is.
+        ///
+        ///Distinct from `withdrawn`: the finding was correct. A client that
+        /// showed both as one "closed without a fix" state would be
+        /// telling the reader the review made a mistake it did not
+        /// make.
+        pub acknowledged: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub acknowledged_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub acknowledged_reason: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub apply_fix_disabled_reason: ::std::option::Option<ApplyFixDisabledReason>,
         #[serde(default)]
@@ -1273,12 +1204,18 @@ pub mod types {
         pub issue_title: ::std::string::String,
         pub line_number: ::std::option::Option<i64>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub observed_head_sha: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub original_code: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub original_end_line: ::std::option::Option<i64>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub original_start_line: ::std::option::Option<i64>,
         pub provider: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub publication_attempts: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub publication_status: ::std::option::Option<FindingPublicationStatus>,
         pub resolved: bool,
         pub resolved_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub resolved_by: ::std::option::Option<::uuid::Uuid>,
@@ -1288,6 +1225,14 @@ pub mod types {
         pub specialist: ::std::option::Option<::std::string::String>,
         pub suggested_fix: ::std::option::Option<::std::string::String>,
         pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        ///The agent accepted a rebuttal and retracted this finding.
+        ///
+        ///Derived here so no client re-derives it from a timestamp.
+        pub withdrawn: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub withdrawn_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub withdrawn_reason: ::std::option::Option<::std::string::String>,
     }
 
     ///Single merge-request review detail (header + stats + findings).
@@ -1445,6 +1390,13 @@ pub mod types {
     ///        "null"
     ///      ],
     ///      "format": "date-time"
+    ///    },
+    ///    "mr_description": {
+    ///      "title": "Mr Description",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
     ///    },
     ///    "mr_iid": {
     ///      "title": "Mr Iid",
@@ -1634,6 +1586,8 @@ pub mod types {
         pub mr_closed_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub mr_created_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub mr_description: ::std::option::Option<::std::string::String>,
         pub mr_iid: i64,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub mr_merged_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
@@ -2270,6 +2224,97 @@ pub mod types {
         }
     }
 
+    ///Provider publication state for the durable finding admission record.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FindingPublicationStatus",
+    ///  "description": "Provider publication state for the durable finding
+    /// admission record.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "pending",
+    ///    "posted",
+    ///    "failed",
+    ///    "unknown"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum FindingPublicationStatus {
+        #[serde(rename = "pending")]
+        Pending,
+        #[serde(rename = "posted")]
+        Posted,
+        #[serde(rename = "failed")]
+        Failed,
+        #[serde(rename = "unknown")]
+        Unknown,
+    }
+
+    impl ::std::fmt::Display for FindingPublicationStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Pending => f.write_str("pending"),
+                Self::Posted => f.write_str("posted"),
+                Self::Failed => f.write_str("failed"),
+                Self::Unknown => f.write_str("unknown"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for FindingPublicationStatus {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "pending" => Ok(Self::Pending),
+                "posted" => Ok(Self::Posted),
+                "failed" => Ok(Self::Failed),
+                "unknown" => Ok(Self::Unknown),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for FindingPublicationStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for FindingPublicationStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for FindingPublicationStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///One recent CLI run; deliberately omits answer and internal failure data.
     ///
     /// <details><summary>JSON schema</summary>
@@ -2495,40 +2540,6 @@ pub mod types {
         pub web_url: ::std::string::String,
     }
 
-    ///`HttpValidationError`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "title": "HTTPValidationError",
-    ///  "type": "object",
-    ///  "properties": {
-    ///    "detail": {
-    ///      "title": "Detail",
-    ///      "type": "array",
-    ///      "items": {
-    ///        "$ref": "#/components/schemas/ValidationError"
-    ///      }
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct HttpValidationError {
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        pub detail: ::std::vec::Vec<ValidationError>,
-    }
-
-    impl ::std::default::Default for HttpValidationError {
-        fn default() -> Self {
-            Self {
-                detail: Default::default(),
-            }
-        }
-    }
-
     ///Optional caller-supplied key (workspace-scoped). A retried submit with
     /// the same key returns the original run instead of creating a duplicate.
     /// Omit for at-least-once submit.
@@ -2610,75 +2621,6 @@ pub mod types {
         }
     }
 
-    ///`JsonValue`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    #[serde(transparent)]
-    pub struct JsonValue(pub ::serde_json::Value);
-    impl ::std::ops::Deref for JsonValue {
-        type Target = ::serde_json::Value;
-        fn deref(&self) -> &::serde_json::Value {
-            &self.0
-        }
-    }
-
-    impl ::std::convert::From<JsonValue> for ::serde_json::Value {
-        fn from(value: JsonValue) -> Self {
-            value.0
-        }
-    }
-
-    impl ::std::convert::From<::serde_json::Value> for JsonValue {
-        fn from(value: ::serde_json::Value) -> Self {
-            Self(value)
-        }
-    }
-
-    ///`LocationItem`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "anyOf": [
-    ///    {
-    ///      "type": "string"
-    ///    },
-    ///    {
-    ///      "type": "integer"
-    ///    }
-    ///  ]
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    #[serde(untagged)]
-    pub enum LocationItem {
-        String(::std::string::String),
-        Integer(i64),
-    }
-
-    impl ::std::fmt::Display for LocationItem {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            match self {
-                Self::String(x) => x.fmt(f),
-                Self::Integer(x) => x.fmt(f),
-            }
-        }
-    }
-
-    impl ::std::convert::From<i64> for LocationItem {
-        fn from(value: i64) -> Self {
-            Self::Integer(value)
-        }
-    }
-
     ///`ManualTriggerDisabledReason`
     ///
     /// <details><summary>JSON schema</summary>
@@ -2688,6 +2630,7 @@ pub mod types {
     ///  "title": "ManualTriggerDisabledReason",
     ///  "type": "string",
     ///  "enum": [
+    ///    "merge_request_merged",
     ///    "unsupported_provider",
     ///    "review_in_progress"
     ///  ]
@@ -2707,6 +2650,8 @@ pub mod types {
         PartialOrd,
     )]
     pub enum ManualTriggerDisabledReason {
+        #[serde(rename = "merge_request_merged")]
+        MergeRequestMerged,
         #[serde(rename = "unsupported_provider")]
         UnsupportedProvider,
         #[serde(rename = "review_in_progress")]
@@ -2716,6 +2661,7 @@ pub mod types {
     impl ::std::fmt::Display for ManualTriggerDisabledReason {
         fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
             match *self {
+                Self::MergeRequestMerged => f.write_str("merge_request_merged"),
                 Self::UnsupportedProvider => f.write_str("unsupported_provider"),
                 Self::ReviewInProgress => f.write_str("review_in_progress"),
             }
@@ -2726,6 +2672,7 @@ pub mod types {
         type Err = self::error::ConversionError;
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
             match value {
+                "merge_request_merged" => Ok(Self::MergeRequestMerged),
                 "unsupported_provider" => Ok(Self::UnsupportedProvider),
                 "review_in_progress" => Ok(Self::ReviewInProgress),
                 _ => Err("invalid value".into()),
@@ -2929,45 +2876,6 @@ pub mod types {
                 .map_err(|e: self::error::ConversionError| {
                     <D::Error as ::serde::de::Error>::custom(e.to_string())
                 })
-        }
-    }
-
-    ///`PathItem`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "anyOf": [
-    ///    {
-    ///      "type": "string"
-    ///    },
-    ///    {
-    ///      "type": "integer"
-    ///    }
-    ///  ]
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    #[serde(untagged)]
-    pub enum PathItem {
-        String(::std::string::String),
-        Integer(i64),
-    }
-
-    impl ::std::fmt::Display for PathItem {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            match self {
-                Self::String(x) => x.fmt(f),
-                Self::Integer(x) => x.fmt(f),
-            }
-        }
-    }
-
-    impl ::std::convert::From<i64> for PathItem {
-        fn from(value: i64) -> Self {
-            Self::Integer(value)
         }
     }
 
@@ -3506,6 +3414,17 @@ pub mod types {
     ///      "type": "string",
     ///      "maxLength": 50000,
     ///      "minLength": 1
+    ///    },
+    ///    "source_conversation_id": {
+    ///      "title": "Source Conversation Id",
+    ///      "description": "Optional. The AGENT_CLI conversation whose terminal
+    /// watches this run. Only for a new run: it cannot be combined with
+    /// `conversation_id`. Must belong to the authenticated workspace.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
     ///    }
     ///  }
     ///}
@@ -3524,6 +3443,11 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub idempotency_key: ::std::option::Option<IdempotencyKey>,
         pub prompt: Prompt,
+        ///Optional. The AGENT_CLI conversation whose terminal watches this
+        /// run. Only for a new run: it cannot be combined with
+        /// `conversation_id`. Must belong to the authenticated workspace.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub source_conversation_id: ::std::option::Option<::uuid::Uuid>,
     }
 
     ///How well the MR satisfies its linked ticket's acceptance criteria.
@@ -3842,65 +3766,6 @@ pub mod types {
         pub name: ::std::string::String,
     }
 
-    ///`ValidationError`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "title": "ValidationError",
-    ///  "type": "object",
-    ///  "required": [
-    ///    "loc",
-    ///    "msg",
-    ///    "type"
-    ///  ],
-    ///  "properties": {
-    ///    "ctx": {
-    ///      "title": "Context",
-    ///      "type": "object"
-    ///    },
-    ///    "input": {
-    ///      "title": "Input"
-    ///    },
-    ///    "loc": {
-    ///      "title": "Location",
-    ///      "type": "array",
-    ///      "items": {
-    ///        "anyOf": [
-    ///          {
-    ///            "type": "string"
-    ///          },
-    ///          {
-    ///            "type": "integer"
-    ///          }
-    ///        ]
-    ///      }
-    ///    },
-    ///    "msg": {
-    ///      "title": "Message",
-    ///      "type": "string"
-    ///    },
-    ///    "type": {
-    ///      "title": "Error Type",
-    ///      "type": "string"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct ValidationError {
-        #[serde(default, skip_serializing_if = "::serde_json::Map::is_empty")]
-        pub ctx: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub input: ::std::option::Option<::serde_json::Value>,
-        pub loc: ::std::vec::Vec<LocationItem>,
-        pub msg: ::std::string::String,
-        #[serde(rename = "type")]
-        pub type_: ::std::string::String,
-    }
-
     ///`WorkspaceCreate`
     ///
     /// <details><summary>JSON schema</summary>
@@ -3965,7 +3830,7 @@ pub mod types {
     ///  "properties": {
     ///    "auto_mode_enabled": {
     ///      "title": "Auto Mode Enabled",
-    ///      "default": false,
+    ///      "default": true,
     ///      "type": "boolean"
     ///    },
     ///    "brand_chart_colors": {
@@ -4094,7 +3959,7 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct WorkspacePublic {
-        #[serde(default)]
+        #[serde(default = "defaults::default_bool::<true>")]
         pub auto_mode_enabled: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub brand_chart_colors: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
@@ -4258,7 +4123,7 @@ pub mod types {
     ///  "properties": {
     ///    "auto_mode_enabled": {
     ///      "title": "Auto Mode Enabled",
-    ///      "default": false,
+    ///      "default": true,
     ///      "type": "boolean"
     ///    },
     ///    "brand_chart_colors": {
@@ -4390,7 +4255,7 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct WorkspaceWithRolePublic {
-        #[serde(default)]
+        #[serde(default = "defaults::default_bool::<true>")]
         pub auto_mode_enabled: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub brand_chart_colors: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
@@ -4467,6 +4332,10 @@ pub mod types {
 
     /// Generation of default values for serde.
     pub mod defaults {
+        pub(super) fn default_bool<const V: bool>() -> bool {
+            V
+        }
+
         pub(super) fn code_review_detail_finding_finding_source() -> ::std::string::String {
             "code_review".to_string()
         }

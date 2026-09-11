@@ -179,7 +179,7 @@ export async function askInTerminal(
 	if (!ctx.hasUI) return { decision: "browser" };
 	ctx.ui.setWidget(APPROVAL_KEY, approvalCard(write), { placement: "aboveEditor" });
 	const choice = await ctx.ui.select(
-		`Sandbox write: ${firstLine(write.reasoning)}`,
+		`Cloud write: ${firstLine(write.reasoning)}`,
 		offerTrust ? TRUST_DECISION_OPTIONS : DECISION_OPTIONS,
 	);
 	if (choice === APPROVE_HERE) return { decision: "approve" };
@@ -374,14 +374,14 @@ async function runIfApproved(call: WriteCall, outcome: WriteOutcome): Promise<Wr
 	const { runtime, ctx, signal } = call;
 	if (outcome.write.status !== "required_approval") runtime.clearApproval();
 	if (outcome.write.status !== "approved") return outcome;
-	if (ctx.hasUI) ctx.ui.setWorkingMessage("Running in CloudThinker Sandbox…");
+	if (ctx.hasUI) ctx.ui.setWorkingMessage("Running in CloudThinker Cloud…");
 	return runtime.client.runWrite(outcome.write.id, call.timeout, signal);
 }
 
 export function registerSandboxWrite(runtime: CloudThinkerRuntime): void {
 	runtime.pi.registerTool<typeof parameters, WriteOutcome & Elapsed>({
 		name: CT_SANDBOX_WRITE,
-		label: "Sandbox write",
+		label: "Cloud write",
 		description,
 		promptSnippet:
 			"Run one state-changing command in CloudThinker's cloud once the workspace approves it",

@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-export const DEFAULT_THEME = "cloudthinker-dark";
+export const DEFAULT_THEME = "cloudthinker-light/cloudthinker-dark";
 export const THEME_NAMES: readonly string[] = ["cloudthinker-dark", "cloudthinker-light"];
 
 export function bundledThemePaths(

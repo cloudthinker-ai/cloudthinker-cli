@@ -13,102 +13,6 @@
         "title": "AgentRunStatus",
         "type": "string"
       },
-      "ApiErrorDetail": {
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "context": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/JsonValue"
-            },
-            "default": null,
-            "nullable": true,
-            "title": "Context",
-            "type": "object"
-          },
-          "field_errors": {
-            "default": null,
-            "items": {
-              "$ref": "#/components/schemas/ApiFieldError"
-            },
-            "nullable": true,
-            "title": "Field Errors",
-            "type": "array"
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "retryable": {
-            "default": false,
-            "title": "Retryable",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "code",
-          "message"
-        ],
-        "title": "ApiErrorDetail",
-        "type": "object"
-      },
-      "ApiErrorResponse": {
-        "properties": {
-          "detail": {
-            "description": "Deprecated compatibility payload. New clients consume error.",
-            "title": "Detail"
-          },
-          "error": {
-            "$ref": "#/components/schemas/ApiErrorDetail"
-          },
-          "request_id": {
-            "title": "Request Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "error",
-          "request_id",
-          "detail"
-        ],
-        "title": "ApiErrorResponse",
-        "type": "object"
-      },
-      "ApiFieldError": {
-        "properties": {
-          "code": {
-            "title": "Code",
-            "type": "string"
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "path": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "title": "Path",
-            "type": "array"
-          }
-        },
-        "required": [
-          "path",
-          "code",
-          "message"
-        ],
-        "title": "ApiFieldError",
-        "type": "object"
-      },
       "ApplyFixDisabledReason": {
         "enum": [
           "unsupported_provider"
@@ -118,6 +22,7 @@
       },
       "AutofixDisabledReason": {
         "enum": [
+          "merge_request_merged",
           "unsupported_provider",
           "no_unresolved_findings"
         ],
@@ -267,7 +172,7 @@
         "type": "string"
       },
       "CodeReviewCategoryCounts": {
-        "description": "Unresolved findings per cited-rule category, for the review-summary panel.\n\nA finding joins a category by citing a rule of that category, so only\nrule-citing findings count here (mirrors the \"Rules cited\" row, not\n\"Findings\"). Counts are UNRESOLVED only, matching `severity_counts` \u2014\na fixed finding is not work left to do.",
+        "description": "Unresolved findings per cited-Learning category in the review summary.\n\nA finding joins a category by citing a Learning of that category, so only\nLearning-citing findings count here (mirrors the \"Learnings cited\" row, not\n\"Findings\"). Counts are UNRESOLVED only, matching `severity_counts` \u2014\na fixed finding is not work left to do.",
         "properties": {
           "correctness": {
             "default": 0,
@@ -294,7 +199,7 @@
         "type": "object"
       },
       "CodeReviewCitedRule": {
-        "description": "A convention rule a finding cited, surfaced as a \"Cites <slug>\" chip.",
+        "description": "A Learning a finding cited, surfaced as a \"Cites <slug>\" chip.",
         "properties": {
           "category": {
             "$ref": "#/components/schemas/ConventionRuleCategory",
@@ -319,6 +224,23 @@
       "CodeReviewDetailFinding": {
         "description": "A finding plus the source it replaces, for the detail page's diff.\n\nExtends rather than widening `CodeReviewFindingPublic`: that schema also\nserves pipeline findings, which are not anchored to an `old_string` and so\ncan never carry a snapshot. Adding the fields there would hand every\nconsumer three columns that are permanently null on half the rows.\n\nAll three are absent together or present together \u2014 a finding anchored by\n`posting_range` has no snapshot row, and the card falls back to rendering the\nreplacement alone.",
         "properties": {
+          "acknowledged": {
+            "description": "The developer accepted this finding and kept the code as it is.\n\nDistinct from `withdrawn`: the finding was correct. A client that showed\nboth as one \"closed without a fix\" state would be telling the reader the\nreview made a mistake it did not make.",
+            "readOnly": true,
+            "title": "Acknowledged",
+            "type": "boolean"
+          },
+          "acknowledged_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Acknowledged At",
+            "type": "string"
+          },
+          "acknowledged_reason": {
+            "nullable": true,
+            "title": "Acknowledged Reason",
+            "type": "string"
+          },
           "apply_fix_disabled_reason": {
             "$ref": "#/components/schemas/ApplyFixDisabledReason",
             "nullable": true
@@ -412,6 +334,11 @@
             "title": "Line Number",
             "type": "integer"
           },
+          "observed_head_sha": {
+            "nullable": true,
+            "title": "Observed Head Sha",
+            "type": "string"
+          },
           "original_code": {
             "nullable": true,
             "title": "Original Code",
@@ -430,6 +357,15 @@
           "provider": {
             "title": "Provider",
             "type": "string"
+          },
+          "publication_attempts": {
+            "nullable": true,
+            "title": "Publication Attempts",
+            "type": "integer"
+          },
+          "publication_status": {
+            "$ref": "#/components/schemas/FindingPublicationStatus",
+            "nullable": true
           },
           "resolved": {
             "title": "Resolved",
@@ -474,6 +410,23 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "withdrawn": {
+            "description": "The agent accepted a rebuttal and retracted this finding.\n\nDerived here so no client re-derives it from a timestamp.",
+            "readOnly": true,
+            "title": "Withdrawn",
+            "type": "boolean"
+          },
+          "withdrawn_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Withdrawn At",
+            "type": "string"
+          },
+          "withdrawn_reason": {
+            "nullable": true,
+            "title": "Withdrawn Reason",
+            "type": "string"
           }
         },
         "required": [
@@ -496,7 +449,9 @@
           "external_note_id",
           "comment_posted_at",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "withdrawn",
+          "acknowledged"
         ],
         "title": "CodeReviewDetailFinding",
         "type": "object"
@@ -618,6 +573,11 @@
             "format": "date-time",
             "nullable": true,
             "title": "Mr Created At",
+            "type": "string"
+          },
+          "mr_description": {
+            "nullable": true,
+            "title": "Mr Description",
             "type": "string"
           },
           "mr_iid": {
@@ -812,18 +772,16 @@
         "title": "ConventionRuleCategory",
         "type": "string"
       },
-      "HTTPValidationError": {
-        "properties": {
-          "detail": {
-            "items": {
-              "$ref": "#/components/schemas/ValidationError"
-            },
-            "title": "Detail",
-            "type": "array"
-          }
-        },
-        "title": "HTTPValidationError",
-        "type": "object"
+      "FindingPublicationStatus": {
+        "description": "Provider publication state for the durable finding admission record.",
+        "enum": [
+          "pending",
+          "posted",
+          "failed",
+          "unknown"
+        ],
+        "title": "FindingPublicationStatus",
+        "type": "string"
       },
       "HeadlessRunListItem": {
         "description": "One recent CLI run; deliberately omits answer and internal failure data.",
@@ -969,7 +927,6 @@
         "title": "HeadlessRunSubmitted",
         "type": "object"
       },
-      "JsonValue": {},
       "MRState": {
         "enum": [
           "open",
@@ -983,6 +940,7 @@
       },
       "ManualTriggerDisabledReason": {
         "enum": [
+          "merge_request_merged",
           "unsupported_provider",
           "review_in_progress"
         ],
@@ -1082,6 +1040,13 @@
             "maxLength": 50000,
             "minLength": 1,
             "title": "Prompt",
+            "type": "string"
+          },
+          "source_conversation_id": {
+            "description": "Optional. The AGENT_CLI conversation whose terminal watches this run. Only for a new run: it cannot be combined with `conversation_id`. Must belong to the authenticated workspace.",
+            "format": "uuid",
+            "nullable": true,
+            "title": "Source Conversation Id",
             "type": "string"
           }
         },
@@ -1224,46 +1189,6 @@
         "title": "UserOrganizationMinimal",
         "type": "object"
       },
-      "ValidationError": {
-        "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "title": "Location",
-            "type": "array"
-          },
-          "msg": {
-            "title": "Message",
-            "type": "string"
-          },
-          "type": {
-            "title": "Error Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
-        "title": "ValidationError",
-        "type": "object"
-      },
       "WorkspaceCreate": {
         "properties": {
           "description": {
@@ -1294,7 +1219,7 @@
       "WorkspacePublic": {
         "properties": {
           "auto_mode_enabled": {
-            "default": false,
+            "default": true,
             "title": "Auto Mode Enabled",
             "type": "boolean"
           },
@@ -1427,7 +1352,7 @@
         "description": "WorkspacePublic with the current user's role in the workspace.",
         "properties": {
           "auto_mode_enabled": {
-            "default": false,
+            "default": true,
             "title": "Auto Mode Enabled",
             "type": "boolean"
           },
