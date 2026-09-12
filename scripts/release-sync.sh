@@ -17,7 +17,13 @@ set -euo pipefail
 REPO="cloudthinker-ai/cloudthinker-cli-src"
 CLI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AGENT_CLI_DIR="$(cd "$CLI_DIR/../agent-cli" && pwd)"
-MONO_SHA="$(git -C "$CLI_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+MONO_SHA="$(git -C "$CLI_DIR" rev-parse HEAD)"
+
+python3 "$CLI_DIR/scripts/changelog.py" pending
+if [ -n "$(git -C "$CLI_DIR" status --porcelain -- . ../agent-cli)" ]; then
+  echo "error: commit CLI and agent changes before release-sync" >&2
+  exit 1
+fi
 
 command -v gh >/dev/null || { echo "error: gh CLI required" >&2; exit 1; }
 command -v rsync >/dev/null || { echo "error: rsync required" >&2; exit 1; }
@@ -59,6 +65,7 @@ echo ">> mirror agent-cli/ -> clone/agent-cli (drop node_modules and build dirs)
 rsync -a --delete \
   --exclude='node_modules/' --exclude='dist/' --exclude='.gen/' --exclude='.DS_Store' \
   "$AGENT_CLI_DIR"/ "$work/repo/agent-cli"/
+printf '%s\n' "$MONO_SHA" > "$work/repo/agent-cli/.source-revision"
 
 cd "$work/repo"
 git add -A

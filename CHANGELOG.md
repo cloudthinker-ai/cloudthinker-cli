@@ -1,0 +1,11 @@
+## [0.5.5]
+
+- Verified staged agent executables before installation and retained the previous bundle.
+- Cross-checked agent downloads against both their checksum sidecar and the published agent inventory.
+- Preserved bundles when process inspection could not prove they were unused.
+- Distinguished rejected stored logins from missing credentials.
+- Added opt-in startup phase timing.
+- Included subagent delegation in the agent bundle with CloudThinker agent modes and separate session records.
+- Headless chat sends the default Pro selection required by the current backend; Starter workspaces retain the server-enforced Light mode.
+- Agent installation tolerates a briefly busy staged executable while retaining the existing probe timeout.
+

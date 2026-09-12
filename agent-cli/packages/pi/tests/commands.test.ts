@@ -169,6 +169,11 @@ test("about says so when the session never linked", () => {
 	assert.ok(aboutLines(versions, "/agent", undefined).includes("Session: not linked"));
 });
 
+test("CA-AD-5 about exposes the build identity from the bundle", () => {
+	const versions = hostVersionsFrom({ piVersion: "0.85.1", buildId: "abc123-dirty" }, "0.5.5");
+	assert.ok(aboutLines(versions, "/agent", undefined).includes("Build: abc123-dirty"));
+});
+
 test("the terminal title carries the directory, and the workspace once identity arrives", () => {
 	assert.equal(sessionTitle("/home/dev/infra", undefined), "cloudthinker · infra");
 	assert.equal(sessionTitle("/home/dev/infra", "acme-prod"), "cloudthinker · infra · acme-prod");

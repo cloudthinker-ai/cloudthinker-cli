@@ -38,6 +38,7 @@ export async function linkSession(
 	runtime: CloudThinkerRuntime,
 	event: SessionStartEvent,
 	ctx: ExtensionContext,
+	sourceConversationId?: string,
 ): Promise<SessionCreated> {
 	const entries = ctx.sessionManager.getEntries();
 	const carried = findLinkedSession(entries);
@@ -50,7 +51,7 @@ export async function linkSession(
 	}
 	const created = await runtime.client.createSession({
 		cwd: ctx.cwd,
-		source_conversation_id: forked ? carried?.conversation_id : undefined,
+		source_conversation_id: forked ? carried?.conversation_id : sourceConversationId,
 	});
 	runtime.session = created;
 	runtime.setAutoMode(autoModeFrom(created));
@@ -71,9 +72,10 @@ export async function startSession(
 	runtime: CloudThinkerRuntime,
 	event: SessionStartEvent,
 	ctx: ExtensionContext,
+	sourceConversationId?: string,
 ): Promise<void> {
 	const [session, identity] = await Promise.allSettled([
-		linkSession(runtime, event, ctx),
+		linkSession(runtime, event, ctx, sourceConversationId),
 		runtime.client.whoami(),
 		refreshConnections(runtime),
 	]);

@@ -3,8 +3,10 @@
 use std::fmt::Display;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
-use std::time::Duration;
+use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
+use fs2::FileExt as _;
 use sha2::{Digest, Sha256};
 
 use crate::error::{CtError, CtResult};
@@ -20,6 +22,7 @@ const BUNDLE_DIR_NAME: &str = "cloudthinker-agent";
 const BUNDLE_BINARY_NAME: &str = "cloudthinker-agent";
 
 const CONNECT_TIMEOUT_SECS: u64 = 30;
+const CHECKSUM_INVENTORY: &str = "cloudthinker-agent-sha256.sum";
 
 /// Upper bound on one download, connect to last body byte.
 const REQUEST_TIMEOUT_SECS: u64 = 600;
@@ -81,8 +84,6 @@ pub fn installed_agent_binary(bin_root: &Path, version: &str) -> Option<PathBuf>
     binary.is_file().then_some(binary)
 }
 
-/// Download the bundle for `triple`, verify its sidecar digest, and install it
-/// atomically as the only version under `bin_root`.
 pub async fn install_agent(
     release_base: &str,
     version: &str,
@@ -104,10 +105,35 @@ pub async fn install_agent(
     )
     .await?;
     verify_digest(&archive, &sidecar, &asset)?;
+    let inventory = download(
+        &http,
+        &asset_url(release_base, version, CHECKSUM_INVENTORY),
+        64 * 1024,
+    )
+    .await?;
+    verify_inventory(&archive, &inventory, &asset)?;
 
+    let bin_root = bin_root.to_path_buf();
+    let version = version.to_string();
+    tokio::task::spawn_blocking(move || commit_bundle(&archive, &bin_root, &version))
+        .await
+        .map_err(|e| CtError::AgentInstall(format!("bundle install task failed: {e}")))?
+}
+
+fn commit_bundle(archive: &[u8], bin_root: &Path, version: &str) -> CtResult<InstalledAgent> {
     create_dir(bin_root)?;
+    let lock_path = bin_root.join(".install.lock");
+    let lock = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .map_err(|e| fs_error("open", &lock_path, &e))?;
+    lock.lock_exclusive()
+        .map_err(|e| fs_error("lock", &lock_path, &e))?;
     let staging = bin_root.join(format!(".staging-{:016x}", rand::random::<u64>()));
-    let binary = match stage_bundle(&archive, &staging, bin_root, version) {
+    let binary = match stage_bundle(archive, &staging, bin_root, version) {
         Ok(binary) => binary,
         Err(err) => {
             let _ = std::fs::remove_dir_all(&staging);
@@ -133,27 +159,51 @@ fn stage_bundle(
             "release archive carries no {BUNDLE_DIR_NAME}/{BUNDLE_BINARY_NAME}"
         )));
     }
+    probe_bundle(staging, Duration::from_secs(10))?;
     let installed = agent_install_dir(bin_root, version);
     if let Some(version_dir) = installed.parent() {
         create_dir(version_dir)?;
     }
     if installed.exists() {
-        std::fs::remove_dir_all(&installed).map_err(|e| fs_error("remove", &installed, &e))?;
+        if installed.join(BUNDLE_BINARY_NAME).is_file() {
+            std::fs::remove_dir_all(staging).map_err(|e| fs_error("remove", staging, &e))?;
+            return Ok(installed.join(BUNDLE_BINARY_NAME));
+        }
+        return Err(CtError::AgentInstall(format!(
+            "incomplete existing bundle at {}",
+            installed.display()
+        )));
     }
     std::fs::rename(staging, &installed).map_err(|e| fs_error("install", &installed, &e))?;
     Ok(installed.join(BUNDLE_BINARY_NAME))
 }
 
-/// Drop every entry under `bin_root` that is not the version just installed,
-/// returning one error per entry that stayed behind.
 fn prune_other_versions(bin_root: &Path, version: &str) -> Vec<CtError> {
+    prune_versions_with(bin_root, version, bundle_is_unused)
+}
+
+fn prune_versions_with(
+    bin_root: &Path,
+    version: &str,
+    unused: impl Fn(&Path) -> bool,
+) -> Vec<CtError> {
     let entries = match std::fs::read_dir(bin_root) {
         Ok(entries) => entries,
         Err(e) => return vec![fs_error("read", bin_root, &e)],
     };
-    entries
+    let mut versions: Vec<_> = entries
         .flatten()
         .filter(|entry| entry.file_name() != *version)
+        .filter(|entry| !entry.file_name().to_string_lossy().starts_with('.'))
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .filter(|entry| entry.path().join(BUNDLE_DIR_NAME).is_dir())
+        .collect();
+    versions
+        .sort_by_key(|entry| std::cmp::Reverse(entry.metadata().and_then(|m| m.modified()).ok()));
+    versions
+        .into_iter()
+        .skip(1)
+        .filter(|entry| unused(&entry.path().join(BUNDLE_DIR_NAME)))
         .filter_map(|entry| {
             let path = entry.path();
             std::fs::remove_dir_all(&path)
@@ -161,6 +211,85 @@ fn prune_other_versions(bin_root: &Path, version: &str) -> Vec<CtError> {
                 .map(|e| fs_error("remove", &path, &e))
         })
         .collect()
+}
+
+fn wait_bounded(command: &mut Command, timeout: Duration) -> std::io::Result<Output> {
+    let start = Instant::now();
+    let mut child = loop {
+        match command.spawn() {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::ExecutableFileBusy
+                    && start.elapsed() < timeout =>
+            {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            result => break result?,
+        }
+    };
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return child.wait_with_output(),
+            Ok(None) if start.elapsed() < timeout => std::thread::sleep(Duration::from_millis(10)),
+            result => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(result.err().unwrap_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::TimedOut, "process probe timed out")
+                }));
+            }
+        }
+    }
+}
+
+fn probe_bundle(staging: &Path, timeout: Duration) -> CtResult<()> {
+    let staging = std::fs::canonicalize(staging).map_err(|e| fs_error("resolve", staging, &e))?;
+    for argument in ["--version", "--help"] {
+        let mut command = Command::new(staging.join(BUNDLE_BINARY_NAME));
+        command
+            .arg(argument)
+            .current_dir(&staging)
+            .env_clear()
+            .env("HOME", &staging)
+            .env("PI_SKIP_VERSION_CHECK", "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let status = wait_bounded(&mut command, timeout)
+            .map_err(|e| CtError::AgentInstall(format!("staged agent {argument} failed: {e}")))?;
+        if !status.status.success() {
+            return Err(CtError::AgentInstall(format!(
+                "staged agent {argument} exited with {}",
+                status.status
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn bundle_is_unused(bundle: &Path) -> bool {
+    let Ok(probe) = std::fs::File::open(bundle.join(BUNDLE_BINARY_NAME)) else {
+        return false;
+    };
+    if bundle_process_status(bundle) != Some(0) {
+        return false;
+    }
+    drop(probe);
+    bundle_process_status(bundle) == Some(1)
+}
+
+fn bundle_process_status(bundle: &Path) -> Option<i32> {
+    let mut command = Command::new("lsof");
+    command
+        .args(["-F", "p"])
+        .arg("+D")
+        .arg(bundle)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    wait_bounded(&mut command, Duration::from_secs(2))
+        .ok()
+        .filter(|output| output.stderr.is_empty())
+        .and_then(|output| output.status.code())
 }
 
 /// Unpack the archive's `cloudthinker-agent/` directory into `dest`, rejecting
@@ -269,6 +398,33 @@ fn verify_digest(archive: &[u8], sidecar: &[u8], asset: &str) -> CtResult<()> {
     Ok(())
 }
 
+fn verify_inventory(archive: &[u8], inventory: &[u8], asset: &str) -> CtResult<()> {
+    let text = std::str::from_utf8(inventory)
+        .map_err(|_| CtError::AgentInstall("checksum inventory is not UTF-8".into()))?;
+    let mut selected = None;
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        let fields: Vec<_> = line.split_whitespace().collect();
+        if fields.len() != 2
+            || fields[0].len() != 64
+            || !fields[0].bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(CtError::AgentInstall("malformed checksum inventory".into()));
+        }
+        if fields[1].trim_start_matches('*') == asset {
+            if selected.is_some() {
+                return Err(CtError::AgentInstall(format!(
+                    "duplicate inventory entry for {asset}"
+                )));
+            }
+            selected = Some(line);
+        }
+    }
+    let line = selected.ok_or_else(|| {
+        CtError::AgentInstall(format!("checksum inventory has no entry for {asset}"))
+    })?;
+    verify_digest(archive, line.as_bytes(), asset)
+}
+
 fn http_client() -> CtResult<reqwest::Client> {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
@@ -354,7 +510,11 @@ mod tests {
 
     fn good_bundle() -> Vec<u8> {
         tar_gz(&[
-            ("cloudthinker-agent/cloudthinker-agent", b"binary", 0o755),
+            (
+                "cloudthinker-agent/cloudthinker-agent",
+                b"#!/bin/sh\nexit 0\n",
+                0o755,
+            ),
             ("cloudthinker-agent/package.json", b"{}", 0o644),
             ("cloudthinker-agent/theme/dark.json", b"{}", 0o644),
         ])
@@ -362,6 +522,150 @@ mod tests {
 
     fn sidecar(archive: &[u8], asset: &str) -> Vec<u8> {
         format!("{:x}  {asset}\n", Sha256::digest(archive)).into_bytes()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ca_ad_1_probe_cannot_inherit_parent_credentials() {
+        if std::env::var_os("CT_PROBE_PARENT").is_none() {
+            let status = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "agent_release::tests::ca_ad_1_probe_cannot_inherit_parent_credentials",
+                ])
+                .env("CT_PROBE_PARENT", "1")
+                .env("CLOUDTHINKER_TOKEN", "synthetic-parent-token")
+                .status()
+                .unwrap();
+            assert!(status.success());
+            return;
+        }
+        let root = tempfile::tempdir().unwrap();
+        let archive = tar_gz(&[(
+            "cloudthinker-agent/cloudthinker-agent",
+            b"#!/bin/sh\n[ -z \"${CLOUDTHINKER_TOKEN+x}\" ] && [ -z \"${CT_PROBE_PARENT+x}\" ] && [ \"$HOME\" = \"$PWD\" ] && [ \"$PI_SKIP_VERSION_CHECK\" = 1 ]\n",
+            0o755,
+        )]);
+        extract_bundle(&archive, root.path()).unwrap();
+        probe_bundle(root.path(), Duration::from_secs(1)).unwrap();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn ca_ad_busy_probe_waits_for_writer_and_stays_bounded() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let binary = root.path().join("probe");
+        std::fs::write(&binary, b"#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let writer = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&binary)
+            .unwrap();
+        let result = wait_bounded(&mut Command::new(&binary), Duration::from_millis(30));
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::ExecutableFileBusy
+        );
+        std::thread::scope(|scope| {
+            let probe =
+                scope.spawn(|| wait_bounded(&mut Command::new(&binary), Duration::from_secs(1)));
+            std::thread::sleep(Duration::from_millis(50));
+            drop(writer);
+            assert!(probe.join().unwrap().unwrap().status.success());
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ca_ad_1_failed_probe_preserves_existing_install() {
+        for body in [b"#!/bin/sh\nexit 1\n".as_slice(), b"not executable"] {
+            let root = tempfile::tempdir().unwrap();
+            let installed = agent_install_dir(root.path(), "0.3.0");
+            std::fs::create_dir_all(&installed).unwrap();
+            std::fs::write(installed.join(BUNDLE_BINARY_NAME), b"previous").unwrap();
+            let archive = tar_gz(&[("cloudthinker-agent/cloudthinker-agent", body, 0o755)]);
+            let result = stage_bundle(
+                &archive,
+                &root.path().join(".staging-test"),
+                root.path(),
+                "0.3.0",
+            );
+            assert!(result.is_err());
+            assert_eq!(
+                std::fs::read(installed.join(BUNDLE_BINARY_NAME)).unwrap(),
+                b"previous"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ca_ad_1_timeout_kills_the_probe_and_install_failure_cleans_staging() {
+        let root = tempfile::tempdir().unwrap();
+        let bundle = tar_gz(&[(
+            "cloudthinker-agent/cloudthinker-agent",
+            b"#!/bin/sh\nwhile :; do :; done\n",
+            0o755,
+        )]);
+        let staging = root.path().join("probe");
+        extract_bundle(&bundle, &staging).unwrap();
+        let started = Instant::now();
+        assert!(probe_bundle(&staging, Duration::from_millis(30)).is_err());
+        assert!(started.elapsed() < Duration::from_secs(2));
+        let failed = tar_gz(&[(
+            "cloudthinker-agent/cloudthinker-agent",
+            b"#!/bin/sh\nexit 9\n",
+            0o755,
+        )]);
+        assert!(commit_bundle(&failed, root.path(), "0.4.0").is_err());
+        assert!(!root.path().join("0.4.0").exists());
+        assert!(
+            !std::fs::read_dir(root.path())
+                .unwrap()
+                .flatten()
+                .any(|entry| entry.file_name().to_string_lossy().starts_with(".staging-"))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ca_ad_2_retains_previous_and_open_older_bundle() {
+        let root = tempfile::tempdir().unwrap();
+        commit_bundle(&good_bundle(), root.path(), "0.1.0").unwrap();
+        let oldest = agent_install_dir(root.path(), "0.1.0");
+        let open = std::fs::File::open(oldest.join(BUNDLE_BINARY_NAME)).unwrap();
+        commit_bundle(&good_bundle(), root.path(), "0.2.0").unwrap();
+        commit_bundle(&good_bundle(), root.path(), "0.3.0").unwrap();
+        assert!(oldest.exists());
+        assert!(agent_install_dir(root.path(), "0.2.0").exists());
+        drop(open);
+        if bundle_is_unused(&oldest) {
+            assert!(prune_other_versions(root.path(), "0.3.0").is_empty());
+            assert!(!oldest.exists());
+        }
+        assert!(agent_install_dir(root.path(), "0.2.0").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ca_ad_2_pruning_keeps_two_versions_and_preserves_unknown_process_state() {
+        let root = tempfile::tempdir().unwrap();
+        for (index, version) in ["0.1.0", "0.2.0", "0.3.0"].iter().enumerate() {
+            let bundle = agent_install_dir(root.path(), version);
+            std::fs::create_dir_all(&bundle).unwrap();
+            let parent = std::fs::File::open(bundle.parent().unwrap()).unwrap();
+            parent
+                .set_modified(std::time::UNIX_EPOCH + Duration::from_secs(index as u64))
+                .unwrap();
+        }
+        let oldest = root.path().join("0.1.0");
+        assert!(prune_versions_with(root.path(), "0.3.0", |_| false).is_empty());
+        assert!(oldest.exists());
+        assert!(prune_versions_with(root.path(), "0.3.0", |_| true).is_empty());
+        assert!(!oldest.exists());
+        assert!(root.path().join("0.2.0").exists());
+        assert!(root.path().join("0.3.0").exists());
     }
 
     #[test]
@@ -444,6 +748,64 @@ mod tests {
     }
 
     #[test]
+    fn ca_ad_3_inventory_requires_one_matching_well_formed_digest() {
+        let archive = good_bundle();
+        let asset = asset_name("x86_64-unknown-linux-gnu");
+        let valid = sidecar(&archive, &asset);
+        assert!(verify_inventory(&archive, &valid, &asset).is_ok());
+        for invalid in [
+            Vec::new(),
+            b"malformed".to_vec(),
+            [valid.clone(), valid.clone()].concat(),
+            sidecar(b"other archive", &asset),
+            sidecar(&archive, "other.tar.gz"),
+        ] {
+            assert!(verify_inventory(&archive, &invalid, &asset).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn ca_ad_3_disagreeing_published_inventory_preserves_the_previous_bundle() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, ResponseTemplate};
+        let server = wiremock::MockServer::start().await;
+        let archive = good_bundle();
+        let asset = asset_name("x86_64-unknown-linux-gnu");
+        for (name, bytes) in [
+            (asset.clone(), archive.clone()),
+            (format!("{asset}.sha256"), sidecar(&archive, &asset)),
+            (
+                CHECKSUM_INVENTORY.into(),
+                sidecar(b"inconsistent upload", &asset),
+            ),
+        ] {
+            Mock::given(method("GET"))
+                .and(path(format!("/v0.3.0/{name}")))
+                .respond_with(ResponseTemplate::new(200).set_body_bytes(bytes))
+                .mount(&server)
+                .await;
+        }
+        let root = tempfile::tempdir().unwrap();
+        let previous = agent_install_dir(root.path(), "0.2.0");
+        std::fs::create_dir_all(&previous).unwrap();
+        std::fs::write(previous.join(BUNDLE_BINARY_NAME), b"previous").unwrap();
+        let error = install_agent(
+            &server.uri(),
+            "0.3.0",
+            "x86_64-unknown-linux-gnu",
+            root.path(),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("checksum mismatch"));
+        assert_eq!(
+            std::fs::read(previous.join(BUNDLE_BINARY_NAME)).unwrap(),
+            b"previous"
+        );
+        assert!(!root.path().join("0.3.0").exists());
+    }
+
+    #[test]
     fn digest_verification_rejects_a_tampered_archive_and_a_foreign_sidecar() {
         let archive = good_bundle();
         let asset = "cloudthinker-agent-x86_64-unknown-linux-gnu.tar.gz";
@@ -518,8 +880,9 @@ mod tests {
         assert!(extract_bundle(&archive, dest.path()).is_err());
     }
 
+    #[cfg(unix)]
     #[tokio::test]
-    async fn install_downloads_verifies_and_replaces_the_previous_version() {
+    async fn install_downloads_verifies_and_retains_the_previous_version() {
         let server = wiremock::MockServer::start().await;
         let archive = good_bundle();
         let asset = asset_name("x86_64-unknown-linux-gnu");
@@ -548,18 +911,37 @@ mod tests {
             installed.binary,
             agent_install_dir(root.path(), "0.3.0").join("cloudthinker-agent")
         );
-        assert_eq!(std::fs::read(&installed.binary).unwrap(), b"binary");
+        assert_eq!(
+            std::fs::read(&installed.binary).unwrap(),
+            b"#!/bin/sh\nexit 0\n"
+        );
         assert!(
             agent_install_dir(root.path(), "0.3.0")
                 .join("theme/dark.json")
                 .is_file()
         );
-        assert!(!root.path().join("0.2.0").exists());
+        assert!(root.path().join("0.2.0").exists());
         assert!(installed.prune_failures.is_empty());
     }
 
+    #[cfg(unix)]
     #[test]
-    fn staging_replaces_an_existing_install_of_the_same_version() {
+    fn ca_ad_2_incomplete_same_version_is_preserved_and_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        let installed = agent_install_dir(root.path(), "0.3.0");
+        std::fs::create_dir_all(&installed).unwrap();
+        std::fs::write(installed.join("partial"), b"preserve").unwrap();
+        assert!(commit_bundle(&good_bundle(), root.path(), "0.3.0").is_err());
+        assert_eq!(
+            std::fs::read(installed.join("partial")).unwrap(),
+            b"preserve"
+        );
+        assert!(!installed.join(BUNDLE_BINARY_NAME).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn staging_preserves_an_existing_install_of_the_same_version() {
         let root = tempfile::tempdir().unwrap();
         let installed = agent_install_dir(root.path(), "0.3.0");
         std::fs::create_dir_all(installed.join("theme")).unwrap();
@@ -575,14 +957,14 @@ mod tests {
         .unwrap();
 
         assert_eq!(binary, installed.join("cloudthinker-agent"));
-        assert_eq!(std::fs::read(&binary).unwrap(), b"binary");
-        assert!(installed.join("theme/dark.json").is_file());
-        assert!(!installed.join("theme/retired.json").exists());
+        assert_eq!(std::fs::read(&binary).unwrap(), b"stale binary");
+        assert!(installed.join("theme/retired.json").is_file());
         assert!(!root.path().join(".staging-test").exists());
     }
 
+    #[cfg(unix)]
     #[tokio::test]
-    async fn install_reports_each_entry_it_could_not_prune() {
+    async fn install_leaves_unrelated_files_alone() {
         let server = wiremock::MockServer::start().await;
         let archive = good_bundle();
         let asset = asset_name("x86_64-unknown-linux-gnu");
@@ -607,11 +989,12 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(std::fs::read(&installed.binary).unwrap(), b"binary");
-        assert_eq!(installed.prune_failures.len(), 1);
-        let failure = installed.prune_failures[0].to_string();
-        assert!(failure.contains("could not remove"), "{failure}");
-        assert!(failure.contains(&stray.display().to_string()), "{failure}");
+        assert_eq!(
+            std::fs::read(&installed.binary).unwrap(),
+            b"#!/bin/sh\nexit 0\n"
+        );
+        assert!(installed.prune_failures.is_empty());
+        assert_eq!(std::fs::read(&stray).unwrap(), b"not a version directory");
     }
 
     #[tokio::test]
@@ -718,6 +1101,11 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path(format!("/v{version}/{asset}.sha256")))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(sidecar.to_vec()))
+            .mount(server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/v{version}/{CHECKSUM_INVENTORY}")))
             .respond_with(ResponseTemplate::new(200).set_body_bytes(sidecar.to_vec()))
             .mount(server)
             .await;

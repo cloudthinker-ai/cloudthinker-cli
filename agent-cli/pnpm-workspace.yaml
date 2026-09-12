@@ -1,2 +1,5 @@
 packages:
-  - "packages/*"
+  - packages/*
+
+patchedDependencies:
+  '@tintinweb/pi-subagents@0.19.0': patches/@tintinweb__pi-subagents@0.19.0.patch

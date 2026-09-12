@@ -3,4 +3,5 @@
 pub mod exit;
 pub mod login_guide;
 pub mod output;
+pub mod timing;
 pub mod watch;

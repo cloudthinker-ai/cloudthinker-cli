@@ -15,10 +15,15 @@
 	},
 	"dependencies": {
 		"@cloudthinker/pi": "workspace:*",
-		"@earendil-works/pi-coding-agent": "0.85.1"
+		"@earendil-works/pi-coding-agent": "0.85.1",
+		"@tintinweb/pi-subagents": "0.19.0"
 	},
 	"devDependencies": {
+		"@earendil-works/pi-tui": "0.85.1",
 		"@types/node": "24.10.1",
 		"typescript": "5.9.3"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-tui": "*"
 	}
 }

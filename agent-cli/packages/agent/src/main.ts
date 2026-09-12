@@ -8,12 +8,15 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 import cloudthinker from "@cloudthinker/pi/src/index.ts";
+import { markStartup } from "@cloudthinker/pi/src/timing.ts";
 
 import { NO_SESSION_REFUSAL, applyGuard, hasNoSessionFlag } from "./guard.ts";
 import { modelScopeArgs } from "./models.ts";
+import bundledSubagents from "./subagents.ts";
 import { bundledThemePaths, themeArgs } from "./theme.ts";
 import { tuiModeArgs } from "./tui.ts";
 
+markStartup("agent.modules");
 process.title = "cloudthinker";
 process.env.PI_CODING_AGENT = "true";
 process.env.AI_AGENT = "pi";
@@ -26,13 +29,18 @@ if (hasNoSessionFlag(argv)) {
 }
 
 applyGuard();
+markStartup("agent.guard");
 
 const themes = themeArgs(
 	bundledThemePaths(join(getPackageDir(), "theme")),
 	argv,
 	SettingsManager.create(process.cwd(), getAgentDir()).getThemeSetting(),
 );
+markStartup("agent.settings");
 
 await main([...themes, ...tuiModeArgs(argv), ...modelScopeArgs(argv), ...argv], {
-	extensionFactories: [{ name: "cloudthinker", factory: cloudthinker }],
+	extensionFactories: [
+		{ name: "cloudthinker", factory: cloudthinker },
+		{ name: "subagents", factory: bundledSubagents },
+	],
 });

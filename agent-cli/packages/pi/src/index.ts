@@ -21,6 +21,7 @@ import {
 import { CLOUD_ENTRY_TYPE, CloudThinkerRuntime, describeError, detach } from "./runtime.ts";
 import { refreshConnections, startSession } from "./session.ts";
 import { discoverSkillPaths, hasSkillIndex, refreshSkills } from "./skills.ts";
+import { markStartup } from "./timing.ts";
 import { registerAsk } from "./tools/ct-ask.ts";
 import { registerSandboxRead } from "./tools/ct-sandbox-read.ts";
 import { registerSandboxWrite } from "./tools/ct-sandbox-write.ts";
@@ -35,7 +36,12 @@ export function sessionTitle(cwd: string, workspaceName: string | undefined): st
 	return parts.join(" · ");
 }
 
-export default async function cloudthinker(pi: ExtensionAPI): Promise<void> {
+export interface CloudThinkerSessionOptions {
+	cloudEnabled?: boolean;
+	sourceConversationId?: string;
+}
+
+export default async function cloudthinker(pi: ExtensionAPI, options: CloudThinkerSessionOptions = {}): Promise<void> {
 	const runtime = new CloudThinkerRuntime(pi);
 	const mirror = new SessionMirror(runtime.client, (status) =>
 		runtime.setStatus(formatMirrorStatus(status)),
@@ -49,6 +55,7 @@ export default async function cloudthinker(pi: ExtensionAPI): Promise<void> {
 	const silent = (): void => {};
 
 	const modelsUnavailable = await registerProvider(runtime);
+	markStartup("agent.models");
 	let modelsUnavailableAnnounced = false;
 	registerSandboxRead(runtime);
 	registerSandboxWrite(runtime);
@@ -73,7 +80,8 @@ export default async function cloudthinker(pi: ExtensionAPI): Promise<void> {
 			(entry) => entry.type === "custom" && entry.customType === CLOUD_ENTRY_TYPE,
 		);
 		const cloudData = cloudEntry?.type === "custom" ? cloudEntry.data as { enabled?: unknown } | undefined : undefined;
-		runtime.setCloudEnabled(cloudData?.enabled !== false, false);
+		runtime.setCloudEnabled(options.cloudEnabled !== false && cloudData?.enabled !== false, false);
+		if (options.cloudEnabled === false && cloudData?.enabled !== false) pi.appendEntry(CLOUD_ENTRY_TYPE, { enabled: false });
 		locations.reset();
 		if (ctx.mode === "tui") {
 			runtime.setTitle(sessionTitle(ctx.cwd, undefined));
@@ -88,7 +96,8 @@ export default async function cloudthinker(pi: ExtensionAPI): Promise<void> {
 				runtime.notify(modelsUnavailableMessage(modelsUnavailable), "error");
 			}
 		}
-		await startSession(runtime, event, ctx);
+		await startSession(runtime, event, ctx, options.sourceConversationId);
+		markStartup("agent.session_link");
 		if (ctx.mode === "tui") {
 			runtime.setTitle(sessionTitle(ctx.cwd, runtime.identity?.workspace_name));
 		}
@@ -117,6 +126,7 @@ export default async function cloudthinker(pi: ExtensionAPI): Promise<void> {
 				await refresh().catch(warn("skills"));
 			}
 		}
+		markStartup("agent.session_start");
 	});
 
 	pi.on("resources_discover", async () => ({

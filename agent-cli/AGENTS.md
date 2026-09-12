@@ -6,6 +6,15 @@ A pnpm workspace of two packages. `@cloudthinker/pi` in `packages/pi/` carries t
 
 ### ALWAYS
 
+- Bundle pi-subagents through `packages/agent/src/subagents.ts`; its pinned package patch exposes child-session hooks. Children use exact CloudThinker modes, fresh session/mirror state, and the parent's Cloud choice. Keep built-in agent defaults free of vendor model assignments, restore the active branch's saved child mode on reopen, and preserve the child request guard across resume. The upstream loader passes its cloud-tool inclusion decision separately from disabling extension discovery, so mention clones retain Cloud On while explicit exclusions remain effective.
+- Preserve upstream tool object identity when adapting definitions and reject unrecognized upstream description shapes. Print and JSON runs await delegated agents and workflows before Pi tears down the session; TUI runs keep upstream background behavior.
+
+- `scripts/benchmarks/` owns input-ready startup measurement, same-binary calibration, and correctness-gated comparisons. `CLOUDTHINKER_TIMING=1` emits phase timing to stderr; it is silent otherwise. Build optimization claims require actual compiled-editor measurements, not `--version` timing.
+- `packages/agent/scripts/validate-assets.ts` rejects missing, unexpected, and symlinked bundle assets before archiving. Update its required files and the pi behavior contract tests together when upgrading pi. The compiled build id is shown by `/cloudthinker about`.
+- Source changes carry a nonempty `.changes/<slug>.md` in each touched package. `cli/scripts/changelog.py` validates and folds these at release; do not rewrite released changelog sections.
+
+- Keep startup compact: `logo.ts` holds the block rendition of `frontend/public/minimized-logo.svg`, colored through the header styler's accent with a negative-space sparkle; `header.ts` owns NO_COLOR and switches to text on narrow terminals. `startup.ts` wraps pi's rendered resource details, preserves its diagnostics, and expands them through the existing tool-expansion key. Quiet startup still hides the header and inventory; verbose startup exposes details.
+
 - `/cloud on|off` controls the five remote tools for this session and survives resume/fork through `cloudthinker.cloud` entries. Change it only while idle; Off hides the tools, blocks execution in `requireSession`, and removes cloud instructions from the prompt. Local tools, model access, and mirroring stay available; already-started remote work continues.
 
 - Reach the backend through `src/client.ts`. It owns the bearer, the `/api/v1` join, per-call timeouts, and the `error.message` / `detail` unwrap; a second `fetch` re-invents all four.
@@ -17,7 +26,7 @@ A pnpm workspace of two packages. `@cloudthinker/pi` in `packages/pi/` carries t
 - Keep the pi attribution in the header, `/cloudthinker about`, and the tarball `NOTICE`; the product is a fork of MIT-licensed pi and the notice is the license condition. pi ships no LICENSE file, so `build.sh` writes the MIT text itself and takes the version, repository, and author from pi's own `package.json`.
 - Read pi's version and repository at runtime from the sidecar `package.json`'s `piVersion` and `piRepository`, which `build.sh` writes. A bun binary resolves `getPackageDir()` to its own directory, so pi's manifest is not there to read.
 - Write erasable TypeScript. `node --test` strips types natively, so a parameter property or an enum breaks the test run even though `tsc` is happy.
-- Keep the compiled artifact contract exactly as `packages/agent/scripts/build.sh` writes it: `cloudthinker-agent-<rust triple>.tar.gz`, a `.sha256` sidecar in `sha256sum` line format, a `cloudthinker-agent/` top-level directory, and the sidecar `package.json` whose `piConfig` names the product. The Rust wrapper downloads by those names.
+- Keep the compiled artifact contract exactly as `packages/agent/scripts/build.sh` writes it: `cloudthinker-agent-<rust triple>.tar.gz`, a `.sha256` sidecar, the independently computed `cloudthinker-agent-sha256.sum` inventory, a `cloudthinker-agent/` top-level directory, and the sidecar `package.json` whose `piConfig` names the product. Both checksum files use `sha256sum` line format. The Rust wrapper downloads by those names.
 - Ship pi's sidecar assets beside the binary. A bun binary resolves themes and templates from `dirname(process.execPath)`, so a compile alone dies in `initTheme`.
 - Decide a waiting `ct_sandbox_write` in the terminal first: `askInTerminal` draws the card above the editor and offers approve, approve-and-trust, decline, or the browser (escape declines). A 403 on a trust decision applied nothing, so `decideInTerminal` asks again without the trust option; a 403 on a plain decision (the developer is not a workspace approver) falls back to polling the browser link. Headless mode has no UI, so it writes the browser link to stderr and waits there.
 

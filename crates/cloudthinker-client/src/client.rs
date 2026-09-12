@@ -10,12 +10,13 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::auth::refresh::RefreshCoordinator;
 use crate::auth::store::{
-    EnvTokenStore, FileStore, StoredToken, TOKEN_ENV_VAR, TokenStore, WorkspaceSelector,
-    acquire_credential_lock,
+    CredentialProvenance, EnvTokenStore, FileStore, StoredToken, TOKEN_ENV_VAR, TokenStore,
+    WorkspaceSelector, acquire_credential_lock,
 };
 use crate::error::{CtError, CtResult, to_ct_error};
 use crate::review_url::{MrCoordinates, MrProvider};
@@ -320,6 +321,7 @@ pub struct CtClient {
     // Anonymous client for endpoints that carry no bearer (exchange, refresh,
     // best-effort logout).
     anon_http: reqwest::Client,
+    rejected_credential: Mutex<Option<[u8; 32]>>,
 }
 
 impl CtClient {
@@ -337,11 +339,60 @@ impl CtClient {
             refresh,
             http_cache: Mutex::new(None),
             anon_http,
+            rejected_credential: Mutex::new(None),
         })
     }
 
     pub fn base_url(&self) -> &str {
         &self.base_url
+    }
+
+    pub fn credential_provenance(&self) -> CtResult<CredentialProvenance> {
+        let Some(token) = self.store.load()? else {
+            return Ok(CredentialProvenance::Missing);
+        };
+        let rejected = self
+            .rejected_credential
+            .lock()
+            .map_err(|_| CtError::Store("credential provenance lock poisoned".into()))?;
+        if *rejected == Some(self.credential_fingerprint(&token.access_token)) {
+            Ok(CredentialProvenance::Stale(self.store.source()))
+        } else {
+            Ok(CredentialProvenance::Present(self.store.source()))
+        }
+    }
+
+    fn credential_fingerprint(&self, access: &str) -> [u8; 32] {
+        Sha256::new()
+            .chain_update(self.base_url.as_bytes())
+            .chain_update([0])
+            .chain_update(access.as_bytes())
+            .finalize()
+            .into()
+    }
+
+    fn record_auth_failure(&self, access: &str, error: CtError) -> CtError {
+        if matches!(
+            &error,
+            CtError::Auth(_)
+                | CtError::ObsoleteCredentials
+                | CtError::Api {
+                    status: 401 | 403,
+                    ..
+                }
+        ) && let Ok(mut rejected) = self.rejected_credential.lock()
+        {
+            *rejected = Some(self.credential_fingerprint(access));
+        }
+        error
+    }
+
+    fn accept_credential(&self, access: &str) {
+        if let Ok(mut rejected) = self.rejected_credential.lock()
+            && *rejected == Some(self.credential_fingerprint(access))
+        {
+            *rejected = None;
+        }
     }
 
     // -- authenticated calls -------------------------------------------------
@@ -358,6 +409,12 @@ impl CtClient {
             conversation_id,
             idempotency_key: None,
             prompt: prompt_field,
+            selection: cloudthinker_api::types::SavedSelection {
+                option_id: "mode:pro".parse().map_err(|error| {
+                    CtError::Protocol(format!("invalid default selection: {error}"))
+                })?,
+                thinking_effort: None,
+            },
             source_conversation_id: None,
         };
         let submitted = self
@@ -604,7 +661,11 @@ impl CtClient {
         if self.store.refresh_enabled()
             && current.expires_within(RefreshCoordinator::proactive_skew())
         {
-            let rotated = self.refresh.refresh(&current.access_token).await?;
+            let rotated = self
+                .refresh
+                .refresh(&current.access_token)
+                .await
+                .map_err(|error| self.record_auth_failure(&current.access_token, error))?;
             Ok(rotated.access_token)
         } else {
             Ok(current.access_token)
@@ -639,18 +700,31 @@ impl CtClient {
         let access = self.access_token().await?;
         let client = self.api_client(&access)?;
         match call(client).await {
-            Ok(rv) => Ok(rv.into_inner()),
+            Ok(rv) => {
+                self.accept_credential(&access);
+                Ok(rv.into_inner())
+            }
             Err(err) => {
                 let is_unauthorized = err.status().map(|s| s.as_u16()) == Some(401);
                 if is_unauthorized && self.store.refresh_enabled() {
-                    let rotated = self.refresh.refresh(&access).await?;
+                    let rotated = self
+                        .refresh
+                        .refresh(&access)
+                        .await
+                        .map_err(|error| self.record_auth_failure(&access, error))?;
                     let client = self.api_client(&rotated.access_token)?;
                     match call(client).await {
-                        Ok(rv) => Ok(rv.into_inner()),
-                        Err(err2) => Err(reclassify(to_ct_error(err2).await)),
+                        Ok(rv) => {
+                            self.accept_credential(&rotated.access_token);
+                            Ok(rv.into_inner())
+                        }
+                        Err(err2) => Err(self.record_auth_failure(
+                            &rotated.access_token,
+                            reclassify(to_ct_error(err2).await),
+                        )),
                     }
                 } else {
-                    Err(reclassify(to_ct_error(err).await))
+                    Err(self.record_auth_failure(&access, reclassify(to_ct_error(err).await)))
                 }
             }
         }
@@ -1258,6 +1332,39 @@ mod tests {
         let mut token = stored("live-access", "r");
         token.expires_at = Some(Utc::now() + chrono::Duration::seconds(seconds));
         token
+    }
+
+    #[tokio::test]
+    async fn ca_ad_12_provenance_tracks_rejection_and_external_replacement() {
+        use crate::auth::store::CredentialSource;
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/cli/whoami"))
+            .respond_with(ResponseTemplate::new(403))
+            .mount(&server)
+            .await;
+        let store = Arc::new(MockTokenStore::new(None));
+        let client = CtClient::new(server.uri(), store.clone()).unwrap();
+        assert_eq!(
+            client.credential_provenance().unwrap(),
+            CredentialProvenance::Missing
+        );
+        store.save(&stored("first", "refresh")).unwrap();
+        assert_eq!(
+            client.credential_provenance().unwrap(),
+            CredentialProvenance::Present(CredentialSource::Stored)
+        );
+        assert!(client.whoami().await.is_err());
+        assert_eq!(
+            client.credential_provenance().unwrap(),
+            CredentialProvenance::Stale(CredentialSource::Stored)
+        );
+        store.save(&stored("replacement", "refresh")).unwrap();
+        assert_eq!(
+            client.credential_provenance().unwrap(),
+            CredentialProvenance::Present(CredentialSource::Stored)
+        );
+        assert!(!format!("{:?}", client.credential_provenance().unwrap()).contains("replacement"));
     }
 
     // `cloudthinker auth token` hands this value to another process, so an

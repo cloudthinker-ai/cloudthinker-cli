@@ -28,6 +28,19 @@ const KEYRING_SERVICE: &str = "cloudthinker-cli";
 const STORE_VERSION: u8 = 2;
 pub const TOKEN_ENV_VAR: &str = "CLOUDTHINKER_TOKEN";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CredentialSource {
+    Stored,
+    Environment,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CredentialProvenance {
+    Missing,
+    Present(CredentialSource),
+    Stale(CredentialSource),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceSelector {
     Active,
@@ -88,6 +101,9 @@ impl StoreLock {
 
 /// Persistence backend for one host's credentials.
 pub trait TokenStore: Send + Sync {
+    fn source(&self) -> CredentialSource {
+        CredentialSource::Stored
+    }
     fn acquire_lock(&self) -> CtResult<StoreLock> {
         Ok(StoreLock::none())
     }
@@ -149,6 +165,9 @@ impl EnvTokenStore {
 }
 
 impl TokenStore for EnvTokenStore {
+    fn source(&self) -> CredentialSource {
+        CredentialSource::Environment
+    }
     fn load(&self) -> CtResult<Option<StoredToken>> {
         Ok(Some(StoredToken {
             access_token: self.access_token.clone(),

@@ -3,7 +3,7 @@
 //! Pure so the decision is table-testable: only the caller touches the network,
 //! the terminal, or the browser.
 
-use cloudthinker_client::CtError;
+use cloudthinker_client::{CredentialProvenance, CredentialSource, CtError};
 
 /// Printed before the browser opens, so the user knows why it did.
 pub const OPENING_LOGIN: &str = "You are not logged in. Opening the CloudThinker login now.";
@@ -15,6 +15,8 @@ pub const LOG_IN_FIRST: &str =
 /// `CLOUDTHINKER_TOKEN` outranks the stored credentials, so a login would not
 /// be read even after it succeeded.
 pub const REPLACE_ENV_TOKEN: &str = "The credential in CLOUDTHINKER_TOKEN is rejected. Replace it, or unset it and run `cloudthinker login`.";
+pub const RENEW_STORED_LOGIN: &str =
+    "Your stored login was rejected. Run `cloudthinker login` to renew it, then retry.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Plan {
@@ -45,14 +47,21 @@ pub fn explain(error: &CtError, plan: Plan) -> Option<(String, &'static str)> {
     }
 }
 
-pub fn plan(error: &CtError, env_token_is_set: bool, interactive: bool) -> Plan {
+pub fn plan(error: &CtError, provenance: CredentialProvenance, interactive: bool) -> Plan {
     if !needs_login(error) {
         return Plan::Report;
     }
-    if env_token_is_set {
+    if matches!(
+        provenance,
+        CredentialProvenance::Present(CredentialSource::Environment)
+            | CredentialProvenance::Stale(CredentialSource::Environment)
+    ) {
         return Plan::Tell(REPLACE_ENV_TOKEN);
     }
     if !interactive {
+        if provenance == CredentialProvenance::Stale(CredentialSource::Stored) {
+            return Plan::Tell(RENEW_STORED_LOGIN);
+        }
         return Plan::Tell(LOG_IN_FIRST);
     }
     Plan::LogIn
@@ -87,11 +96,36 @@ mod tests {
     fn the_plan_reads_the_error_then_the_environment() {
         let auth = CtError::Auth("not logged in".into());
 
-        assert_eq!(plan(&auth, false, true), Plan::LogIn);
-        assert_eq!(plan(&auth, false, false), Plan::Tell(LOG_IN_FIRST));
-        assert_eq!(plan(&auth, true, true), Plan::Tell(REPLACE_ENV_TOKEN));
         assert_eq!(
-            plan(&CtError::Transport("down".into()), false, true),
+            plan(&auth, CredentialProvenance::Missing, true),
+            Plan::LogIn
+        );
+        assert_eq!(
+            plan(&auth, CredentialProvenance::Missing, false),
+            Plan::Tell(LOG_IN_FIRST)
+        );
+        assert_eq!(
+            plan(
+                &auth,
+                CredentialProvenance::Present(CredentialSource::Environment),
+                true
+            ),
+            Plan::Tell(REPLACE_ENV_TOKEN)
+        );
+        assert_eq!(
+            plan(
+                &auth,
+                CredentialProvenance::Stale(CredentialSource::Stored),
+                false
+            ),
+            Plan::Tell(RENEW_STORED_LOGIN)
+        );
+        assert_eq!(
+            plan(
+                &CtError::Transport("down".into()),
+                CredentialProvenance::Missing,
+                true
+            ),
             Plan::Report
         );
     }

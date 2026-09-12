@@ -33,9 +33,14 @@ expected=(
   cloudthinker-cli-installer.ps1
   sha256.sum
   cloudthinker-agent-aarch64-apple-darwin.tar.gz
+  cloudthinker-agent-aarch64-apple-darwin.tar.gz.sha256
   cloudthinker-agent-x86_64-apple-darwin.tar.gz
+  cloudthinker-agent-x86_64-apple-darwin.tar.gz.sha256
   cloudthinker-agent-aarch64-unknown-linux-gnu.tar.gz
+  cloudthinker-agent-aarch64-unknown-linux-gnu.tar.gz.sha256
   cloudthinker-agent-x86_64-unknown-linux-gnu.tar.gz
+  cloudthinker-agent-x86_64-unknown-linux-gnu.tar.gz.sha256
+  cloudthinker-agent-sha256.sum
 )
 missing=0
 for name in "${expected[@]}"; do

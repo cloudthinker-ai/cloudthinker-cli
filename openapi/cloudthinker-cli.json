@@ -996,6 +996,28 @@
         "title": "RevokeTokenRequest",
         "type": "object"
       },
+      "SavedSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "option_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Option Id",
+            "type": "string"
+          },
+          "thinking_effort": {
+            "maxLength": 64,
+            "nullable": true,
+            "title": "Thinking Effort",
+            "type": "string"
+          }
+        },
+        "required": [
+          "option_id"
+        ],
+        "title": "SavedSelection",
+        "type": "object"
+      },
       "SimpleMessage": {
         "description": "Simple message response schema.",
         "properties": {
@@ -1042,6 +1064,9 @@
             "title": "Prompt",
             "type": "string"
           },
+          "selection": {
+            "$ref": "#/components/schemas/SavedSelection"
+          },
           "source_conversation_id": {
             "description": "Optional. The AGENT_CLI conversation whose terminal watches this run. Only for a new run: it cannot be combined with `conversation_id`. Must belong to the authenticated workspace.",
             "format": "uuid",
@@ -1051,7 +1076,8 @@
           }
         },
         "required": [
-          "prompt"
+          "prompt",
+          "selection"
         ],
         "title": "SubmitHeadlessRunRequest",
         "type": "object"
@@ -1912,24 +1938,23 @@
           },
           {
             "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 10,
-              "maximum": 200,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
             "name": "search",
             "required": false,
             "schema": {
               "nullable": true,
               "title": "Search",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
             }
           }
         ],

@@ -25,7 +25,8 @@ pub use auth::device::wait_for_device_token;
 pub use auth::pkce::{Loopback, PkceChallenge, consent_url};
 pub use auth::refresh::{PROACTIVE_REFRESH_SKEW_SECS, RefreshCoordinator};
 pub use auth::store::{
-    EnvTokenStore, FileStore, StoredToken, TOKEN_ENV_VAR, TokenStore, WorkspaceSelector,
+    CredentialProvenance, CredentialSource, EnvTokenStore, FileStore, StoredToken, TOKEN_ENV_VAR,
+    TokenStore, WorkspaceSelector,
 };
 pub use client::{
     CliIdentity, CtClient, DeviceAuthorization, DeviceTokenPoll, ReviewFinding,

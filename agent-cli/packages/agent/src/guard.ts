@@ -4,6 +4,7 @@ import { PRODUCT_NAME } from "@cloudthinker/pi/src/header.ts";
 
 import { BUILTIN_SLASH_COMMANDS } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/slash-commands.js";
 import { applyReasoningUiGuard } from "./reasoning-ui.ts";
+import { applyStartupUi } from "./startup.ts";
 
 export const NO_SESSION_FLAG = "--no-session";
 export const NO_SESSION_REFUSAL =
@@ -107,4 +108,5 @@ export function applyGuard(): void {
 		);
 	}
 	applyReasoningUiGuard();
+	applyStartupUi();
 }

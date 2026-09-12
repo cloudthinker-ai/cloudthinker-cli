@@ -15,7 +15,7 @@ BUILD := $(CLI_DIR)/.gen
 # Nightly rustfmt: progenitor emits unstable fmt options that stable rustfmt panics on.
 NIGHTLY_RUSTFMT := $(shell rustup which rustfmt --toolchain nightly)
 
-.PHONY: gen check fmt clippy test clean-gen release-sync check-release
+.PHONY: gen check fmt clippy test clean-gen release-sync check-release changelog
 
 gen:
 	@mkdir -p $(BUILD) $(CLI_DIR)/openapi
@@ -51,6 +51,11 @@ clippy:
 
 test:
 	cd $(CLI_DIR) && cargo test
+	python3 $(CLI_DIR)/scripts/test_check_release.py
+	python3 $(CLI_DIR)/scripts/test_changelog.py
+
+changelog:
+	python3 $(CLI_DIR)/scripts/changelog.py fold --version $(VERSION)
 
 clean-gen:
 	rm -rf $(BUILD)

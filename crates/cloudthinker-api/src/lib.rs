@@ -2879,6 +2879,86 @@ pub mod types {
         }
     }
 
+    ///`OptionId`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Option Id",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct OptionId(::std::string::String);
+    impl ::std::ops::Deref for OptionId {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<OptionId> for ::std::string::String {
+        fn from(value: OptionId) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for OptionId {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 128usize {
+                return Err("longer than 128 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for OptionId {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for OptionId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for OptionId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for OptionId {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
     ///`Prompt`
     ///
     /// <details><summary>JSON schema</summary>
@@ -3242,6 +3322,45 @@ pub mod types {
         }
     }
 
+    ///`SavedSelection`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SavedSelection",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "option_id"
+    ///  ],
+    ///  "properties": {
+    ///    "option_id": {
+    ///      "title": "Option Id",
+    ///      "type": "string",
+    ///      "maxLength": 128,
+    ///      "minLength": 1
+    ///    },
+    ///    "thinking_effort": {
+    ///      "title": "Thinking Effort",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 64
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct SavedSelection {
+        pub option_id: OptionId,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub thinking_effort: ::std::option::Option<ThinkingEffort>,
+    }
+
     ///Simple message response schema.
     ///
     /// <details><summary>JSON schema</summary>
@@ -3383,7 +3502,8 @@ pub mod types {
     /// coerced to Light at submit; every other plan runs the default).",
     ///  "type": "object",
     ///  "required": [
-    ///    "prompt"
+    ///    "prompt",
+    ///    "selection"
     ///  ],
     ///  "properties": {
     ///    "conversation_id": {
@@ -3415,6 +3535,9 @@ pub mod types {
     ///      "maxLength": 50000,
     ///      "minLength": 1
     ///    },
+    ///    "selection": {
+    ///      "$ref": "#/components/schemas/SavedSelection"
+    ///    },
     ///    "source_conversation_id": {
     ///      "title": "Source Conversation Id",
     ///      "description": "Optional. The AGENT_CLI conversation whose terminal
@@ -3443,11 +3566,88 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub idempotency_key: ::std::option::Option<IdempotencyKey>,
         pub prompt: Prompt,
+        pub selection: SavedSelection,
         ///Optional. The AGENT_CLI conversation whose terminal watches this
         /// run. Only for a new run: it cannot be combined with
         /// `conversation_id`. Must belong to the authenticated workspace.
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub source_conversation_id: ::std::option::Option<::uuid::Uuid>,
+    }
+
+    ///`ThinkingEffort`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Thinking Effort",
+    ///  "type": "string",
+    ///  "maxLength": 64
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct ThinkingEffort(::std::string::String);
+    impl ::std::ops::Deref for ThinkingEffort {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<ThinkingEffort> for ::std::string::String {
+        fn from(value: ThinkingEffort) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for ThinkingEffort {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 64usize {
+                return Err("longer than 64 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ThinkingEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ThinkingEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ThinkingEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for ThinkingEffort {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
     }
 
     ///How well the MR satisfies its linked ticket's acceptance criteria.

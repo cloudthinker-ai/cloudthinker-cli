@@ -3,6 +3,7 @@ import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { TUI } from "@earendil-works/pi-tui";
 
+import { LOGO_WIDTH, renderLogo } from "./logo.ts";
 import { PI_AUTHOR, PI_LICENSE, type HostVersions } from "./versions.ts";
 
 export const PRODUCT_NAME = "cloudthinker";
@@ -33,38 +34,15 @@ export interface HeaderHints {
 	more: string;
 }
 
-export function formatProductLine(versions: HostVersions, styler: HeaderStyler): string {
-	const product = styler.bold(styler.fg("accent", PRODUCT_NAME));
-	const host = styler.fg("dim", ` v${versions.host}`);
-	const pi =
-		versions.pi.length > 0
-			? styler.fg(
-					"dim",
-					`  built on pi v${versions.pi} by ${PI_AUTHOR} (${PI_LICENSE})`,
-				)
-			: "";
-	return `${product}${host}${pi}`;
-}
-
-export function formatSessionLine(state: HeaderState, styler: HeaderStyler): string {
+function formatSessionLine(state: HeaderState, styler: HeaderStyler): string {
 	if (state.link === "unavailable") return styler.fg("error", UNLINKED_LINE);
 	if (state.link === "linking") return styler.fg("dim", LINKING_LINE);
 	const parts: string[] = [];
 	if (state.workspaceName) parts.push(styler.fg("text", state.workspaceName));
-	if (state.userEmail) parts.push(styler.fg("muted", state.userEmail));
-	if (state.webUrl) parts.push(styler.fg("muted", `mirrored → ${state.webUrl}`));
 	if (state.autoMode !== undefined) {
 		parts.push(styler.fg("muted", state.autoMode ? AUTO_LABEL : MANUAL_LABEL));
 	}
 	return parts.join(styler.fg("muted", " · "));
-}
-
-export function formatIdentityLines(
-	state: HeaderState,
-	versions: HostVersions,
-	styler: HeaderStyler,
-): string[] {
-	return [formatProductLine(versions, styler), formatSessionLine(state, styler)];
 }
 
 export function buildHints(styler: HeaderStyler): HeaderHints {
@@ -99,10 +77,7 @@ export function buildHints(styler: HeaderStyler): HeaderHints {
 			keyHint("app.clipboard.pasteImage", "to paste image (with text fallback)"),
 			rawKeyHint("drop files", "to attach"),
 		].join("\n"),
-		more: styler.fg(
-			"dim",
-			`Press ${keyText("app.tools.expand")} to show full startup help`,
-		),
+		more: styler.fg("muted", `Press ${keyText("app.tools.expand")} for startup details`),
 	};
 }
 
@@ -112,18 +87,40 @@ export function formatHeaderText(
 	styler: HeaderStyler,
 	hints: HeaderHints,
 	expanded: boolean,
+	width = 80,
 ): string {
-	const lines = formatIdentityLines(state, versions, styler);
+	const title = `${styler.bold(styler.fg("accent", "CloudThinker"))}${styler.fg("muted", ` v${versions.host}`)}`;
+	const identity = [title];
+	if (state.link === "linked") {
+		identity.push(formatSessionLine(state, styler));
+		if (state.userEmail) identity.push(styler.fg("muted", state.userEmail));
+		if (state.webUrl) identity.push(styler.fg("muted", "/open · view session in browser"));
+	} else {
+		identity.push(formatSessionLine(state, styler));
+	}
+	const lines: string[] = [];
+	if (width >= 76) {
+		const logo = renderLogo(styler, process.env.NO_COLOR !== undefined);
+		const details = new Text(identity.join("\n"), 0, 0).render(width - LOGO_WIDTH - 4);
+		for (let row = 0; row < Math.max(logo.length, details.length + 1); row += 1) {
+			lines.push(`${logo[row] ?? " ".repeat(LOGO_WIDTH)}    ${row > 0 ? details[row - 1] ?? "" : ""}`);
+		}
+	} else {
+		lines.push(...identity);
+	}
+	if (versions.pi) lines.push(styler.fg("muted", `built on pi v${versions.pi} by ${PI_AUTHOR} (${PI_LICENSE})`));
+	if (expanded && state.webUrl) lines.push(styler.fg("muted", state.webUrl));
 	if (expanded) return [...lines, hints.expanded].join("\n");
 	return [...lines, hints.compact, hints.more].join("\n");
 }
 
 class HeaderComponent extends Text {
 	private expanded = false;
-	private readonly build: (expanded: boolean) => string;
+	private readonly build: (expanded: boolean, width: number) => string;
+	private width = 80;
 
-	constructor(build: (expanded: boolean) => string) {
-		super(build(false), 1, 0);
+	constructor(build: (expanded: boolean, width: number) => string) {
+		super(build(false, 78), 1, 0);
 		this.build = build;
 	}
 
@@ -133,7 +130,15 @@ class HeaderComponent extends Text {
 	}
 
 	refresh(): void {
-		this.setText(this.build(this.expanded));
+		this.setText(this.build(this.expanded, Math.max(1, this.width - 2)));
+	}
+
+	override render(width: number): string[] {
+		if (width !== this.width) {
+			this.width = width;
+			this.refresh();
+		}
+		return super.render(width);
 	}
 }
 
@@ -150,8 +155,8 @@ export class SessionHeader {
 	factory = (tui: TUI, theme: Theme): HeaderComponent => {
 		const hints = buildHints(theme);
 		this.tui = tui;
-		this.component = new HeaderComponent((expanded) =>
-			formatHeaderText(this.state, this.versions, theme, hints, expanded),
+		this.component = new HeaderComponent((expanded, width) =>
+			formatHeaderText(this.state, this.versions, theme, hints, expanded, width),
 		);
 		return this.component;
 	};

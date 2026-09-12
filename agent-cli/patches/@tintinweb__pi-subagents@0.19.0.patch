@@ -1,0 +1,502 @@
+diff --git a/dist/agent-runner.js b/dist/agent-runner.js
+index f2dd0e6e0e88c064aac1bdd04ff4ebf55cbcd60e..3b343febd90a667726be1c2f842787bad9095279 100644
+--- a/dist/agent-runner.js
++++ b/dist/agent-runner.js
+@@ -1,3 +1,4 @@
++import { getSubagentHost, createSubagentSession } from "./host.js";
+ /**
+  * agent-runner.ts — Core execution engine: creates sessions, runs agents, collects results.
+  */
+@@ -37,6 +38,7 @@ const EXCLUDED_TOOL_NAMES = Object.values(SUBAGENT_TOOL_NAMES);
+  * single-file extensions to the basename minus `.ts`/`.js`.
+  */
+ export function extensionCanonicalName(extPath) {
++  if (extPath.startsWith("<inline:") && extPath.endsWith(">")) return extPath.slice(8, -1).toLowerCase();
+     const base = basename(extPath);
+     const name = base === "index.ts" || base === "index.js"
+         ? basename(dirname(extPath))
+@@ -314,6 +316,12 @@ export function setGraceTurns(n) { graceTurns = Math.max(1, n); }
+  * Priority: explicit option > config.model > parent model.
+  */
+ export function resolveDefaultModel(parentModel, registry, configModel) {
++    const host = getSubagentHost();
++    if (host && configModel) {
++        const model = host.resolveModel(configModel, registry);
++        if (typeof model === "string") throw new Error(model);
++        return model;
++    }
+     if (configModel) {
+         const slashIdx = configModel.indexOf("/");
+         if (slashIdx !== -1) {
+@@ -540,7 +548,7 @@ export async function runAgent(ctx, type, prompt, options) {
+                 }),
+             };
+         };
+-    const loader = new DefaultResourceLoader({
++    const loaderOptions = {
+         cwd: configCwd,
+         agentDir,
+         noExtensions,
+@@ -552,7 +560,8 @@ export async function runAgent(ctx, type, prompt, options) {
+         noContextFiles: true,
+         systemPromptOverride: () => systemPrompt,
+         appendSystemPromptOverride: () => [],
+-    });
++    };
++    const loader = new DefaultResourceLoader(getSubagentHost()?.loaderOptions(loaderOptions, ctx, !noExtensions && !excludeNames.has("cloudthinker") && (loadAll || keepNames.has("cloudthinker"))) ?? loaderOptions);
+     await runInChildSessionContext(() => loader.reload());
+     // Plain entries in `tools:` are expected to be built-in names (extension tools
+     // go through `ext:`), so an unknown name there is unambiguously a typo. Previously
+@@ -781,7 +790,7 @@ export async function runAgent(ctx, type, prompt, options) {
+     if (thinkingLevel) {
+         sessionOpts.thinkingLevel = thinkingLevel;
+     }
+-    const { session } = await runInChildSessionContext(() => createAgentSession(sessionOpts));
++    const { session } = await runInChildSessionContext(() => createSubagentSession(sessionOpts, ctx));
+     const baseSessionName = agentConfig?.name ?? type;
+     session.setSessionName(options.agentId ? `${baseSessionName}#${options.agentId.slice(0, 8)}` : baseSessionName);
+     // Bind extensions so that session_start fires and extensions can initialize
+diff --git a/dist/host.d.ts b/dist/host.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..3ef223a7bb9f4c4bd2174d84c5dc916945b7b160
+--- /dev/null
++++ b/dist/host.d.ts
+@@ -0,0 +1,14 @@
++import type { CreateAgentSessionOptions, CreateAgentSessionResult, DefaultResourceLoader, ExtensionContext } from "@earendil-works/pi-coding-agent";
++import type { ModelRegistry } from "./model-resolver.js";
++
++type DefaultResourceLoaderOptions = ConstructorParameters<typeof DefaultResourceLoader>[0];
++
++export interface SubagentHost {
++  modelChoices(ctx: ExtensionContext): string[];
++  resolveModel(input: string, registry: Pick<ModelRegistry, "find" | "getAvailable"> & Partial<Pick<ModelRegistry, "getAll">>): NonNullable<CreateAgentSessionOptions["model"]> | string;
++  loaderOptions(options: DefaultResourceLoaderOptions, ctx: ExtensionContext, includeCloudTools: boolean): DefaultResourceLoaderOptions;
++  createSession(options: CreateAgentSessionOptions, ctx: ExtensionContext): Promise<CreateAgentSessionResult>;
++}
++export declare function setSubagentHost(value: SubagentHost): void;
++export declare function getSubagentHost(): SubagentHost | undefined;
++export declare function createSubagentSession(options: CreateAgentSessionOptions, ctx: ExtensionContext): Promise<CreateAgentSessionResult>;
+diff --git a/dist/host.js b/dist/host.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..162d3a545e4a37777d63915f1937f3853f83ec34
+--- /dev/null
++++ b/dist/host.js
+@@ -0,0 +1,8 @@
++import { createAgentSession } from "@earendil-works/pi-coding-agent";
++let host;
++export function setSubagentHost(value) { host = value; }
++export function getSubagentHost() { return host; }
++
++export function createSubagentSession(options, ctx) {
++  return host?.createSession(options, ctx) ?? createAgentSession(options);
++}
+diff --git a/dist/index.js b/dist/index.js
+index 79e782077d8a4dbd3f4dbd9583fc070ede1465e5..c901ea798a66e375d7cae53e07456cd816e7cd93 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -1,3 +1,4 @@
++import { getSubagentHost } from "./host.js";
+ /**
+  * pi-agents — A pi extension providing Claude Code-style autonomous sub-agents.
+  *
+@@ -1682,7 +1683,7 @@ Terse command-style prompts produce shallow, generic work.
+                 ctx.ui.notify(scopeVerdict.message, "warning");
+             const thinking = resolvedConfig.thinking;
+             const inheritContext = resolvedConfig.inheritContext;
+-            const runInBackground = resolvedConfig.runInBackground;
++            const runInBackground = getSubagentHost() && (ctx.mode === "print" || ctx.mode === "json") ? false : resolvedConfig.runInBackground;
+             const isolated = resolvedConfig.isolated;
+             const isolation = resolvedConfig.isolation;
+             // Whether this spawn writes its .output transcript. Per-agent
+@@ -2334,7 +2335,11 @@ Terse command-style prompts produce shallow, generic work.
+             fleet.update();
+             // Background, like Claude Code: the id comes back now and the run keeps
+             // going without the tool call.
+-            void runWorkflowTask(ctx, task).then(() => notifyWorkflowFinished(task));
++            if (getSubagentHost() && (ctx.mode === "print" || ctx.mode === "json")) {
++        await runWorkflowTask(ctx, task);
++        return { ...textResult(workflowResultText(task)), isError: task.status !== "completed" };
++      }
++      void runWorkflowTask(ctx, task).then(() => notifyWorkflowFinished(task));
+             return {
+                 content: [{
+                         type: "text",
+@@ -3025,8 +3030,7 @@ The file format is a markdown file with YAML frontmatter and a system prompt bod
+ description: <one-line description shown in UI>
+ color: <optional agent name badge color: red, blue, green, yellow, purple, orange, pink, cyan, an Agency Agents alias, or quoted "#RRGGBB">
+ tools: <comma-separated built-in tools: read, bash, edit, write, grep, find, ls. Use "none" for no tools. Omit for all tools>
+-model: <optional model as "provider/modelId", e.g. "anthropic/claude-haiku-4-5". Omit to inherit parent model>
+-thinking: <optional thinking level: ${THINKING_LEVELS.join(", ")}. Omit to inherit>
++model: <${getSubagentHost() ? `optional CloudThinker agent mode: ${getSubagentHost().modelChoices(ctx).join(", ")}. Omit to inherit parent mode` : 'optional model as "provider/modelId". Omit to inherit parent model'}>${getSubagentHost() ? "" : `\nthinking: <optional thinking level: ${THINKING_LEVELS.join(", ")}. Omit to inherit>`}
+ max_turns: <optional max agentic turns. 0 or omit for unlimited (default)>
+ prompt_mode: <"replace" (body IS the full system prompt) or "append" (body is appended to default prompt). Default: replace>
+ extensions: <true (inherit all MCP/extension tools), false (none), or comma-separated names. Default: true>
+@@ -3112,7 +3116,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
+             tools = customTools;
+         }
+         // 4. Model
+-        const modelChoice = await ctx.ui.select("Model", [
++        const modelChoice = await ctx.ui.select("Model", getSubagentHost() ? ["inherit (parent model)", ...getSubagentHost().modelChoices(ctx)] : [
+             "inherit (parent model)",
+             "haiku",
+             "sonnet",
+@@ -3122,7 +3126,8 @@ Write the file using the write tool. Only write the file, nothing else.`;
+         if (!modelChoice)
+             return;
+         let model;
+-        if (modelChoice === "haiku")
++        if (getSubagentHost() && modelChoice !== "inherit (parent model)") model = modelChoice;
++    else if (modelChoice === "haiku")
+             model = "anthropic/claude-haiku-4-5";
+         else if (modelChoice === "sonnet")
+             model = "anthropic/claude-sonnet-4-6";
+@@ -3133,7 +3138,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
+         }
+         // 5. Thinking
+         // "inherit" is a UI-only pseudo-choice (omit the field); the rest mirror pi.
+-        const thinkingChoice = await ctx.ui.select("Thinking level", ["inherit", ...THINKING_LEVELS]);
++        const thinkingChoice = getSubagentHost() ? "inherit" : await ctx.ui.select("Thinking level", ["inherit", ...THINKING_LEVELS]);
+         if (!thinkingChoice)
+             return;
+         // 6. System prompt
+diff --git a/dist/mention-clone.js b/dist/mention-clone.js
+index 61c6d60379b265a6996f4b5839d46919b1bfdc3c..5c2e389e3cc33e9ad4e832b53065fce286cb7a9e 100644
+--- a/dist/mention-clone.js
++++ b/dist/mention-clone.js
+@@ -1,3 +1,4 @@
++import { getSubagentHost, createSubagentSession } from "./host.js";
+ /**
+  * mention-clone.ts — start a mentioned agent through a clone of this
+  * conversation, without putting anything in the chat.
+@@ -106,7 +107,7 @@ export async function runMentionClone(opts) {
+         // the settings level instead, which is what a session that never ran
+         // `/think` is on anyway. Same shim shape as `modelRuntime` below.
+         const thinkingLevel = ctx.thinkingLevel;
+-        const created = await runInChildSessionContext(() => createAgentSession({
++        const created = await runInChildSessionContext(() => createSubagentSession({
+             cwd: ctx.cwd,
+             // Nothing about the copy is worth persisting, and an in-memory manager
+             // is also what keeps the real session untouched.
+@@ -125,7 +126,7 @@ export async function runMentionClone(opts) {
+             // agent-runner's `tools: sessionTools` beside its nested `customTools`.
+             tools: [cloneAgentTool.name],
+             customTools: [cloneAgentTool],
+-        }));
++        }, ctx));
+         session = created.session;
+         // The clone rebuilds a system prompt from cwd and agentDir, which is close
+         // but not the live one — extensions contribute to it per turn. Copy the
+@@ -145,7 +146,8 @@ export async function runMentionClone(opts) {
+         return { spawned, error: err instanceof Error ? err.message : String(err) };
+     }
+     finally {
+-        session?.dispose?.();
++        if (getSubagentHost() && session) await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
++    session?.dispose?.();
+     }
+     return spawned
+         ? { spawned: true }
+diff --git a/dist/model-resolver.js b/dist/model-resolver.js
+index 0accb11f7366dfbf3622637b4479bb14ed46ec4e..3f9f41e4a6bbeda634ad00febb902fe897757c8a 100644
+--- a/dist/model-resolver.js
++++ b/dist/model-resolver.js
+@@ -1,3 +1,4 @@
++import { getSubagentHost } from "./host.js";
+ /**
+  * Model resolution: exact match ("provider/modelId") with fuzzy fallback.
+  */
+@@ -22,6 +23,8 @@ export function describeModel(model) {
+  * Returns the Model on success, or an error message string on failure.
+  */
+ export function resolveModel(input, registry) {
++    const host = getSubagentHost();
++    if (host) return host.resolveModel(input, registry);
+     // Available models (those with auth configured)
+     const all = (registry.getAvailable?.() ?? registry.getAll());
+     const availableSet = new Set(all.map(m => `${m.provider}/${m.id}`.toLowerCase()));
+diff --git a/dist/ui/agent-widget.js b/dist/ui/agent-widget.js
+index 604bc2517d2bc358111d2ba7cc6d4bfa103c42d9..8a03620caa0808565d40141d9e07d6d9018fa1db 100644
+--- a/dist/ui/agent-widget.js
++++ b/dist/ui/agent-widget.js
+@@ -1,3 +1,4 @@
++import { getSubagentHost } from "../host.js";
+ /**
+  * agent-widget.ts — Persistent widget showing running/completed agents above the editor.
+  *
+@@ -128,8 +129,7 @@ export function buildInvocationTags(invocation) {
+         return { tags };
+     const asked = (value, requested) => value && requested && requested !== value ? `${value} (asked ${requested})` : value;
+     const thinking = asked(invocation.thinking, invocation.requestedThinking);
+-    if (thinking)
+-        tags.push(`thinking: ${thinking}`);
++    if (thinking && !getSubagentHost()) tags.push(`thinking: ${thinking}`);
+     if (invocation.isolated)
+         tags.push("isolated");
+     if (invocation.isolation === "worktree")
+diff --git a/dist/ui/workflow-card.js b/dist/ui/workflow-card.js
+index 75aa6e974afaf20d7c99f7b5c19efaf1e9619c5c..82a6f5387e928789cdaab28fb4e136683329242c 100644
+--- a/dist/ui/workflow-card.js
++++ b/dist/ui/workflow-card.js
+@@ -1,3 +1,4 @@
++import { getSubagentHost } from "../host.js";
+ /**
+  * workflow-card.ts — the inline transcript card for a running workflow.
+  *
+@@ -116,7 +117,8 @@ export function formatModel(entry, opts) {
+  * pi clamped is worth saying so about even when the model is unremarkable.
+  */
+ export function formatThinking(entry) {
+-    const { thinking, requestedThinking } = entry;
++    if (getSubagentHost()) return undefined;
++  const { thinking, requestedThinking } = entry;
+     if (!thinking)
+         return undefined;
+     return requestedThinking !== undefined && requestedThinking !== thinking
+diff --git a/package.json b/package.json
+index 1688e534299805699fad79692340a62601039349..ff989f8431d8edc873e7b945b0ee58baaa09a636 100644
+--- a/package.json
++++ b/package.json
+@@ -1,4 +1,5 @@
+ {
++  "type": "module",
+   "name": "@tintinweb/pi-subagents",
+   "version": "0.19.0",
+   "description": "A pi extension that brings Claude Code-like sub-agents and workflow orchestration to pi — parallel execution, live widget, fleet view, custom agent types, mid-run steering, dynamic workflows, Claude Code compatibility, look and feel.",
+diff --git a/src/agent-runner.ts b/src/agent-runner.ts
+index 6752eca0269ce30853a5cf5a3afd0d4bd463614c..28ba051b5203f28b14352ab833740e5aee3e2a23 100644
+--- a/src/agent-runner.ts
++++ b/src/agent-runner.ts
+@@ -1,3 +1,4 @@
++import { getSubagentHost, createSubagentSession } from "./host.js";
+ /**
+  * agent-runner.ts — Core execution engine: creates sessions, runs agents, collects results.
+  */
+@@ -55,6 +56,7 @@ const EXCLUDED_TOOL_NAMES: string[] = Object.values(SUBAGENT_TOOL_NAMES);
+  * single-file extensions to the basename minus `.ts`/`.js`.
+  */
+ export function extensionCanonicalName(extPath: string): string {
++  if (extPath.startsWith("<inline:") && extPath.endsWith(">")) return extPath.slice(8, -1).toLowerCase();
+   const base = basename(extPath);
+   const name = base === "index.ts" || base === "index.js"
+     ? basename(dirname(extPath))
+@@ -366,6 +368,12 @@ export function resolveDefaultModel(
+   registry: { find(provider: string, modelId: string): Model<any> | undefined; getAvailable?(): Model<any>[] },
+   configModel?: string,
+ ): Model<any> | undefined {
++  const host = getSubagentHost();
++  if (host && configModel) {
++    const model = host.resolveModel(configModel, registry);
++    if (typeof model === "string") throw new Error(model);
++    return model;
++  }
+   if (configModel) {
+     const slashIdx = configModel.indexOf("/");
+     if (slashIdx !== -1) {
+@@ -744,7 +752,7 @@ export async function runAgent(
+           };
+         };
+ 
+-  const loader = new DefaultResourceLoader({
++  const loaderOptions = {
+     cwd: configCwd,
+     agentDir,
+     noExtensions,
+@@ -756,7 +764,8 @@ export async function runAgent(
+     noContextFiles: true,
+     systemPromptOverride: () => systemPrompt,
+     appendSystemPromptOverride: () => [],
+-  });
++  };
++  const loader = new DefaultResourceLoader(getSubagentHost()?.loaderOptions(loaderOptions, ctx, !noExtensions && !excludeNames.has("cloudthinker") && (loadAll || keepNames.has("cloudthinker"))) ?? loaderOptions);
+   await runInChildSessionContext(() => loader.reload());
+ 
+   // Plain entries in `tools:` are expected to be built-in names (extension tools
+@@ -1005,7 +1014,7 @@ export async function runAgent(
+     sessionOpts.thinkingLevel = thinkingLevel;
+   }
+ 
+-  const { session } = await runInChildSessionContext(() => createAgentSession(sessionOpts));
++  const { session } = await runInChildSessionContext(() => createSubagentSession(sessionOpts, ctx));
+ 
+   const baseSessionName = agentConfig?.name ?? type;
+   session.setSessionName(
+diff --git a/src/host.ts b/src/host.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..518c6504584b03489acebaed3bc68873c94d0325
+--- /dev/null
++++ b/src/host.ts
+@@ -0,0 +1,19 @@
++import { createAgentSession } from "@earendil-works/pi-coding-agent";
++import type { CreateAgentSessionOptions, CreateAgentSessionResult, DefaultResourceLoader, ExtensionContext } from "@earendil-works/pi-coding-agent";
++import type { ModelRegistry } from "./model-resolver.js";
++
++type DefaultResourceLoaderOptions = ConstructorParameters<typeof DefaultResourceLoader>[0];
++
++export interface SubagentHost {
++  modelChoices(ctx: ExtensionContext): string[];
++  resolveModel(input: string, registry: Pick<ModelRegistry, "find" | "getAvailable"> & Partial<Pick<ModelRegistry, "getAll">>): NonNullable<CreateAgentSessionOptions["model"]> | string;
++  loaderOptions(options: DefaultResourceLoaderOptions, ctx: ExtensionContext, includeCloudTools: boolean): DefaultResourceLoaderOptions;
++  createSession(options: CreateAgentSessionOptions, ctx: ExtensionContext): Promise<CreateAgentSessionResult>;
++}
++let host: SubagentHost | undefined;
++export function setSubagentHost(value: SubagentHost): void { host = value; }
++export function getSubagentHost(): SubagentHost | undefined { return host; }
++
++export function createSubagentSession(options: CreateAgentSessionOptions, ctx: ExtensionContext): Promise<CreateAgentSessionResult> {
++  return host?.createSession(options, ctx) ?? createAgentSession(options);
++}
+diff --git a/src/index.ts b/src/index.ts
+index 4989968c98e186b3c94194ae8c05c7651374fcb6..ae15d5ab36bfb8e742c647dc2d17da9722112ce1 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -1,3 +1,4 @@
++import { getSubagentHost } from "./host.js";
+ /**
+  * pi-agents — A pi extension providing Claude Code-style autonomous sub-agents.
+  *
+@@ -1835,7 +1836,7 @@ Terse command-style prompts produce shallow, generic work.
+ 
+       const thinking = resolvedConfig.thinking;
+       const inheritContext = resolvedConfig.inheritContext;
+-      const runInBackground = resolvedConfig.runInBackground;
++      const runInBackground = getSubagentHost() && (ctx.mode === "print" || ctx.mode === "json") ? false : resolvedConfig.runInBackground;
+       const isolated = resolvedConfig.isolated;
+       const isolation = resolvedConfig.isolation;
+       // Whether this spawn writes its .output transcript. Per-agent
+@@ -2557,6 +2558,10 @@ Terse command-style prompts produce shallow, generic work.
+ 
+       // Background, like Claude Code: the id comes back now and the run keeps
+       // going without the tool call.
++      if (getSubagentHost() && (ctx.mode === "print" || ctx.mode === "json")) {
++        await runWorkflowTask(ctx, task);
++        return { ...textResult(workflowResultText(task)), isError: task.status !== "completed" };
++      }
+       void runWorkflowTask(ctx, task).then(() => notifyWorkflowFinished(task));
+ 
+       return {
+@@ -3289,8 +3294,7 @@ The file format is a markdown file with YAML frontmatter and a system prompt bod
+ description: <one-line description shown in UI>
+ color: <optional agent name badge color: red, blue, green, yellow, purple, orange, pink, cyan, an Agency Agents alias, or quoted "#RRGGBB">
+ tools: <comma-separated built-in tools: read, bash, edit, write, grep, find, ls. Use "none" for no tools. Omit for all tools>
+-model: <optional model as "provider/modelId", e.g. "anthropic/claude-haiku-4-5". Omit to inherit parent model>
+-thinking: <optional thinking level: ${THINKING_LEVELS.join(", ")}. Omit to inherit>
++model: <${getSubagentHost() ? `optional CloudThinker agent mode: ${getSubagentHost()!.modelChoices(ctx).join(", ")}. Omit to inherit parent mode` : 'optional model as "provider/modelId". Omit to inherit parent model'}>${getSubagentHost() ? "" : `\nthinking: <optional thinking level: ${THINKING_LEVELS.join(", ")}. Omit to inherit>`}
+ max_turns: <optional max agentic turns. 0 or omit for unlimited (default)>
+ prompt_mode: <"replace" (body IS the full system prompt) or "append" (body is appended to default prompt). Default: replace>
+ extensions: <true (inherit all MCP/extension tools), false (none), or comma-separated names. Default: true>
+@@ -3378,7 +3382,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
+     }
+ 
+     // 4. Model
+-    const modelChoice = await ctx.ui.select("Model", [
++    const modelChoice = await ctx.ui.select("Model", getSubagentHost() ? ["inherit (parent model)", ...getSubagentHost()!.modelChoices(ctx)] : [
+       "inherit (parent model)",
+       "haiku",
+       "sonnet",
+@@ -3388,7 +3392,8 @@ Write the file using the write tool. Only write the file, nothing else.`;
+     if (!modelChoice) return;
+ 
+     let model: string | undefined;
+-    if (modelChoice === "haiku") model = "anthropic/claude-haiku-4-5";
++    if (getSubagentHost() && modelChoice !== "inherit (parent model)") model = modelChoice;
++    else if (modelChoice === "haiku") model = "anthropic/claude-haiku-4-5";
+     else if (modelChoice === "sonnet") model = "anthropic/claude-sonnet-4-6";
+     else if (modelChoice === "opus") model = "anthropic/claude-opus-4-6";
+     else if (modelChoice === "custom...") {
+@@ -3397,7 +3402,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
+ 
+     // 5. Thinking
+     // "inherit" is a UI-only pseudo-choice (omit the field); the rest mirror pi.
+-    const thinkingChoice = await ctx.ui.select("Thinking level", ["inherit", ...THINKING_LEVELS]);
++    const thinkingChoice = getSubagentHost() ? "inherit" : await ctx.ui.select("Thinking level", ["inherit", ...THINKING_LEVELS]);
+     if (!thinkingChoice) return;
+ 
+     // 6. System prompt
+diff --git a/src/mention-clone.ts b/src/mention-clone.ts
+index 25ee2fbd31a77d2c800bdeaa949879c395abba77..430c7c5c79de8d9635ba4064165c99ac72f09db2 100644
+--- a/src/mention-clone.ts
++++ b/src/mention-clone.ts
+@@ -1,3 +1,4 @@
++import { getSubagentHost, createSubagentSession } from "./host.js";
+ /**
+  * mention-clone.ts — start a mentioned agent through a clone of this
+  * conversation, without putting anything in the chat.
+@@ -147,7 +148,7 @@ export async function runMentionClone(opts: MentionCloneOptions): Promise<Mentio
+     // `/think` is on anyway. Same shim shape as `modelRuntime` below.
+     const thinkingLevel = (ctx as { thinkingLevel?: ThinkingLevel }).thinkingLevel;
+     const created = await runInChildSessionContext(() =>
+-      createAgentSession({
++      createSubagentSession({
+         cwd: ctx.cwd,
+         // Nothing about the copy is worth persisting, and an in-memory manager
+         // is also what keeps the real session untouched.
+@@ -166,7 +167,7 @@ export async function runMentionClone(opts: MentionCloneOptions): Promise<Mentio
+         // agent-runner's `tools: sessionTools` beside its nested `customTools`.
+         tools: [cloneAgentTool.name],
+         customTools: [cloneAgentTool],
+-      } as Parameters<typeof createAgentSession>[0]),
++      } as Parameters<typeof createAgentSession>[0], ctx),
+     );
+     session = created.session;
+ 
+@@ -187,6 +188,7 @@ export async function runMentionClone(opts: MentionCloneOptions): Promise<Mentio
+   } catch (err) {
+     return { spawned, error: err instanceof Error ? err.message : String(err) };
+   } finally {
++    if (getSubagentHost() && session) await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+     session?.dispose?.();
+   }
+ 
+diff --git a/src/model-resolver.ts b/src/model-resolver.ts
+index fa7cd383e9085d1e44288c1f6873bfac0b513bfa..267474b31ed53141c8657b83618438a437ca86b8 100644
+--- a/src/model-resolver.ts
++++ b/src/model-resolver.ts
+@@ -1,3 +1,4 @@
++import { getSubagentHost } from "./host.js";
+ /**
+  * Model resolution: exact match ("provider/modelId") with fuzzy fallback.
+  */
+@@ -41,6 +42,8 @@ export function resolveModel(
+   input: string,
+   registry: ModelRegistry,
+ ): any | string {
++  const host = getSubagentHost();
++  if (host) return host.resolveModel(input, registry);
+   // Available models (those with auth configured)
+   const all = (registry.getAvailable?.() ?? registry.getAll()) as ModelEntry[];
+   const availableSet = new Set(all.map(m => `${m.provider}/${m.id}`.toLowerCase()));
+diff --git a/src/ui/agent-widget.ts b/src/ui/agent-widget.ts
+index 4500d8fd43710c2daa4aa7ea27934f481c04da6a..0066b752fbbd01677567412aaf10391011034ea8 100644
+--- a/src/ui/agent-widget.ts
++++ b/src/ui/agent-widget.ts
+@@ -1,3 +1,4 @@
++import { getSubagentHost } from "../host.js";
+ /**
+  * agent-widget.ts — Persistent widget showing running/completed agents above the editor.
+  *
+@@ -201,7 +202,7 @@ export function buildInvocationTags(
+   const asked = (value: string | undefined, requested: string | undefined): string | undefined =>
+     value && requested && requested !== value ? `${value} (asked ${requested})` : value;
+   const thinking = asked(invocation.thinking, invocation.requestedThinking);
+-  if (thinking) tags.push(`thinking: ${thinking}`);
++  if (thinking && !getSubagentHost()) tags.push(`thinking: ${thinking}`);
+   if (invocation.isolated) tags.push("isolated");
+   if (invocation.isolation === "worktree") tags.push("worktree");
+   if (invocation.inheritContext) tags.push("inherit context");
+diff --git a/src/ui/workflow-card.ts b/src/ui/workflow-card.ts
+index 15164a26ecedab87c0e9cbd215b423051a75c21f..b88c296488859b9f2a965b34c9d97a991e340b3f 100644
+--- a/src/ui/workflow-card.ts
++++ b/src/ui/workflow-card.ts
+@@ -1,3 +1,4 @@
++import { getSubagentHost } from "../host.js";
+ /**
+  * workflow-card.ts — the inline transcript card for a running workflow.
+  *
+@@ -223,6 +224,7 @@ export function formatModel(
+  * pi clamped is worth saying so about even when the model is unremarkable.
+  */
+ export function formatThinking(entry: WorkflowAgentEntry): string | undefined {
++  if (getSubagentHost()) return undefined;
+   const { thinking, requestedThinking } = entry;
+   if (!thinking) return undefined;
+   return requestedThinking !== undefined && requestedThinking !== thinking

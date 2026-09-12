@@ -96,11 +96,25 @@ PI_REPOSITORY="$(node -p "
   (typeof r === 'string' ? r : r.url).replace(/^git\+/, '').replace(/\.git\$/, '')
 ")"
 PI_AUTHOR="$(node -p "require('$PI_ROOT/package.json').author")"
+SOURCE_REVISION="$PKG_DIR/../../.source-revision"
+if [ -f "$SOURCE_REVISION" ]; then
+  BUILD_ID="$(<"$SOURCE_REVISION")"
+  if ! [[ "$BUILD_ID" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "error: invalid monorepo source revision" >&2
+    exit 1
+  fi
+else
+  BUILD_ID="$(git -C "$PKG_DIR" rev-parse HEAD)"
+fi
+if [ -n "$(git -C "$PKG_DIR" status --porcelain -- . ../pi)" ]; then
+  BUILD_ID="$BUILD_ID-dirty"
+fi
 
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
+assets=()
 
 for triple in $TRIPLES; do
   target="$(bun_target "$triple")"
@@ -108,7 +122,8 @@ for triple in $TRIPLES; do
   dir="$root/cloudthinker-agent"
   mkdir -p "$dir/theme" "$dir/assets" "$dir/export-html/vendor"
 
-  (cd "$PKG_DIR" && "$BUN" build --compile --no-compile-autoload-bunfig \
+  (cd "$PKG_DIR" && "$BUN" build --compile --minify --keep-names --bytecode --format=esm --no-compile-autoload-bunfig \
+    --define "__CT_BUILD_ID__=\"$BUILD_ID\"" \
     "--target=$target" src/main.ts --outfile "$dir/cloudthinker-agent")
   chmod 0755 "$dir/cloudthinker-agent"
 
@@ -140,6 +155,7 @@ for triple in $TRIPLES; do
 	"private": true,
 	"piVersion": "$PI_VERSION",
 	"piRepository": "$PI_REPOSITORY",
+	"buildId": "$BUILD_ID",
 	"piConfig": { "name": "cloudthinker", "configDir": ".cloudthinker" }
 }
 JSON
@@ -169,9 +185,14 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 NOTICE
+	cat "$PKG_DIR/node_modules/@tintinweb/pi-subagents/LICENSE" >> "$dir/NOTICE"
 
+  node "$PKG_DIR/scripts/validate-assets.ts" "$dir" "$PI_ROOT"
   asset="cloudthinker-agent-$triple.tar.gz"
+  assets+=("$asset")
   tar -czf "$OUT/$asset" -C "$root" cloudthinker-agent
   (cd "$OUT" && sha256sum "$asset" > "$asset.sha256")
   echo "built $OUT/$asset"
 done
+
+(cd "$OUT" && sha256sum "${assets[@]}" > cloudthinker-agent-sha256.sum)

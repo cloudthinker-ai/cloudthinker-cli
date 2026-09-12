@@ -90,6 +90,7 @@ export function aboutLines(
 ): string[] {
 	return [
 		`${PRODUCT_NAME} v${versions.host}`,
+		...(versions.buildId ? [`Build: ${versions.buildId}`] : []),
 		`pi v${versions.pi}`,
 		attributionLine(versions),
 		`Config: ${agentDir}`,

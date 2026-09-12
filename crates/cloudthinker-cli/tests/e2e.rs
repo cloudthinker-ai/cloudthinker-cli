@@ -31,6 +31,19 @@ use assert_cmd::Command;
 const RUN_ID: &str = "11111111-1111-4111-8111-111111111111";
 const CONV_ID: &str = "22222222-2222-4222-8222-222222222222";
 
+#[test]
+fn ca_ad_11_unknown_command_keeps_clap_suggestions_and_usage_exit() {
+    let output = Command::cargo_bin("cloudthinker")
+        .unwrap()
+        .arg("cht")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    let error = String::from_utf8(output.stderr).unwrap();
+    assert!(error.contains("chat"));
+}
+
 /// A canned HTTP/1.1 server: 202 on submit, a fixed body on status GET.
 struct MockApi {
     base_url: String,
@@ -577,6 +590,20 @@ fn ca_cont_8_no_wait_prints_submitted_envelope_without_polling() {
 }
 
 #[test]
+fn ca_cli_selection_submits_default_pro() {
+    let api = RecordingApi::start(vec![("202 Accepted", submitted_body())]);
+    cli(&api.base_url)
+        .args(["chat", "-p", "hello", "--no-wait", "--json"])
+        .assert()
+        .success();
+    let requests = api.requests();
+    let (_, body) = requests[0].split_once("\r\n\r\n").unwrap();
+    let body: serde_json::Value = serde_json::from_str(body).unwrap();
+    assert_eq!(body["selection"]["option_id"], "mode:pro");
+    assert!(body["selection"]["thinking_effort"].is_null());
+}
+
+#[test]
 fn ca_cont_9_status_wait_polls_until_terminal() {
     let api = RecordingApi::start(vec![
         ("200 OK", status_body("pending", "", "")),
@@ -1023,6 +1050,30 @@ fn agent_execs_the_override_binary_with_the_argument_and_env_contract() {
         .stderr(predicates::str::contains("CLOUDTHINKER_AGENT_BIN"));
 
     let _ = std::fs::remove_dir_all(stub.parent().unwrap());
+}
+
+#[cfg(unix)]
+#[test]
+fn ca_ad_7_wrapper_timing_is_opt_in_and_stays_off_stdout() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+    let stub = write_agent_stub("timing");
+    for enabled in [false, true] {
+        let mut command = cli(&api.base_url);
+        command.env("CLOUDTHINKER_AGENT_BIN", &stub).arg("agent");
+        if enabled {
+            command.env("CLOUDTHINKER_TIMING", "1");
+        } else {
+            command.env_remove("CLOUDTHINKER_TIMING");
+        }
+        let output = command.output().unwrap();
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert!(!stdout.contains("[cloudthinker timing]"));
+        assert_eq!(stderr.contains("wrapper.install_check"), enabled);
+        assert!(!stderr.contains("test-access-token"));
+    }
+    std::fs::remove_dir_all(stub.parent().unwrap()).unwrap();
 }
 
 #[cfg(unix)]

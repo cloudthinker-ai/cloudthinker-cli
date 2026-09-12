@@ -5,17 +5,20 @@ import { VERSION, getPackageDir } from "@earendil-works/pi-coding-agent";
 
 export const PI_AUTHOR = "Mario Zechner";
 export const PI_LICENSE = "MIT";
+declare const __CT_BUILD_ID__: string;
 
 export interface HostVersions {
 	host: string;
 	pi: string;
 	piRepositoryUrl: string;
+	buildId?: string;
 }
 
 interface SidecarPackage {
 	version?: unknown;
 	piVersion?: unknown;
 	piRepository?: unknown;
+	buildId?: unknown;
 	repository?: { url?: unknown } | unknown;
 }
 
@@ -37,6 +40,7 @@ export function hostVersionsFrom(pkg: SidecarPackage, host: string): HostVersion
 			: str(repository);
 	return {
 		host,
+		...(typeof pkg.buildId === "string" ? { buildId: pkg.buildId } : {}),
 		pi: piVersion.length > 0 ? piVersion : str(pkg.version),
 		piRepositoryUrl: normalizeRepositoryUrl(declared.length > 0 ? declared : own),
 	};
@@ -49,7 +53,7 @@ export function readHostVersions(packageDir: string = getPackageDir()): HostVers
 	} catch {
 		pkg = {};
 	}
-	return hostVersionsFrom(pkg, VERSION);
+	return hostVersionsFrom({ ...pkg, ...(typeof __CT_BUILD_ID__ === "string" ? { buildId: __CT_BUILD_ID__ } : {}) }, VERSION);
 }
 
 export function attributionLine(versions: HostVersions): string {

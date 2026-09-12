@@ -24,15 +24,20 @@ const AGENT_BIN_ENV_VAR: &str = "CLOUDTHINKER_AGENT_BIN";
 const URL_ENV_VAR: &str = "CLOUDTHINKER_URL";
 
 pub async fn run(base_url: &str, workspace: Option<&str>, args: Vec<OsString>) -> ExitCode {
+    let mut timing = crate::engine::timing::PhaseTimer::from_env();
+    timing.mark("wrapper.dispatch");
     crate::commands::update::offer_on_start().await;
+    timing.mark("wrapper.update_check");
     let identity = match resolve_identity(base_url, workspace).await {
         Ok(identity) => identity,
         Err(code) => return code,
     };
+    timing.mark("wrapper.identity");
     let binary = match resolve_binary().await {
         Ok(binary) => binary,
         Err(err) => return exit::report(&err),
     };
+    timing.mark("wrapper.install_check");
     exec_agent(
         &binary,
         args,
@@ -49,11 +54,15 @@ async fn resolve_identity(
     base_url: &str,
     workspace: Option<&str>,
 ) -> Result<CliIdentity, ExitCode> {
-    let error = match whoami(base_url, workspace).await {
+    let client = build_client(base_url, workspace).map_err(|error| exit::report(&error))?;
+    let error = match client.whoami().await {
         Ok(identity) => return Ok(identity),
         Err(error) => error,
     };
-    let plan = login_guide::plan(&error, env_token_is_set(), std::io::stdin().is_terminal());
+    let provenance = client
+        .credential_provenance()
+        .map_err(|error| exit::report(&error))?;
+    let plan = login_guide::plan(&error, provenance, std::io::stdin().is_terminal());
     if let Some((line, next)) = login_guide::explain(&error, plan) {
         output::eprintln_error(&line);
         output::progress(next);

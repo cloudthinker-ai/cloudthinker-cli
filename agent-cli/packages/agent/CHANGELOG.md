@@ -1,0 +1,10 @@
+## [0.5.5]
+
+- Validated bundled assets before packaging and checked pi integration contracts.
+- Embedded the source build identity and added opt-in startup phase timing.
+- Reduced measured local editor startup time with bytecode compilation.
+- Bundled pi-subagents with CloudThinker-only agent modes, inherited defaults, and independent child session tracking.
+- Waited for delegated work in print and JSON mode so CLI exit cannot cancel unfinished background children.
+- Kept Pi at 0.85.1, the latest published release at verification.
+- Preserved Cloud On for mention-clone children and saved child modes on reopen; made upstream description changes fail explicitly.
+
