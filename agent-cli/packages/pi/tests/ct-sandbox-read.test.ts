@@ -26,11 +26,12 @@ function readTool(): ToolDefinition {
 	return tool;
 }
 
-test("the description names the Sandbox as the workspace's own durable machine", () => {
+test("the description names the workspace machine as the workspace's own durable machine", () => {
 	const { description, promptSnippet } = readTool();
 	assert.ok(description.includes("the workspace's own machine in the cloud"));
 	assert.ok(description.includes("durable machine the whole workspace shares, not a scratch shell"));
-	assert.ok(promptSnippet?.includes("CloudThinker Sandbox"));
+	assert.ok(!description.includes("Sandbox"));
+	assert.ok(promptSnippet?.includes("workspace machine in the cloud"));
 });
 
 test("the description says a Sandbox-only read needs no Connection", () => {
@@ -82,6 +83,17 @@ test("a failed run leads with the exit code, then the error, then whatever stdou
 		renderExecution({ status: "completed", return_code: 1, stdout: "", stderr: "" }),
 		"exit code 1",
 	);
+});
+
+test("the call line leads with the cloud side word and carries no cloud glyph", () => {
+	const params = {
+		connection_list: ["grafana"],
+		reasoning: "Checking which alerts are firing.",
+		script: "kubectl get pods -A",
+	};
+	const [line] = callLines(params, false);
+	assert.match(line ?? "", /^cloud · ct_sandbox_read/);
+	assert.ok(!line?.includes("☁"));
 });
 
 test("the call line shows the reasoning, and the whole script only when expanded", () => {

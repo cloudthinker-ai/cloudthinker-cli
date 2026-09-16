@@ -58,7 +58,9 @@ pub async fn run_prompt(
 
     let run_id = submitted.run_id;
     if !json {
-        output::progress(&format!("Submitted run {run_id}. Waiting for Anna…"));
+        output::progress(&format!(
+            "Submitted run {run_id} to your CloudThinker workspace (cloud). Anna runs there and cannot see your local files."
+        ));
     }
 
     let cfg = WatchConfig::for_run(Duration::from_secs(timeout_secs));

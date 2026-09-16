@@ -62,7 +62,7 @@ test("the block names the two environments and refuses a third", () => {
 	const block = buildPromptBlock(withPrefixes(["aws", "k8s"]));
 	assert.ok(block.includes("exactly two environments"));
 	assert.ok(block.includes("1. This machine"));
-	assert.ok(block.includes("2. The CloudThinker Sandbox"));
+	assert.ok(block.includes("2. The workspace machine"));
 	assert.ok(block.includes("not a third environment"));
 	assert.ok(!block.includes("Executor"));
 });
@@ -77,7 +77,7 @@ test("the Connection detail follows the prefix line verbatim, and an empty xml a
 	const block = buildPromptBlock(withPrefixes(["aws"], xml));
 	assert.ok(
 		block.includes(
-			`Connected workspace Connections: aws. A Connection is a credential the Sandbox can use, not a third environment.\n${xml}\n${CONNECTION_SKILL_LINE}\nFor anything that needs one of those`,
+			`Connected workspace Connections: aws. A Connection is a credential the workspace machine can use, not a third environment.\n${xml}\n${CONNECTION_SKILL_LINE}\nFor anything that needs one of those`,
 		),
 	);
 	const bare = buildPromptBlock(withPrefixes(["aws"]));
@@ -100,7 +100,7 @@ test("the sandbox line names this session's own directory and the tree above it"
 	const block = buildPromptBlock(runtime());
 	assert.ok(block.includes("/home/user/c-1, this session's own directory"));
 	assert.ok(block.includes("symlinks up into the shared workspace tree at /home/user"));
-	assert.ok(block.includes("Name a Sandbox file by absolute path"));
+	assert.ok(block.includes("Name a file on the workspace machine by absolute path"));
 });
 
 test("scratch files go under the session's own tmp directory, never the sandbox home", () => {
@@ -108,7 +108,7 @@ test("scratch files go under the session's own tmp directory, never the sandbox 
 	assert.ok(block.includes("Put every scratch file under /home/user/c-1/tmp, never in /home/user itself."));
 });
 
-test("a Connection's skill line comes with the Sandbox path to read the guide from", () => {
+test("a Connection's skill line comes with the workspace-machine path to read the guide from", () => {
 	const xml = '<connections_context>\n<connection prefix="grafana">\n  skill: monitoring-grafana (available) — Use when alerts fire.\n</connection>\n</connections_context>';
 	const block = buildPromptBlock(withPrefixes(["grafana"], xml));
 	assert.ok(block.includes(`${xml}\n${CONNECTION_SKILL_LINE}`));
@@ -119,14 +119,14 @@ test("a Connection's skill line comes with the Sandbox path to read the guide fr
 
 test("an unlinked session claims no sandbox directory it cannot know", () => {
 	const block = buildPromptBlock(runtime({ session: undefined }));
-	assert.ok(block.includes("2. The CloudThinker Sandbox"));
+	assert.ok(block.includes("2. The workspace machine"));
 	assert.ok(!block.includes("this session's own directory"));
 	assert.ok(!block.includes("/home/user/"));
 });
 
 test("the memory guidance points at the sandbox path the index describes", () => {
 	const block = buildPromptBlock(runtime({ memory: { memoryIndex: "- fact one", userNotes: "" } }));
-	assert.ok(block.includes(`It indexes ${MEMORY_DIR}/ in the Sandbox`));
+	assert.ok(block.includes(`It indexes ${MEMORY_DIR}/ on the workspace machine`));
 	assert.ok(block.includes(`\`cat ${MEMORY_DIR}/<path>\`, no Connection needed`));
 	assert.ok(block.includes(CT_SANDBOX_READ));
 	assert.ok(block.includes("read once when this session started"));

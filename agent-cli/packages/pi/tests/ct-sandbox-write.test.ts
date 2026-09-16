@@ -116,7 +116,7 @@ test("an executed write renders the approver and the sandbox output", () => {
 	assert.ok(body.endsWith("\n\nok"), body);
 	assert.equal(
 		writeSummary({ write: write("executed", { decided_by_name: "Duc Bui" }), execution: null, elapsed_ms: 1500 }, theme),
-		"auto: needs approval · approved by Duc Bui · ran in CloudThinker Sandbox · 1.5s",
+		"auto: needs approval · approved by Duc Bui · ran on the workspace machine · 1.5s",
 	);
 });
 
@@ -124,7 +124,7 @@ test("a trusted approval says so in the summary and tells the model the command 
 	const trusted = write("executed", { decided_by_name: "Duc Bui", trusted: true, return_code: 0 });
 	assert.equal(
 		writeSummary({ write: trusted, execution: null, elapsed_ms: 1500 }, theme),
-		"auto: needs approval · approved and trusted by Duc Bui · ran in CloudThinker Sandbox · 1.5s",
+		"auto: needs approval · approved and trusted by Duc Bui · ran on the workspace machine · 1.5s",
 	);
 	const body = renderWrite({
 		write: trusted,
@@ -144,7 +144,7 @@ test("every verdict renders as the mode that decided it, with the trusted reason
 	const allowed = write("executed", { verdict: "allow", verdict_reason: "workspace_trusted_command" });
 	assert.equal(
 		writeSummary({ write: allowed, execution: null, elapsed_ms: 2000 }, theme),
-		"auto: allowed (trusted command) · ran in CloudThinker Sandbox · 2.0s",
+		"auto: allowed (trusted command) · ran on the workspace machine · 2.0s",
 	);
 	assert.match(renderWrite({ write: allowed, execution: { status: "completed", return_code: 0, stdout: "", stderr: "" } }), /verdict: auto: allowed \(trusted command\)/);
 	assert.match(
@@ -193,7 +193,7 @@ test("the terminal card carries the reasoning, the connection, the command, and 
 	assert.deepEqual(approvalCard(write("required_approval")), [
 		"⏸ A cloud write is waiting for your approval",
 		"  Tag the orphaned instance with its owner.",
-		"  ☁ aws: aws ec2 create-tags --resources i-1 --tags Key=owner,Value=duc",
+		"  cloud · aws: aws ec2 create-tags --resources i-1 --tags Key=owner,Value=duc",
 		"  browser → http://web/chat?conversationId=c-1",
 	]);
 });
@@ -427,7 +427,7 @@ test("a 422 for an unconnected prefix names the requested and connected prefixes
 	);
 });
 
-test("a write the Sandbox could not start says so and asks for no retry by id", () => {
+test("a write the workspace machine could not start says so and asks for no retry by id", () => {
 	const failed = write("failed", { verdict: "allow", verdict_reason: "workspace_trusted_command" });
 
 	const body = renderWrite({ write: failed, execution: null });
@@ -436,8 +436,16 @@ test("a write the Sandbox could not start says so and asks for no retry by id", 
 	assert.doesNotMatch(body, /again with only this write_id/);
 	assert.equal(
 		writeSummary({ write: failed, execution: null }, theme),
-		"auto: allowed (trusted command) · the Sandbox could not start it",
+		"auto: allowed (trusted command) · the workspace machine could not start it",
 	);
+});
+
+test("an unconfirmed dispatch never claims nothing ran or invites a replay", () => {
+	const outcome = { write: write("outcome_unknown"), execution: null };
+	assert.match(renderWrite(outcome), /script may have started/);
+	assert.match(renderWrite(outcome), /Do not replay this write automatically/);
+	assert.doesNotMatch(renderWrite(outcome), /nothing ran/);
+	assert.match(writeSummary(outcome, theme), /execution outcome unknown; do not replay/);
 });
 
 test("the call line shows the reasoning for the approver, and the command only when expanded", () => {

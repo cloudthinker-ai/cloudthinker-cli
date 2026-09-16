@@ -57,7 +57,7 @@ const parameters = Type.Object({
 	script: Type.Optional(
 		Type.String({
 			description:
-				"ONE state-changing shell command to run in the Sandbox: create, " +
+				"ONE state-changing shell command to run on the workspace machine: create, " +
 				"delete, apply, scale, restart, rotate, put, tag. The Connection's CLI " +
 				"is already installed and authenticated.",
 		}),
@@ -93,7 +93,7 @@ const parameters = Type.Object({
 type Params = Static<typeof parameters>;
 
 const description = [
-	"Run ONE state-changing command in CloudThinker's cloud Sandbox with a workspace Connection's credential injected.",
+	"Run ONE state-changing command on the workspace machine, CloudThinker's computer in the cloud, with a workspace Connection's credential injected.",
 	"The workspace decides whether it runs: a command the workspace already trusts runs at once; anything else pauses until a human approves it, in this terminal or in the browser, then runs here.",
 	"",
 	"The credential stays in the cloud. You never see it, you only get stdout back.",
@@ -158,7 +158,7 @@ export function approvalCard(write: CloudWrite): string[] {
 	return [
 		`⏸ ${WRITE_SUBJECT} is waiting for your approval`,
 		`  ${write.reasoning}`,
-		`  ☁ ${connections}: ${firstLine(write.script)}`,
+		`  cloud · ${connections}: ${firstLine(write.script)}`,
 		`  browser → ${write.web_url}`,
 	];
 }
@@ -276,10 +276,15 @@ export function renderWrite(outcome: WriteOutcome): string {
 			"",
 			`Blocked by the workspace policy (${write.verdict}: ${write.verdict_reason}). It cannot be approved. Tell the user.`,
 		);
+	} else if (write.status === "outcome_unknown") {
+		lines.push(
+			"",
+			"The execution outcome is not confirmed. The script may have started. Do not replay this write automatically; verify its effects before requesting another write.",
+		);
 	} else if (write.status === "failed") {
 		lines.push(
 			"",
-			"The CloudThinker Sandbox could not start this write, so nothing ran. Tell the user; a retry is a new write.",
+			"The workspace machine could not start this write, so nothing ran. Tell the user; a retry is a new write.",
 		);
 	}
 	return lines.join("\n");
@@ -293,13 +298,14 @@ export function writeSummary(
 	const verdict = verdictLabel(write);
 	if (write.status === "executed") {
 		const by = write.decided_by_name ? `${decidedBy(write)} · ` : "";
-		return `${verdict} · ${by}ran in CloudThinker Sandbox · ${formatElapsed(outcome.elapsed_ms)}`;
+		return `${verdict} · ${by}ran on the workspace machine · ${formatElapsed(outcome.elapsed_ms)}`;
 	}
 	if (write.status === "required_approval") {
 		return `${verdict} · waiting for approval in browser → ${link(theme, write.web_url)}`;
 	}
 	if (write.status === "approved") return `${verdict} · approved, not run yet`;
-	if (write.status === "failed") return `${verdict} · the Sandbox could not start it`;
+	if (write.status === "outcome_unknown") return `${verdict} · execution outcome unknown; do not replay`;
+	if (write.status === "failed") return `${verdict} · the workspace machine could not start it`;
 	if (write.status === "declined") {
 		return `${verdict} · declined${write.decided_by_name ? ` by ${write.decided_by_name}` : ""}`;
 	}
@@ -374,7 +380,7 @@ async function runIfApproved(call: WriteCall, outcome: WriteOutcome): Promise<Wr
 	const { runtime, ctx, signal } = call;
 	if (outcome.write.status !== "required_approval") runtime.clearApproval();
 	if (outcome.write.status !== "approved") return outcome;
-	if (ctx.hasUI) ctx.ui.setWorkingMessage("Running in CloudThinker Cloud…");
+	if (ctx.hasUI) ctx.ui.setWorkingMessage("Running on the workspace machine (cloud)…");
 	return runtime.client.runWrite(outcome.write.id, call.timeout, signal);
 }
 
@@ -384,7 +390,7 @@ export function registerSandboxWrite(runtime: CloudThinkerRuntime): void {
 		label: "Cloud write",
 		description,
 		promptSnippet:
-			"Run one state-changing command in CloudThinker's cloud once the workspace approves it",
+			"Run one state-changing command on the workspace machine once the workspace approves it",
 		promptGuidelines: [
 			`Route every state-changing cloud command through ${CT_SANDBOX_WRITE}, one command per call. A human may have to approve it, in the terminal or in the browser, before it runs.`,
 		],

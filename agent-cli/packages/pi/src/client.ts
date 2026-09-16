@@ -122,6 +122,7 @@ export type WriteStatus =
 	| "approved"
 	| "declined"
 	| "denied"
+	| "outcome_unknown"
 	| "executed"
 	| "failed";
 

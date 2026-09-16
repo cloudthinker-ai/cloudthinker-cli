@@ -48,7 +48,7 @@ test("a linked session names the workspace, the user, and the mirror", () => {
 		userEmail: "dev@acme.io",
 		webUrl: "https://app.cloudthinker.io/chat/c-1",
 	});
-	assert.equal(header[1], "acme-prod");
+	assert.equal(header[1], "acme-prod (cloud)");
 	assert.equal(header[2], "dev@acme.io");
 	assert.match(header[3]!, /\/open/);
 });
@@ -62,11 +62,11 @@ test("the session line ends with the workspace approval mode once it is known", 
 	};
 	assert.equal(
 		lines({ ...base, autoMode: true })[1],
-		"acme-prod · Auto",
+		"acme-prod (cloud) · Auto",
 	);
 	assert.equal(
 		lines({ ...base, autoMode: false })[1],
-		"acme-prod · Manual",
+		"acme-prod (cloud) · Manual",
 	);
 });
 
@@ -216,5 +216,5 @@ test("the wide header stacks the gradient wordmark above the identity lines", ()
 	assert.deepEqual(rows.slice(0, colored.length), colored);
 	assert.equal(rows[colored.length], "");
 	assert.match(stripVTControlCharacters(rows[colored.length + 1]!), /^CloudThinker v/);
-	assert.equal(stripVTControlCharacters(rows[colored.length + 2]!).trimEnd(), "acme-prod");
+	assert.equal(stripVTControlCharacters(rows[colored.length + 2]!).trimEnd(), "acme-prod (cloud)");
 });

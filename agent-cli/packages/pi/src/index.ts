@@ -31,8 +31,8 @@ import { registerReadTaskOutput } from "./tools/read-task-output.ts";
 const SHUTDOWN_FLUSH_MS = 5_000;
 
 export function sessionTitle(cwd: string, workspaceName: string | undefined): string {
-	const parts = [PRODUCT_NAME, basename(cwd)];
-	if (workspaceName) parts.push(workspaceName);
+	const parts = [PRODUCT_NAME, `${basename(cwd)} (local)`];
+	if (workspaceName) parts.push(`${workspaceName} (cloud)`);
 	return parts.join(" · ");
 }
 

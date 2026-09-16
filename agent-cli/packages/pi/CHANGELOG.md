@@ -1,3 +1,8 @@
+## [0.5.7]
+
+- Reported an unconfirmed Sandbox write as `outcome_unknown` and told the agent not to replay it automatically.
+- Every cloud tool call now names its side: the ct_ call lines lead with a `cloud` word instead of the cloud glyph, `/where` prints what the agent can see on your machine and in the cloud workspace, the session title and header mark the local and cloud sides, and the copy says the workspace machine instead of the Sandbox.
+
 ## [0.5.6]
 
 - The startup banner renders the CLOUD THINKER wordmark in the brand gradient, stacked above the session identity lines, replacing the stretched quadrant cloud.

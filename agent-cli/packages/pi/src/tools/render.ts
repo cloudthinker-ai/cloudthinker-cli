@@ -4,7 +4,6 @@ import { Container, Text, hyperlink, truncateToWidth } from "@earendil-works/pi-
 import type { Component } from "@earendil-works/pi-tui";
 
 const PREVIEW_LINES = 5;
-export const CLOUD_GLYPH = "☁";
 
 export interface Elapsed {
 	elapsed_ms?: number;
@@ -20,12 +19,15 @@ export function formatElapsed(elapsedMs: number | undefined): string {
 }
 
 export function callLine(theme: Theme, name: string, ...rest: string[]): string {
-	const title = theme.fg("toolTitle", theme.bold(`${CLOUD_GLYPH} ${name}`));
+	const head = [
+		theme.fg("accent", "cloud"),
+		theme.fg("toolTitle", theme.bold(name)),
+	].join(theme.fg("muted", " · "));
 	const tail = rest
 		.filter((part) => part.length > 0)
 		.map((part) => theme.fg("muted", part))
 		.join(theme.fg("muted", "  "));
-	return tail.length > 0 ? `${title}  ${tail}` : title;
+	return tail.length > 0 ? `${head}  ${tail}` : head;
 }
 
 export function callComponent(line: string, expandedDetail?: string): Component {

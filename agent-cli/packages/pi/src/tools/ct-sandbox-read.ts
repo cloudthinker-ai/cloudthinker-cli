@@ -18,7 +18,7 @@ import { explain, text } from "./shared.ts";
 
 export const MAX_TIMEOUT_SECONDS = 120;
 export const DEFAULT_TIMEOUT_SECONDS = 60;
-export const SANDBOX_WORKING_MESSAGE = "Running in CloudThinker Cloud…";
+export const SANDBOX_WORKING_MESSAGE = "Running on the workspace machine (cloud)…";
 export const NO_OUTPUT = "(no output)";
 
 const parameters = Type.Object({
@@ -28,14 +28,14 @@ const parameters = Type.Object({
 			"from the connected prefixes listed in the system prompt. Empty for a " +
 			"command that needs no cloud credential.",
 	}),
-	script: Type.String({
-		description:
-			"A read-only shell command to run in the Sandbox. The Connection's " +
-			"CLI is already installed and authenticated, and the ordinary shell " +
-			"tools (ls, cat, grep, find) are there for the Sandbox's own files. " +
-			"Bound the output yourself (head, --max-items, jq) so a large listing " +
-			"does not fill the context.",
-	}),
+		script: Type.String({
+			description:
+				"A read-only shell command to run on the workspace machine. The Connection's " +
+				"CLI is already installed and authenticated, and the ordinary shell " +
+				"tools (ls, cat, grep, find) are there for the machine's own files. " +
+				"Bound the output yourself (head, --max-items, jq) so a large listing " +
+				"does not fill the context.",
+		}),
 	reasoning: Type.String({
 		description:
 			"A very short phrase of 5-10 words naming what this command reads and " +
@@ -60,10 +60,10 @@ const parameters = Type.Object({
 });
 
 const description = [
-	"Run a READ-ONLY command in the CloudThinker Sandbox, the workspace's own machine in the cloud, with a workspace Connection's credential injected when the command needs one.",
+	"Run a READ-ONLY command on the workspace's own machine in the cloud, with a workspace Connection's credential injected when the command needs one.",
 	"Use it for any fact that lives in the user's cloud: AWS, Kubernetes, GitHub, Datadog, and every other connected provider.",
 	"",
-	`The Sandbox is a durable machine the whole workspace shares, not a scratch shell. Its filesystem carries the workspace's memory tree at ${MEMORY_DIR}, its skills, and what earlier runs left behind, so it answers questions about the workspace itself and not only about a provider. Pass an empty connection_list for a command that reaches nothing but the Sandbox, such as reading one of those files.`,
+	`It is a durable machine the whole workspace shares, not a scratch shell. Its filesystem carries the workspace's memory tree at ${MEMORY_DIR}, its skills, and what earlier runs left behind, so it answers questions about the workspace itself and not only about a provider. Pass an empty connection_list for a command that reaches nothing but the workspace machine, such as reading one of those files.`,
 	"",
 	"The credential stays in the cloud. It is never sent to this machine and you never see it, you only get stdout back.",
 	"Never ask the user for a production credential, access key, kubeconfig, or token. Call this tool instead.",
@@ -93,9 +93,9 @@ export function registerSandboxRead(runtime: CloudThinkerRuntime): void {
 		label: "Cloud read",
 		description,
 		promptSnippet:
-			"Run a read-only command on the workspace's CloudThinker Sandbox, with a Connection's credential when the command needs one",
+			"Run a read-only command on the workspace machine in the cloud, with a Connection's credential when the command needs one",
 		promptGuidelines: [
-			`Reach a workspace Connection only through ${CT_SANDBOX_READ}. This machine holds no cloud credentials, so a local aws, kubectl, gcloud, or gh command cannot reach the user's cloud.`,
+			`Reach a workspace Connection only through ${CT_SANDBOX_READ}. Your machine holds no cloud credentials, so a local aws, kubectl, gcloud, or gh command cannot reach the user's cloud.`,
 			"Never ask the user to paste a cloud credential.",
 		],
 		parameters,
@@ -143,7 +143,7 @@ export function registerSandboxRead(runtime: CloudThinkerRuntime): void {
 		renderResult: (result, options, theme) =>
 			summaryComponent(
 				theme,
-				`ran in CloudThinker Sandbox · ${formatElapsed(result.details?.elapsed_ms)}`,
+				`ran on the workspace machine · ${formatElapsed(result.details?.elapsed_ms)}`,
 				resultBody(result),
 				options.expanded,
 			),

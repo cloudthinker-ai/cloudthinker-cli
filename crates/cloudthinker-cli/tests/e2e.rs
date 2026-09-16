@@ -402,7 +402,8 @@ fn ca_rv_sp6_watch_timeout_prints_resume_hint_and_exits_4() {
 }
 
 // CA-CLI-10: on success, stdout carries ONLY the answer text (pipeable); the
-// "submitted" progress line goes to stderr.
+// "submitted" progress line goes to stderr and names the cloud workspace, so a
+// user in a repo directory is never told the run saw their local files.
 #[test]
 fn ca_cli_10_stdout_is_answer_only() {
     let api = MockApi::start(status_body("succeeded", "the final answer", ""));
@@ -412,6 +413,8 @@ fn ca_cli_10_stdout_is_answer_only() {
         .success()
         .stdout("the final answer\n")
         .stderr(predicates::str::contains("Submitted"))
+        .stderr(predicates::str::contains("workspace (cloud)"))
+        .stderr(predicates::str::contains("cannot see your local files"))
         .stderr(predicates::str::contains(format!(
             "continue_with={CONV_ID} web_url=https://app.example.com/c/{CONV_ID}"
         )));

@@ -1,3 +1,7 @@
+## [0.5.7]
+
+- The `chat -p` submit line now says the run executes in your CloudThinker workspace (cloud) and cannot see your local files.
+
 ## [0.5.6]
 
 - The published install one-liner now points at `https://cloudthinker.io/install.sh`; the old `cloudthinker.ai` host keeps redirecting.

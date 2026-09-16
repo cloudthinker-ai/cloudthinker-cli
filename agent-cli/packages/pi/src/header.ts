@@ -39,7 +39,7 @@ function formatSessionLine(state: HeaderState, styler: HeaderStyler): string {
 	if (state.link === "unavailable") return styler.fg("error", UNLINKED_LINE);
 	if (state.link === "linking") return styler.fg("dim", LINKING_LINE);
 	const parts: string[] = [];
-	if (state.workspaceName) parts.push(styler.fg("text", state.workspaceName));
+	if (state.workspaceName) parts.push(styler.fg("text", `${state.workspaceName} (cloud)`));
 	if (state.autoMode !== undefined) {
 		parts.push(styler.fg("muted", state.autoMode ? AUTO_LABEL : MANUAL_LABEL));
 	}

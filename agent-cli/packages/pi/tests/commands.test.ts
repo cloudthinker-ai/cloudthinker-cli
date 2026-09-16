@@ -8,10 +8,12 @@ import {
 	APPROVERS_NOTIFIED,
 	AUTO_MODE_EDITOR_HINT,
 	NOTHING_WAITING,
+	WHERE_SIDE_LINE,
 	aboutLines,
 	autoCommand,
 	autoModeLines,
 	notifyApprovers,
+	whereLines,
 } from "../src/commands.ts";
 import { sessionTitle } from "../src/index.ts";
 import { CloudThinkerRuntime } from "../src/runtime.ts";
@@ -174,7 +176,58 @@ test("CA-AD-5 about exposes the build identity from the bundle", () => {
 	assert.ok(aboutLines(versions, "/agent", undefined).includes("Build: abc123-dirty"));
 });
 
-test("the terminal title carries the directory, and the workspace once identity arrives", () => {
-	assert.equal(sessionTitle("/home/dev/infra", undefined), "cloudthinker · infra");
-	assert.equal(sessionTitle("/home/dev/infra", "acme-prod"), "cloudthinker · infra · acme-prod");
+test("the terminal title marks the directory as local and the workspace as cloud", () => {
+	assert.equal(sessionTitle("/home/dev/infra", undefined), "cloudthinker · infra (local)");
+	assert.equal(
+		sessionTitle("/home/dev/infra", "acme-prod"),
+		"cloudthinker · infra (local) · acme-prod (cloud)",
+	);
+});
+
+test("where names both places, the connections, and the credential rule", () => {
+	assert.deepEqual(
+		whereLines({
+			cwd: "/home/dev/infra",
+			workspaceName: "acme-prod",
+			connectedPrefixes: ["aws", "github"],
+			cloudEnabled: true,
+			linked: true,
+		}),
+		[
+			"I work in two places:",
+			"local · /home/dev/infra — your files, your shell, your git state",
+			"cloud · acme-prod — Anna, the workspace machine, aws, github",
+			WHERE_SIDE_LINE,
+		],
+	);
+});
+
+test("where says so when no connection is attached yet", () => {
+	const lines = whereLines({
+		cwd: "/home/dev/infra",
+		workspaceName: "acme-prod",
+		connectedPrefixes: [],
+		cloudEnabled: true,
+		linked: true,
+	});
+	assert.equal(lines[2], "cloud · acme-prod — Anna, the workspace machine, no connections yet");
+});
+
+test("where points at /cloud on when cloud tools are off, and at linking when unlinked", () => {
+	const off = whereLines({
+		cwd: "/home/dev/infra",
+		workspaceName: "acme-prod",
+		connectedPrefixes: ["aws"],
+		cloudEnabled: false,
+		linked: true,
+	});
+	assert.equal(off[2], "cloud · acme-prod — cloud tools are off; /cloud on reaches Anna and the workspace machine");
+
+	const unlinked = whereLines({
+		cwd: "/home/dev/infra",
+		connectedPrefixes: [],
+		cloudEnabled: true,
+		linked: false,
+	});
+	assert.equal(unlinked[2], "cloud · not linked — Anna and the workspace machine are unavailable here");
 });

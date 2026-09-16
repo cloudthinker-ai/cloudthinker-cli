@@ -30,6 +30,34 @@ export interface Notifier {
 	notify(message: string, type?: "info" | "warning" | "error"): void;
 }
 
+export interface WhereState {
+	cwd: string;
+	workspaceName?: string;
+	connectedPrefixes: string[];
+	cloudEnabled: boolean;
+	linked: boolean;
+}
+
+export const WHERE_SIDE_LINE =
+	"Tools marked cloud run in the cloud; everything else runs on your machine. Credentials never leave the cloud.";
+
+export function whereLines(state: WhereState): string[] {
+	const local = `local · ${state.cwd} — your files, your shell, your git state`;
+	let cloud: string;
+	if (!state.linked) {
+		cloud = "cloud · not linked — Anna and the workspace machine are unavailable here";
+	} else if (!state.cloudEnabled) {
+		cloud = `cloud · ${state.workspaceName ?? "workspace"} — cloud tools are off; /cloud on reaches Anna and the workspace machine`;
+	} else {
+		const connections =
+			state.connectedPrefixes.length > 0
+				? state.connectedPrefixes.join(", ")
+				: "no connections yet";
+		cloud = `cloud · ${state.workspaceName ?? "workspace"} — Anna, the workspace machine, ${connections}`;
+	}
+	return ["I work in two places:", local, cloud, WHERE_SIDE_LINE];
+}
+
 export async function notifyApprovers(runtime: CloudThinkerRuntime, ui: Notifier): Promise<void> {
 	const thread = runtime.askThread;
 	if (!thread) {
@@ -128,7 +156,7 @@ export function registerCommands(runtime: CloudThinkerRuntime): void {
 	});
 
 	runtime.pi.registerCommand("cloud", {
-		description: "Show Cloud status or turn remote commands and Anna delegation on/off",
+		description: "Show Cloud status or turn cloud tools (workspace machine and Anna) on/off",
 		getArgumentCompletions: (prefix) =>
 			["on", "off"].filter((name) => name.startsWith(prefix)).map((name) => ({ value: name, label: name })),
 		handler: async (args, ctx) => {
@@ -146,7 +174,7 @@ export function registerCommands(runtime: CloudThinkerRuntime): void {
 				runtime.setCloudEnabled(argument === "on");
 			}
 
-			const lines: string[] = [`Cloud: ${runtime.cloudEnabled ? "On" : "Off"}`, "Change with /cloud on|off. Off disables remote commands and Anna delegation; existing remote work continues."];
+			const lines: string[] = [`Cloud: ${runtime.cloudEnabled ? "On" : "Off"}`, "Change with /cloud on|off. Off disables the cloud tools: workspace-machine commands and Anna delegation. Existing remote work continues."];
 			lines.push(
 				runtime.identity
 					? `Workspace: ${runtime.identity.workspace_name} (${runtime.identity.user_email})`
@@ -162,6 +190,22 @@ export function registerCommands(runtime: CloudThinkerRuntime): void {
 			);
 			if (runtime.askThread) lines.push(`Anna thread: ${runtime.askThread.web_url}`);
 			ctx.ui.notify(lines.join("\n"), "info");
+		},
+	});
+
+	runtime.pi.registerCommand("where", {
+		description: "Show the two places this agent works: your machine and the cloud workspace",
+		handler: async (_args, ctx) => {
+			ctx.ui.notify(
+				whereLines({
+					cwd: process.cwd(),
+					workspaceName: runtime.identity?.workspace_name,
+					connectedPrefixes: runtime.connectedPrefixes,
+					cloudEnabled: runtime.cloudEnabled,
+					linked: runtime.session !== undefined,
+				}).join("\n"),
+				"info",
+			);
 		},
 	});
 
