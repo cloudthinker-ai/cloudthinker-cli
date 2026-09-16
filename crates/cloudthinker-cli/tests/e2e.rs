@@ -674,12 +674,27 @@ fn chat_ls_json_and_empty_list_exit_zero() {
 /// release-asset prefix the installer looks for.
 const UPDATE_APP: &str = "cloudthinker-cli";
 
-/// Release JSON for the GitHub API `releases/latest` endpoint, with the
-/// installer asset pointing back at the mock server.
-fn release_body(mock_base: &str, tag: &str) -> String {
+/// Release JSON for one GitHub API release object, with the installer asset
+/// pointing back at the mock server.
+fn release_object(mock_base: &str, tag: &str, prerelease: bool) -> String {
     format!(
-        r#"{{"tag_name":"{tag}","name":"{tag}","url":"{mock_base}/releases/{tag}","assets":[{{"name":"{UPDATE_APP}-installer.sh","url":"{mock_base}/installer.sh","browser_download_url":"{mock_base}/installer.sh"}}],"prerelease":false}}"#
+        r#"{{"tag_name":"{tag}","name":"{tag}","url":"{mock_base}/releases/{tag}","assets":[{{"name":"{UPDATE_APP}-installer.sh","url":"{mock_base}/installer.sh","browser_download_url":"{mock_base}/installer.sh"}}],"prerelease":{prerelease}}}"#
     )
+}
+
+/// Release JSON for the GitHub API `releases/latest` endpoint: the newest
+/// stable release.
+fn release_body(mock_base: &str, tag: &str) -> String {
+    release_object(mock_base, tag, false)
+}
+
+/// Release-list JSON for the GitHub API `/releases` endpoint.
+fn releases_list_body(mock_base: &str, releases: &[(&str, bool)]) -> String {
+    let items: Vec<String> = releases
+        .iter()
+        .map(|(tag, prerelease)| release_object(mock_base, tag, *prerelease))
+        .collect();
+    format!("[{}]", items.join(","))
 }
 
 /// Writes a cargo-dist install receipt for the spawned binary's real location
@@ -719,21 +734,83 @@ struct MockReleases {
     base_url: String,
     stop: Arc<AtomicBool>,
     handle: Option<JoinHandle<()>>,
+    listener: Option<TcpListener>,
 }
 
+/// What one canned request answers: status line, body, content type. The
+/// argument is the request's first line.
+type Route = Box<dyn Fn(&str) -> (String, String, &'static str) + Send>;
+
 impl MockReleases {
-    /// `installer_script` is served as the release's installer; give it a
-    /// side effect (e.g. touch a marker) to prove it actually executed.
+    /// One stable release, no prerelease: the release list and
+    /// `releases/latest` both resolve to it, so either update strategy sees
+    /// the same single release.
     fn start(tag: &str, installer_script: String) -> Self {
+        let mock = MockReleases::bind();
+        let release_body = release_body(&mock.base_url, tag);
+        let list_body = releases_list_body(&mock.base_url, &[(tag, false)]);
+        mock.serve(Box::new(move |path| {
+            if path.contains("/releases/latest") {
+                (
+                    "200 OK".to_string(),
+                    release_body.clone(),
+                    "application/json",
+                )
+            } else if path.contains("/api/v3/repos/") {
+                ("200 OK".to_string(), list_body.clone(), "application/json")
+            } else if path.contains("/installer.sh") {
+                ("200 OK".to_string(), installer_script.clone(), "text/plain")
+            } else {
+                ("404 Not Found".to_string(), String::new(), "text/plain")
+            }
+        }))
+    }
+
+    /// Both release tracks on one server: `releases/latest` serves the stable
+    /// object while the list serves stable plus prerelease, so the stable and
+    /// dev channels resolve against realistic GitHub responses.
+    fn start_two(stable_tag: &str, prerelease_tag: &str, installer_script: String) -> Self {
+        let mock = MockReleases::bind();
+        let stable_body = release_object(&mock.base_url, stable_tag, false);
+        let list_body = releases_list_body(
+            &mock.base_url,
+            &[(stable_tag, false), (prerelease_tag, true)],
+        );
+        mock.serve(Box::new(move |path| {
+            if path.contains("/releases/latest") {
+                (
+                    "200 OK".to_string(),
+                    stable_body.clone(),
+                    "application/json",
+                )
+            } else if path.contains("/api/v3/repos/") {
+                ("200 OK".to_string(), list_body.clone(), "application/json")
+            } else if path.contains("/installer.sh") {
+                ("200 OK".to_string(), installer_script.clone(), "text/plain")
+            } else {
+                ("404 Not Found".to_string(), String::new(), "text/plain")
+            }
+        }))
+    }
+
+    fn bind() -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         listener.set_nonblocking(true).unwrap();
-        let stop = Arc::new(AtomicBool::new(false));
-        let stop_thread = stop.clone();
-        let base_url = format!("http://{addr}");
-        let release_body = release_body(&base_url, tag);
+        Self {
+            base_url: format!("http://{addr}"),
+            stop: Arc::new(AtomicBool::new(false)),
+            handle: None,
+            listener: Some(listener),
+        }
+    }
 
-        let handle = std::thread::spawn(move || {
+    /// `installer_script` is served as the release's installer; give it a
+    /// side effect (e.g. touch a marker) to prove it actually executed.
+    fn serve(mut self, route: Route) -> Self {
+        let listener = self.listener.take().unwrap();
+        let stop_thread = self.stop.clone();
+        self.handle = Some(std::thread::spawn(move || {
             while !stop_thread.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((mut socket, _)) => {
@@ -752,14 +829,7 @@ impl MockReleases {
                         }
                         let request = String::from_utf8_lossy(&data);
                         let first_line = request.lines().next().unwrap_or_default();
-                        let (status, body, content_type) = if first_line.contains("/api/v3/repos/")
-                        {
-                            ("200 OK", release_body.clone(), "application/json")
-                        } else if first_line.contains("/installer.sh") {
-                            ("200 OK", installer_script.clone(), "text/plain")
-                        } else {
-                            ("404 Not Found", String::new(), "text/plain")
-                        };
+                        let (status, body, content_type) = route(first_line.trim());
                         let response = format!(
                             "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                             body.len()
@@ -773,13 +843,8 @@ impl MockReleases {
                     Err(_) => break,
                 }
             }
-        });
-
-        Self {
-            base_url,
-            stop,
-            handle: Some(handle),
-        }
+        }));
+        self
     }
 }
 
@@ -801,6 +866,7 @@ fn update_cli(receipt_dir: &std::path::Path, releases: &MockReleases, marker: &s
             &releases.base_url,
         )
         .env("CT_UPDATE_TEST_MARKER", marker)
+        .env_remove("CLOUDTHINKER_URL")
         .env_remove("NO_COLOR");
     cmd
 }
@@ -1225,7 +1291,8 @@ fn binary_on_a_tty(
 }
 
 // CA-UP-9: a genuinely newer release is offered on the terminal, naming both
-// versions, and declining it still starts the session.
+// versions and the dev channel the local origin resolves to, and declining it
+// still starts the session.
 #[cfg(unix)]
 #[test]
 fn ca_up_9_a_newer_release_is_offered_and_declining_still_starts_the_agent() {
@@ -1238,7 +1305,7 @@ fn ca_up_9_a_newer_release_is_offered_and_declining_still_starts_the_agent() {
 
     assert!(
         output.contains(&format!(
-            "cloudthinker {} is available (you have {RUNNING_VERSION})",
+            "cloudthinker {} is available on the dev channel (you have {RUNNING_VERSION})",
             tag.trim_start_matches('v')
         )),
         "expected the offer, got:\n{output}"
@@ -1352,6 +1419,64 @@ fn ca_up_10_the_running_release_is_never_offered_back() {
         output.contains("argv: "),
         "the agent must start, got:\n{output}"
     );
+}
+
+// CA-UP-12: from the production origin the updater skips a newer prerelease
+// and installs the newest stable instead.
+#[test]
+fn ca_up_12_prod_origin_skips_a_newer_prerelease() {
+    let marker = marker_path("up12");
+    let _ = std::fs::remove_file(&marker);
+    let releases = MockReleases::start_two("v0.2.0", "v0.3.0-dev.1", marker_installer_script());
+    let receipt_dir = write_receipt("up12", "0.1.0", &real_install_prefix());
+
+    update_cli(&receipt_dir, &releases, &marker)
+        .env("CLOUDTHINKER_URL", "https://app.cloudthinker.io")
+        .arg("update")
+        .assert()
+        .success()
+        .stdout("Updated cloudthinker from 0.1.0 to 0.2.0\n");
+    let _ = std::fs::remove_file(&marker);
+}
+
+// CA-UP-13: from a dev origin the updater takes the prerelease — the newest
+// release overall — and the run still exits 0.
+#[test]
+fn ca_up_13_dev_origin_follows_the_prerelease() {
+    let marker = marker_path("up13");
+    let _ = std::fs::remove_file(&marker);
+    let releases = MockReleases::start_two("v0.2.0", "v0.3.0-dev.1", marker_installer_script());
+    let receipt_dir = write_receipt("up13", "0.1.0", &real_install_prefix());
+
+    update_cli(&receipt_dir, &releases, &marker)
+        .env("CLOUDTHINKER_URL", "https://dev.cloudthinker.io")
+        .arg("update")
+        .assert()
+        .success()
+        .stdout("Updated cloudthinker from 0.1.0 to 0.3.0-dev.1\n");
+    assert!(
+        std::path::Path::new(&marker).exists(),
+        "the dev-channel installer must have run"
+    );
+    let _ = std::fs::remove_file(&marker);
+}
+
+// CA-UP-14: after promotion the stable tag outruns the dev build the user is
+// on, so a dev-origin install is pulled up to stable.
+#[test]
+fn ca_up_14_promotion_pulls_a_dev_user_up_to_stable() {
+    let marker = marker_path("up14");
+    let _ = std::fs::remove_file(&marker);
+    let releases = MockReleases::start_two("v0.3.0", "v0.3.0-dev.1", marker_installer_script());
+    let receipt_dir = write_receipt("up14", "0.3.0-dev.1", &real_install_prefix());
+
+    update_cli(&receipt_dir, &releases, &marker)
+        .env("CLOUDTHINKER_URL", "https://dev.cloudthinker.io")
+        .arg("update")
+        .assert()
+        .success()
+        .stdout("Updated cloudthinker from 0.3.0-dev.1 to 0.3.0\n");
+    let _ = std::fs::remove_file(&marker);
 }
 
 #[test]

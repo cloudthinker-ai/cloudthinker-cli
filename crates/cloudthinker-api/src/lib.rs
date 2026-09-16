@@ -3982,8 +3982,7 @@ pub mod types {
     ///  "title": "WorkspaceCreate",
     ///  "type": "object",
     ///  "required": [
-    ///    "name",
-    ///    "provider"
+    ///    "name"
     ///  ],
     ///  "properties": {
     ///    "description": {
@@ -4018,7 +4017,8 @@ pub mod types {
         pub name: ::std::string::String,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub organization_name: ::std::option::Option<::std::string::String>,
-        pub provider: CloudProvider,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub provider: ::std::option::Option<CloudProvider>,
     }
 
     ///`WorkspacePublic`
@@ -4364,6 +4364,13 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "cloud_connection_prefixes": {
+    ///      "title": "Cloud Connection Prefixes",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
     ///    "created_at": {
     ///      "title": "Created At",
     ///      "type": "string",
@@ -4472,6 +4479,8 @@ pub mod types {
         pub brand_logo_storage_key: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub brand_primary_color: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub cloud_connection_prefixes: ::std::vec::Vec<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub created_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub current_user_role: WorkspaceRole,

@@ -330,9 +330,11 @@ async fn dispatch(cli: Cli) -> ExitCode {
                     .await
             }
         },
-        // Self-update talks to GitHub releases, not the CloudThinker API; it
-        // ignores the global `--url`/`--workspace` selectors by design.
-        Command::Update(args) => commands::update::run(args.force, args.json).await,
+        // Self-update talks to GitHub releases, not the CloudThinker API; the
+        // global `--url` only picks the release channel (the prod origin
+        // follows stable, any other origin dev prereleases), and `--workspace`
+        // stays ignored.
+        Command::Update(args) => commands::update::run(args.force, args.json, &base_url).await,
         Command::Agent(args) => {
             commands::agent::run(&base_url, workspace.as_deref(), args.args).await
         }

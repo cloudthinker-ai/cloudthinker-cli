@@ -14,7 +14,6 @@ import { NO_SESSION_REFUSAL, applyGuard, hasNoSessionFlag } from "./guard.ts";
 import { modelScopeArgs } from "./models.ts";
 import bundledSubagents from "./subagents.ts";
 import { bundledThemePaths, themeArgs } from "./theme.ts";
-import { tuiModeArgs } from "./tui.ts";
 
 markStartup("agent.modules");
 process.title = "cloudthinker";
@@ -38,7 +37,7 @@ const themes = themeArgs(
 );
 markStartup("agent.settings");
 
-await main([...themes, ...tuiModeArgs(argv), ...modelScopeArgs(argv), ...argv], {
+await main([...themes, ...modelScopeArgs(argv), ...argv], {
 	extensionFactories: [
 		{ name: "cloudthinker", factory: cloudthinker },
 		{ name: "subagents", factory: bundledSubagents },

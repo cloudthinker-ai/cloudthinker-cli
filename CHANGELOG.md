@@ -1,3 +1,7 @@
+## [0.5.8]
+
+- The update channel now follows the origin: the production site offers stable releases, any other `CLOUDTHINKER_URL` origin offers dev prereleases, and the startup offer says when a build is on the dev channel.
+
 ## [0.5.7]
 
 - The `chat -p` submit line now says the run executes in your CloudThinker workspace (cloud) and cannot see your local files.
@@ -17,4 +21,3 @@
 - Included subagent delegation in the agent bundle with CloudThinker agent modes and separate session records.
 - Headless chat sends the default Pro selection required by the current backend; Starter workspaces retain the server-enforced Light mode.
 - Agent installation tolerates a briefly busy staged executable while retaining the existing probe timeout.
-

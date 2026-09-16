@@ -1237,12 +1237,12 @@
             "type": "string"
           },
           "provider": {
-            "$ref": "#/components/schemas/CloudProvider"
+            "$ref": "#/components/schemas/CloudProvider",
+            "nullable": true
           }
         },
         "required": [
-          "name",
-          "provider"
+          "name"
         ],
         "title": "WorkspaceCreate",
         "type": "object"
@@ -1409,6 +1409,13 @@
             "nullable": true,
             "title": "Brand Primary Color",
             "type": "string"
+          },
+          "cloud_connection_prefixes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Cloud Connection Prefixes",
+            "type": "array"
           },
           "created_at": {
             "format": "date-time",

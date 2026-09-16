@@ -13,7 +13,7 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 
-use axoupdater::{AxoUpdater, Version};
+use axoupdater::{AxoUpdater, UpdateRequest, Version};
 use serde::Serialize;
 
 use crate::engine::exit::ExitCode;
@@ -67,7 +67,41 @@ enum Outcome {
     Failed(String),
 }
 
-async fn install_latest(force: bool) -> Outcome {
+/// Which release track this installation follows.
+#[derive(Clone, Copy)]
+enum Channel {
+    /// The production origin: GitHub `releases/latest` only.
+    Stable,
+    /// Any other origin: the newest release, prereleases included.
+    Dev,
+}
+
+/// The production origin follows the stable track; any other valid origin —
+/// the dev cluster, staging, a local stack — follows dev prereleases, because
+/// whoever points the CLI at a non-prod backend is testing against it. An
+/// origin that fails to parse is not a deliberate dev choice, so it fails
+/// closed to stable.
+fn channel_of(base_url: &str) -> Channel {
+    match (
+        cloudthinker_client::origin_of(base_url),
+        cloudthinker_client::origin_of(crate::DEFAULT_BASE_URL),
+    ) {
+        (Ok(origin), Ok(prod)) if origin != prod => Channel::Dev,
+        _ => Channel::Stable,
+    }
+}
+
+/// axoupdater owns the release math; the channel only picks its strategy.
+/// Both strategies key on the release source the receipt names, so the origin
+/// never touches the network — it only selects.
+fn request_for(channel: Channel) -> UpdateRequest {
+    match channel {
+        Channel::Stable => UpdateRequest::Latest,
+        Channel::Dev => UpdateRequest::LatestMaybePrerelease,
+    }
+}
+
+async fn install_latest(force: bool, channel: Channel) -> Outcome {
     let mut updater = AxoUpdater::new_for(APP_NAME);
     if let Err(err) = updater.load_receipt() {
         // No receipt: the binary was not installed by a cargo-dist installer
@@ -80,6 +114,7 @@ async fn install_latest(force: bool) -> Outcome {
     if !matches!(updater.check_receipt_is_for_this_executable(), Ok(true)) {
         return Outcome::Refused("the running binary does not match the install receipt".into());
     }
+    updater.configure_version_specifier(request_for(channel));
     if force {
         updater.always_update(true);
     }
@@ -93,9 +128,9 @@ async fn install_latest(force: bool) -> Outcome {
     }
 }
 
-pub async fn run(force: bool, json: bool) -> ExitCode {
+pub async fn run(force: bool, json: bool, base_url: &str) -> ExitCode {
     warn_on_env_overrides();
-    render(&install_latest(force).await, json)
+    render(&install_latest(force, channel_of(base_url)).await, json)
 }
 
 /// The one place owning the stdout-purity + exit-code mapping for an update
@@ -173,21 +208,23 @@ fn warn_on_env_overrides() {
 /// or unreachable release host, or a declined prompt all fall through to the
 /// session. A start-up check that can delay or fail a start is worse than no
 /// check at all, so the network side runs under `UPDATE_CHECK_BUDGET`.
-pub async fn offer_on_start() {
+pub async fn offer_on_start(base_url: &str) {
     if std::env::var_os(UPDATE_CHECK_OPT_OUT).is_some() {
         return;
     }
     if !(std::io::stdin().is_terminal() && std::io::stderr().is_terminal()) {
         return;
     }
-    let Ok(Some(version)) = tokio::time::timeout(UPDATE_CHECK_BUDGET, newer_release()).await else {
+    let channel = channel_of(base_url);
+    let Ok(Some(version)) = tokio::time::timeout(UPDATE_CHECK_BUDGET, newer_release(channel)).await
+    else {
         return;
     };
-    if !accepts_install(&version) {
+    if !accepts_install(channel, &version) {
         return;
     }
     warn_on_env_overrides();
-    let outcome = install_latest(false).await;
+    let outcome = install_latest(false, channel).await;
     render(&outcome, false);
     if matches!(outcome, Outcome::Updated { .. }) {
         restart_into_installed_binary();
@@ -230,12 +267,13 @@ fn installed_binary_path() -> Option<PathBuf> {
 }
 
 /// The version of a newer release this installation can actually install, if any.
-async fn newer_release() -> Option<String> {
+async fn newer_release(channel: Channel) -> Option<String> {
     let mut updater = AxoUpdater::new_for(APP_NAME);
     updater.load_receipt().ok()?;
     if !matches!(updater.check_receipt_is_for_this_executable(), Ok(true)) {
         return None;
     }
+    updater.configure_version_specifier(request_for(channel));
     newer_than_running(updater.query_new_version().await.ok().flatten()?)
 }
 
@@ -249,11 +287,19 @@ fn newer_than(latest: &Version, running: &Version) -> Option<String> {
     (latest > running).then(|| latest.to_string())
 }
 
+/// The one offer line; the dev channel is named so a tester always knows
+/// which track pulled the build in.
+fn offer_line(channel: Channel, version: &str) -> String {
+    let track = match channel {
+        Channel::Stable => "",
+        Channel::Dev => " on the dev channel",
+    };
+    format!("cloudthinker {version} is available{track} (you have {RUNNING_VERSION})")
+}
+
 /// Ask once on the terminal. Anything but an explicit yes keeps the session.
-fn accepts_install(version: &str) -> bool {
-    output::progress(&format!(
-        "cloudthinker {version} is available (you have {RUNNING_VERSION})"
-    ));
+fn accepts_install(channel: Channel, version: &str) -> bool {
+    output::progress(&offer_line(channel, version));
     eprint!("Install it now? [y/N] ");
     if std::io::stderr().flush().is_err() {
         return false;
@@ -267,8 +313,79 @@ fn accepts_install(version: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{RUNNING_VERSION, newer_than, newer_than_running};
-    use axoupdater::Version;
+    use super::{
+        Channel, RUNNING_VERSION, channel_of, newer_than, newer_than_running, offer_line,
+        request_for,
+    };
+    use axoupdater::{UpdateRequest, Version};
+
+    #[test]
+    fn the_prod_origin_follows_stable() {
+        assert!(matches!(
+            channel_of("https://app.cloudthinker.io"),
+            Channel::Stable
+        ));
+    }
+
+    #[test]
+    fn any_other_origin_follows_dev() {
+        assert!(matches!(
+            channel_of("https://dev.cloudthinker.io"),
+            Channel::Dev
+        ));
+        assert!(matches!(channel_of("http://localhost:8080"), Channel::Dev));
+        assert!(matches!(
+            channel_of("https://staging.cloudthinker.io"),
+            Channel::Dev
+        ));
+    }
+
+    #[test]
+    fn an_unparseable_origin_fails_closed_to_stable() {
+        assert!(matches!(channel_of("not a url"), Channel::Stable));
+        assert!(matches!(channel_of(""), Channel::Stable));
+    }
+
+    #[test]
+    fn channels_map_to_axoupdater_strategies() {
+        assert!(matches!(
+            request_for(Channel::Stable),
+            UpdateRequest::Latest
+        ));
+        assert!(matches!(
+            request_for(Channel::Dev),
+            UpdateRequest::LatestMaybePrerelease
+        ));
+    }
+
+    #[test]
+    fn the_offer_names_the_dev_channel() {
+        assert_eq!(
+            offer_line(Channel::Stable, "0.6.0"),
+            format!("cloudthinker 0.6.0 is available (you have {RUNNING_VERSION})")
+        );
+        assert_eq!(
+            offer_line(Channel::Dev, "0.6.0-dev.1"),
+            format!(
+                "cloudthinker 0.6.0-dev.1 is available on the dev channel (you have {RUNNING_VERSION})"
+            )
+        );
+    }
+
+    #[test]
+    fn a_prerelease_beats_an_older_stable_but_yields_to_its_own_stable() {
+        let running = Version::parse("0.5.7").unwrap();
+        assert_eq!(
+            newer_than(&Version::parse("0.6.0-dev.1").unwrap(), &running),
+            Some("0.6.0-dev.1".to_string())
+        );
+        let dev = Version::parse("0.6.0-dev.1").unwrap();
+        assert_eq!(
+            newer_than(&Version::parse("0.6.0").unwrap(), &dev),
+            Some("0.6.0".to_string())
+        );
+        assert_eq!(newer_than(&dev, &Version::parse("0.6.0").unwrap()), None);
+    }
 
     #[test]
     fn offers_a_strictly_newer_release() {

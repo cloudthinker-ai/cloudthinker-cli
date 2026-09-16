@@ -26,7 +26,7 @@ const URL_ENV_VAR: &str = "CLOUDTHINKER_URL";
 pub async fn run(base_url: &str, workspace: Option<&str>, args: Vec<OsString>) -> ExitCode {
     let mut timing = crate::engine::timing::PhaseTimer::from_env();
     timing.mark("wrapper.dispatch");
-    crate::commands::update::offer_on_start().await;
+    crate::commands::update::offer_on_start(base_url).await;
     timing.mark("wrapper.update_check");
     let identity = match resolve_identity(base_url, workspace).await {
         Ok(identity) => identity,
