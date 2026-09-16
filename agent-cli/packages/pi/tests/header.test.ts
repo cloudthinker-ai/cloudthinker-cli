@@ -141,23 +141,47 @@ test("the live header responds to resizing without losing identity or failure st
 test("monochrome logo preserves its silhouette without escape sequences", () => {
 	const mono = renderLogo(plain, true);
 	assert.deepEqual(mono, mono.map(stripVTControlCharacters));
-	assert.ok(mono.some((row) => /[▀▄█]/.test(row)));
-	assert.ok(mono.every((row) => visibleWidth(row) === LOGO_WIDTH));
+	assert.ok(mono.some((row) => /[█]/.test(row)));
+	assert.ok(mono.every((row) => visibleWidth(row) <= LOGO_WIDTH));
+	assert.ok(mono.some((row) => visibleWidth(row) === LOGO_WIDTH));
 });
 
-test("the wide header logo follows the supplied accent on every render", (t) => {
+test("the logo colors its rows with the brand gradient in truecolor", (t) => {
 	const previous = process.env.NO_COLOR;
 	t.after(() => { if (previous === undefined) delete process.env.NO_COLOR; else process.env.NO_COLOR = previous; });
 	delete process.env.NO_COLOR;
-	for (const accent of ["\u001b[31m", "\u001b[36m"]) {
-		const styler: HeaderStyler = {
-			...plain,
-			fg: (color, text) => color === "accent" ? `${accent}${text}\u001b[39m` : text,
+	const rows = renderLogo(plain);
+	assert.equal(rows.length, 12);
+	assert.ok(rows[0]!.startsWith("\u001b[38;2;142;197;235m"));
+	assert.ok(rows[rows.length - 1]!.startsWith("\u001b[38;2;43;181;168m"));
+	for (const row of rows) assert.ok(row.endsWith("\u001b[39m"));
+	assert.deepEqual(rows.map(stripVTControlCharacters), renderLogo(plain, true));
+	const header = formatHeaderText({ link: "linking" }, versions, plain,
+		{ compact: "", expanded: "", more: "" }, false, 80);
+	assert.ok(header.includes("\u001b[38;2;142;197;235m"));
+});
+
+test("a light theme darkens the gradient so every row stays readable", async () => {
+	const { getThemeByName } = await import(new URL("./modes/interactive/theme/theme.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
+	initTheme("dark");
+	const light = getThemeByName("light")!;
+	const rows = renderLogo(light);
+	assert.ok(rows[0]!.startsWith("\u001b[38;2;26;111;158m"));
+	assert.ok(rows[rows.length - 1]!.startsWith("\u001b[38;2;0;120;111m"));
+	const luminance = (color: readonly [number, number, number]) => {
+		const channel = (value: number) => {
+			const c = value / 255;
+			return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 		};
-		const header = formatHeaderText({ link: "linking" }, versions, styler,
-			{ compact: "", expanded: "", more: "" }, false, 80);
-		const firstRow = header.split("\n")[0]!.trimEnd();
-		assert.equal(firstRow, styler.fg("accent", renderLogo(plain, true)[0]!));
+		return 0.2126 * channel(color[0]) + 0.7152 * channel(color[1]) + 0.0722 * channel(color[2]);
+	};
+	const ratio = (a: readonly [number, number, number], b: readonly [number, number, number]) => {
+		const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+		return (hi! + 0.05) / (lo! + 0.05);
+	};
+	for (const stop of [[26, 111, 158], [0, 120, 111]] as const) {
+		assert.ok(ratio(stop, [245, 245, 245]) >= 3, `${stop} below 3:1 on #f5f5f5`);
+		assert.ok(ratio(stop, [255, 255, 255]) >= 3, `${stop} below 3:1 on #ffffff`);
 	}
 });
 
@@ -168,20 +192,29 @@ test("NO_COLOR bypasses logo styling at the header boundary", (t) => {
 	const styler: HeaderStyler = { ...plain, fg: (_color, text) => `\u001b[31m${text}\u001b[39m` };
 	const header = formatHeaderText({ link: "linking" }, versions, styler,
 		{ compact: "", expanded: "", more: "" }, false, 80);
-	assert.equal(header.split("\n")[0]!.trimEnd(), renderLogo(plain, true)[0]!.trimEnd());
+	const rows = header.split("\n");
+	assert.equal(rows[0]!.trimEnd(), renderLogo(plain, true)[0]!.trimEnd());
+	assert.ok(rows.slice(0, renderLogo(plain, true).length).every((row) => !row.includes("\u001b")));
 });
 
-test("light and dark themes color the whole logo without changing its geometry", async () => {
-	const { getThemeByName } = await import(new URL("./modes/interactive/theme/theme.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
-	initTheme("dark");
-	const mono = renderLogo(plain, true);
-	const rendered = ["dark", "light"].map((name) => {
-		const theme = getThemeByName(name)!;
-		const rows = renderLogo(theme);
-		assert.deepEqual(rows, mono.map((row) => theme.fg("accent", row)));
-		assert.deepEqual(rows.map(stripVTControlCharacters), mono);
-		assert.deepEqual(renderLogo(theme, true), mono);
-		return rows;
-	});
-	assert.notDeepEqual(rendered[0], rendered[1]);
+test("an unknown palette color falls back to the dark stops instead of crashing", () => {
+	const ansiTheme: HeaderStyler = {
+		...plain,
+		getFgAnsi: (color) => color === "text" ? "\u001b[38;5;5m" : "",
+	};
+	const rows = renderLogo(ansiTheme);
+	assert.ok(rows[0]!.startsWith("\u001b[38;2;142;197;235m"));
+	assert.deepEqual(rows.map(stripVTControlCharacters), renderLogo(plain, true));
+});
+
+test("the wide header stacks the gradient wordmark above the identity lines", () => {
+	const header = formatHeaderText(
+		{ link: "linked", workspaceName: "acme-prod", userEmail: "dev@acme.io", webUrl: "https://app.cloudthinker.io/chat/c-1" },
+		versions, plain, { compact: "", expanded: "", more: "" }, false, 80);
+	const rows = header.split("\n");
+	const colored = renderLogo(plain);
+	assert.deepEqual(rows.slice(0, colored.length), colored);
+	assert.equal(rows[colored.length], "");
+	assert.match(stripVTControlCharacters(rows[colored.length + 1]!), /^CloudThinker v/);
+	assert.equal(stripVTControlCharacters(rows[colored.length + 2]!).trimEnd(), "acme-prod");
 });

@@ -3,7 +3,7 @@ import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { TUI } from "@earendil-works/pi-tui";
 
-import { LOGO_WIDTH, renderLogo } from "./logo.ts";
+import { renderLogo } from "./logo.ts";
 import { PI_AUTHOR, PI_LICENSE, type HostVersions } from "./versions.ts";
 
 export const PRODUCT_NAME = "cloudthinker";
@@ -26,6 +26,7 @@ export const MANUAL_LABEL = "Manual";
 export interface HeaderStyler {
 	fg(color: ThemeColor, text: string): string;
 	bold(text: string): string;
+	getFgAnsi?(color: ThemeColor): string;
 }
 
 export interface HeaderHints {
@@ -101,10 +102,8 @@ export function formatHeaderText(
 	const lines: string[] = [];
 	if (width >= 76) {
 		const logo = renderLogo(styler, process.env.NO_COLOR !== undefined);
-		const details = new Text(identity.join("\n"), 0, 0).render(width - LOGO_WIDTH - 4);
-		for (let row = 0; row < Math.max(logo.length, details.length + 1); row += 1) {
-			lines.push(`${logo[row] ?? " ".repeat(LOGO_WIDTH)}    ${row > 0 ? details[row - 1] ?? "" : ""}`);
-		}
+		const details = new Text(identity.join("\n"), 0, 0).render(width);
+		lines.push(...logo, "", ...details);
 	} else {
 		lines.push(...identity);
 	}

@@ -484,6 +484,11 @@
             "$ref": "#/components/schemas/AutofixDisabledReason",
             "nullable": true
           },
+          "can_stop_review": {
+            "default": false,
+            "title": "Can Stop Review",
+            "type": "boolean"
+          },
           "can_trigger_autofix": {
             "default": false,
             "title": "Can Trigger Autofix",

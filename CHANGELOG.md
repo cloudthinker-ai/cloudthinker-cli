@@ -1,3 +1,8 @@
+## [0.5.6]
+
+- The published install one-liner now points at `https://cloudthinker.io/install.sh`; the old `cloudthinker.ai` host keeps redirecting.
+- Stabilized the agent release probe under parallel load by giving the install hygiene check the production 10-second probe budget.
+
 ## [0.5.5]
 
 - Verified staged agent executables before installation and retained the previous bundle.

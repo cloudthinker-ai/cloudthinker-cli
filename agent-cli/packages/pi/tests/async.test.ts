@@ -35,9 +35,13 @@ test("a failing run rejects its caller and frees the flight", async () => {
 });
 
 test("a slow promise resolves at the budget and a fast one at once", async () => {
+	let settle: (value: number) => void = () => {};
+	const timer = setTimeout(() => settle(1), 5_000);
 	const started = Date.now();
-	await withinBudget(new Promise(() => {}), 20);
+	assert.equal(await withinBudget(new Promise<number>((resolve) => { settle = resolve; }), 20), undefined);
 	assert.ok(Date.now() - started >= 15);
+	settle(1);
+	clearTimeout(timer);
 
 	const quick = Date.now();
 	assert.equal(await withinBudget(Promise.resolve("done"), 5_000), "done");

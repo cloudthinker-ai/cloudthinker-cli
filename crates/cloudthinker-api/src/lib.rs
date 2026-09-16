@@ -1291,6 +1291,11 @@ pub mod types {
     ///    "autofix_disabled_reason": {
     ///      "$ref": "#/components/schemas/AutofixDisabledReason"
     ///    },
+    ///    "can_stop_review": {
+    ///      "title": "Can Stop Review",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
     ///    "can_trigger_autofix": {
     ///      "title": "Can Trigger Autofix",
     ///      "default": false,
@@ -1548,6 +1553,8 @@ pub mod types {
         pub author_username: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub autofix_disabled_reason: ::std::option::Option<AutofixDisabledReason>,
+        #[serde(default)]
+        pub can_stop_review: bool,
         #[serde(default)]
         pub can_trigger_autofix: bool,
         #[serde(default)]

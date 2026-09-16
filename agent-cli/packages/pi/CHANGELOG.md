@@ -1,3 +1,8 @@
+## [0.5.6]
+
+- The startup banner renders the CLOUD THINKER wordmark in the brand gradient, stacked above the session identity lines, replacing the stretched quadrant cloud.
+- On light themes the wordmark gradient darkens so every row stays readable against the light background.
+
 ## [0.5.5]
 
 - Displayed the source build identity in the about panel.

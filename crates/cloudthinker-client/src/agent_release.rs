@@ -547,7 +547,7 @@ mod tests {
             0o755,
         )]);
         extract_bundle(&archive, root.path()).unwrap();
-        probe_bundle(root.path(), Duration::from_secs(1)).unwrap();
+        probe_bundle(root.path(), Duration::from_secs(10)).unwrap();
     }
 
     #[cfg(target_os = "linux")]
