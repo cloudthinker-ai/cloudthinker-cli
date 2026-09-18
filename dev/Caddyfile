@@ -21,20 +21,6 @@
 		reverse_proxy {$BACKEND_UPSTREAM:backend:8000}
 	}
 
-	# `pnpm storybook:screenshot` writes every capture to
-	# /tmp/cloudthinker-storybook-snapshots on the HOST, which compose mounts
-	# read-only at /snapshots. One directory per story id, newest file last, so
-	# the stock browse listing is enough and needs no template. The host path is
-	# shared by every checkout on the machine, so the listing shows other
-	# worktrees' captures too.
-	handle /snapshots {
-		redir * /snapshots/ 308
-	}
-	handle_path /snapshots/* {
-		root * /snapshots
-		file_server browse
-	}
-
 	# Storybook cannot be served under a path prefix: its manager fetches
 	# /sb-manager/*, /sb-preview/* and /index.json at absolute paths, so a
 	# stripped prefix 404s on the first asset. This route only forwards to the

@@ -3,6 +3,7 @@ import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { TUI } from "@earendil-works/pi-tui";
 
+import { sanitizeTerminalText } from "./awareness.ts";
 import { renderLogo } from "./logo.ts";
 import { PI_AUTHOR, PI_LICENSE, type HostVersions } from "./versions.ts";
 
@@ -39,7 +40,7 @@ function formatSessionLine(state: HeaderState, styler: HeaderStyler): string {
 	if (state.link === "unavailable") return styler.fg("error", UNLINKED_LINE);
 	if (state.link === "linking") return styler.fg("dim", LINKING_LINE);
 	const parts: string[] = [];
-	if (state.workspaceName) parts.push(styler.fg("text", `${state.workspaceName} (cloud)`));
+	if (state.workspaceName) parts.push(styler.fg("text", `${sanitizeTerminalText(state.workspaceName)} (cloud)`));
 	if (state.autoMode !== undefined) {
 		parts.push(styler.fg("muted", state.autoMode ? AUTO_LABEL : MANUAL_LABEL));
 	}
@@ -94,7 +95,7 @@ export function formatHeaderText(
 	const identity = [title];
 	if (state.link === "linked") {
 		identity.push(formatSessionLine(state, styler));
-		if (state.userEmail) identity.push(styler.fg("muted", state.userEmail));
+		if (state.userEmail) identity.push(styler.fg("muted", sanitizeTerminalText(state.userEmail)));
 		if (state.webUrl) identity.push(styler.fg("muted", "/open · view session in browser"));
 	} else {
 		identity.push(formatSessionLine(state, styler));
@@ -108,7 +109,7 @@ export function formatHeaderText(
 		lines.push(...identity);
 	}
 	if (versions.pi) lines.push(styler.fg("muted", `built on pi v${versions.pi} by ${PI_AUTHOR} (${PI_LICENSE})`));
-	if (expanded && state.webUrl) lines.push(styler.fg("muted", state.webUrl));
+	if (expanded && state.webUrl) lines.push(styler.fg("muted", sanitizeTerminalText(state.webUrl)));
 	if (expanded) return [...lines, hints.expanded].join("\n");
 	return [...lines, hints.compact, hints.more].join("\n");
 }

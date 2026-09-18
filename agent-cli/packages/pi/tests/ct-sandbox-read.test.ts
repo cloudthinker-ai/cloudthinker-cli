@@ -4,6 +4,7 @@ import test from "node:test";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import type { CloudThinkerClient } from "../src/client.ts";
+import { TAG_LEGEND } from "../src/awareness.ts";
 import { MEMORY_DIR } from "../src/memory.ts";
 import { CloudThinkerRuntime } from "../src/runtime.ts";
 import { NO_OUTPUT, registerSandboxRead, renderExecution } from "../src/tools/ct-sandbox-read.ts";
@@ -85,14 +86,14 @@ test("a failed run leads with the exit code, then the error, then whatever stdou
 	);
 });
 
-test("the call line leads with the cloud side word and carries no cloud glyph", () => {
+test("the call line leads with the [C] tag and carries no cloud glyph", () => {
 	const params = {
 		connection_list: ["grafana"],
 		reasoning: "Checking which alerts are firing.",
 		script: "kubectl get pods -A",
 	};
 	const [line] = callLines(params, false);
-	assert.match(line ?? "", /^cloud · ct_sandbox_read/);
+	assert.match(line ?? "", /^\[C\] ct_sandbox_read/);
 	assert.ok(!line?.includes("☁"));
 });
 
@@ -116,4 +117,16 @@ test("the call line shows the reasoning, and the whole script only when expanded
 test("a call still streaming without its reasoning falls back to the script's first line", () => {
 	const [line] = callLines({ connection_list: [], script: "ls /home/user\nls /tmp" }, false);
 	assert.match(line ?? "", /ct_sandbox_read {2}ls \/home\/user$/);
+});
+
+test("the first tagged cloud call carries the one legend", () => {
+	const tool = readTool();
+	assert.ok(tool.renderCall);
+	const lines = tool.renderCall(
+		{ connection_list: ["grafana"], reasoning: "Checking which alerts are firing.", script: "ls" },
+		theme,
+		{ expanded: false, toolCallId: "call-1" } as never,
+	).render(200).map((line) => line.trimEnd());
+	assert.equal(lines[0], TAG_LEGEND);
+	assert.match(lines[1] ?? "", /^\[C\] ct_sandbox_read/);
 });

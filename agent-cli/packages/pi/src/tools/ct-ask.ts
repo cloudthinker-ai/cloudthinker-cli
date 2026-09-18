@@ -14,6 +14,7 @@ import {
 	callComponent,
 	callLine,
 	firstLine,
+	legendLine,
 	link,
 	resultBody,
 	summaryComponent,
@@ -183,8 +184,8 @@ export function registerAsk(runtime: CloudThinkerRuntime): void {
 				if (ctx.hasUI) ctx.ui.setWorkingMessage();
 			}
 		},
-		renderCall: (params: Static<typeof parameters>, theme) =>
-			callComponent(callLine(theme, CT_ASK, firstLine(params.prompt ?? ""))),
+		renderCall: (params: Static<typeof parameters>, theme, context) =>
+			callComponent(callLine(theme, CT_ASK, firstLine(params.prompt ?? "")), undefined, legendLine(theme, context.toolCallId, runtime.legend)),
 		renderResult: (result, options, theme) =>
 			summaryComponent(
 				theme,

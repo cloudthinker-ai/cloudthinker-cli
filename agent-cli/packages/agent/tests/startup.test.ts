@@ -5,6 +5,7 @@ import { stripVTControlCharacters } from "node:util";
 import { InteractiveMode, initTheme } from "@earendil-works/pi-coding-agent";
 import { Container } from "@earendil-works/pi-tui";
 
+import { setMachineState } from "@cloudthinker/pi/src/awareness.ts";
 import { applyStartupUi } from "../src/startup.ts";
 
 initTheme("dark");
@@ -47,7 +48,9 @@ function rendered(host: ReturnType<typeof startup>): string {
 test("large startup inventories collapse, retain error severity, and expand all original details", () => {
 	const host = startup();
 	const compact = rendered(host);
-	assert.equal(compact.split("\n").length, 2);
+	assert.match(compact, /\[L\] this machine/);
+	assert.match(compact, /\[C\] sandbox/);
+	assert.match(compact, /Cloud: On/);
 	assert.match(compact, /150 skills/);
 	assert.match(compact, /1 startup error/);
 	assert.match(compact, /1 startup warning/);
@@ -69,4 +72,17 @@ test("quiet startup shows only diagnostics and verbose startup exposes the full 
 	assert.match(quiet, /1 startup error/);
 	assert.doesNotMatch(quiet, /150 skills/);
 	assert.match(rendered(startup({ quiet: true, verbose: true })), /skill-149/);
+});
+
+test("the machine bar reads the current Cloud state on every render", () => {
+	setMachineState({ cwd: "/workspace", linked: true, workspaceName: "acme", connectionCount: 2, cloudEnabled: true });
+	const host = startup();
+	assert.match(rendered(host), /Cloud: On/);
+	setMachineState({ cloudEnabled: false });
+	const off = rendered(host);
+	assert.match(off, /Cloud: Off/);
+	assert.doesNotMatch(off, /Cloud: On/);
+	assert.match(off, /\[C\] sandbox\s+off for this session/);
+	setMachineState({ cloudEnabled: true });
+	assert.match(rendered(host), /Cloud: On/);
 });

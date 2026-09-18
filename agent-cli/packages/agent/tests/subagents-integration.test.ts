@@ -70,7 +70,7 @@ test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real upstream runtime", {
 		let pi!: ExtensionAPI;
 		const settingsManager = SettingsManager.inMemory({ defaultProvider: "cloudthinker", defaultModel: "pro" });
 		const loader = new DefaultResourceLoader({ cwd: root, agentDir: root, settingsManager, noExtensions: true, noSkills: true, noThemes: true, extensionFactories: [
-			{ name: "cloudthinker", factory: (api) => cloudthinker(api, { cloudEnabled: false }) },
+			{ name: "cloudthinker", factory: (api) => cloudthinker(api) },
 			{ name: "subagents", factory: bundledSubagents },
 			{ name: "capture", factory: (api) => { pi = api; api.on("session_start", (_event, context) => { ctx = context; }); } },
 		] });
@@ -99,7 +99,6 @@ test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real upstream runtime", {
 		for (const call of calls) {
 			assert.equal(call.model, "pro");
 			assert.equal(sessions.get(call.conversation)?.source, parentId);
-			assert.ok(call.tools.every((tool) => !tool.name.startsWith("ct_")));
 		}
 		for (const child of children) assert.match(readFileSync(child.sessionManager.getSessionFile()!, "utf8"), /child verified/);
 		registerAgents(new Map([["invalid", { name: "invalid", description: "Invalid mode", model: "anthropic/claude-opus", systemPrompt: "", promptMode: "replace", extensions: false, skills: false }]]));
@@ -115,7 +114,6 @@ test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real upstream runtime", {
 		});
 		assert.equal(isolated.failure, undefined);
 		assert.equal(calls.at(-1)!.model, "light");
-		assert.ok(calls.at(-1)!.tools.every((tool) => !["ct_ask", "ct_sandbox_read", "ct_sandbox_write", "ct_run_status", "read_task_output"].includes(tool.name)));
 		const reopened = await runAgent(ctx, "general-purpose", "Reply child verified", {
 			pi, resumeSessionFile: children[0]!.sessionManager.getSessionFile(),
 			onSessionCreated: (child) => children.push(child),

@@ -3,7 +3,7 @@ import { type Static, Type } from "typebox";
 import type { ExecutionOutput } from "../client.ts";
 import type { CloudThinkerRuntime } from "../runtime.ts";
 import { CT_SANDBOX_READ, READ_TASK_OUTPUT } from "./names.ts";
-import { callComponent, callLine, resultBody, summaryComponent } from "./render.ts";
+import { callComponent, callLine, legendLine, resultBody, summaryComponent } from "./render.ts";
 import { section, text } from "./shared.ts";
 
 const parameters = Type.Object({
@@ -58,8 +58,8 @@ export function registerReadTaskOutput(runtime: CloudThinkerRuntime): void {
 			);
 			return text(renderOutput(result), result);
 		},
-		renderCall: (params: Static<typeof parameters>, theme) =>
-			callComponent(callLine(theme, READ_TASK_OUTPUT, params.task_id ?? "")),
+		renderCall: (params: Static<typeof parameters>, theme, context) =>
+			callComponent(callLine(theme, READ_TASK_OUTPUT, params.task_id ?? ""), undefined, legendLine(theme, context.toolCallId, runtime.legend)),
 		renderResult: (result, options, theme) =>
 			summaryComponent(
 				theme,

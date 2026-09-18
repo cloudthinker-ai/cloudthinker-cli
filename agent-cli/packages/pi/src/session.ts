@@ -68,6 +68,29 @@ export async function refreshConnections(runtime: CloudThinkerRuntime): Promise<
 	}
 }
 
+export function newSessionEvent(): SessionStartEvent {
+	return { type: "session_start", reason: "new" } as SessionStartEvent;
+}
+
+function applySessionHeader(runtime: CloudThinkerRuntime, link: "linked" | "unavailable"): void {
+	runtime.header.set({
+		link,
+		workspaceName: runtime.identity?.workspace_name,
+		userEmail: runtime.identity?.user_email,
+		webUrl: runtime.session?.web_url,
+		autoMode: runtime.autoMode?.enabled,
+	});
+}
+
+export async function refreshIdentity(runtime: CloudThinkerRuntime): Promise<void> {
+	const [identity] = await Promise.allSettled([
+		runtime.client.whoami(),
+		refreshConnections(runtime),
+	]);
+	if (identity.status === "fulfilled") runtime.identity = identity.value;
+	applySessionHeader(runtime, runtime.session ? "linked" : "unavailable");
+}
+
 export async function startSession(
 	runtime: CloudThinkerRuntime,
 	event: SessionStartEvent,
@@ -80,17 +103,33 @@ export async function startSession(
 		refreshConnections(runtime),
 	]);
 	if (identity.status === "fulfilled") runtime.identity = identity.value;
-	runtime.header.set({
-		link: session.status === "fulfilled" ? "linked" : "unavailable",
-		workspaceName: runtime.identity?.workspace_name,
-		userEmail: runtime.identity?.user_email,
-		webUrl: runtime.session?.web_url,
-		autoMode: runtime.autoMode?.enabled,
-	});
+	applySessionHeader(runtime, session.status === "fulfilled" ? "linked" : "unavailable");
 	if (session.status === "rejected") {
 		runtime.setStatus("✕ cloud unavailable");
 		runtime.notify(
 			`CloudThinker session could not be opened, so cloud tools and the model gateway are unavailable: ${describeError(session.reason)}`,
+			"error",
+		);
+	}
+}
+
+export async function linkLazily(
+	runtime: CloudThinkerRuntime,
+	ctx: ExtensionContext,
+): Promise<void> {
+	if (runtime.session) return;
+	try {
+		await linkSession(
+			runtime,
+			runtime.startEvent ?? newSessionEvent(),
+			ctx,
+			runtime.sourceConversationId,
+		);
+		applySessionHeader(runtime, "linked");
+	} catch (error) {
+		runtime.setStatus("✕ cloud unavailable");
+		runtime.notify(
+			`CloudThinker session could not be opened, so cloud tools and the model gateway are unavailable: ${describeError(error)}`,
 			"error",
 		);
 	}

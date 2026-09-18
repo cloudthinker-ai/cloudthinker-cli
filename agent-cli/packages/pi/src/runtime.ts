@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, SessionStartEvent } from "@earendil-works/pi-coding-agent";
 
 import {
 	CloudThinkerApiError,
@@ -10,11 +10,12 @@ import {
 	type SessionCredits,
 } from "./client.ts";
 import { CLOUD_TOOLS } from "./tools/names.ts";
+import { BOTH_TAG, LOCAL_TAG, createLegend, sanitizeTerminalText, setMachineState } from "./awareness.ts";
 import { PRODUCT_NAME, SessionHeader } from "./header.ts";
 import { type HostVersions, readHostVersions } from "./versions.ts";
 
 export const CLOUD_ENTRY_TYPE = "cloudthinker.cloud";
-export const CLOUD_OFF_MESSAGE = "Cloud is off. Use /cloud on to enable remote commands and Anna delegation.";
+export const CLOUD_OFF_MESSAGE = "Cloud is off for this session, so this tool did not run. It runs commands on the CloudThinker Sandbox, while this session is local-only and the local tools keep running on your machine. Use /cloud on to enable it.";
 
 export const SESSION_ENTRY_TYPE = "cloudthinker";
 export const LOCATION_ENTRY_TYPE = "cloudthinker.location";
@@ -31,7 +32,7 @@ export function approvalWidgetLine(
 	subject = "Anna",
 	hint: string = NOTIFY_HINT,
 ): string {
-	const waiting = `⏸ ${subject} is waiting for your approval in the browser → ${webUrl}`;
+	const waiting = `⏸ ${subject} is waiting for your approval in the browser → ${sanitizeTerminalText(webUrl)}`;
 	return hint ? `${waiting} · ${hint}` : waiting;
 }
 
@@ -71,6 +72,11 @@ export class CloudThinkerRuntime {
 	readonly pi: ExtensionAPI;
 	readonly header: SessionHeader;
 	readonly versions: HostVersions;
+	readonly root: boolean;
+	readonly legend = createLegend();
+	startEvent: SessionStartEvent | undefined;
+	sourceConversationId: string | undefined;
+	afterLink: ((ctx: ExtensionContext) => Promise<void>) | undefined;
 
 	private context: ExtensionContext | undefined;
 
@@ -78,11 +84,13 @@ export class CloudThinkerRuntime {
 		pi: ExtensionAPI,
 		client: CloudThinkerClient = new CloudThinkerClient(),
 		versions: HostVersions = readHostVersions(),
+		root = false,
 	) {
 		this.pi = pi;
 		this.client = client;
 		this.versions = versions;
 		this.header = new SessionHeader(versions);
+		this.root = root;
 	}
 
 	bind(context: ExtensionContext): void {
@@ -102,7 +110,8 @@ export class CloudThinkerRuntime {
 			this.disabledCloudTools = [];
 		}
 		this.cloudEnabled = enabled;
-		this.context?.ui.setStatus(CLOUD_ENTRY_TYPE, enabled ? undefined : "Cloud: Off");
+		this.context?.ui.setStatus(CLOUD_ENTRY_TYPE, enabled ? BOTH_TAG : LOCAL_TAG);
+		if (this.root) setMachineState({ cloudEnabled: enabled, ...(this.context?.cwd ? { cwd: this.context.cwd } : {}) });
 		if (persist) this.pi.appendEntry(CLOUD_ENTRY_TYPE, { enabled });
 	}
 
@@ -180,6 +189,7 @@ export class CloudThinkerRuntime {
 		this.askThread = undefined;
 		this.memory = undefined;
 		this.credits = undefined;
+		this.legend.reset();
 		this.setStatus(undefined);
 		this.setCredits(undefined);
 		this.clearApproval();

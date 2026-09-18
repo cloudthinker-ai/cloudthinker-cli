@@ -231,3 +231,18 @@ test("where points at /cloud on when cloud tools are off, and at linking when un
 	});
 	assert.equal(unlinked[2], "cloud · not linked — Anna and the workspace machine are unavailable here");
 });
+
+test("CA-AWARE-13: /where strips control sequences and line breaks from untrusted values", () => {
+	const lines = whereLines({
+		cwd: "/repo\u001b]0;pwned\u0007\nfake-legend",
+		workspaceName: "ac\u001b[31mme",
+		connectedPrefixes: ["aws"],
+		cloudEnabled: true,
+		linked: true,
+	});
+	const joined = lines.join("\n");
+	assert.doesNotMatch(joined, /\u001b|pwned/);
+	assert.doesNotMatch(joined, /\nfake-legend/);
+	assert.equal(lines.length, 4);
+	assert.match(lines[1]!, /local · \/repo fake-legend/);
+});

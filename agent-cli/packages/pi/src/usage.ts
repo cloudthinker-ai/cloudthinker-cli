@@ -1,5 +1,6 @@
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
+import { sanitizeTerminalText } from "./awareness.ts";
 import type { SessionCredits } from "./client.ts";
 import { formatCredits } from "./credits.ts";
 
@@ -94,10 +95,10 @@ export function sessionPanelLines(
 ): string[] {
 	const prompt = totals.input + totals.cacheRead + totals.cacheWrite;
 	const lines = ["Session"];
-	if (identity.name) lines.push(`Name: ${identity.name}`);
-	lines.push(`File: ${identity.file ?? "in memory"}`);
-	lines.push(`ID: ${identity.id}`);
-	lines.push(identity.webUrl ? `Mirror: ${identity.webUrl}` : "Mirror: not linked");
+	if (identity.name) lines.push(`Name: ${sanitizeTerminalText(identity.name)}`);
+	lines.push(`File: ${identity.file === undefined ? "in memory" : sanitizeTerminalText(identity.file)}`);
+	lines.push(`ID: ${sanitizeTerminalText(identity.id)}`);
+	lines.push(identity.webUrl ? `Mirror: ${sanitizeTerminalText(identity.webUrl)}` : "Mirror: not linked");
 	lines.push("");
 	lines.push("Messages");
 	lines.push(`Total: ${count(totals.messages)}`);

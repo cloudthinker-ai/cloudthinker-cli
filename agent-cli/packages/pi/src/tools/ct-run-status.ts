@@ -4,7 +4,7 @@ import type { RunState } from "../client.ts";
 import type { CloudThinkerRuntime } from "../runtime.ts";
 import { askSummary, renderRun } from "./ct-ask.ts";
 import { CT_ASK, CT_RUN_STATUS } from "./names.ts";
-import { callComponent, callLine, resultBody, summaryComponent } from "./render.ts";
+import { callComponent, callLine, legendLine, resultBody, summaryComponent } from "./render.ts";
 import { text } from "./shared.ts";
 
 const parameters = Type.Object({
@@ -40,8 +40,8 @@ export function registerRunStatus(runtime: CloudThinkerRuntime): void {
 			}
 			return text(renderRun(state), state);
 		},
-		renderCall: (params: Static<typeof parameters>, theme) =>
-			callComponent(callLine(theme, CT_RUN_STATUS, params.run_id ?? "")),
+		renderCall: (params: Static<typeof parameters>, theme, context) =>
+			callComponent(callLine(theme, CT_RUN_STATUS, params.run_id ?? ""), undefined, legendLine(theme, context.toolCallId, runtime.legend)),
 		renderResult: (result, options, theme) =>
 			summaryComponent(
 				theme,

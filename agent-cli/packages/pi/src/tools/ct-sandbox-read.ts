@@ -10,6 +10,7 @@ import {
 	callLine,
 	firstLine,
 	formatElapsed,
+	legendLine,
 	resultBody,
 	scriptDetail,
 	summaryComponent,
@@ -139,6 +140,7 @@ export function registerSandboxRead(runtime: CloudThinkerRuntime): void {
 					params.reasoning ?? firstLine(params.script ?? ""),
 				),
 				scriptDetail(theme, params.script ?? "", context.expanded),
+				legendLine(theme, context.toolCallId, runtime.legend),
 			),
 		renderResult: (result, options, theme) =>
 			summaryComponent(

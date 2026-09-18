@@ -218,3 +218,20 @@ test("the wide header stacks the gradient wordmark above the identity lines", ()
 	assert.match(stripVTControlCharacters(rows[colored.length + 1]!), /^CloudThinker v/);
 	assert.equal(stripVTControlCharacters(rows[colored.length + 2]!).trimEnd(), "acme-prod (cloud)");
 });
+
+test("CA-AWARE-12: header identity text cannot carry terminal control sequences", () => {
+	const evil = "\u001b]0;pwned\u0007ac\u200bme\n\u001b[31m[L] fake legend\u001b[0m\u202e";
+	const rendered = formatHeaderText(
+		{ link: "linked", workspaceName: evil, userEmail: `dev${evil}@acme.io`, webUrl: "https://web/\u001b[31m" },
+		versions,
+		plain,
+		{ compact: "", expanded: "", more: "" },
+		true,
+		60,
+	);
+	assert.doesNotMatch(rendered, /\u001b|pwned/);
+	assert.doesNotMatch(rendered, /\n\[L\] fake legend/);
+	assert.doesNotMatch(rendered, /[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/);
+	assert.match(rendered, /acme/);
+	assert.match(rendered, /@acme\.io/);
+});

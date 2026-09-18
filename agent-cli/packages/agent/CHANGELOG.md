@@ -1,3 +1,9 @@
+## [0.5.9]
+
+- A new session now starts with Cloud off when the agent's `settings.json` sets `cloudDefault` to false, and a delegated child inherits that state even without a recorded session choice.
+- Startup now names the two machines beside the inventory line, and every local tool call carries an ASCII `[L]` tag.
+- Local tool calls draw their `[L]` legend from the rendering session's own state, so a delegated child and its parent never claim or suppress each other's first legend.
+
 ## [0.5.8]
 
 - The agent now starts in pi's regular inline TUI by default instead of fullscreen; pass `--tui-mode fullscreen` or set the pi `tuiMode` setting to keep the fullscreen layout.

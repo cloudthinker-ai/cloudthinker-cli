@@ -3,6 +3,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { Container, Text } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
 
+import { machineBarLines } from "@cloudthinker/pi/src/awareness.ts";
 import { theme } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 
 interface ResourceOptions {
@@ -23,12 +24,12 @@ interface StartupHost {
 
 class StartupResources implements Component {
 	private readonly details: Component[];
-	private readonly summary: Text;
+	private readonly lines: () => string[];
 	private expanded = false;
 
-	constructor(details: Component[], summary: string, expanded: boolean) {
+	constructor(details: Component[], lines: () => string[], expanded: boolean) {
 		this.details = details;
-		this.summary = new Text(summary, 1, 0);
+		this.lines = lines;
 		this.setExpanded(expanded);
 	}
 
@@ -42,14 +43,13 @@ class StartupResources implements Component {
 	}
 
 	invalidate(): void {
-		this.summary.invalidate();
 		for (const detail of this.details) detail.invalidate();
 	}
 
 	render(width: number): string[] {
-		return this.expanded
-			? this.details.flatMap((detail) => detail.render(width))
-			: this.summary.render(width);
+		if (this.expanded) return this.details.flatMap((detail) => detail.render(width));
+		const text = this.lines().join("\n");
+		return text.length === 0 ? [] : new Text(text, 1, 0).render(width);
 	}
 }
 
@@ -72,9 +72,9 @@ export function applyStartupUi(): void {
 		};
 		original.call(view, options);
 		const container = this.loadedResourcesContainer;
-		if (container.children.length === 0) return;
+		const showMachineBar = Boolean(options?.force || this.options.verbose || !this.settingsManager.getQuietStartup());
 		const summary: string[] = [];
-		if (options?.force || this.options.verbose || !this.settingsManager.getQuietStartup()) {
+		if (showMachineBar) {
 			const loader = this.session.resourceLoader;
 			const counts: [number, string][] = [
 				[loader.getAgentsFiles().agentsFiles.length + loader.getAppendSystemPromptSources().length + Number(Boolean(loader.getSystemPromptSource())), "context file"],
@@ -86,12 +86,19 @@ export function applyStartupUi(): void {
 			summary.push(theme.fg("muted", counts.filter(([count]) => count > 0)
 				.map(([count, name]) => `${count} ${name}${count === 1 ? "" : "s"}`).join(" · ")));
 		}
+		if (container.children.length === 0 && !showMachineBar) return;
 		const issues: string[] = [];
 		if (errors) issues.push(theme.fg("error", `${errors} startup error${errors === 1 ? "" : "s"}`));
 		if (warnings) issues.push(theme.fg("warning", `${warnings} startup warning${warnings === 1 ? "" : "s"}`));
 		if (issues.length) summary.push(`${issues.join(" · ")} · ${theme.fg("muted", `${keyText("app.tools.expand")} details`)}`);
 		const details = [...container.children];
 		container.clear();
-		container.addChild(new StartupResources(details, summary.join("\n"), this.getStartupExpansionState()));
+		const lines = () => [
+			...(showMachineBar
+				? machineBarLines({ local: (text) => theme.fg("muted", text), cloud: (text) => theme.fg("accent", text) })
+				: []),
+			...summary,
+		];
+		container.addChild(new StartupResources(details, lines, this.getStartupExpansionState()));
 	};
 }

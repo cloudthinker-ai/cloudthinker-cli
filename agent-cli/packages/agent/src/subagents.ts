@@ -15,6 +15,7 @@ import { DEFAULT_AGENTS } from "@tintinweb/pi-subagents/dist/default-agents.js";
 import cloudthinker from "@cloudthinker/pi/src/index.ts";
 import { PROVIDER_ID } from "@cloudthinker/pi/src/provider.ts";
 import { CLOUD_ENTRY_TYPE } from "@cloudthinker/pi/src/runtime.ts";
+import { cloudDefaultEnabled } from "@cloudthinker/pi/src/settings.ts";
 import { findLinkedSession } from "@cloudthinker/pi/src/session.ts";
 import { CLOUD_TOOLS } from "@cloudthinker/pi/src/tools/names.ts";
 
@@ -34,9 +35,10 @@ function requireCloudMode(model: Pick<NonNullable<CreateAgentSessionOptions["mod
 	return resolved;
 }
 
-function cloudEnabled(ctx: ExtensionContext): boolean {
+export function cloudEnabled(ctx: ExtensionContext): boolean {
 	const entry = ctx.sessionManager.getEntries().findLast((item) => item.type === "custom" && item.customType === CLOUD_ENTRY_TYPE);
-	return entry?.type !== "custom" || (entry.data as { enabled?: boolean } | undefined)?.enabled !== false;
+	if (entry?.type !== "custom") return cloudDefaultEnabled(ctx.cwd, ctx.isProjectTrusted());
+	return (entry.data as { enabled?: unknown } | undefined)?.enabled !== false;
 }
 
 export function childLoaderOptions(

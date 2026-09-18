@@ -18,6 +18,7 @@ function harness() {
 	const tools = new Map<string, ToolDefinition>();
 	const commands = new Map<string, { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> }>();
 	const messages: string[] = [];
+	const statuses: string[] = [];
 	let idle = true;
 	const pi = {
 		getActiveTools: () => active,
@@ -26,14 +27,29 @@ function harness() {
 		registerTool: (tool: ToolDefinition) => tools.set(tool.name, tool),
 		registerCommand: (name: string, command: { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> }) => commands.set(name, command),
 	} as unknown as ExtensionAPI;
-	const client = new Proxy({}, { get: () => () => { assert.fail("Cloud Off must not call the backend"); } }) as CloudThinkerClient;
+	const clientCalls: string[] = [];
+	const client = {
+		createSession: async () => {
+			clientCalls.push("createSession");
+			return { conversation_id: "c-1", workspace_id: "w-1", web_url: "https://web/c-1", auto_mode: { enabled: false, can_edit: false } };
+		},
+		whoami: async () => {
+			clientCalls.push("whoami");
+			return { user_email: "dev@acme.io", workspace_id: "w-1", workspace_name: "acme-prod", organization_id: null };
+		},
+		getConnectionsContext: async () => {
+			clientCalls.push("connections");
+			return { xml: "", prefixes: [] };
+		},
+	} as unknown as CloudThinkerClient;
 	const runtime = new CloudThinkerRuntime(pi, client);
 	const ctx = {
 		isIdle: () => idle,
-		ui: { notify: (message: string) => messages.push(message), setStatus: () => {} },
+		sessionManager: { getEntries: () => entries },
+		ui: { notify: (message: string) => messages.push(message), setStatus: (_key: string, text?: string) => { if (text) statuses.push(text); } },
 	} as unknown as ExtensionCommandContext;
 	registerCommands(runtime);
-	return { runtime, tools, entries, messages, active: () => active, setIdle: (value: boolean) => { idle = value; }, command: (args: string) => commands.get("cloud")!.handler(args, ctx), ctx };
+	return { runtime, tools, entries, messages, statuses, clientCalls, active: () => active, setIdle: (value: boolean) => { idle = value; }, command: (args: string) => commands.get("cloud")!.handler(args, ctx), ctx };
 }
 
 test("CA-CLOUD-1 off hides cloud tools and on preserves local tool changes", async () => {
@@ -42,10 +58,12 @@ test("CA-CLOUD-1 off hides cloud tools and on preserves local tool changes", asy
 	assert.deepEqual(h.active(), ["bash", "read", "write", "edit"]);
 	assert.equal(h.runtime.cloudEnabled, false);
 	assert.deepEqual(h.entries.at(-1), { customType: CLOUD_ENTRY_TYPE, data: { enabled: false } });
+	assert.equal(h.statuses.at(-1), "[L]");
 	h.runtime.pi.setActiveTools(["read", "custom_local"]);
 	await h.command("off");
 	await h.command("on");
 	assert.deepEqual(h.active(), ["read", "custom_local", ...CLOUD_TOOLS]);
+	assert.equal(h.statuses.at(-1), "[L+C]");
 	assert.match(h.messages.at(-1)!, /Cloud: On/);
 });
 
@@ -76,7 +94,10 @@ test("CA-CLOUD-4 all five tools refuse execution while Off before calling the ba
 	for (const register of [registerSandboxRead, registerSandboxWrite, registerAsk, registerRunStatus, registerReadTaskOutput]) register(h.runtime);
 	h.runtime.setCloudEnabled(false);
 	for (const tool of h.tools.values()) {
-		await assert.rejects(() => tool.execute("call", {}, undefined, undefined, h.ctx), /Cloud is off/);
+		await assert.rejects(
+			() => tool.execute("call", {}, undefined, undefined, h.ctx),
+			/(?=.*Cloud is off)(?=.*CloudThinker Sandbox)(?=.*local tools keep running on your machine)(?=.*\/cloud on)/,
+		);
 	}
 	assert.equal(h.tools.size, 5);
 });

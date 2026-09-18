@@ -3,6 +3,8 @@ import type { AgentToolResult, Theme } from "@earendil-works/pi-coding-agent";
 import { Container, Text, hyperlink, truncateToWidth } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
 
+import { CLOUD_TAG, type Legend } from "../awareness.ts";
+
 const PREVIEW_LINES = 5;
 
 export interface Elapsed {
@@ -19,10 +21,7 @@ export function formatElapsed(elapsedMs: number | undefined): string {
 }
 
 export function callLine(theme: Theme, name: string, ...rest: string[]): string {
-	const head = [
-		theme.fg("accent", "cloud"),
-		theme.fg("toolTitle", theme.bold(name)),
-	].join(theme.fg("muted", " · "));
+	const head = `${theme.fg("accent", CLOUD_TAG)} ${theme.fg("toolTitle", theme.bold(name))}`;
 	const tail = rest
 		.filter((part) => part.length > 0)
 		.map((part) => theme.fg("muted", part))
@@ -30,8 +29,14 @@ export function callLine(theme: Theme, name: string, ...rest: string[]): string 
 	return tail.length > 0 ? `${head}  ${tail}` : head;
 }
 
-export function callComponent(line: string, expandedDetail?: string): Component {
+export function legendLine(theme: Theme, toolCallId: string | undefined, legend: Legend): string | undefined {
+	const tag = legend.tag(toolCallId);
+	return tag ? theme.fg("muted", tag) : undefined;
+}
+
+export function callComponent(line: string, expandedDetail?: string, legend?: string): Component {
 	const container = new Container();
+	if (legend) container.addChild(new Text(legend, 0, 0));
 	container.addChild({
 		render: (width) => [truncateToWidth(line, width, "…")],
 		invalidate: () => {},

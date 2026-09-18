@@ -1,3 +1,9 @@
+## [0.5.9]
+
+- New sessions now start with Cloud off when the agent's `settings.json` sets `cloudDefault` to false; a `/cloud on|off` in a session still overrides it, and delegated children inherit the parent's effective state.
+- Cloud tools render under an ASCII `[C]` tag beside the `[L]` local tag, with one legend line per session and a `/tour` that runs one local read and one read-only sandbox read.
+- A brand-new session with Cloud off performs no remote startup work: the conversation link the gateway needs is established lazily on the first model turn, once, while identity, Connections, mirror, memory and skills initialize in the background, so chat still works while Cloud stays off, and `/cloud on` initializes them on demand. Terminal control sequences and zero-width or bidi format characters are stripped from directory names, workspace names, identity fields, session URLs, and `/tour` output before they are drawn, every session including a delegated child draws its own one-time `[L]`/`[C]` legend, and `/tour` runs exactly one local read.
+
 ## [0.5.7]
 
 - Reported an unconfirmed Sandbox write as `outcome_unknown` and told the agent not to replay it automatically.

@@ -1,9 +1,13 @@
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 import { CloudThinkerApiError } from "./client.ts";
 import { PRODUCT_NAME } from "./header.ts";
+import { sanitizeTerminalText, setMachineState } from "./awareness.ts";
 import { type AutoMode, type CloudThinkerRuntime, describeError } from "./runtime.ts";
+import { newSessionEvent, refreshIdentity, startSession } from "./session.ts";
 import { sessionPanelLines, sessionTotals } from "./usage.ts";
+import { runTour } from "./tour.ts";
 import { attributionLine, type HostVersions } from "./versions.ts";
 
 export const SUBCOMMANDS = ["about", "session", "notify", "auto"] as const;
@@ -42,18 +46,19 @@ export const WHERE_SIDE_LINE =
 	"Tools marked cloud run in the cloud; everything else runs on your machine. Credentials never leave the cloud.";
 
 export function whereLines(state: WhereState): string[] {
-	const local = `local · ${state.cwd} — your files, your shell, your git state`;
+	const local = `local · ${sanitizeTerminalText(state.cwd)} — your files, your shell, your git state`;
+	const workspaceName = state.workspaceName === undefined ? "workspace" : sanitizeTerminalText(state.workspaceName);
 	let cloud: string;
 	if (!state.linked) {
 		cloud = "cloud · not linked — Anna and the workspace machine are unavailable here";
 	} else if (!state.cloudEnabled) {
-		cloud = `cloud · ${state.workspaceName ?? "workspace"} — cloud tools are off; /cloud on reaches Anna and the workspace machine`;
+		cloud = `cloud · ${workspaceName} — cloud tools are off; /cloud on reaches Anna and the workspace machine`;
 	} else {
 		const connections =
 			state.connectedPrefixes.length > 0
-				? state.connectedPrefixes.join(", ")
+				? state.connectedPrefixes.map(sanitizeTerminalText).join(", ")
 				: "no connections yet";
-		cloud = `cloud · ${state.workspaceName ?? "workspace"} — Anna, the workspace machine, ${connections}`;
+		cloud = `cloud · ${workspaceName} — Anna, the workspace machine, ${connections}`;
 	}
 	return ["I work in two places:", local, cloud, WHERE_SIDE_LINE];
 }
@@ -118,11 +123,11 @@ export function aboutLines(
 ): string[] {
 	return [
 		`${PRODUCT_NAME} v${versions.host}`,
-		...(versions.buildId ? [`Build: ${versions.buildId}`] : []),
+		...(versions.buildId ? [`Build: ${sanitizeTerminalText(versions.buildId)}`] : []),
 		`pi v${versions.pi}`,
 		attributionLine(versions),
-		`Config: ${agentDir}`,
-		webUrl ? `Session: ${webUrl}` : "Session: not linked",
+		`Config: ${sanitizeTerminalText(agentDir)}`,
+		webUrl ? `Session: ${sanitizeTerminalText(webUrl)}` : "Session: not linked",
 	];
 }
 
@@ -172,24 +177,46 @@ export function registerCommands(runtime: CloudThinkerRuntime): void {
 				}
 				runtime.bind(ctx);
 				runtime.setCloudEnabled(argument === "on");
+				if (argument === "on") {
+					if (!runtime.session) {
+						await startSession(runtime, runtime.startEvent ?? newSessionEvent(), ctx, runtime.sourceConversationId);
+						if (runtime.root) {
+							setMachineState({
+								linked: runtime.session !== undefined,
+								workspaceName: runtime.identity?.workspace_name,
+								connectionCount: runtime.connectedPrefixes.length,
+							});
+						}
+					} else {
+						await refreshIdentity(runtime);
+					}
+					await runtime.afterLink?.(ctx);
+				}
 			}
 
 			const lines: string[] = [`Cloud: ${runtime.cloudEnabled ? "On" : "Off"}`, "Change with /cloud on|off. Off disables the cloud tools: workspace-machine commands and Anna delegation. Existing remote work continues."];
 			lines.push(
 				runtime.identity
-					? `Workspace: ${runtime.identity.workspace_name} (${runtime.identity.user_email})`
+					? `Workspace: ${sanitizeTerminalText(runtime.identity.workspace_name)} (${sanitizeTerminalText(runtime.identity.user_email)})`
 					: "Workspace: unknown (identity call failed)",
 			);
 			lines.push(
-				`Connections: ${runtime.connectedPrefixes.join(", ") || "none connected"}`,
+				`Connections: ${runtime.connectedPrefixes.map(sanitizeTerminalText).join(", ") || "none connected"}`,
 			);
 			lines.push(
 				runtime.session
-					? `Mirror: ${runtime.session.web_url}`
+					? `Mirror: ${sanitizeTerminalText(runtime.session.web_url)}`
 					: "Mirror: not linked, cloud tools are unavailable",
 			);
-			if (runtime.askThread) lines.push(`Anna thread: ${runtime.askThread.web_url}`);
+			if (runtime.askThread) lines.push(`Anna thread: ${sanitizeTerminalText(runtime.askThread.web_url)}`);
 			ctx.ui.notify(lines.join("\n"), "info");
+		},
+	});
+
+	runtime.pi.registerCommand("tour", {
+		description: "Show one local read and one sandbox read, side by side, with no cloud write",
+		handler: async (_args, ctx) => {
+			await runTour(runtime, ctx);
 		},
 	});
 
