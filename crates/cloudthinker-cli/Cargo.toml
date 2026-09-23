@@ -1,6 +1,6 @@
 [package]
 name = "cloudthinker-cli"
-version = "0.5.11-dev.1"
+version = "0.5.11-dev.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
