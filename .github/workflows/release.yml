@@ -436,7 +436,11 @@ jobs:
       # host manifests cannot supply it: `dist plan` and `dist host` run with
       # --no-local-paths (cargo-dist 0.32.0 cmd_plan/cmd_host), so their own
       # upload_files is always empty; the build manifests carry local paths
-      # and are what the caches transport. Deriving from the manifests instead
+      # and are what the caches transport. Those local paths are absolute on
+      # the build runner (a macOS build writes /Users/runner/...), so resolve
+      # each entry to its basename under target/distrib, where the restores
+      # put it, instead of testing it verbatim on the host runner. Deriving
+      # from the manifests instead
       # of the directory means a stray file dist leaves in target/distrib
       # cannot become a release asset, and an empty or missing entry fails the
       # job instead of shipping a partial release. The workspace-root
@@ -451,7 +455,7 @@ jobs:
           mkdir -p artifacts
           mapfile -t assets < <(
             for m in target/distrib/*-dist-manifest.json; do
-              jq --raw-output '.upload_files[]' "$m"
+              jq --raw-output '.upload_files[] | gsub("\\\\"; "/") | split("/") | last' "$m"
             done | sort -u
           )
           test "${#assets[@]}" -gt 0 || {
@@ -459,11 +463,11 @@ jobs:
             exit 1
           }
           for f in "${assets[@]}"; do
-            test -f "$f" || {
-              echo "::error::missing release asset: $f"
+            test -f "target/distrib/$f" || {
+              echo "::error::missing release asset: target/distrib/$f"
               exit 1
             }
-            cp "$f" artifacts/
+            cp "target/distrib/$f" artifacts/
           done
           if [ -f dist-manifest.json ]; then
             cp dist-manifest.json artifacts/
