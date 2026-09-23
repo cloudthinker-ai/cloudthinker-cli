@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "CloudThinker provider, cloud tools, session mirror, and workspace skills for the pi coding agent.",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "keywords": ["pi-package"],
   "pi": {
     "extensions": ["./src/index.ts"]

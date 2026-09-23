@@ -178,7 +178,7 @@ keeps dist's consistency check from rejecting the divergence. Edit the
 workflow by hand and mirror every deliberate change into it after a `dist`
 upgrade.
 
-This workspace is the root of the private GitHub repo
+This workspace is the root of the public GitHub repo
 `cloudthinker-ai/cloudthinker-cli-src`, a **publish mirror** of the `cli/` tree in the
 GitLab monorepo (the source of truth). Never edit here directly. Changes land in the
 monorepo and are pushed with `make -C cli release-sync`. A release is a pushed semver
@@ -193,9 +193,9 @@ The tag triggers `release.yml`, which cross-builds every target and publishes a
 GitHub Release on the public repo `cloudthinker-ai/cloudthinker-cli` carrying the
 platform archives plus `cloudthinker-cli-installer.sh` and
 `cloudthinker-cli-installer.ps1` (`github-releases-repo` in `dist-workspace.toml`;
-the source repo holds the `GH_RELEASES_TOKEN` secret that writes there). The public
-repo carries releases only, so the source stays private while every download URL
-stays public. Its README is not mirrored; the copy to publish by hand lives in
+the source repo holds the `GH_RELEASES_TOKEN` secret that writes there). The releases
+repo carries releases only, and the source repo carries the code; both are public.
+The sync leaves every `AGENTS.md` and `CLAUDE.md` out of the source repo. The releases repo's README is not mirrored; the copy to publish by hand lives in
 `docs/release-repo-README.md`.
 
 The release also carries `cloudthinker-cli-x86_64-pc-windows-msvc.zip` and the
@@ -219,3 +219,12 @@ this repo serves it. `docs/cdn-install-redirect.md` holds that config.
 
 Homebrew is deferred: adding a `"homebrew"` installer needs a separate
 `cloudthinker-ai/homebrew-tap` repo and a tap entry in `dist-workspace.toml`.
+
+## License
+
+The CloudThinker CLI is licensed under the [Apache License, Version 2.0](LICENSE).
+
+The CloudThinker coding agent (`cloudthinker agent`) is built on the
+[pi](https://github.com/earendil-works/pi) agent harness by Mario Zechner, which
+is licensed under the MIT License. [NOTICE](NOTICE) lists pi and the other
+third-party components with their license texts.

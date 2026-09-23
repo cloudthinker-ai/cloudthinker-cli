@@ -16,7 +16,7 @@ set -euo pipefail
 
 REPO="cloudthinker-ai/cloudthinker-cli-src"
 CLI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-AGENT_CLI_DIR="$(cd "$CLI_DIR/../agent-cli" && pwd)"
+MONO_ROOT="$(git -C "$CLI_DIR" rev-parse --show-toplevel)"
 MONO_SHA="$(git -C "$CLI_DIR" rev-parse HEAD)"
 
 python3 "$CLI_DIR/scripts/changelog.py" pending
@@ -56,15 +56,16 @@ trap 'rm -rf "$work"' EXIT
 echo ">> clone $REPO"
 gh repo clone "$REPO" "$work/repo" -- --quiet
 
-echo ">> mirror cli/ -> clone (drop build dirs, protect the clone's .git)"
-rsync -a --delete \
-  --exclude='.git/' --exclude='target/' --exclude='.gen/' --exclude='.DS_Store' \
-  "$CLI_DIR"/ "$work/repo"/
+echo ">> export the committed cli/ and agent-cli/ trees at $MONO_SHA"
+mkdir "$work/src"
+git -C "$MONO_ROOT" archive --format=tar "$MONO_SHA" -- cli agent-cli \
+  ':(exclude,glob)**/AGENTS.md' ':(exclude,glob)**/CLAUDE.md' | tar -x -C "$work/src"
 
-echo ">> mirror agent-cli/ -> clone/agent-cli (drop node_modules and build dirs)"
-rsync -a --delete \
-  --exclude='node_modules/' --exclude='dist/' --exclude='.gen/' --exclude='.DS_Store' \
-  "$AGENT_CLI_DIR"/ "$work/repo/agent-cli"/
+echo ">> mirror cli/ -> clone (protect the clone's .git)"
+rsync -a --delete --exclude='.git/' "$work/src/cli"/ "$work/repo"/
+
+echo ">> mirror agent-cli/ -> clone/agent-cli"
+rsync -a --delete "$work/src/agent-cli"/ "$work/repo/agent-cli"/
 printf '%s\n' "$MONO_SHA" > "$work/repo/agent-cli/.source-revision"
 
 cd "$work/repo"

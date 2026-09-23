@@ -591,90 +591,6 @@ pub mod types {
         pub workspace_name: ::std::string::String,
     }
 
-    ///`CloudProvider`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "title": "CloudProvider",
-    ///  "type": "string",
-    ///  "enum": [
-    ///    "AWS",
-    ///    "GCP",
-    ///    "AZURE"
-    ///  ]
-    ///}
-    /// ```
-    /// </details>
-    #[derive(
-        :: serde :: Deserialize,
-        :: serde :: Serialize,
-        Clone,
-        Copy,
-        Debug,
-        Eq,
-        Hash,
-        Ord,
-        PartialEq,
-        PartialOrd,
-    )]
-    pub enum CloudProvider {
-        #[serde(rename = "AWS")]
-        Aws,
-        #[serde(rename = "GCP")]
-        Gcp,
-        #[serde(rename = "AZURE")]
-        Azure,
-    }
-
-    impl ::std::fmt::Display for CloudProvider {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            match *self {
-                Self::Aws => f.write_str("AWS"),
-                Self::Gcp => f.write_str("GCP"),
-                Self::Azure => f.write_str("AZURE"),
-            }
-        }
-    }
-
-    impl ::std::str::FromStr for CloudProvider {
-        type Err = self::error::ConversionError;
-        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            match value {
-                "AWS" => Ok(Self::Aws),
-                "GCP" => Ok(Self::Gcp),
-                "AZURE" => Ok(Self::Azure),
-                _ => Err("invalid value".into()),
-            }
-        }
-    }
-
-    impl ::std::convert::TryFrom<&str> for CloudProvider {
-        type Error = self::error::ConversionError;
-        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<&::std::string::String> for CloudProvider {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: &::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<::std::string::String> for CloudProvider {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: ::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
     ///`Code`
     ///
     /// <details><summary>JSON schema</summary>
@@ -4002,9 +3918,6 @@ pub mod types {
     ///        "string",
     ///        "null"
     ///      ]
-    ///    },
-    ///    "provider": {
-    ///      "$ref": "#/components/schemas/CloudProvider"
     ///    }
     ///  }
     ///}
@@ -4017,8 +3930,6 @@ pub mod types {
         pub name: ::std::string::String,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub organization_name: ::std::option::Option<::std::string::String>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub provider: ::std::option::Option<CloudProvider>,
     }
 
     ///`WorkspacePublic`
@@ -4147,9 +4058,6 @@ pub mod types {
     ///      ],
     ///      "format": "uuid"
     ///    },
-    ///    "provider": {
-    ///      "$ref": "#/components/schemas/CloudProvider"
-    ///    },
     ///    "pulse_auto_subscribe": {
     ///      "title": "Pulse Auto Subscribe",
     ///      "default": false,
@@ -4197,8 +4105,6 @@ pub mod types {
         pub organization_name: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub owner_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub provider: ::std::option::Option<CloudProvider>,
         #[serde(default)]
         pub pulse_auto_subscribe: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -4450,9 +4356,6 @@ pub mod types {
     ///      ],
     ///      "format": "uuid"
     ///    },
-    ///    "provider": {
-    ///      "$ref": "#/components/schemas/CloudProvider"
-    ///    },
     ///    "pulse_auto_subscribe": {
     ///      "title": "Pulse Auto Subscribe",
     ///      "default": false,
@@ -4503,8 +4406,6 @@ pub mod types {
         pub organization_name: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub owner_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub provider: ::std::option::Option<CloudProvider>,
         #[serde(default)]
         pub pulse_auto_subscribe: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]

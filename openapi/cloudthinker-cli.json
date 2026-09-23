@@ -162,15 +162,6 @@
         "title": "CliWhoAmIResponse",
         "type": "object"
       },
-      "CloudProvider": {
-        "enum": [
-          "AWS",
-          "GCP",
-          "AZURE"
-        ],
-        "title": "CloudProvider",
-        "type": "string"
-      },
       "CodeReviewCategoryCounts": {
         "description": "Unresolved findings per cited-Learning category in the review summary.\n\nA finding joins a category by citing a Learning of that category, so only\nLearning-citing findings count here (mirrors the \"Learnings cited\" row, not\n\"Findings\"). Counts are UNRESOLVED only, matching `severity_counts` \u2014\na fixed finding is not work left to do.",
         "properties": {
@@ -1235,10 +1226,6 @@
             "nullable": true,
             "title": "Organization Name",
             "type": "string"
-          },
-          "provider": {
-            "$ref": "#/components/schemas/CloudProvider",
-            "nullable": true
           }
         },
         "required": [
@@ -1344,10 +1331,6 @@
             "nullable": true,
             "title": "Owner Id",
             "type": "string"
-          },
-          "provider": {
-            "$ref": "#/components/schemas/CloudProvider",
-            "nullable": true
           },
           "pulse_auto_subscribe": {
             "default": false,
@@ -1487,10 +1470,6 @@
             "nullable": true,
             "title": "Owner Id",
             "type": "string"
-          },
-          "provider": {
-            "$ref": "#/components/schemas/CloudProvider",
-            "nullable": true
           },
           "pulse_auto_subscribe": {
             "default": false,

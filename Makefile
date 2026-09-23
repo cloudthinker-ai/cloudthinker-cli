@@ -33,7 +33,7 @@ gen:
 	rm -rf $(API_CRATE)
 	RUSTFMT="$(NIGHTLY_RUSTFMT)" cargo progenitor \
 		--input $(SNAPSHOT) --output $(API_CRATE) \
-		--name cloudthinker-api --version 0.1.0
+		--name cloudthinker-api --version 0.1.0 --license-name Apache-2.0
 	@echo ">> inject relaxed-lint header into generated lib.rs"
 	python3 $(CLI_DIR)/scripts/inject_lint_header.py $(API_CRATE)/src/lib.rs
 	@echo ">> gen complete: $(SNAPSHOT) + $(API_CRATE)"
