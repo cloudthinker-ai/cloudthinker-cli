@@ -168,8 +168,15 @@ Documentation: <https://docs.cloudthinker.io>
 
 Distribution is [cargo-dist](https://opensource.axo.dev/cargo-dist/) driven; config
 lives in `dist-workspace.toml`, the release pipeline in
-`.github/workflows/release.yml`. Both are generated: edit the config and rerun
-`dist generate`, never hand-edit the workflow.
+`.github/workflows/release.yml`. The workflow is **hand-maintained**: it was
+born from `dist generate` but carries deliberate hardening that regeneration
+would revert — least-privilege permission scoping, an external release repo,
+and inter-job artifact transport through `actions/cache` under run-scoped keys
+instead of GitHub Actions artifact storage (that storage hit a stale quota
+error in 2026-09, APT-1002). `allow-dirty = ["ci"]` in `dist-workspace.toml`
+keeps dist's consistency check from rejecting the divergence. Edit the
+workflow by hand and mirror every deliberate change into it after a `dist`
+upgrade.
 
 This workspace is the root of the private GitHub repo
 `cloudthinker-ai/cloudthinker-cli-src`, a **publish mirror** of the `cli/` tree in the
