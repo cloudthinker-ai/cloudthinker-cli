@@ -11,9 +11,10 @@
 
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axoupdater::{AxoUpdater, UpdateRequest, Version};
+use cloudthinker_client::UpdateCache;
 use serde::Serialize;
 
 use crate::engine::exit::ExitCode;
@@ -33,6 +34,9 @@ const RUNNING_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// How long the start-up check may take before the agent starts anyway. The
 /// check exists to save a user a stale session, never to delay one.
 const UPDATE_CHECK_BUDGET: Duration = Duration::from_secs(2);
+
+const CHECK_INTERVAL_SECS: u64 = 20 * 60 * 60;
+const RETRY_INTERVAL_SECS: u64 = 60 * 60;
 
 /// Printed when the freshly installed binary could not take over this start.
 const RESTART_HINT: &str = "restart cloudthinker to pick up the new version";
@@ -76,6 +80,15 @@ enum Channel {
     Dev,
 }
 
+impl Channel {
+    fn name(self) -> &'static str {
+        match self {
+            Channel::Stable => "stable",
+            Channel::Dev => "dev",
+        }
+    }
+}
+
 /// The production origin follows the stable track; any other valid origin —
 /// the dev cluster, staging, a local stack — follows dev prereleases, because
 /// whoever points the CLI at a non-prod backend is testing against it. An
@@ -115,6 +128,7 @@ async fn install_latest(force: bool, channel: Channel) -> Outcome {
         return Outcome::Refused("the running binary does not match the install receipt".into());
     }
     updater.configure_version_specifier(request_for(channel));
+    updater.disable_installer_output();
     if force {
         updater.always_update(true);
     }
@@ -130,7 +144,22 @@ async fn install_latest(force: bool, channel: Channel) -> Outcome {
 
 pub async fn run(force: bool, json: bool, base_url: &str) -> ExitCode {
     warn_on_env_overrides();
-    render(&install_latest(force, channel_of(base_url)).await, json)
+    let step = (!json).then(|| output::step("Checking for updates"));
+    let outcome = install_latest(force, channel_of(base_url)).await;
+    drop(step);
+    if let Outcome::Updated { new, .. } = &outcome
+        && crate::commands::agent::bundle_in_use()
+    {
+        let step = (!json).then(|| output::step(&updating_line(new)));
+        let prefetched = crate::commands::agent::prefetch_bundle(new).await;
+        drop(step);
+        if let Err(error) = prefetched {
+            output::warn(&format!(
+                "the next `cloudthinker agent` start finishes the update: {error}"
+            ));
+        }
+    }
+    render(&outcome, json)
 }
 
 /// The one place owning the stdout-purity + exit-code mapping for an update
@@ -144,10 +173,7 @@ fn render(outcome: &Outcome, json: bool) -> ExitCode {
                 old_version: old.clone(),
                 new_version: Some(new.clone()),
             },
-            format!(
-                "Updated cloudthinker from {} to {new}",
-                old.as_deref().unwrap_or("an unknown version")
-            ),
+            updated_line(old.as_deref().unwrap_or("an unknown version"), new),
         ),
         Outcome::Current => (
             UpdateEnvelope {
@@ -202,33 +228,98 @@ fn warn_on_env_overrides() {
     }
 }
 
-/// Offer a newer release before a long interactive session starts.
-///
-/// Every failure path is silent and non-blocking: no receipt, no TTY, a slow
-/// or unreachable release host, or a declined prompt all fall through to the
-/// session. A start-up check that can delay or fail a start is worse than no
-/// check at all, so the network side runs under `UPDATE_CHECK_BUDGET`.
-pub async fn offer_on_start(base_url: &str) {
+pub async fn offer_on_start(base_url: &str) -> PendingCheck {
     if std::env::var_os(UPDATE_CHECK_OPT_OUT).is_some() {
-        return;
+        return PendingCheck(None);
     }
     if !(std::io::stdin().is_terminal() && std::io::stderr().is_terminal()) {
-        return;
+        return PendingCheck(None);
     }
-    let channel = channel_of(base_url);
-    let Ok(Some(version)) = tokio::time::timeout(UPDATE_CHECK_BUDGET, newer_release(channel)).await
-    else {
-        return;
+    let Ok(cache_path) = cloudthinker_client::update_cache_path() else {
+        return PendingCheck(None);
     };
-    if !accepts_install(channel, &version) {
-        return;
+    let channel = channel_of(base_url);
+    let cache = UpdateCache::load(&cache_path);
+    let pending = if cache.is_fresh(
+        channel.name(),
+        now_unix(),
+        CHECK_INTERVAL_SECS,
+        RETRY_INTERVAL_SECS,
+    ) {
+        PendingCheck(None)
+    } else {
+        PendingCheck(Some((
+            tokio::spawn(refresh_cache(cache_path.clone(), channel)),
+            Instant::now(),
+        )))
+    };
+    let Some(version) = offerable(&cache, channel) else {
+        return pending;
+    };
+    match ask(channel, &version) {
+        Answer::Install => {}
+        Answer::NotNow => return pending,
+        Answer::Skip => {
+            pending.settle().await;
+            let mut cache = UpdateCache::load(&cache_path);
+            cache.dismissed_version = Some(version);
+            let _ = cache.save(&cache_path);
+            return PendingCheck(None);
+        }
     }
     warn_on_env_overrides();
+    let step = output::step(&updating_line(&version));
     let outcome = install_latest(false, channel).await;
-    render(&outcome, false);
-    if matches!(outcome, Outcome::Updated { .. }) {
-        restart_into_installed_binary();
+    let Outcome::Updated { new, .. } = &outcome else {
+        drop(step);
+        render(&outcome, false);
+        return pending;
+    };
+    let _ = crate::commands::agent::prefetch_bundle(new).await;
+    drop(step);
+    output::done(&updated_line(RUNNING_VERSION, new));
+    restart_into_installed_binary();
+    pending
+}
+
+pub struct PendingCheck(Option<(tokio::task::JoinHandle<()>, Instant)>);
+
+impl PendingCheck {
+    pub async fn settle(self) {
+        let Some((mut task, started)) = self.0 else {
+            return;
+        };
+        let remaining = UPDATE_CHECK_BUDGET.saturating_sub(started.elapsed());
+        if tokio::time::timeout(remaining, &mut task).await.is_err() {
+            task.abort();
+        }
     }
+}
+
+async fn refresh_cache(cache_path: PathBuf, channel: Channel) {
+    let latest = latest_release(channel).await;
+    let mut cache = UpdateCache::load(&cache_path);
+    cache.record_check(channel.name(), latest, now_unix());
+    let _ = cache.save(&cache_path);
+}
+
+fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
+}
+
+fn offerable(cache: &UpdateCache, channel: Channel) -> Option<String> {
+    let latest = Version::parse(cache.latest_for(channel.name())?).ok()?;
+    newer_than_running(&latest).filter(|version| !cache.is_dismissed(version))
+}
+
+pub fn updating_line(version: &str) -> String {
+    format!("Updating cloudthinker to {version}")
+}
+
+fn updated_line(old: &str, new: &str) -> String {
+    format!("Updated cloudthinker from {old} to {new}")
 }
 
 /// Continue this start in the binary the installer renamed into place: the old
@@ -266,15 +357,21 @@ fn installed_binary_path() -> Option<PathBuf> {
     )
 }
 
-/// The version of a newer release this installation can actually install, if any.
-async fn newer_release(channel: Channel) -> Option<String> {
+async fn latest_release(channel: Channel) -> Option<String> {
     let mut updater = AxoUpdater::new_for(APP_NAME);
     updater.load_receipt().ok()?;
     if !matches!(updater.check_receipt_is_for_this_executable(), Ok(true)) {
         return None;
     }
     updater.configure_version_specifier(request_for(channel));
-    newer_than_running(updater.query_new_version().await.ok().flatten()?)
+    Some(
+        updater
+            .query_new_version()
+            .await
+            .ok()
+            .flatten()?
+            .to_string(),
+    )
 }
 
 /// The release worth offering, given the latest one the source carries.
@@ -297,27 +394,92 @@ fn offer_line(channel: Channel, version: &str) -> String {
     format!("cloudthinker {version} is available{track} (you have {RUNNING_VERSION})")
 }
 
-/// Ask once on the terminal. Anything but an explicit yes keeps the session.
-fn accepts_install(channel: Channel, version: &str) -> bool {
+enum Answer {
+    Install,
+    NotNow,
+    Skip,
+}
+
+fn answer_of(line: &str) -> Answer {
+    match line.trim() {
+        "y" | "Y" | "yes" | "Yes" => Answer::Install,
+        "s" | "S" | "skip" | "Skip" => Answer::Skip,
+        _ => Answer::NotNow,
+    }
+}
+
+fn ask(channel: Channel, version: &str) -> Answer {
     output::progress(&offer_line(channel, version));
-    eprint!("Install it now? [y/N] ");
+    eprint!("Install it now? [y/N] (s skips this version) ");
     if std::io::stderr().flush().is_err() {
-        return false;
+        return Answer::NotNow;
     }
-    let mut answer = String::new();
-    if std::io::stdin().lock().read_line(&mut answer).is_err() {
-        return false;
+    let mut line = String::new();
+    if std::io::stdin().lock().read_line(&mut line).is_err() {
+        return Answer::NotNow;
     }
-    matches!(answer.trim(), "y" | "Y" | "yes" | "Yes")
+    answer_of(&line)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        Channel, RUNNING_VERSION, channel_of, newer_than, newer_than_running, offer_line,
-        request_for,
+        Answer, Channel, PendingCheck, RUNNING_VERSION, UPDATE_CHECK_BUDGET, answer_of, channel_of,
+        newer_than, newer_than_running, offer_line, offerable, request_for,
     };
     use axoupdater::{UpdateRequest, Version};
+    use cloudthinker_client::UpdateCache;
+
+    #[test]
+    fn only_yes_installs_and_only_s_skips() {
+        assert!(matches!(answer_of("y\n"), Answer::Install));
+        assert!(matches!(answer_of("Yes"), Answer::Install));
+        assert!(matches!(answer_of("s\n"), Answer::Skip));
+        assert!(matches!(answer_of("skip"), Answer::Skip));
+        assert!(matches!(answer_of("\n"), Answer::NotNow));
+        assert!(matches!(answer_of("n"), Answer::NotNow));
+        assert!(matches!(answer_of("sure"), Answer::NotNow));
+    }
+
+    fn cache_with(latest: &str, dismissed: Option<&str>) -> UpdateCache {
+        UpdateCache {
+            channel: Some("stable".to_string()),
+            latest_version: Some(latest.to_string()),
+            checked_at_unix: 0,
+            failed_at_unix: 0,
+            dismissed_version: dismissed.map(ToString::to_string),
+        }
+    }
+
+    #[test]
+    fn a_cached_newer_release_is_offered_unless_skipped() {
+        let newer = "999.0.0";
+        assert_eq!(
+            offerable(&cache_with(newer, None), Channel::Stable),
+            Some(newer.to_string())
+        );
+        assert_eq!(
+            offerable(&cache_with(newer, Some(newer)), Channel::Stable),
+            None
+        );
+        assert_eq!(
+            offerable(&cache_with(newer, Some("998.0.0")), Channel::Stable),
+            Some(newer.to_string())
+        );
+    }
+
+    #[test]
+    fn a_cached_release_is_not_offered_across_channels_or_when_not_newer() {
+        assert_eq!(offerable(&cache_with("999.0.0", None), Channel::Dev), None);
+        assert_eq!(
+            offerable(&cache_with(RUNNING_VERSION, None), Channel::Stable),
+            None
+        );
+        assert_eq!(
+            offerable(&cache_with("not a version", None), Channel::Stable),
+            None
+        );
+    }
 
     #[test]
     fn the_prod_origin_follows_stable() {
@@ -415,5 +577,21 @@ mod tests {
     fn compares_against_the_running_binary_version() {
         let running = Version::parse(RUNNING_VERSION).unwrap();
         assert_eq!(newer_than_running(&running), None);
+    }
+
+    #[tokio::test]
+    async fn a_check_past_its_budget_is_stopped_before_it_can_write() {
+        let wrote = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = wrote.clone();
+        let task = tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+            flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+        let started = std::time::Instant::now()
+            .checked_sub(UPDATE_CHECK_BUDGET)
+            .unwrap();
+        PendingCheck(Some((task, started))).settle().await;
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        assert!(!wrote.load(std::sync::atomic::Ordering::SeqCst));
     }
 }

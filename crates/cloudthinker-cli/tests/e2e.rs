@@ -11,6 +11,7 @@
 use axoupdater as _;
 use clap as _;
 use cloudthinker_client as _;
+use indicatif as _;
 use open as _;
 use owo_colors as _;
 use rand as _;
@@ -19,8 +20,10 @@ use supports_color as _;
 use tokio as _;
 
 use std::collections::VecDeque;
+
+use predicates::prelude::PredicateBooleanExt;
 use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -30,6 +33,37 @@ use assert_cmd::Command;
 
 const RUN_ID: &str = "11111111-1111-4111-8111-111111111111";
 const CONV_ID: &str = "22222222-2222-4222-8222-222222222222";
+
+fn read_request(socket: &mut TcpStream) -> Vec<u8> {
+    socket.set_nonblocking(false).ok();
+    socket.set_read_timeout(Some(Duration::from_secs(10))).ok();
+    let mut data = Vec::new();
+    let mut buf = [0u8; 4096];
+    let mut expected_len = None;
+    loop {
+        if expected_len.is_none() {
+            expected_len = data
+                .windows(4)
+                .position(|window| window == b"\r\n\r\n")
+                .map(|end| {
+                    let headers = String::from_utf8_lossy(&data[..end]).to_ascii_lowercase();
+                    let body_len = headers
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length:"))
+                        .and_then(|value| value.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    end + 4 + body_len
+                });
+        }
+        if expected_len.is_some_and(|len| data.len() >= len) {
+            return data;
+        }
+        match socket.read(&mut buf) {
+            Ok(0) | Err(_) => return data,
+            Ok(n) => data.extend_from_slice(&buf[..n]),
+        }
+    }
+}
 
 #[test]
 fn ca_ad_11_unknown_command_keeps_clap_suggestions_and_usage_exit() {
@@ -75,27 +109,7 @@ impl MockApi {
             while !stop_thread.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((mut socket, _)) => {
-                        // Drain the whole request (headers + body) before
-                        // responding, so we never RST a client still sending its
-                        // POST body. The accepted socket can inherit the
-                        // listener's non-blocking flag — force blocking + a read
-                        // timeout so the first read waits for data to arrive.
-                        socket.set_nonblocking(false).ok();
-                        socket
-                            .set_read_timeout(Some(Duration::from_millis(100)))
-                            .ok();
-                        let mut data = Vec::new();
-                        let mut buf = [0u8; 4096];
-                        // Read until the client pauses (read timeout) or EOF —
-                        // the client keeps its write side open awaiting the
-                        // response, so the timeout is the drain signal.
-                        loop {
-                            match socket.read(&mut buf) {
-                                Ok(0) => break,
-                                Ok(n) => data.extend_from_slice(&buf[..n]),
-                                Err(_) => break,
-                            }
-                        }
+                        let data = read_request(&mut socket);
                         let request = String::from_utf8_lossy(&data);
                         let first_line = request.lines().next().unwrap_or_default();
                         let (status, body) = if first_line.starts_with("POST") {
@@ -160,19 +174,7 @@ impl RecordingApi {
             while !stop_thread.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((mut socket, _)) => {
-                        socket.set_nonblocking(false).ok();
-                        socket
-                            .set_read_timeout(Some(Duration::from_millis(100)))
-                            .ok();
-                        let mut data = Vec::new();
-                        let mut buf = [0u8; 4096];
-                        loop {
-                            match socket.read(&mut buf) {
-                                Ok(0) => break,
-                                Ok(n) => data.extend_from_slice(&buf[..n]),
-                                Err(_) => break,
-                            }
-                        }
+                        let data = read_request(&mut socket);
                         let request = String::from_utf8_lossy(&data).into_owned();
                         requests_thread.lock().unwrap().push(request);
                         let (status, body) = responses
@@ -814,19 +816,7 @@ impl MockReleases {
             while !stop_thread.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((mut socket, _)) => {
-                        socket.set_nonblocking(false).ok();
-                        socket
-                            .set_read_timeout(Some(Duration::from_millis(100)))
-                            .ok();
-                        let mut data = Vec::new();
-                        let mut buf = [0u8; 4096];
-                        loop {
-                            match socket.read(&mut buf) {
-                                Ok(0) => break,
-                                Ok(n) => data.extend_from_slice(&buf[..n]),
-                                Err(_) => break,
-                            }
-                        }
+                        let data = read_request(&mut socket);
                         let request = String::from_utf8_lossy(&data);
                         let first_line = request.lines().next().unwrap_or_default();
                         let (status, body, content_type) = route(first_line.trim());
@@ -866,6 +856,7 @@ fn update_cli(receipt_dir: &std::path::Path, releases: &MockReleases, marker: &s
             &releases.base_url,
         )
         .env("CT_UPDATE_TEST_MARKER", marker)
+        .env("HOME", fresh_home("update"))
         .env_remove("CLOUDTHINKER_URL")
         .env_remove("NO_COLOR");
     cmd
@@ -873,8 +864,12 @@ fn update_cli(receipt_dir: &std::path::Path, releases: &MockReleases, marker: &s
 
 /// Fake installer: writes a marker file whose path arrives via env, so tests
 /// can prove the updater downloaded AND executed the installer.
+const INSTALLER_NOISE: &str = "installing to /home/dev/.local/bin";
+
 fn marker_installer_script() -> String {
-    "#!/bin/sh\ntouch \"$CT_UPDATE_TEST_MARKER\"\n".to_string()
+    format!(
+        "#!/bin/sh\ntouch \"$CT_UPDATE_TEST_MARKER\"\necho '{INSTALLER_NOISE}'\necho '{INSTALLER_NOISE}' >&2\n"
+    )
 }
 
 fn marker_path(name: &str) -> String {
@@ -898,12 +893,33 @@ fn ca_up_1_update_available_installs_and_exits_0() {
         .arg("update")
         .assert()
         .success()
-        .stdout("Updated cloudthinker from 0.1.0 to 0.2.0\n");
+        .stdout("Updated cloudthinker from 0.1.0 to 0.2.0\n")
+        .stderr(predicates::str::contains(INSTALLER_NOISE).not());
     assert!(
         std::path::Path::new(&marker).exists(),
         "installer must have run"
     );
     let _ = std::fs::remove_file(&marker);
+}
+
+// CA-UP-15: the installer runs silently, but a failed install still shows
+// what the installer said.
+#[test]
+fn ca_up_15_a_failed_install_shows_the_installer_output() {
+    let marker = marker_path("up15");
+    let releases = MockReleases::start(
+        "v0.2.0",
+        "#!/bin/sh\necho 'disk is full' >&2\nexit 1\n".to_string(),
+    );
+    let receipt_dir = write_receipt("up15", "0.1.0", &real_install_prefix());
+
+    update_cli(&receipt_dir, &releases, &marker)
+        .arg("update")
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(predicates::str::contains("update failed"))
+        .stderr(predicates::str::contains("disk is full"));
 }
 
 // CA-UP-2: already on the latest release → no installer run, exit 0.
@@ -1206,15 +1222,68 @@ fn newer_tag() -> String {
 /// it wrote to the terminal. `n` is queued on stdin so an offer is declined
 /// rather than installed; when no offer appears the byte is simply never read.
 #[cfg(unix)]
-fn agent_on_a_tty(api: &MockApi, releases: &MockReleases, receipt_dir: &std::path::Path) -> String {
+fn agent_on_a_tty(
+    api: &MockApi,
+    releases: &MockReleases,
+    receipt_dir: &std::path::Path,
+    home: &std::path::Path,
+) -> String {
+    agent_on_a_tty_answering(api, releases, receipt_dir, home, b"n\n")
+}
+
+#[cfg(unix)]
+fn agent_on_a_tty_answering(
+    api: &MockApi,
+    releases: &MockReleases,
+    receipt_dir: &std::path::Path,
+    home: &std::path::Path,
+    answer: &[u8],
+) -> String {
     binary_on_a_tty(
         &assert_cmd::cargo::cargo_bin("cloudthinker"),
         &["agent"],
-        b"n\n",
+        answer,
         api,
         releases,
         receipt_dir,
+        home,
     )
+}
+
+fn fresh_home(name: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("ct-home-{}-{name}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+fn cache_file(home: &std::path::Path) -> std::path::PathBuf {
+    home.join(".cloudthinker").join("update-check.json")
+}
+
+fn now_unix() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+fn seed_cache(home: &std::path::Path, latest: &str, checked_at_unix: u64) {
+    let path = cache_file(home);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(
+        path,
+        serde_json::json!({
+            "channel": "dev",
+            "latest_version": latest,
+            "checked_at_unix": checked_at_unix,
+        })
+        .to_string(),
+    )
+    .unwrap();
+}
+
+fn read_cache(home: &std::path::Path) -> serde_json::Value {
+    serde_json::from_slice(&std::fs::read(cache_file(home)).unwrap()).unwrap()
 }
 
 /// Run `binary` with `args` on a pty against both mocks, queue `answer` on
@@ -1227,6 +1296,7 @@ fn binary_on_a_tty(
     api: &MockApi,
     releases: &MockReleases,
     receipt_dir: &std::path::Path,
+    home: &std::path::Path,
 ) -> String {
     use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
@@ -1251,6 +1321,7 @@ fn binary_on_a_tty(
         &releases.base_url,
     );
     cmd.env("NO_COLOR", "1");
+    cmd.env("HOME", home);
     cmd.env_remove("CLOUDTHINKER_NO_UPDATE_CHECK");
     cmd.env_remove("CLOUDTHINKER_WORKSPACE");
 
@@ -1300,8 +1371,10 @@ fn ca_up_9_a_newer_release_is_offered_and_declining_still_starts_the_agent() {
     let tag = newer_tag();
     let releases = MockReleases::start(&tag, marker_installer_script());
     let receipt_dir = write_receipt("up6", RUNNING_VERSION, &real_install_prefix());
+    let home = fresh_home("up9");
+    seed_cache(&home, tag.trim_start_matches('v'), now_unix());
 
-    let output = agent_on_a_tty(&api, &releases, &receipt_dir);
+    let output = agent_on_a_tty(&api, &releases, &receipt_dir, &home);
 
     assert!(
         output.contains(&format!(
@@ -1326,6 +1399,8 @@ fn agent_help_reaches_the_agent_without_a_release_offer() {
     let api = MockApi::start(WHOAMI_BODY.into());
     let releases = MockReleases::start(&newer_tag(), marker_installer_script());
     let receipt_dir = write_receipt("help", RUNNING_VERSION, &real_install_prefix());
+    let home = fresh_home("help");
+    seed_cache(&home, newer_tag().trim_start_matches('v'), now_unix());
 
     let output = binary_on_a_tty(
         &assert_cmd::cargo::cargo_bin("cloudthinker"),
@@ -1334,6 +1409,7 @@ fn agent_help_reaches_the_agent_without_a_release_offer() {
         &api,
         &releases,
         &receipt_dir,
+        &home,
     );
 
     assert!(
@@ -1372,6 +1448,7 @@ fn replacing_installer_script(binary: &std::path::Path) -> String {
          echo \"reexec argv: $*\"\n\
          echo \"reexec update check: ${{CLOUDTHINKER_NO_UPDATE_CHECK:-unset}}\"\n\
          STUB\n\
+         echo '{INSTALLER_NOISE}'\n\
          chmod +x \"{path}.new\"\n\
          mv \"{path}.new\" \"{path}\"\n"
     )
@@ -1388,6 +1465,8 @@ fn ca_up_11_an_accepted_offer_continues_in_the_installed_binary() {
     let tag = newer_tag();
     let (binary, receipt_dir) = installed_copy("up11");
     let releases = MockReleases::start(&tag, replacing_installer_script(&binary));
+    let home = fresh_home("up11");
+    seed_cache(&home, tag.trim_start_matches('v'), now_unix());
 
     let output = binary_on_a_tty(
         &binary,
@@ -1396,14 +1475,26 @@ fn ca_up_11_an_accepted_offer_continues_in_the_installed_binary() {
         &api,
         &releases,
         &receipt_dir,
+        &home,
     );
 
+    assert!(
+        output.contains(&format!(
+            "Updating cloudthinker to {}",
+            tag.trim_start_matches('v')
+        )),
+        "expected the update step, got:\n{output}"
+    );
+    assert!(
+        !output.contains(INSTALLER_NOISE),
+        "the installer output must stay hidden, got:\n{output}"
+    );
     assert!(
         output.contains(&format!(
             "Updated cloudthinker from {RUNNING_VERSION} to {}",
             tag.trim_start_matches('v')
         )),
-        "expected the install, got:\n{output}"
+        "expected the finished update before the restart, got:\n{output}"
     );
     assert!(
         output.contains("reexec argv: agent -- --resume"),
@@ -1430,8 +1521,10 @@ fn ca_up_10_the_running_release_is_never_offered_back() {
     let api = MockApi::start(WHOAMI_BODY.into());
     let releases = MockReleases::start(&format!("v{RUNNING_VERSION}"), marker_installer_script());
     let receipt_dir = write_receipt("up7", RUNNING_VERSION, &real_install_prefix());
+    let home = fresh_home("up10");
+    seed_cache(&home, RUNNING_VERSION, now_unix());
 
-    let output = agent_on_a_tty(&api, &releases, &receipt_dir);
+    let output = agent_on_a_tty(&api, &releases, &receipt_dir, &home);
 
     assert!(
         !output.contains("is available"),
@@ -1444,6 +1537,99 @@ fn ca_up_10_the_running_release_is_never_offered_back() {
     assert!(
         output.contains("argv: "),
         "the agent must start, got:\n{output}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn ca_up_16_a_fresh_cache_offers_without_asking_the_release_host() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+    let releases = MockReleases::start(&format!("v{RUNNING_VERSION}"), marker_installer_script());
+    let receipt_dir = write_receipt("up16", RUNNING_VERSION, &real_install_prefix());
+    let home = fresh_home("up16");
+    let newer = newer_tag().trim_start_matches('v').to_string();
+    let checked_at = now_unix() - 60;
+    seed_cache(&home, &newer, checked_at);
+
+    let output = agent_on_a_tty(&api, &releases, &receipt_dir, &home);
+
+    assert!(
+        output.contains(&format!("cloudthinker {newer} is available")),
+        "the cached release must be offered, got:\n{output}"
+    );
+    assert_eq!(
+        read_cache(&home)["checked_at_unix"],
+        checked_at,
+        "a fresh cache must not be refreshed"
+    );
+    assert_eq!(read_cache(&home)["latest_version"], newer.as_str());
+}
+
+#[cfg(unix)]
+#[test]
+fn ca_up_17_an_empty_cache_is_filled_in_the_background_and_offered_next_start() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+    let tag = newer_tag();
+    let newer = tag.trim_start_matches('v');
+    let releases = MockReleases::start(&tag, marker_installer_script());
+    let receipt_dir = write_receipt("up17", RUNNING_VERSION, &real_install_prefix());
+    let home = fresh_home("up17");
+
+    let first = agent_on_a_tty(&api, &releases, &receipt_dir, &home);
+
+    assert!(
+        !first.contains("is available") && first.contains("argv: "),
+        "the first start must not wait for an offer, got:\n{first}"
+    );
+    assert_eq!(read_cache(&home)["latest_version"], newer);
+    assert_eq!(read_cache(&home)["channel"], "dev");
+
+    let second = agent_on_a_tty(&api, &releases, &receipt_dir, &home);
+
+    assert!(
+        second.contains(&format!("cloudthinker {newer} is available")),
+        "the next start must offer what the refresh found, got:\n{second}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn ca_up_18_a_skipped_version_stays_quiet_until_a_newer_one_ships() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+    let tag = newer_tag();
+    let skipped = tag.trim_start_matches('v').to_string();
+    let releases = MockReleases::start(&tag, marker_installer_script());
+    let receipt_dir = write_receipt("up18", RUNNING_VERSION, &real_install_prefix());
+    let home = fresh_home("up18");
+    seed_cache(&home, &skipped, now_unix());
+
+    let skipping = agent_on_a_tty_answering(&api, &releases, &receipt_dir, &home, b"s\n");
+
+    assert!(
+        skipping.contains("(s skips this version)") && skipping.contains("argv: "),
+        "skipping must still start the agent, got:\n{skipping}"
+    );
+    assert_eq!(read_cache(&home)["dismissed_version"], skipped.as_str());
+
+    let quiet = agent_on_a_tty(&api, &releases, &receipt_dir, &home);
+
+    assert!(
+        !quiet.contains("is available"),
+        "a skipped version must not be offered again, got:\n{quiet}"
+    );
+
+    let major: u64 = skipped.split('.').next().unwrap().parse().unwrap();
+    let newer = format!("{}.0.0", major + 1);
+    seed_cache(&home, &newer, now_unix());
+    let mut cache = read_cache(&home);
+    cache["dismissed_version"] = serde_json::Value::String(skipped.clone());
+    std::fs::write(cache_file(&home), cache.to_string()).unwrap();
+
+    let offered = agent_on_a_tty(&api, &releases, &receipt_dir, &home);
+
+    assert!(
+        offered.contains(&format!("cloudthinker {newer} is available")),
+        "a release newer than the skipped one must be offered, got:\n{offered}"
     );
 }
 

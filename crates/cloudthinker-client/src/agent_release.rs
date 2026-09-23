@@ -84,6 +84,19 @@ pub fn installed_agent_binary(bin_root: &Path, version: &str) -> Option<PathBuf>
     binary.is_file().then_some(binary)
 }
 
+pub fn any_agent_installed(bin_root: &Path) -> bool {
+    std::fs::read_dir(bin_root).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            !entry.file_name().to_string_lossy().starts_with('.')
+                && entry
+                    .path()
+                    .join(BUNDLE_DIR_NAME)
+                    .join(BUNDLE_BINARY_NAME)
+                    .is_file()
+        })
+    })
+}
+
 pub async fn install_agent(
     release_base: &str,
     version: &str,
@@ -525,6 +538,30 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[test]
+    fn any_agent_installed_needs_a_bundle_binary_in_a_version_folder() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(!any_agent_installed(&root.path().join("missing")));
+        assert!(!any_agent_installed(root.path()));
+        std::fs::create_dir_all(root.path().join(".staging-1").join(BUNDLE_DIR_NAME)).unwrap();
+        std::fs::write(
+            root.path()
+                .join(".staging-1")
+                .join(BUNDLE_DIR_NAME)
+                .join(BUNDLE_BINARY_NAME),
+            b"binary",
+        )
+        .unwrap();
+        std::fs::create_dir_all(agent_install_dir(root.path(), "0.5.0")).unwrap();
+        assert!(!any_agent_installed(root.path()));
+        std::fs::write(
+            agent_install_dir(root.path(), "0.5.0").join(BUNDLE_BINARY_NAME),
+            b"binary",
+        )
+        .unwrap();
+        assert!(any_agent_installed(root.path()));
+    }
+
     #[test]
     fn ca_ad_1_probe_cannot_inherit_parent_credentials() {
         if std::env::var_os("CT_PROBE_PARENT").is_none() {

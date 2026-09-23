@@ -4,7 +4,7 @@
 //! stdout so the result is pipeable. Progress, status, warnings, and errors all
 //! go to stderr. `--json` writes exactly one envelope to stdout.
 
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 
 use cloudthinker_client::{
     CliIdentity, ReviewFinding, ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView,
@@ -319,6 +319,36 @@ fn review_verdict_label(verdict: ReviewVerdict) -> &'static str {
 /// Progress note to stderr (skipped in `--json` mode by the caller).
 pub fn progress(message: &str) {
     eprintln!("{message}");
+}
+
+const STEP_TICK: std::time::Duration = std::time::Duration::from_millis(80);
+const STEP_FRAMES: &str = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ ";
+
+pub struct Step(indicatif::ProgressBar);
+
+pub fn step(message: &str) -> Step {
+    if !io::stderr().is_terminal() {
+        progress(message);
+        return Step(indicatif::ProgressBar::hidden());
+    }
+    let style = indicatif::ProgressStyle::with_template("{spinner:.cyan} {msg}")
+        .map(|style| style.tick_chars(STEP_FRAMES))
+        .unwrap_or_else(|_| indicatif::ProgressStyle::default_spinner());
+    let spinner = indicatif::ProgressBar::new_spinner()
+        .with_style(style)
+        .with_message(message.to_string());
+    spinner.enable_steady_tick(STEP_TICK);
+    Step(spinner)
+}
+
+impl Drop for Step {
+    fn drop(&mut self) {
+        self.0.finish_and_clear();
+    }
+}
+
+pub fn done(message: &str) {
+    labeled_eprintln("✓", AnsiColors::Green, message);
 }
 
 /// One labeled stderr line; color is suppressed off-TTY and under NO_COLOR.

@@ -5,8 +5,8 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 use cloudthinker_client::{
-    CliIdentity, CtError, DEFAULT_RELEASE_BASE_URL, agent_bin_root, host_target_triple,
-    install_agent, installed_agent_binary,
+    CliIdentity, CtError, DEFAULT_RELEASE_BASE_URL, agent_bin_root, any_agent_installed,
+    host_target_triple, install_agent, installed_agent_binary,
 };
 use uuid::Uuid;
 
@@ -29,9 +29,11 @@ pub async fn run(base_url: &str, workspace: Option<&str>, args: Vec<OsString>) -
     let workspace_id = if asks_for_help(&args) {
         None
     } else {
-        crate::commands::update::offer_on_start(base_url).await;
+        let pending_check = crate::commands::update::offer_on_start(base_url).await;
         timing.mark("wrapper.update_check");
-        match resolve_identity(base_url, workspace).await {
+        let identity = resolve_identity(base_url, workspace).await;
+        pending_check.settle().await;
+        match identity {
             Ok(identity) => child_workspace_env(env_token_is_set(), identity.workspace_id),
             Err(code) => return code,
         }
@@ -102,15 +104,37 @@ async fn resolve_binary() -> cloudthinker_client::CtResult<PathBuf> {
         return Ok(binary);
     }
     let triple = host_target_triple()?;
-    output::progress(&format!(
-        "downloading cloudthinker-agent {AGENT_VERSION} for {triple}"
-    ));
+    let step = output::step(&format!("Setting up cloudthinker {AGENT_VERSION}"));
     let installed =
         install_agent(DEFAULT_RELEASE_BASE_URL, AGENT_VERSION, triple, &bin_root).await?;
+    drop(step);
     for failure in &installed.prune_failures {
         output::warn(&format!("agent: {failure}"));
     }
     Ok(installed.binary)
+}
+
+pub async fn prefetch_bundle(version: &str) -> cloudthinker_client::CtResult<()> {
+    if std::env::var_os(AGENT_BIN_ENV_VAR).is_some() {
+        return Ok(());
+    }
+    let bin_root = agent_bin_root()?;
+    if installed_agent_binary(&bin_root, version).is_some() {
+        return Ok(());
+    }
+    install_agent(
+        DEFAULT_RELEASE_BASE_URL,
+        version,
+        host_target_triple()?,
+        &bin_root,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub fn bundle_in_use() -> bool {
+    std::env::var_os(AGENT_BIN_ENV_VAR).is_none()
+        && agent_bin_root().is_ok_and(|bin_root| any_agent_installed(&bin_root))
 }
 
 /// A child running on the parent's `CLOUDTHINKER_TOKEN` inherits it and must

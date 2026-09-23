@@ -13,13 +13,14 @@ pub mod auth;
 mod client;
 mod error;
 mod review_url;
+mod update_cache;
 
 #[cfg(test)]
 mod test_support;
 
 pub use agent_release::{
-    DEFAULT_RELEASE_BASE_URL, InstalledAgent, agent_bin_root, host_target_triple, install_agent,
-    installed_agent_binary,
+    DEFAULT_RELEASE_BASE_URL, InstalledAgent, agent_bin_root, any_agent_installed,
+    host_target_triple, install_agent, installed_agent_binary,
 };
 pub use auth::device::wait_for_device_token;
 pub use auth::pkce::{Loopback, PkceChallenge, consent_url};
@@ -35,3 +36,4 @@ pub use client::{
 };
 pub use error::{CtError, CtResult};
 pub use review_url::{MrCoordinates, MrProvider, parse_mr_url};
+pub use update_cache::{UpdateCache, update_cache_path};

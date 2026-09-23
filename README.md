@@ -38,8 +38,9 @@ the `cloudthinker` binary in `~/.local/bin` and adds that directory to your
 `PATH`, so open a new shell afterwards.
 
 Keep it current with `cloudthinker update`. On an interactive terminal the CLI
-also offers the update itself when a newer release exists; set
-`CLOUDTHINKER_NO_UPDATE_CHECK=1` to silence that.
+also offers the update itself when a newer release exists. It checks for a new
+release at most every 20 hours, and answering `s` skips that version until a
+newer one ships. Set `CLOUDTHINKER_NO_UPDATE_CHECK=1` to silence the offer.
 
 ## First session
 
