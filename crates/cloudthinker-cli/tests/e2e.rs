@@ -1320,6 +1320,32 @@ fn ca_up_9_a_newer_release_is_offered_and_declining_still_starts_the_agent() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn agent_help_reaches_the_agent_without_a_release_offer() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+    let releases = MockReleases::start(&newer_tag(), marker_installer_script());
+    let receipt_dir = write_receipt("help", RUNNING_VERSION, &real_install_prefix());
+
+    let output = binary_on_a_tty(
+        &assert_cmd::cargo::cargo_bin("cloudthinker"),
+        &["agent", "--help"],
+        b"n\n",
+        &api,
+        &releases,
+        &receipt_dir,
+    );
+
+    assert!(
+        !output.contains("Install it now?"),
+        "a help request must not offer a release, got:\n{output}"
+    );
+    assert!(
+        output.contains("argv: --help"),
+        "the agent must receive --help, got:\n{output}"
+    );
+}
+
 /// A private copy of the built binary that a fake installer may replace, plus
 /// the receipt that claims it. The real install location must stay untouched.
 #[cfg(unix)]

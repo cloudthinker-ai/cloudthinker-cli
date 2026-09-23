@@ -26,11 +26,15 @@ const URL_ENV_VAR: &str = "CLOUDTHINKER_URL";
 pub async fn run(base_url: &str, workspace: Option<&str>, args: Vec<OsString>) -> ExitCode {
     let mut timing = crate::engine::timing::PhaseTimer::from_env();
     timing.mark("wrapper.dispatch");
-    crate::commands::update::offer_on_start(base_url).await;
-    timing.mark("wrapper.update_check");
-    let identity = match resolve_identity(base_url, workspace).await {
-        Ok(identity) => identity,
-        Err(code) => return code,
+    let workspace_id = if asks_for_help(&args) {
+        None
+    } else {
+        crate::commands::update::offer_on_start(base_url).await;
+        timing.mark("wrapper.update_check");
+        match resolve_identity(base_url, workspace).await {
+            Ok(identity) => child_workspace_env(env_token_is_set(), identity.workspace_id),
+            Err(code) => return code,
+        }
     };
     timing.mark("wrapper.identity");
     let binary = match resolve_binary().await {
@@ -38,12 +42,11 @@ pub async fn run(base_url: &str, workspace: Option<&str>, args: Vec<OsString>) -
         Err(err) => return exit::report(&err),
     };
     timing.mark("wrapper.install_check");
-    exec_agent(
-        &binary,
-        args,
-        base_url,
-        child_workspace_env(env_token_is_set(), identity.workspace_id),
-    )
+    exec_agent(&binary, args, base_url, workspace_id)
+}
+
+fn asks_for_help(args: &[OsString]) -> bool {
+    args.iter().any(|arg| arg == "--help" || arg == "-h")
 }
 
 /// Prove the login before anything else, and offer the login itself when there
@@ -159,6 +162,14 @@ mod tests {
             child_workspace_env(false, workspace_id),
             Some("00000000-0000-0000-0000-000000000001".to_string())
         );
+    }
+
+    #[test]
+    fn a_help_request_skips_the_login() {
+        assert!(asks_for_help(&["--help".into()]));
+        assert!(asks_for_help(&["--tui-mode".into(), "-h".into()]));
+        assert!(!asks_for_help(&["--tui-mode".into(), "fullscreen".into()]));
+        assert!(!asks_for_help(&[]));
     }
 
     #[test]

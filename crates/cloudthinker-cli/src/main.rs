@@ -77,7 +77,11 @@ enum Command {
 }
 
 #[derive(Debug, Args)]
-#[command(trailing_var_arg = true, allow_hyphen_values = true)]
+#[command(
+    trailing_var_arg = true,
+    allow_hyphen_values = true,
+    disable_help_flag = true
+)]
 struct AgentArgs {
     /// Arguments passed to the local agent verbatim.
     #[arg(value_name = "AGENT_ARGS")]
@@ -390,6 +394,21 @@ mod tests {
                     .to_vec()
             ),
             _ => panic!("expected agent command"),
+        }
+    }
+
+    #[test]
+    fn agent_hands_the_help_flag_to_the_local_agent() {
+        for flag in ["--help", "-h"] {
+            let cli = Cli::try_parse_from(["cloudthinker", "agent", flag, "--tui-mode"])
+                .expect("valid agent args");
+
+            match cli.command.expect("a named subcommand") {
+                Command::Agent(args) => {
+                    assert_eq!(args.args, [flag, "--tui-mode"].map(OsString::from).to_vec())
+                }
+                _ => panic!("expected agent command"),
+            }
         }
     }
 
