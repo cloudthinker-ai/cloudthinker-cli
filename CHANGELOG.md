@@ -1,3 +1,9 @@
+## [0.7.2]
+
+- The bundled agent now hides cloud read and write output until you press ctrl+o, so the chat shows what each command is for instead of its raw output.
+- `worker start` on a large folder now passes verification, and a failed check shows its reason in the setup dialog.
+- The source code and the releases now live in one public repository, https://github.com/cloudthinker-ai/cloudthinker-cli. Download URLs and `cloudthinker update` work as before.
+
 ## [0.7.1]
 
 - On macOS, outpost shell commands now run in their working directory instead of failing with `SHELL_UNAVAILABLE`.

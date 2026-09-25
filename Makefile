@@ -61,10 +61,10 @@ changelog:
 clean-gen:
 	rm -rf $(BUILD)
 
-# Publish this cli/ tree to the private GitHub source repo
-# (cloudthinker-ai/cloudthinker-cli-src), whose workflow releases to the public
-# cloudthinker-ai/cloudthinker-cli. One-directional mirror; the monorepo is the
-# source of truth. Needs a gh account with push access. See scripts/release-sync.sh.
+# Publish this cli/ tree to the public GitHub repo
+# (cloudthinker-ai/cloudthinker-cli), whose workflow releases on the same repo.
+# One-directional mirror; the monorepo is the source of truth. Needs a gh
+# account with push access. See scripts/release-sync.sh.
 release-sync:
 	bash $(CLI_DIR)/scripts/release-sync.sh
 

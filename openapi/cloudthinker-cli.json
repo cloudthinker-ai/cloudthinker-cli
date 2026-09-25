@@ -880,6 +880,11 @@
             "title": "My Review Stars",
             "type": "integer"
           },
+          "pipelines_supported": {
+            "default": false,
+            "title": "Pipelines Supported",
+            "type": "boolean"
+          },
           "provider": {
             "$ref": "#/components/schemas/CodeReviewProvider"
           },
@@ -1227,6 +1232,11 @@
             "format": "uuid",
             "nullable": true,
             "title": "Target Id",
+            "type": "string"
+          },
+          "verification_error": {
+            "nullable": true,
+            "title": "Verification Error",
             "type": "string"
           }
         },

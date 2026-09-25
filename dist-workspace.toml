@@ -11,7 +11,6 @@ cargo-dist-version = "0.32.0"
 allow-dirty = ["ci"]
 # CI backends to support
 ci = "github"
-github-releases-repo = "cloudthinker-ai/cloudthinker-cli"
 source-tarball = false
 # curl one-liner (install.sh) is primary; PowerShell covers the Windows target.
 # Homebrew is deferred — it needs a separate `cloudthinker-ai/homebrew-tap` repo.

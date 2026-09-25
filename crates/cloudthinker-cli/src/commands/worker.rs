@@ -447,6 +447,7 @@ mod tests {
             name: name.to_owned(),
             scope: api::ExecutorScope::Personal,
             target_id,
+            verification_error: None,
         }
     }
 

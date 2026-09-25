@@ -1,31 +1,29 @@
-# cloudthinker
+# CloudThinker CLI
 
-The CloudThinker command-line interface. Log in through your browser, run the
-CloudThinker coding agent on your own machine, and drive Anna, code reviews, and
-jobs headlessly from any shell or CI runner.
+[![Latest release](https://img.shields.io/github/v/release/cloudthinker-ai/cloudthinker-cli?label=release)](https://github.com/cloudthinker-ai/cloudthinker-cli/releases/latest)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+![Platforms: macOS | Linux](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey.svg)
 
-## Agent skill
-
-Read the release-matched usage skill directly from the installed binary:
-
-```sh
-cloudthinker --skill
-cloudthinker --skill auth
-cloudthinker --skill chat
-cloudthinker --skill review
-```
-
-The hub holds shared rules and routes tasks to focused modules. Each command prints
-Markdown and exits without login, network access, or starting the local agent.
-To make the skill discoverable by a coding agent, copy the bundled
-`crates/cloudthinker-cli/skills/cloudthinker-cli/` directory into that agent's skill
-search path. A hub-only installation can also load every module through the CLI.
-For example, to install the hub in a project's shared agent skills directory:
+`cloudthinker` brings [CloudThinker](https://cloudthinker.io) to your terminal.
+Run the CloudThinker coding agent in your own repository, ask Anna about your
+cloud from any shell or CI job, follow code reviews, and let CloudThinker
+conversations work in a folder on your machine.
 
 ```sh
-mkdir -p .agents/skills/cloudthinker-cli
-cloudthinker --skill > .agents/skills/cloudthinker-cli/SKILL.md
+curl -fsSL https://cloudthinker.io/install.sh | sh
+cloudthinker login
+cloudthinker
 ```
+
+## What you can do
+
+| Task | Command |
+| --- | --- |
+| Run the coding agent in the current directory | `cloudthinker` |
+| Ask Anna one question and pipe the answer | `cloudthinker chat -p "Check production health"` |
+| Follow a code review on a merge request or pull request | `cloudthinker review watch <MR_URL>` |
+| Let CloudThinker conversations work in a local folder | `cloudthinker worker start --outpost <name> --workdir "$PWD"` |
+| Give a coding agent the CLI's usage guide | `cloudthinker --skill` |
 
 ## Install
 
@@ -33,53 +31,56 @@ cloudthinker --skill > .agents/skills/cloudthinker-cli/SKILL.md
 curl -fsSL https://cloudthinker.io/install.sh | sh
 ```
 
-macOS (Apple Silicon and Intel) and Linux (x86_64 and arm64). The installer drops
-the `cloudthinker` binary in `~/.local/bin` and adds that directory to your
-`PATH`, so open a new shell afterwards.
+The installer supports macOS (Apple Silicon and Intel) and Linux (x86_64 and
+arm64). It puts the `cloudthinker` binary in `~/.local/bin` and adds that
+directory to your `PATH`. Open a new shell after the install.
 
-Keep it current with `cloudthinker update`. On an interactive terminal the CLI
-also offers the update itself when a newer release exists. It checks for a new
-release at most every 20 hours, and answering `s` skips that version until a
-newer one ships. Set `CLOUDTHINKER_NO_UPDATE_CHECK=1` to silence the offer.
+Every release is on the [releases page](https://github.com/cloudthinker-ai/cloudthinker-cli/releases),
+with a SHA-256 checksum for each archive.
 
-## First session
+Run `cloudthinker update` to update. On an interactive terminal, the CLI also
+offers the update when a newer release exists. It checks at most every 20 hours.
+Answer `s` to skip that version until a newer one ships. Set
+`CLOUDTHINKER_NO_UPDATE_CHECK=1` to turn off the offer.
+
+## Quick start
 
 ```sh
-cloudthinker login     # browser PKCE login; pick a workspace if you have several
-cloudthinker whoami    # the live host, account, and active workspace
-cloudthinker           # the bare command runs the agent in this directory
+cloudthinker login     # log in through the browser, then pick a workspace
+cloudthinker whoami    # show the host, the account, and the active workspace
+cloudthinker           # run the coding agent in this directory
 ```
 
-On a machine with no browser, `login --no-browser` prints the consent URL and
-`login --device-auth` switches to a short code instead of a loopback callback.
+On a machine with no browser, `login --no-browser` prints the consent URL.
+`login --device-auth` uses a short code instead of a loopback callback.
 
-## The local coding agent
+## The coding agent
 
-`cloudthinker agent` runs the CloudThinker coding agent where you are: it edits
-files and runs shells on your machine, while the model and the workspace
-Connections stay in the cloud. A bare `cloudthinker` is the same command.
+`cloudthinker agent` runs the CloudThinker coding agent in your directory. The
+agent edits files and runs shell commands on your machine. The model and your
+workspace Connections stay in the cloud. A bare `cloudthinker` runs the same
+command.
 
 ```sh
 cloudthinker agent
 cloudthinker agent -p "Add a health check to main.tf" --model cloudthinker/pro
 cloudthinker --workspace Production agent          # the CLI's own options come first
-cloudthinker agent -- --url http://localhost:3000  # after `--`, everything is the agent's
+cloudthinker agent -- --url http://localhost:3000  # after `--`, every argument goes to the agent
 ```
 
-Every argument after `agent` reaches the agent verbatim. The first run downloads
-the agent build for your platform from the same GitHub release as this binary,
-checks it against the release's SHA-256 sidecar, and installs it under
-`~/.cloudthinker/agent/bin/<version>/`. Later runs reuse it, and a version bump
-replaces it.
+The agent receives every argument after `agent` without change. On the first
+run, the CLI downloads the agent build for your platform from the same GitHub
+release as the binary. It checks the build against the release's SHA-256
+sidecar and installs it under `~/.cloudthinker/agent/bin/<version>/`. Later runs
+reuse that build, and a new version replaces it.
 
-`agent` is the one command that starts a login on its own, because it is the
-first thing a new user runs. Every other command prints the login command
-instead.
+`agent` is the one command that starts a login by itself, because it is the
+first command a new user runs. Every other command prints the login command.
 
 ## Headless chat
 
-`chat -p` submits a prompt to Anna and waits for the answer. stdout carries only
-Anna's final answer, so it stays pipeable; progress and continuation hints go to
+`chat -p` sends a prompt to Anna and waits for the answer. stdout carries only
+Anna's final answer, so you can pipe it. Progress and continuation hints go to
 stderr.
 
 ```sh
@@ -87,14 +88,14 @@ cloudthinker chat -p "Check production health"
 cloudthinker chat -p "Draft the rollout plan" --json
 ```
 
-Continue a thread with either a run UUID or a conversation UUID. The CLI prints
-`continue_with=<conversation_id>` on stderr after each terminal run:
+Continue a thread with a run UUID or a conversation UUID. After each finished
+run, the CLI prints `continue_with=<conversation_id>` on stderr:
 
 ```sh
 cloudthinker chat -p "Remove the risky step" --continue <run-or-conversation-uuid>
 ```
 
-Submit without waiting, collect the run later, or recover an ID from recent runs:
+Submit without a wait, collect the run later, or find an ID in recent runs:
 
 ```sh
 cloudthinker chat -p "Audit production" --no-wait --json
@@ -103,25 +104,62 @@ cloudthinker chat ls --limit 10
 cloudthinker chat ls --conversation <conversation-uuid> --json
 ```
 
-`--no-wait` prints the submitted run identifiers because no answer exists yet.
-`--timeout <secs>` bounds the client's wait only; the run continues server-side.
+`--no-wait` prints the IDs of the submitted run, because no answer exists yet.
+`--timeout <secs>` limits only the client's wait. The run continues on the
+server.
 
 ## Code review
 
-Inspect a review CloudThinker tracks for a merge request or pull request, by its
-URL:
+Inspect the CloudThinker review of a merge request or pull request by its URL:
 
 ```sh
 cloudthinker review status <MR_URL>
 cloudthinker review findings <MR_URL>          # worst severity first
-cloudthinker review watch <MR_URL> --json      # poll to a terminal state
+cloudthinker review watch <MR_URL> --json      # poll until the review finishes
 ```
+
+## Outposts
+
+An outpost lets a CloudThinker conversation work in a directory on your
+machine. The worker connects outward over HTTPS and opens no inbound port.
+
+```sh
+cloudthinker worker outpost create my-project
+cloudthinker worker start --outpost my-project --workdir "$PWD" --concurrency 4
+```
+
+File tools stay inside the selected directory. Shell commands run under your OS
+account and are not sandboxed. To keep an outpost available after the terminal
+closes, run `cloudthinker worker service install`. It writes a systemd user unit
+on Linux or a LaunchAgent on macOS. `cloudthinker --skill worker` gives the full
+guide.
+
+## Use with coding agents
+
+The binary carries a usage skill that matches its release:
+
+```sh
+cloudthinker --skill
+cloudthinker --skill chat
+```
+
+The hub holds the shared rules and routes each task to a module: `auth`, `chat`,
+`review`, or `worker`. Each command prints Markdown and exits. It needs no
+login, no network access, and no local agent. To make the skill available to a
+coding agent, save the hub in that agent's skill directory:
+
+```sh
+mkdir -p .agents/skills/cloudthinker-cli
+cloudthinker --skill > .agents/skills/cloudthinker-cli/SKILL.md
+```
+
+The source of the skill is `crates/cloudthinker-cli/skills/cloudthinker-cli/`.
 
 ## Workspaces and credentials
 
-When an account can reach several workspaces, login asks which one to authorize.
-Each workspace credential stays available for the same host, and `--workspace`
-selects between them by workspace ID or exact name:
+When your account can reach more than one workspace, login asks which one to
+authorize. Each workspace credential stays available for the same host.
+`--workspace` selects a credential by workspace ID or exact name:
 
 ```sh
 cloudthinker --workspace Production whoami
@@ -130,18 +168,18 @@ cloudthinker logout                 # the selected or active workspace only
 cloudthinker logout --all           # every workspace for this host
 ```
 
-A tool that needs its own bearer reads one from the CLI. `auth token` prints the
-current access token on stdout and nothing else, refreshing it first when it is
-close to expiry:
+A tool that needs its own bearer can read one from the CLI. `auth token` prints
+the current access token on stdout and nothing else. It refreshes the token
+first when the token is close to expiry:
 
 ```sh
 cloudthinker auth token
 ```
 
-Treat that value as a secret: it authenticates as you until it expires.
+Keep that value secret. It authenticates as you until it expires.
 
-Credentials live in `cloudthinker/credentials.json` under the operating system's
-config directory, mode 0600.
+The CLI stores credentials in `cloudthinker/credentials.json` under the
+operating system's config directory, with mode 0600.
 
 ## Environment
 
@@ -163,63 +201,37 @@ config directory, mode 0600.
 | 4 | A client deadline elapsed. The run continues server-side. |
 | 5 | The run paused for human approval in the browser. |
 
-Documentation: <https://docs.cloudthinker.io>
+## Build from source
 
-## Releasing (maintainers)
-
-Distribution is [cargo-dist](https://opensource.axo.dev/cargo-dist/) driven; config
-lives in `dist-workspace.toml`, the release pipeline in
-`.github/workflows/release.yml`. The workflow is **hand-maintained**: it was
-born from `dist generate` but carries deliberate hardening that regeneration
-would revert — least-privilege permission scoping, an external release repo,
-and inter-job artifact transport through `actions/cache` under run-scoped keys
-instead of GitHub Actions artifact storage (that storage hit a stale quota
-error in 2026-09, APT-1002). `allow-dirty = ["ci"]` in `dist-workspace.toml`
-keeps dist's consistency check from rejecting the divergence. Edit the
-workflow by hand and mirror every deliberate change into it after a `dist`
-upgrade.
-
-This workspace is the root of the public GitHub repo
-`cloudthinker-ai/cloudthinker-cli-src`, a **publish mirror** of the `cli/` tree in the
-GitLab monorepo (the source of truth). Never edit here directly. Changes land in the
-monorepo and are pushed with `make -C cli release-sync`. A release is a pushed semver
-tag on the source repo:
+The workspace needs Rust 1.90 or later.
 
 ```sh
-# bump `version` in crates/cloudthinker-cli/Cargo.toml, commit, then:
-git tag v0.1.0 && git push origin v0.1.0
+cargo build --release -p cloudthinker-cli   # the binary is target/release/cloudthinker
+make check                                  # fmt, clippy -D warnings, and tests
 ```
 
-The tag triggers `release.yml`, which cross-builds every target and publishes a
-GitHub Release on the public repo `cloudthinker-ai/cloudthinker-cli` carrying the
-platform archives plus `cloudthinker-cli-installer.sh` and
-`cloudthinker-cli-installer.ps1` (`github-releases-repo` in `dist-workspace.toml`;
-the source repo holds the `GH_RELEASES_TOKEN` secret that writes there). The releases
-repo carries releases only, and the source repo carries the code; both are public.
-The sync leaves every `AGENTS.md` and `CLAUDE.md` out of the source repo. The releases repo's README is not mirrored; the copy to publish by hand lives in
-`docs/release-repo-README.md`.
+The `crates/` directory holds three crates:
 
-The release also carries `cloudthinker-cli-x86_64-pc-windows-msvc.zip` and the
-PowerShell installer, and neither README announces them. Windows has no
-`cloudthinker-agent` bundle (`crates/cloudthinker-client/src/agent_release.rs`
-maps macOS and Linux only), so `cloudthinker agent`, the command a bare
-`cloudthinker` runs, fails there. Announce Windows once that bundle ships.
+- `cloudthinker-cli` is the binary, its commands, and the bundled skill.
+- `cloudthinker-client` owns the HTTP client, login, and the token store.
+- `cloudthinker-api` is generated from `openapi/cloudthinker-cli.json`. Do not edit it by hand.
 
-### Vanity install URL
+`agent-cli/` holds the source of the coding agent that `cloudthinker agent`
+downloads.
 
-`https://cloudthinker.io/install.{sh,ps1}` is a 307 to the latest release's
-installer, so the published one-liner never pins a version:
+## Contributing
 
-```
-cloudthinker.io/install.sh  -> github.com/cloudthinker-ai/cloudthinker-cli/releases/latest/download/cloudthinker-cli-installer.sh
-cloudthinker.io/install.ps1 -> github.com/cloudthinker-ai/cloudthinker-cli/releases/latest/download/cloudthinker-cli-installer.ps1
-```
+Report a bug or request a feature in
+[GitHub Issues](https://github.com/cloudthinker-ai/cloudthinker-cli/issues).
+This repository is a publish mirror of the CLI tree in CloudThinker's internal
+monorepo. Each sync replaces the tree, so a maintainer applies an accepted pull
+request upstream instead of merging it here. [docs/releasing.md](docs/releasing.md)
+describes the release process.
 
-The redirect is wired at the Vercel project serving `cloudthinker.io`; nothing in
-this repo serves it. `docs/cdn-install-redirect.md` holds that config.
+## Documentation
 
-Homebrew is deferred: adding a `"homebrew"` installer needs a separate
-`cloudthinker-ai/homebrew-tap` repo and a tap entry in `dist-workspace.toml`.
+Read the product documentation at <https://docs.cloudthinker.io>.
+[CHANGELOG.md](CHANGELOG.md) lists the changes in each release.
 
 ## License
 

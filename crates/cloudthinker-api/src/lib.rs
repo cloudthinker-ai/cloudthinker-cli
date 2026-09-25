@@ -2484,6 +2484,11 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "pipelines_supported": {
+    ///      "title": "Pipelines Supported",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
     ///    "provider": {
     ///      "$ref": "#/components/schemas/CodeReviewProvider"
     ///    },
@@ -2658,6 +2663,8 @@ pub mod types {
         pub my_finding_feedback: ::std::collections::HashMap<::std::string::String, bool>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub my_review_stars: ::std::option::Option<i64>,
+        #[serde(default)]
+        pub pipelines_supported: bool,
         pub provider: CodeReviewProvider,
         pub repository_name: ::std::string::String,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -3794,6 +3801,13 @@ pub mod types {
     ///        "null"
     ///      ],
     ///      "format": "uuid"
+    ///    },
+    ///    "verification_error": {
+    ///      "title": "Verification Error",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
     ///    }
     ///  }
     ///}
@@ -3809,6 +3823,8 @@ pub mod types {
         pub name: ::std::string::String,
         pub scope: ExecutorScope,
         pub target_id: ::std::option::Option<::uuid::Uuid>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub verification_error: ::std::option::Option<::std::string::String>,
     }
 
     ///`ExecutorScope`

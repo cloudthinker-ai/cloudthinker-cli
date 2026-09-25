@@ -6,6 +6,11 @@ import type { Component } from "@earendil-works/pi-tui";
 import { CLOUD_TAG, type Legend } from "../awareness.ts";
 
 const PREVIEW_LINES = 5;
+const NO_PREVIEW = 0;
+
+export function outputPreviewLines(isError: boolean): number {
+	return isError ? PREVIEW_LINES : NO_PREVIEW;
+}
 
 export interface Elapsed {
 	elapsed_ms?: number;
@@ -57,15 +62,29 @@ export function resultBody(result: AgentToolResult<unknown>): string {
 		.trim();
 }
 
+function expandHint(theme: Theme, count: string): string {
+	return theme.fg("muted", `(${count},`) + ` ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+}
+
 export function summaryComponent(
 	theme: Theme,
 	summary: string,
 	body: string,
 	expanded: boolean,
+	previewLines: number = PREVIEW_LINES,
 ): Component {
 	const container = new Container();
 	container.addChild(new Text(theme.fg("toolTitle", summary), 0, 0));
 	if (body.length === 0) return container;
+	if (!expanded && previewLines === NO_PREVIEW) {
+		const lineCount = body.split("\n").length;
+		const hint = expandHint(theme, `${lineCount} ${lineCount === 1 ? "line" : "lines"}`);
+		container.addChild({
+			render: (width) => [truncateToWidth(hint, width, "...")],
+			invalidate: () => {},
+		});
+		return container;
+	}
 	const styled = body
 		.split("\n")
 		.map((line) => theme.fg("toolOutput", line))
@@ -76,11 +95,9 @@ export function summaryComponent(
 	}
 	container.addChild({
 		render: (width) => {
-			const preview = truncateToVisualLines(styled, PREVIEW_LINES, width);
+			const preview = truncateToVisualLines(styled, previewLines, width);
 			if (preview.skippedCount > 0) {
-				const hint =
-					theme.fg("muted", `... (${preview.skippedCount} earlier lines,`) +
-					` ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+				const hint = theme.fg("muted", "... ") + expandHint(theme, `${preview.skippedCount} earlier lines`);
 				return ["", truncateToWidth(hint, width, "..."), ...preview.visualLines];
 			}
 			return ["", ...preview.visualLines];

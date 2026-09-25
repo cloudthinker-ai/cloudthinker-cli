@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { stripVTControlCharacters } from "node:util";
 
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import type { CloudThinkerClient } from "../src/client.ts";
@@ -129,4 +131,39 @@ test("the first tagged cloud call carries the one legend", () => {
 	).render(200).map((line) => line.trimEnd());
 	assert.equal(lines[0], TAG_LEGEND);
 	assert.match(lines[1] ?? "", /^\[C\] ct_sandbox_read/);
+});
+
+function resultLines(expanded: boolean, isError: boolean): string[] {
+	initTheme("dark");
+	const tool = readTool();
+	assert.ok(tool.renderResult);
+	const output = Array.from({ length: 8 }, (_, index) => `row ${index + 1}`).join("\n");
+	return tool
+		.renderResult(
+			{ content: [{ type: "text", text: output }], details: { elapsed_ms: 1100 } } as never,
+			{ expanded, isPartial: false },
+			theme,
+			{ isError } as never,
+		)
+		.render(200)
+		.map((line) => stripVTControlCharacters(line).trimEnd());
+}
+
+test("a collapsed result hides the output behind the expand hint", () => {
+	const lines = resultLines(false, false);
+	assert.equal(lines.length, 2);
+	assert.equal(lines[0], "ran on the workspace machine · 1.1s");
+	assert.match(lines[1] ?? "", /^\(8 lines, .* to expand\)$/);
+});
+
+test("an expanded result shows the whole output", () => {
+	const lines = resultLines(true, false);
+	assert.ok(lines.includes("row 1"));
+	assert.ok(lines.includes("row 8"));
+});
+
+test("a collapsed error still previews its last lines", () => {
+	const lines = resultLines(false, true);
+	assert.ok(lines.includes("row 8"));
+	assert.ok(!lines.includes("row 1"));
 });

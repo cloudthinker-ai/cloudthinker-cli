@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { stripVTControlCharacters } from "node:util";
 
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import type { CloudThinkerClient, CloudWrite, WriteOutcome, WriteRequest } from "../src/client.ts";
@@ -462,4 +464,29 @@ test("the call line shows the reasoning for the approver, and the command only w
 	assert.deepEqual(expanded.slice(1).map((line) => line.trimEnd()), [params.script]);
 	const [resumed] = tool.renderCall({ write_id: "w-1" }, theme, { expanded: true } as never).render(200);
 	assert.match(resumed ?? "", /resume w-1$/);
+});
+
+test("a collapsed write result keeps the summary and hides the output behind the expand hint", () => {
+	initTheme("dark");
+	const { renderResult } = registered({}).tool;
+	assert.ok(renderResult);
+	const outcome = {
+		write: write("executed"),
+		execution: { status: "completed", return_code: 0, stdout: "tagged\ni-1", stderr: "" },
+		elapsed_ms: 2000,
+	};
+	const render = (expanded: boolean) =>
+		renderResult(
+			{ content: [{ type: "text", text: "tagged\ni-1" }], details: outcome } as never,
+			{ expanded, isPartial: false },
+			theme,
+			{ isError: false } as never,
+		)
+			.render(200)
+			.map((line) => stripVTControlCharacters(line).trimEnd());
+	const collapsed = render(false);
+	assert.equal(collapsed.length, 2);
+	assert.equal(collapsed[0], writeSummary(outcome as never, theme));
+	assert.match(collapsed[1] ?? "", /^\(2 lines, .* to expand\)$/);
+	assert.ok(render(true).includes("i-1"));
 });

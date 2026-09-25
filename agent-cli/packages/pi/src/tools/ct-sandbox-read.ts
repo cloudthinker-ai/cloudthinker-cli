@@ -11,6 +11,7 @@ import {
 	firstLine,
 	formatElapsed,
 	legendLine,
+	outputPreviewLines,
 	resultBody,
 	scriptDetail,
 	summaryComponent,
@@ -142,12 +143,13 @@ export function registerSandboxRead(runtime: CloudThinkerRuntime): void {
 				scriptDetail(theme, params.script ?? "", context.expanded),
 				legendLine(theme, context.toolCallId, runtime.legend),
 			),
-		renderResult: (result, options, theme) =>
+		renderResult: (result, options, theme, context) =>
 			summaryComponent(
 				theme,
 				`ran on the workspace machine · ${formatElapsed(result.details?.elapsed_ms)}`,
 				resultBody(result),
 				options.expanded,
+				outputPreviewLines(context.isError),
 			),
 	});
 }

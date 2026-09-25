@@ -1,3 +1,7 @@
+## [0.7.2]
+
+- A collapsed `ct_sandbox_read` or `ct_sandbox_write` result now shows only the reasoning and a line count; press ctrl+o to see the output. An error result still previews its last lines.
+
 ## [0.5.9]
 
 - New sessions now start with Cloud off when the agent's `settings.json` sets `cloudDefault` to false; a `/cloud on|off` in a session still overrides it, and delegated children inherit the parent's effective state.

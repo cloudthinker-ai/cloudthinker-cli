@@ -518,6 +518,7 @@ mod tests {
             name: name.to_string(),
             scope: ExecutorScope::Personal,
             target_id: Some(Uuid::from_u128(3)),
+            verification_error: None,
         }
     }
 

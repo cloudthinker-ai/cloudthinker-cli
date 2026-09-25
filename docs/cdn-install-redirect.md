@@ -53,10 +53,9 @@ redirect itself is stable. `curl -L` follows 307/308 for GET either way.
 
 Until both are true, the GitHub URL 404s (and so will the vanity URL):
 
-1. The releases repo `cloudthinker-ai/cloudthinker-cli` is **public** (unauthenticated
-   `curl` must read release assets). The source lives in the public
-   `cloudthinker-ai/cloudthinker-cli-src`, whose release workflow publishes there.
-2. At least **one release exists** (a pushed `vX.Y.Z` tag on the source repo ran the
+1. The repo `cloudthinker-ai/cloudthinker-cli` is **public** (unauthenticated
+   `curl` must read release assets). Its release workflow publishes the releases there.
+2. At least **one release exists** (a pushed `vX.Y.Z` tag on the repo ran the
    release workflow), so `/releases/latest/` resolves.
 
 You can add the `vercel.json` redirect before those are done — it will simply 404 at

@@ -19,6 +19,7 @@ import {
 	formatElapsed,
 	legendLine,
 	link,
+	outputPreviewLines,
 	resultBody,
 	scriptDetail,
 	summaryComponent,
@@ -439,12 +440,13 @@ export function registerSandboxWrite(runtime: CloudThinkerRuntime): void {
 				scriptDetail(theme, params.script ?? "", context.expanded),
 				legendLine(theme, context.toolCallId, runtime.legend),
 			),
-		renderResult: (result, options, theme) =>
+		renderResult: (result, options, theme, context) =>
 			summaryComponent(
 				theme,
 				result.details ? writeSummary(result.details, theme) : "failed",
 				resultBody(result),
 				options.expanded,
+				outputPreviewLines(context.isError),
 			),
 	});
 }
