@@ -3,7 +3,7 @@
 
 The full spec (≈700 paths / 1200 schemas) makes progenitor emit duplicate
 definitions and type cycles that fail `cargo check` (arch plan §Codegen spike).
-The CLI only needs five endpoints, so we keep exactly those paths plus the
+The CLI drives a small, named subset, so we keep exactly those paths plus the
 transitive `$ref` closure of their request/response schemas and drop everything
 else — the allowlist doubles as the CLI's explicit contract surface.
 
@@ -19,9 +19,38 @@ from __future__ import annotations
 import json
 import sys
 
-# The endpoints the CLI drives. Keep this list in lockstep with the CLI
-# commands — an endpoint absent here never reaches the generated client.
-ALLOWED_PATHS = frozenset(
+# The endpoints the CLI drives, grouped by the command that reaches them. Keep
+# these lists in lockstep with the CLI commands — an endpoint absent here never
+# reaches the generated client.
+_OUTPOST_PATHS = frozenset(
+    {
+        "/api/v1/workspaces/{workspace_id}/executor-targets",
+        "/api/v1/executor-targets/{target_id}",
+        "/api/v1/executor-targets/{target_id}/worker-registrations",
+    }
+)
+
+_WORKER_PATHS = frozenset(
+    {
+        "/api/v1/executor-workers/exchange",
+        "/api/v1/executor-workers/register",
+        "/api/v1/executor-workers/conformance",
+        "/api/v1/executor-workers/heartbeat",
+        "/api/v1/executor-workers/assignments",
+        "/api/v1/executor-workers/assignments/{assignment_id}/artifact-grants",
+        "/api/v1/executor-workers/assignments/{assignment_id}/artifact-grants/{grant_id}",
+        "/api/v1/executor-workers/assignments/{assignment_id}/claim",
+        "/api/v1/executor-workers/assignments/{assignment_id}/heartbeat",
+        "/api/v1/executor-workers/assignments/{assignment_id}/release",
+        "/api/v1/executor-workers/assignments/{assignment_id}/operations",
+        "/api/v1/executor-workers/assignments/{assignment_id}/operations/{operation_id}/start",
+        "/api/v1/executor-workers/assignments/{assignment_id}/operations/{operation_id}/result",
+        "/api/v1/executor-workers/connections/announce",
+        "/api/v1/executor-workers/connections/{alias}/health",
+    }
+)
+
+_LOGIN_PATHS = frozenset(
     {
         "/api/v1/login/cli/token",
         "/api/v1/login/cli/device/start",
@@ -29,12 +58,21 @@ ALLOWED_PATHS = frozenset(
         "/api/v1/login/refresh",
         "/api/v1/login/logout",
         "/api/v1/cli/whoami",
+        "/api/v1/workspaces/",
+    }
+)
+
+_CHAT_PATHS = frozenset(
+    {
         "/api/v1/cli/runs",
         "/api/v1/cli/runs/{run_id}",
-        "/api/v1/workspaces/",
-        # `review` command: coordinate -> review-detail lookup (MR-F).
-        "/api/v1/code-review/merge-requests/lookup",
     }
+)
+
+_REVIEW_PATHS = frozenset({"/api/v1/code-review/merge-requests/lookup"})
+
+ALLOWED_PATHS = (
+    _OUTPOST_PATHS | _WORKER_PATHS | _LOGIN_PATHS | _CHAT_PATHS | _REVIEW_PATHS
 )
 
 _HTTP_METHODS = frozenset({"get", "put", "post", "delete", "patch", "options", "head"})

@@ -4,6 +4,7 @@
 //! `Poll::Pending` / `Poll::Terminal` and drives it until terminal, timeout, or
 //! too many consecutive transport failures.
 
+use std::future::Future;
 use std::time::{Duration, Instant};
 
 use cloudthinker_client::{CtError, CtResult};
@@ -50,9 +51,10 @@ impl WatchConfig {
 ///   aborts with that error.
 /// - Any non-transport error aborts immediately.
 /// - The deadline yields `CtError::Timeout`; the caller prints a resume hint.
-pub async fn watch<T, F>(fetch: F, cfg: &WatchConfig) -> CtResult<T>
+pub async fn watch<T, F, Fut>(fetch: F, cfg: &WatchConfig) -> CtResult<T>
 where
-    F: AsyncFn() -> CtResult<Poll<T>>,
+    F: Fn() -> Fut,
+    Fut: Future<Output = CtResult<Poll<T>>>,
 {
     let start = Instant::now();
     let mut delay = cfg.base_delay;
@@ -83,7 +85,7 @@ where
                 "run did not finish before the deadline".into(),
             ));
         }
-        let nap = jittered(delay, cfg.jitter).min(remaining);
+        let nap = jittered(delay, cfg.jitter, cfg.max_delay).min(remaining);
         tokio::time::sleep(nap).await;
         delay = next_delay(delay, cfg.factor, cfg.max_delay);
     }
@@ -94,12 +96,12 @@ fn next_delay(current: Duration, factor: f64, max: Duration) -> Duration {
     scaled.min(max)
 }
 
-fn jittered(delay: Duration, jitter: f64) -> Duration {
+fn jittered(delay: Duration, jitter: f64, max: Duration) -> Duration {
     if jitter <= 0.0 {
-        return delay;
+        return delay.min(max);
     }
     let factor = 1.0 + rand::thread_rng().gen_range(-jitter..=jitter);
-    delay.mul_f64(factor.max(0.0))
+    delay.mul_f64(factor.max(0.0)).min(max)
 }
 
 #[cfg(test)]
@@ -189,5 +191,14 @@ mod tests {
         .await;
         assert!(matches!(result, Err(CtError::Auth(_))));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn jittered_delay_respects_the_configured_maximum() {
+        let delay = Duration::from_secs(10);
+        let max = Duration::from_secs(10);
+        for _ in 0..128 {
+            assert!(jittered(delay, 0.2, max) <= max);
+        }
     }
 }

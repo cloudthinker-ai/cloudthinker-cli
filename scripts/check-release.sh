@@ -44,13 +44,13 @@ expected=(
 )
 missing=0
 for name in "${expected[@]}"; do
-  if printf '%s\n' "${assets[@]}" | grep -qx "$name"; then
+  if grep -qx -- "$name" <<<"$(printf '%s\n' "${assets[@]}")"; then
     continue
   fi
   echo "error: missing asset $name" >&2
   missing=1
 done
-if printf '%s\n' "${assets[@]}" | grep -q '^source\.tar\.gz'; then
+if grep -q '^source\.tar\.gz' <<<"$(printf '%s\n' "${assets[@]}")"; then
   echo "error: the release carries a source tarball; set source-tarball = false" >&2
   missing=1
 fi

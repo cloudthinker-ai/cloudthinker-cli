@@ -44,6 +44,7 @@ pub enum DeviceTokenPoll {
 #[derive(Debug, Clone, Serialize)]
 pub struct CliIdentity {
     pub host: String,
+    pub user_id: Uuid,
     pub user_email: String,
     pub workspace_id: Uuid,
     pub workspace_name: String,
@@ -403,7 +404,7 @@ impl CtClient {
         conversation_id: Option<Uuid>,
     ) -> CtResult<SubmittedRun> {
         let prompt_field = prompt
-            .parse::<cloudthinker_api::types::Prompt>()
+            .parse::<cloudthinker_api::types::SubmitHeadlessRunRequestPrompt>()
             .map_err(|_| CtError::Usage("prompt must be 1–50000 characters".into()))?;
         let body = cloudthinker_api::types::SubmitHeadlessRunRequest {
             conversation_id,
@@ -531,6 +532,7 @@ impl CtClient {
     fn identity_from_api(&self, api: cloudthinker_api::types::CliWhoAmIResponse) -> CliIdentity {
         CliIdentity {
             host: origin_of(&self.base_url).unwrap_or_else(|_| self.base_url.clone()),
+            user_id: api.user_id,
             user_email: api.user_email,
             workspace_id: api.workspace_id,
             workspace_name: api.workspace_name,
@@ -690,7 +692,7 @@ impl CtClient {
     /// Run `call` with a fresh bearer, retrying exactly once through a refresh
     /// on a 401. Proactive refresh happens in `access_token` before the first
     /// attempt.
-    async fn authed<T, F>(&self, call: F) -> CtResult<T>
+    pub(crate) async fn authed<T, F>(&self, call: F) -> CtResult<T>
     where
         F: AsyncFn(
             cloudthinker_api::Client,
@@ -1049,6 +1051,7 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/api/v1/cli/whoami"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "user_id": "22222222-2222-4222-8222-222222222222",
                 "user_email": "duc@example.com",
                 "workspace_id": "11111111-1111-4111-8111-111111111111",
                 "workspace_name": "Production",

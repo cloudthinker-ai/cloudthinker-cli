@@ -23,7 +23,7 @@ repository = "https://github.com/cloudthinker-ai/cloudthinker-cli"
 cloudthinker-api = { path = "crates/cloudthinker-api" }
 cloudthinker-client = { path = "crates/cloudthinker-client" }
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net", "process", "signal", "io-util"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

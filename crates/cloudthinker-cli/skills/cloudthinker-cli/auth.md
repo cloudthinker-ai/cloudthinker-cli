@@ -6,10 +6,13 @@ Read this module when logging in, choosing a host or workspace, or recovering fr
 
 ```bash
 cloudthinker whoami
+cloudthinker whoami --json
 cloudthinker --workspace '<workspace-id-or-name>' whoami
 ```
 
 Check the returned host, account, workspace name, and workspace ID against the task. Keep the selected `--workspace` on every subsequent authenticated command. Duplicate workspace names require the ID. Missing workspace credentials fail instead of falling back to another workspace.
+
+`whoami --json` writes one machine-readable object containing `host`, `user_id`, and `workspace_id` for integrations that must compare the CLI identity with another authenticated surface. It does not print the access token.
 
 The default host is `https://app.cloudthinker.io`. Use `--url '<origin>'` only when the task targets another host; pass the bare origin without `/api/v1`, and keep it consistent. `CLOUDTHINKER_URL` can also select the host, so verify the resolved identity rather than assuming the default.
 

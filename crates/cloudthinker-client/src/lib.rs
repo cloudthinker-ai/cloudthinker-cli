@@ -12,7 +12,10 @@ mod agent_release;
 pub mod auth;
 mod client;
 mod error;
+mod outposts;
 mod review_url;
+pub mod worker_api;
+pub use cloudthinker_api::types as worker_types;
 mod update_cache;
 
 #[cfg(test)]

@@ -53,6 +53,7 @@ test:
 	cd $(CLI_DIR) && cargo test
 	python3 $(CLI_DIR)/scripts/test_check_release.py
 	python3 $(CLI_DIR)/scripts/test_changelog.py
+	python3 $(CLI_DIR)/scripts/test_fixup_spec.py
 
 changelog:
 	python3 $(CLI_DIR)/scripts/changelog.py fold --version $(VERSION)

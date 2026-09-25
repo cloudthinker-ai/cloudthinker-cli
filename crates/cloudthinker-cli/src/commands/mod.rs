@@ -2,12 +2,16 @@
 
 pub mod agent;
 pub mod auth;
+#[cfg(unix)]
+pub mod bg_shim;
 pub mod chat;
 pub mod login;
 pub mod logout;
 pub mod review;
 pub mod update;
 pub mod whoami;
+pub mod worker;
+pub mod worker_service;
 
 use cloudthinker_client::{CtClient, CtError, TOKEN_ENV_VAR, resolve_store};
 

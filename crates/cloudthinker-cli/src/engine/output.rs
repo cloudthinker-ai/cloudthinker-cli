@@ -8,7 +8,7 @@ use std::io::{self, IsTerminal, Write};
 
 use cloudthinker_client::{
     CliIdentity, ReviewFinding, ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView,
-    RunListItem, RunStatus, RunView, SubmittedRun,
+    RunListItem, RunStatus, RunView, SubmittedRun, worker_types::ExecutorChoicePublic,
 };
 use owo_colors::{AnsiColors, OwoColorize};
 use serde::Serialize;
@@ -161,6 +161,31 @@ pub fn continuation_hint(conversation_id: Option<Uuid>, web_url: Option<&str>) {
 pub fn print_whoami(identity: &CliIdentity) -> Result<(), String> {
     let mut out = std::io::stdout().lock();
     write_line(&mut out, &format_whoami(identity))
+}
+
+#[derive(Debug, Serialize)]
+pub struct WhoamiEnvelope {
+    pub host: String,
+    pub user_id: Uuid,
+    pub workspace_id: Uuid,
+}
+
+impl From<&CliIdentity> for WhoamiEnvelope {
+    fn from(identity: &CliIdentity) -> Self {
+        Self {
+            host: identity.host.clone(),
+            user_id: identity.user_id,
+            workspace_id: identity.workspace_id,
+        }
+    }
+}
+
+pub fn emit_whoami(identity: &CliIdentity, json: bool) -> Result<(), String> {
+    if json {
+        emit_json(&WhoamiEnvelope::from(identity))
+    } else {
+        print_whoami(identity)
+    }
 }
 
 fn format_whoami(identity: &CliIdentity) -> String {
@@ -392,6 +417,47 @@ pub fn print_document(document: &str) -> Result<(), String> {
     }
 }
 
+pub fn emit_worker<T: Serialize>(value: &T, human: &str, json: bool) -> Result<(), String> {
+    if json {
+        emit_json(value)
+    } else {
+        print_answer(human)
+    }
+}
+
+/// Human lines for `worker outpost` and `worker status`. Every outpost name is
+/// workspace-supplied, so each one reaches the terminal through
+/// [`terminal_text`].
+pub fn outpost_created_line(name: &str, target_id: Uuid) -> String {
+    format!(
+        "Created outpost {}; start it with cloudthinker worker start --outpost {target_id} --workdir <directory>",
+        terminal_text(name)
+    )
+}
+
+pub fn outpost_archived_line(name: &str) -> String {
+    format!("Archived outpost {}", terminal_text(name))
+}
+
+pub fn outpost_status_line(choice: &ExecutorChoicePublic) -> String {
+    format!("{}: {}", terminal_text(&choice.name), choice.availability)
+}
+
+pub fn outpost_list_text(choices: &[ExecutorChoicePublic]) -> String {
+    choices
+        .iter()
+        .map(|choice| format!("{}  {}", terminal_text(&choice.name), choice.availability))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn worker_serving_line(name: &str, label: &str) -> String {
+    format!(
+        "Serving {} from {label}. File tools stay in this folder; shell commands run as your user without a sandbox.",
+        terminal_text(name)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -440,10 +506,52 @@ mod tests {
         assert!(emit_json_to(&mut out, &"hello").is_err());
     }
 
+    fn outpost(name: &str) -> ExecutorChoicePublic {
+        use cloudthinker_client::worker_types::{
+            ExecutorAvailability, ExecutorChoiceKind, ExecutorScope,
+        };
+        ExecutorChoicePublic {
+            availability: ExecutorAvailability::Available,
+            capabilities: Vec::new(),
+            kind: ExecutorChoiceKind::Outpost,
+            last_verified_at: None,
+            name: name.to_string(),
+            scope: ExecutorScope::Personal,
+            target_id: Some(Uuid::from_u128(3)),
+        }
+    }
+
+    #[test]
+    fn ca_wo_21_outpost_lines_strip_terminal_and_bidi_controls_from_the_name() {
+        let hostile = "build\u{1b}]0;owned\u{7}\u{202e}txt";
+
+        assert_eq!(
+            outpost_list_text(&[outpost(hostile)]),
+            "build]0;ownedtxt  available"
+        );
+        assert_eq!(
+            outpost_status_line(&outpost(hostile)),
+            "build]0;ownedtxt: available"
+        );
+        assert_eq!(
+            outpost_archived_line(hostile),
+            "Archived outpost build]0;ownedtxt"
+        );
+        assert_eq!(
+            outpost_created_line(hostile, Uuid::from_u128(3)),
+            "Created outpost build]0;ownedtxt; start it with cloudthinker worker start --outpost 00000000-0000-0000-0000-000000000003 --workdir <directory>"
+        );
+        assert_eq!(
+            worker_serving_line(hostile, "outpost folder"),
+            "Serving build]0;ownedtxt from outpost folder. File tools stay in this folder; shell commands run as your user without a sandbox."
+        );
+    }
+
     #[test]
     fn whoami_strips_terminal_and_bidi_controls_from_server_text() {
         let identity = CliIdentity {
             host: "api.example\nforged".into(),
+            user_id: Uuid::from_u128(2),
             user_email: "user\u{1b}]0;owned\u{7}@example.com".into(),
             workspace_id: Uuid::from_u128(1),
             workspace_name: "Prod\u{202e}txt".into(),

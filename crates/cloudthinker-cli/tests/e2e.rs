@@ -8,6 +8,20 @@
 
 // This integration target links the whole crate's dependency set but only needs
 // a few; silence `unused_crate_dependencies` for the bin-only deps.
+use base64 as _;
+use cap_std as _;
+use chrono as _;
+use flate2 as _;
+use fs2 as _;
+use globset as _;
+use regex as _;
+#[cfg(unix)]
+use rustix as _;
+use sha2 as _;
+use tar as _;
+use tempfile as _;
+use tokio_util as _;
+
 use axoupdater as _;
 use clap as _;
 use cloudthinker_client as _;
@@ -249,7 +263,7 @@ fn cli(base_url: &str) -> Command {
     cmd
 }
 
-const WHOAMI_BODY: &str = r#"{"user_email":"duc@example.com","workspace_id":"11111111-1111-4111-8111-111111111111","workspace_name":"Production","organization_id":null}"#;
+const WHOAMI_BODY: &str = r#"{"user_id":"22222222-2222-4222-8222-222222222222","user_email":"duc@example.com","workspace_id":"11111111-1111-4111-8111-111111111111","workspace_name":"Production","organization_id":null}"#;
 
 #[test]
 fn whoami_prints_one_live_identity_line() {
@@ -262,6 +276,27 @@ fn whoami_prints_one_live_identity_line() {
         .stdout(predicates::str::is_match(
             r"^host=http://127\.0\.0\.1:[0-9]+ email=duc@example\.com workspace=Production \(11111111-1111-4111-8111-111111111111\)\n$",
         ).unwrap());
+}
+
+#[test]
+fn whoami_json_prints_the_desktop_identity_contract() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+
+    let output = cli(&api.base_url)
+        .args(["whoami", "--json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        value,
+        serde_json::json!({
+            "host": api.base_url,
+            "user_id": "22222222-2222-4222-8222-222222222222",
+            "workspace_id": "11111111-1111-4111-8111-111111111111",
+        })
+    );
 }
 
 #[test]
@@ -1430,7 +1465,12 @@ fn installed_copy(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
     std::fs::create_dir_all(&dir).unwrap();
     let dir = dir.canonicalize().unwrap();
     let binary = dir.join("cloudthinker");
-    std::fs::copy(assert_cmd::cargo::cargo_bin("cloudthinker"), &binary).unwrap();
+    let copied = std::process::Command::new("cp")
+        .arg(assert_cmd::cargo::cargo_bin("cloudthinker"))
+        .arg(&binary)
+        .status()
+        .unwrap();
+    assert!(copied.success(), "cp of the built binary failed: {copied}");
     let receipt_dir = write_receipt(tag, RUNNING_VERSION, dir.to_str().unwrap());
     (binary, receipt_dir)
 }
@@ -1698,6 +1738,7 @@ fn ca_cli_skill_exports_bundled_modules_offline() {
         ("auth", "auth.md"),
         ("chat", "chat.md"),
         ("review", "review.md"),
+        ("worker", "worker.md"),
     ] {
         let expected = std::fs::read(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1735,4 +1776,369 @@ fn ca_cli_skill_rejects_unknown_topics_and_execution() {
             .code(2)
             .stdout("");
     }
+}
+
+const OUTPOST_ID: &str = "33333333-3333-4333-8333-333333333333";
+
+fn outpost_json(name: &str, target_id: Option<&str>) -> String {
+    let target = target_id.map_or_else(|| "null".to_string(), |id| format!("\"{id}\""));
+    format!(
+        r#"{{"availability":"available","capabilities":["shell"],"kind":"outpost","name":"{name}","scope":"personal","target_id":{target}}}"#
+    )
+}
+
+fn worker_state_dir(config_home: &std::path::Path, origin: &str) -> std::path::PathBuf {
+    use sha2::{Digest, Sha256};
+    config_home
+        .join("cloudthinker/worker-state")
+        .join(format!("{:x}", Sha256::digest(origin.as_bytes())))
+}
+
+fn worker_cli(base_url: &str, config_home: &std::path::Path) -> Command {
+    let mut command = cli(base_url);
+    command
+        .env("HOME", config_home)
+        .env("XDG_CONFIG_HOME", config_home)
+        .env_remove("CLOUDTHINKER_OUTPOST_ID")
+        .env_remove("CLOUDTHINKER_WORKER_TOKEN")
+        .timeout(Duration::from_secs(20));
+    command
+}
+
+#[test]
+fn ca_wo_01_outpost_create_stores_the_exchanged_credential_and_prints_the_start_command() {
+    let home = tempfile::tempdir().unwrap();
+    let api = RecordingApi::start(vec![
+        ("200 OK", WHOAMI_BODY.into()),
+        (
+            "201 Created",
+            format!(
+                r#"{{"registration":{{"expires_at":"2026-09-14T00:00:00Z","reference":"one-time-ref"}},"target":{}}}"#,
+                outpost_json("build", Some(OUTPOST_ID))
+            ),
+        ),
+        (
+            "200 OK",
+            format!(
+                r#"{{"credential":"worker-token","credential_generation":1,"expires_at":"2026-09-14T00:00:00Z","target_id":"{OUTPOST_ID}"}}"#
+            ),
+        ),
+    ]);
+
+    worker_cli(&api.base_url, home.path())
+        .args(["worker", "outpost", "create", "build"])
+        .assert()
+        .success()
+        .stdout(format!(
+            "Created outpost build; start it with cloudthinker worker start --outpost {OUTPOST_ID} --workdir <directory>\n"
+        ));
+
+    let requests = api.requests();
+    assert!(
+        requests[1].contains("POST /api/v1/workspaces/")
+            && requests[1].contains("executor-targets"),
+        "{requests:?}"
+    );
+    assert!(
+        requests[2].contains("POST /api/v1/executor-workers/exchange"),
+        "{requests:?}"
+    );
+    let stored = std::fs::read_to_string(
+        worker_state_dir(home.path(), &api.base_url).join(format!("{OUTPOST_ID}.json")),
+    )
+    .unwrap();
+    assert!(stored.contains("worker-token"), "{stored}");
+}
+
+#[test]
+fn ca_wo_21_outpost_ls_hides_managed_execution_and_sanitizes_the_name() {
+    let home = tempfile::tempdir().unwrap();
+    let hostile = concat!("deploy", "\\u001b", "]0;owned", "\\u0007");
+    let api = RecordingApi::start(vec![
+        ("200 OK", WHOAMI_BODY.into()),
+        (
+            "200 OK",
+            format!(
+                "[{},{},{}]",
+                outpost_json("managed", None),
+                outpost_json("build", Some(OUTPOST_ID)),
+                outpost_json(hostile, Some("44444444-4444-4444-8444-444444444444")),
+            ),
+        ),
+    ]);
+
+    worker_cli(&api.base_url, home.path())
+        .args(["worker", "outpost", "ls"])
+        .assert()
+        .success()
+        .stdout("build  available\ndeploy]0;owned  available\n");
+}
+
+#[test]
+fn ca_wo_21_outpost_ls_json_emits_only_the_selectable_outposts() {
+    let home = tempfile::tempdir().unwrap();
+    let api = RecordingApi::start(vec![
+        ("200 OK", WHOAMI_BODY.into()),
+        (
+            "200 OK",
+            format!(
+                "[{},{}]",
+                outpost_json("managed", None),
+                outpost_json("build", Some(OUTPOST_ID))
+            ),
+        ),
+    ]);
+
+    let output = worker_cli(&api.base_url, home.path())
+        .args(["worker", "outpost", "ls", "--json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let entries = value.as_array().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0]["target_id"], OUTPOST_ID);
+}
+
+#[test]
+fn ca_wo_22_outpost_archive_resolves_the_name_then_archives_that_target() {
+    let home = tempfile::tempdir().unwrap();
+    let api = RecordingApi::start(vec![
+        ("200 OK", WHOAMI_BODY.into()),
+        (
+            "200 OK",
+            format!("[{}]", outpost_json("build", Some(OUTPOST_ID))),
+        ),
+        ("204 No Content", String::new()),
+    ]);
+
+    worker_cli(&api.base_url, home.path())
+        .args(["worker", "outpost", "archive", "build"])
+        .assert()
+        .success()
+        .stdout("Archived outpost build\n");
+
+    let requests = api.requests();
+    assert!(
+        requests[2].contains(&format!("/executor-targets/{OUTPOST_ID}")),
+        "{requests:?}"
+    );
+}
+
+#[test]
+fn ca_wo_22_outpost_archive_of_an_unknown_name_is_a_usage_error() {
+    let home = tempfile::tempdir().unwrap();
+    let api = RecordingApi::start(vec![
+        ("200 OK", WHOAMI_BODY.into()),
+        (
+            "200 OK",
+            format!("[{}]", outpost_json("build", Some(OUTPOST_ID))),
+        ),
+    ]);
+
+    worker_cli(&api.base_url, home.path())
+        .args(["worker", "outpost", "archive", "release"])
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicates::str::contains("outpost not found"));
+}
+
+#[test]
+fn ca_wo_21_worker_status_reports_one_outpost_availability() {
+    let home = tempfile::tempdir().unwrap();
+    let api = RecordingApi::start(vec![
+        ("200 OK", WHOAMI_BODY.into()),
+        (
+            "200 OK",
+            format!("[{}]", outpost_json("build", Some(OUTPOST_ID))),
+        ),
+    ]);
+
+    worker_cli(&api.base_url, home.path())
+        .args(["worker", "status", "--outpost", OUTPOST_ID])
+        .assert()
+        .success()
+        .stdout("build: available\n");
+}
+
+const SERVICE_ORIGIN: &str = "https://app.example.com:443";
+
+#[cfg(unix)]
+fn private_dir(path: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::create_dir_all(path).unwrap();
+    std::fs::set_permissions(path, PermissionsExt::from_mode(0o700)).unwrap();
+    path.to_path_buf()
+}
+
+#[cfg(unix)]
+fn store_worker_credential(config_home: &std::path::Path, target_id: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = private_dir(&worker_state_dir(config_home, SERVICE_ORIGIN));
+    let path = dir.join(format!("{target_id}.json"));
+    std::fs::write(
+        &path,
+        format!(r#"{{"target_id":"{target_id}","name":"build","token":"worker-token"}}"#),
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, PermissionsExt::from_mode(0o600)).unwrap();
+}
+
+#[cfg(unix)]
+fn fake_service_manager(root: &std::path::Path, log: &std::path::Path) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let bin = private_dir(&root.join("bin"));
+    let manager = bin.join("systemctl");
+    std::fs::write(
+        &manager,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\nexit 0\n",
+            log.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&manager, PermissionsExt::from_mode(0o700)).unwrap();
+    bin
+}
+
+#[cfg(unix)]
+fn service_cli(config_home: &std::path::Path, bin: &std::path::Path) -> Command {
+    let mut command = Command::cargo_bin("cloudthinker").unwrap();
+    command
+        .env("HOME", config_home)
+        .env("XDG_CONFIG_HOME", config_home)
+        .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+        .env_remove("CLOUDTHINKER_TOKEN")
+        .env_remove("CLOUDTHINKER_WORKSPACE")
+        .env_remove("CLOUDTHINKER_OUTPOST_ID")
+        .timeout(Duration::from_secs(20))
+        .args(["--url", "https://app.example.com", "worker", "service"]);
+    command
+}
+
+#[cfg(unix)]
+#[test]
+fn ca_wo_41_repeating_one_service_install_is_unchanged_and_a_different_one_is_refused() {
+    let root = tempfile::tempdir().unwrap();
+    let home = private_dir(&root.path().join("home"));
+    let workdir = private_dir(&root.path().join("work"));
+    let log = root.path().join("manager.log");
+    let bin = fake_service_manager(root.path(), &log);
+    private_dir(&home.join("systemd/user"));
+    store_worker_credential(&home, OUTPOST_ID);
+    let workdir = workdir.to_string_lossy().into_owned();
+
+    service_cli(&home, &bin)
+        .args([
+            "install",
+            "--outpost",
+            OUTPOST_ID,
+            "--workdir",
+            &workdir,
+            "--json",
+        ])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("\"state\": \"installed\""));
+
+    service_cli(&home, &bin)
+        .args([
+            "install",
+            "--outpost",
+            OUTPOST_ID,
+            "--workdir",
+            &workdir,
+            "--json",
+        ])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("\"state\": \"unchanged\""));
+
+    service_cli(&home, &bin)
+        .args([
+            "install",
+            "--outpost",
+            OUTPOST_ID,
+            "--workdir",
+            &workdir,
+            "--concurrency",
+            "8",
+        ])
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicates::str::contains(
+            "a worker service already exists with different settings",
+        ));
+
+    let unit = std::fs::read_dir(home.join("systemd/user"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.extension().is_some_and(|suffix| suffix == "service"))
+        .expect("one installed unit");
+    let descriptor = std::fs::read_to_string(unit).unwrap();
+    assert!(descriptor.contains("--concurrency\" \"4\""), "{descriptor}");
+    assert!(!descriptor.contains("worker-token"), "{descriptor}");
+    let log = std::fs::read_to_string(&log).unwrap();
+    assert_eq!(log.matches("--user enable").count(), 2, "{log}");
+}
+
+#[cfg(unix)]
+#[test]
+fn ca_wo_42_worker_service_status_is_absent_before_any_install() {
+    let root = tempfile::tempdir().unwrap();
+    let home = private_dir(&root.path().join("home"));
+    let workdir = private_dir(&root.path().join("work"));
+    let bin = fake_service_manager(root.path(), &root.path().join("manager.log"));
+    store_worker_credential(&home, OUTPOST_ID);
+
+    service_cli(&home, &bin)
+        .args([
+            "status",
+            "--outpost",
+            OUTPOST_ID,
+            "--workdir",
+            &workdir.to_string_lossy(),
+        ])
+        .assert()
+        .success()
+        .stdout("Worker service is not installed\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn ca_bg_07_the_shim_escalates_to_sigkill_when_the_child_ignores_term() {
+    let task_dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        task_dir.path().join("cmd.sh"),
+        "trap '' TERM\nsleep 300 &\nwait\n",
+    )
+    .unwrap();
+
+    let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin("cloudthinker"))
+        .args(["worker", "bg-shim", "--task-dir"])
+        .arg(task_dir.path())
+        .args(["--timeout-secs", "1"])
+        .stdin(std::process::Stdio::from(
+            std::fs::File::open(task_dir.path()).unwrap(),
+        ))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+
+    let exit_file = task_dir.path().join("exit");
+    let deadline = std::time::Instant::now() + Duration::from_secs(90);
+    while !exit_file.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    let recorded = std::fs::read_to_string(&exit_file).expect("the shim records an exit code");
+    assert_eq!(recorded, "137");
+
+    let _ = child.wait();
+    assert!(
+        !std::path::Path::new(&format!("/proc/{}", child.id())).exists(),
+        "the supervisor process group survived the escalation"
+    );
 }

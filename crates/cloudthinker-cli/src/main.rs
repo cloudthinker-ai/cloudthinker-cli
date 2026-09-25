@@ -20,6 +20,8 @@ use predicates as _;
 mod commands;
 mod engine;
 mod skill;
+#[cfg(unix)]
+mod worker;
 
 use std::ffi::OsString;
 
@@ -58,12 +60,18 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Run this machine as an outpost worker, and manage its outposts.
+    Worker(commands::worker::WorkerArgs),
     /// Log in via your browser.
     Login(LoginArgs),
     /// Log out and clear stored credentials.
     Logout(LogoutArgs),
     /// Show the live account and workspace for the selected credential.
-    Whoami,
+    Whoami {
+        /// Emit the machine-readable identity contract.
+        #[arg(long)]
+        json: bool,
+    },
     /// Read the credential the CLI uses for the selected workspace.
     Auth(AuthArgs),
     /// Send a headless prompt to Anna, or check a run's status.
@@ -268,7 +276,9 @@ async fn dispatch(cli: Cli) -> ExitCode {
         Command::Logout(args) => {
             commands::logout::run(&base_url, workspace.as_deref(), args.all).await
         }
-        Command::Whoami => commands::whoami::run(&base_url, workspace.as_deref()).await,
+        Command::Whoami { json } => {
+            commands::whoami::run(&base_url, workspace.as_deref(), json).await
+        }
         Command::Auth(args) => match args.command {
             AuthSub::Token => commands::auth::run_token(&base_url, workspace.as_deref()).await,
         },
@@ -334,6 +344,7 @@ async fn dispatch(cli: Cli) -> ExitCode {
                     .await
             }
         },
+        Command::Worker(args) => commands::worker::run(&base_url, workspace.as_deref(), args).await,
         // Self-update talks to GitHub releases, not the CloudThinker API; the
         // global `--url` only picks the release channel (the prod origin
         // follows stable, any other origin dev prereleases), and `--workspace`

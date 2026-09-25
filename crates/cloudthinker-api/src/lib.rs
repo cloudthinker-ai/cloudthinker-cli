@@ -142,6 +142,402 @@ pub mod types {
         }
     }
 
+    ///`Alias`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Alias",
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct Alias(::std::string::String);
+    impl ::std::ops::Deref for Alias {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<Alias> for ::std::string::String {
+        fn from(value: Alias) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for Alias {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for Alias {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for Alias {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for Alias {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for Alias {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`AnnounceTargetConnection`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AnnounceTargetConnection",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "alias",
+    ///    "credential_generation",
+    ///    "expected_revision",
+    ///    "identity",
+    ///    "kind",
+    ///    "tools",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "alias": {
+    ///      "title": "AnnounceTargetConnection_alias",
+    ///      "type": "string",
+    ///      "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///    },
+    ///    "credential_generation": {
+    ///      "title": "Credential Generation",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "expected_revision": {
+    ///      "title": "Expected Revision",
+    ///      "type": "integer",
+    ///      "minimum": 0.0
+    ///    },
+    ///    "identity": {
+    ///      "title": "AnnounceTargetConnection_identity",
+    ///      "type": "string",
+    ///      "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///    },
+    ///    "kind": {
+    ///      "title": "AnnounceTargetConnection_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "builtin",
+    ///        "mcp"
+    ///      ]
+    ///    },
+    ///    "tools": {
+    ///      "title": "Tools",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/LocalToolAnnouncement"
+    ///      },
+    ///      "maxItems": 64,
+    ///      "minItems": 1
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct AnnounceTargetConnection {
+        pub alias: AnnounceTargetConnectionAlias,
+        pub credential_generation: ::std::num::NonZeroU64,
+        pub expected_revision: u64,
+        pub identity: AnnounceTargetConnectionIdentity,
+        pub kind: AnnounceTargetConnectionKind,
+        pub tools: ::std::vec::Vec<LocalToolAnnouncement>,
+        pub worker_id: ::uuid::Uuid,
+    }
+
+    ///`AnnounceTargetConnectionAlias`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AnnounceTargetConnection_alias",
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct AnnounceTargetConnectionAlias(::std::string::String);
+    impl ::std::ops::Deref for AnnounceTargetConnectionAlias {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<AnnounceTargetConnectionAlias> for ::std::string::String {
+        fn from(value: AnnounceTargetConnectionAlias) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for AnnounceTargetConnectionAlias {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for AnnounceTargetConnectionAlias {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for AnnounceTargetConnectionAlias {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for AnnounceTargetConnectionAlias {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for AnnounceTargetConnectionAlias {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`AnnounceTargetConnectionIdentity`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AnnounceTargetConnection_identity",
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct AnnounceTargetConnectionIdentity(::std::string::String);
+    impl ::std::ops::Deref for AnnounceTargetConnectionIdentity {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<AnnounceTargetConnectionIdentity> for ::std::string::String {
+        fn from(value: AnnounceTargetConnectionIdentity) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for AnnounceTargetConnectionIdentity {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for AnnounceTargetConnectionIdentity {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for AnnounceTargetConnectionIdentity {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for AnnounceTargetConnectionIdentity {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for AnnounceTargetConnectionIdentity {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`AnnounceTargetConnectionKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AnnounceTargetConnection_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "builtin",
+    ///    "mcp"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum AnnounceTargetConnectionKind {
+        #[serde(rename = "builtin")]
+        Builtin,
+        #[serde(rename = "mcp")]
+        Mcp,
+    }
+
+    impl ::std::fmt::Display for AnnounceTargetConnectionKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Builtin => f.write_str("builtin"),
+                Self::Mcp => f.write_str("mcp"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for AnnounceTargetConnectionKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "builtin" => Ok(Self::Builtin),
+                "mcp" => Ok(Self::Mcp),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for AnnounceTargetConnectionKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for AnnounceTargetConnectionKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for AnnounceTargetConnectionKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///`ApplyFixDisabledReason`
     ///
     /// <details><summary>JSON schema</summary>
@@ -208,6 +604,272 @@ pub mod types {
     }
 
     impl ::std::convert::TryFrom<::std::string::String> for ApplyFixDisabledReason {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`ArtifactGrantPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ArtifactGrantPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "expires_at",
+    ///    "grant_id",
+    ///    "token"
+    ///  ],
+    ///  "properties": {
+    ///    "expires_at": {
+    ///      "title": "Expires At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "grant_id": {
+    ///      "title": "Grant Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "token": {
+    ///      "title": "Token",
+    ///      "type": "string"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct ArtifactGrantPublic {
+        pub expires_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub grant_id: ::uuid::Uuid,
+        pub token: ::std::string::String,
+    }
+
+    ///`AssignmentLease`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AssignmentLease",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "assignment_id",
+    ///    "fence_token",
+    ///    "lease_expires_at",
+    ///    "lease_token",
+    ///    "session_id",
+    ///    "state",
+    ///    "target_id",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "assignment_id": {
+    ///      "title": "Assignment Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer"
+    ///    },
+    ///    "lease_expires_at": {
+    ///      "title": "Lease Expires At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "type": "string"
+    ///    },
+    ///    "session_id": {
+    ///      "title": "Session Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "state": {
+    ///      "$ref": "#/components/schemas/AssignmentState"
+    ///    },
+    ///    "target_id": {
+    ///      "title": "Target Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct AssignmentLease {
+        pub assignment_id: ::uuid::Uuid,
+        pub fence_token: i64,
+        pub lease_expires_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub lease_token: ::std::string::String,
+        pub session_id: ::uuid::Uuid,
+        pub state: AssignmentState,
+        pub target_id: ::uuid::Uuid,
+        pub worker_id: ::uuid::Uuid,
+    }
+
+    ///`AssignmentLeaseRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AssignmentLeaseRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct AssignmentLeaseRequest {
+        pub fence_token: ::std::num::NonZeroU64,
+        pub lease_token: ::std::string::String,
+        pub worker_id: ::uuid::Uuid,
+    }
+
+    ///`AssignmentState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AssignmentState",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "pending",
+    ///    "claimed",
+    ///    "starting",
+    ///    "active",
+    ///    "draining",
+    ///    "orphaned",
+    ///    "resolution_required",
+    ///    "closed"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum AssignmentState {
+        #[serde(rename = "pending")]
+        Pending,
+        #[serde(rename = "claimed")]
+        Claimed,
+        #[serde(rename = "starting")]
+        Starting,
+        #[serde(rename = "active")]
+        Active,
+        #[serde(rename = "draining")]
+        Draining,
+        #[serde(rename = "orphaned")]
+        Orphaned,
+        #[serde(rename = "resolution_required")]
+        ResolutionRequired,
+        #[serde(rename = "closed")]
+        Closed,
+    }
+
+    impl ::std::fmt::Display for AssignmentState {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Pending => f.write_str("pending"),
+                Self::Claimed => f.write_str("claimed"),
+                Self::Starting => f.write_str("starting"),
+                Self::Active => f.write_str("active"),
+                Self::Draining => f.write_str("draining"),
+                Self::Orphaned => f.write_str("orphaned"),
+                Self::ResolutionRequired => f.write_str("resolution_required"),
+                Self::Closed => f.write_str("closed"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for AssignmentState {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "pending" => Ok(Self::Pending),
+                "claimed" => Ok(Self::Claimed),
+                "starting" => Ok(Self::Starting),
+                "active" => Ok(Self::Active),
+                "draining" => Ok(Self::Draining),
+                "orphaned" => Ok(Self::Orphaned),
+                "resolution_required" => Ok(Self::ResolutionRequired),
+                "closed" => Ok(Self::Closed),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for AssignmentState {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for AssignmentState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for AssignmentState {
         type Error = self::error::ConversionError;
         fn try_from(
             value: ::std::string::String,
@@ -298,6 +960,313 @@ pub mod types {
         ) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
+    }
+
+    ///`BackgroundAction`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "BackgroundAction",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "start",
+    ///    "tail",
+    ///    "cancel",
+    ///    "cleanup"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum BackgroundAction {
+        #[serde(rename = "start")]
+        Start,
+        #[serde(rename = "tail")]
+        Tail,
+        #[serde(rename = "cancel")]
+        Cancel,
+        #[serde(rename = "cleanup")]
+        Cleanup,
+    }
+
+    impl ::std::fmt::Display for BackgroundAction {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Start => f.write_str("start"),
+                Self::Tail => f.write_str("tail"),
+                Self::Cancel => f.write_str("cancel"),
+                Self::Cleanup => f.write_str("cleanup"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for BackgroundAction {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "start" => Ok(Self::Start),
+                "tail" => Ok(Self::Tail),
+                "cancel" => Ok(Self::Cancel),
+                "cleanup" => Ok(Self::Cleanup),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for BackgroundAction {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for BackgroundAction {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for BackgroundAction {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`BackgroundOperation`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "BackgroundOperation",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "action",
+    ///    "kind",
+    ///    "task_id"
+    ///  ],
+    ///  "properties": {
+    ///    "action": {
+    ///      "$ref": "#/components/schemas/BackgroundAction"
+    ///    },
+    ///    "authorized_working_directory_root": {
+    ///      "title": "Authorized Working Directory Root",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "cmd": {
+    ///      "title": "Cmd",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "credential_ref": {
+    ///      "title": "Credential Ref",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "kind": {
+    ///      "title": "BackgroundOperation_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "background"
+    ///      ]
+    ///    },
+    ///    "offset": {
+    ///      "title": "Offset",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "stderr_offset": {
+    ///      "title": "Stderr Offset",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "task_id": {
+    ///      "title": "Task Id",
+    ///      "type": "string"
+    ///    },
+    ///    "timeout": {
+    ///      "title": "Timeout",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "wait_seconds": {
+    ///      "title": "Wait Seconds",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "maximum": 20.0,
+    ///      "minimum": 0.0
+    ///    },
+    ///    "working_directory": {
+    ///      "title": "Working Directory",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct BackgroundOperation {
+        pub action: BackgroundAction,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub authorized_working_directory_root: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub cmd: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub credential_ref: ::std::option::Option<::uuid::Uuid>,
+        pub kind: BackgroundOperationKind,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub offset: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub stderr_offset: ::std::option::Option<i64>,
+        pub task_id: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub timeout: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub wait_seconds: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub working_directory: ::std::option::Option<::std::string::String>,
+    }
+
+    ///`BackgroundOperationKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "BackgroundOperation_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "background"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum BackgroundOperationKind {
+        #[serde(rename = "background")]
+        Background,
+    }
+
+    impl ::std::fmt::Display for BackgroundOperationKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Background => f.write_str("background"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for BackgroundOperationKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "background" => Ok(Self::Background),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for BackgroundOperationKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for BackgroundOperationKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for BackgroundOperationKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`ClaimAssignmentRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ClaimAssignmentRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct ClaimAssignmentRequest {
+        pub worker_id: ::uuid::Uuid,
     }
 
     ///Short user code plus the private device credential used for polling.
@@ -489,7 +1458,7 @@ pub mod types {
     ///  ],
     ///  "properties": {
     ///    "device_code": {
-    ///      "title": "Device Code",
+    ///      "title": "CliDeviceTokenRequest_device_code",
     ///      "type": "string",
     ///      "maxLength": 128,
     ///      "minLength": 43
@@ -500,7 +1469,87 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CliDeviceTokenRequest {
-        pub device_code: DeviceCode,
+        pub device_code: CliDeviceTokenRequestDeviceCode,
+    }
+
+    ///`CliDeviceTokenRequestDeviceCode`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliDeviceTokenRequest_device_code",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 43
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct CliDeviceTokenRequestDeviceCode(::std::string::String);
+    impl ::std::ops::Deref for CliDeviceTokenRequestDeviceCode {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<CliDeviceTokenRequestDeviceCode> for ::std::string::String {
+        fn from(value: CliDeviceTokenRequestDeviceCode) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for CliDeviceTokenRequestDeviceCode {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 128usize {
+                return Err("longer than 128 characters".into());
+            }
+            if value.chars().count() < 43usize {
+                return Err("shorter than 43 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliDeviceTokenRequestDeviceCode {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliDeviceTokenRequestDeviceCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliDeviceTokenRequestDeviceCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for CliDeviceTokenRequestDeviceCode {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
     }
 
     ///Token-exchange request: the one-time code plus the PKCE verifier.
@@ -519,13 +1568,13 @@ pub mod types {
     ///  ],
     ///  "properties": {
     ///    "code": {
-    ///      "title": "Code",
+    ///      "title": "CliTokenRequest_code",
     ///      "type": "string",
     ///      "maxLength": 64,
     ///      "minLength": 1
     ///    },
     ///    "code_verifier": {
-    ///      "title": "Code Verifier",
+    ///      "title": "CliTokenRequest_code_verifier",
     ///      "type": "string",
     ///      "maxLength": 128,
     ///      "minLength": 43
@@ -536,8 +1585,168 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CliTokenRequest {
-        pub code: Code,
-        pub code_verifier: CodeVerifier,
+        pub code: CliTokenRequestCode,
+        pub code_verifier: CliTokenRequestCodeVerifier,
+    }
+
+    ///`CliTokenRequestCode`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliTokenRequest_code",
+    ///  "type": "string",
+    ///  "maxLength": 64,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct CliTokenRequestCode(::std::string::String);
+    impl ::std::ops::Deref for CliTokenRequestCode {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<CliTokenRequestCode> for ::std::string::String {
+        fn from(value: CliTokenRequestCode) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for CliTokenRequestCode {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 64usize {
+                return Err("longer than 64 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliTokenRequestCode {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliTokenRequestCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliTokenRequestCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for CliTokenRequestCode {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`CliTokenRequestCodeVerifier`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliTokenRequest_code_verifier",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 43
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct CliTokenRequestCodeVerifier(::std::string::String);
+    impl ::std::ops::Deref for CliTokenRequestCodeVerifier {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<CliTokenRequestCodeVerifier> for ::std::string::String {
+        fn from(value: CliTokenRequestCodeVerifier) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for CliTokenRequestCodeVerifier {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 128usize {
+                return Err("longer than 128 characters".into());
+            }
+            if value.chars().count() < 43usize {
+                return Err("shorter than 43 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliTokenRequestCodeVerifier {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliTokenRequestCodeVerifier {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliTokenRequestCodeVerifier {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for CliTokenRequestCodeVerifier {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
     }
 
     ///Live identity resolved from the active CLI bearer credential.
@@ -552,6 +1761,7 @@ pub mod types {
     ///  "type": "object",
     ///  "required": [
     ///    "user_email",
+    ///    "user_id",
     ///    "workspace_id",
     ///    "workspace_name"
     ///  ],
@@ -568,6 +1778,11 @@ pub mod types {
     ///      "title": "User Email",
     ///      "type": "string",
     ///      "format": "email"
+    ///    },
+    ///    "user_id": {
+    ///      "title": "User Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
     ///    },
     ///    "workspace_id": {
     ///      "title": "Workspace Id",
@@ -587,88 +1802,9 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub organization_id: ::std::option::Option<::uuid::Uuid>,
         pub user_email: ::std::string::String,
+        pub user_id: ::uuid::Uuid,
         pub workspace_id: ::uuid::Uuid,
         pub workspace_name: ::std::string::String,
-    }
-
-    ///`Code`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "title": "Code",
-    ///  "type": "string",
-    ///  "maxLength": 64,
-    ///  "minLength": 1
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    #[serde(transparent)]
-    pub struct Code(::std::string::String);
-    impl ::std::ops::Deref for Code {
-        type Target = ::std::string::String;
-        fn deref(&self) -> &::std::string::String {
-            &self.0
-        }
-    }
-
-    impl ::std::convert::From<Code> for ::std::string::String {
-        fn from(value: Code) -> Self {
-            value.0
-        }
-    }
-
-    impl ::std::str::FromStr for Code {
-        type Err = self::error::ConversionError;
-        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            if value.chars().count() > 64usize {
-                return Err("longer than 64 characters".into());
-            }
-            if value.chars().count() < 1usize {
-                return Err("shorter than 1 characters".into());
-            }
-            Ok(Self(value.to_string()))
-        }
-    }
-
-    impl ::std::convert::TryFrom<&str> for Code {
-        type Error = self::error::ConversionError;
-        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<&::std::string::String> for Code {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: &::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<::std::string::String> for Code {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: ::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl<'de> ::serde::Deserialize<'de> for Code {
-        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-        where
-            D: ::serde::Deserializer<'de>,
-        {
-            ::std::string::String::deserialize(deserializer)?
-                .parse()
-                .map_err(|e: self::error::ConversionError| {
-                    <D::Error as ::serde::de::Error>::custom(e.to_string())
-                })
-        }
     }
 
     ///Unresolved findings per cited-Learning category in the review summary.
@@ -1822,56 +2958,133 @@ pub mod types {
         }
     }
 
-    ///`CodeVerifier`
+    ///`CompleteWorkerOperationRequest`
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "title": "Code Verifier",
+    ///  "title": "CompleteWorkerOperationRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "nonce",
+    ///    "operation_sequence",
+    ///    "request_digest",
+    ///    "result",
+    ///    "session_id",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "nonce": {
+    ///      "title": "Nonce",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "operation_sequence": {
+    ///      "title": "Operation Sequence",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "request_digest": {
+    ///      "title": "CompleteWorkerOperationRequest_request_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
+    ///    "result": {
+    ///      "$ref": "#/components/schemas/WorkerOperationResult"
+    ///    },
+    ///    "session_id": {
+    ///      "title": "Session Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct CompleteWorkerOperationRequest {
+        pub fence_token: ::std::num::NonZeroU64,
+        pub lease_token: ::std::string::String,
+        pub nonce: ::std::string::String,
+        pub operation_sequence: ::std::num::NonZeroU64,
+        pub request_digest: CompleteWorkerOperationRequestRequestDigest,
+        pub result: WorkerOperationResult,
+        pub session_id: ::uuid::Uuid,
+        pub worker_id: ::uuid::Uuid,
+    }
+
+    ///`CompleteWorkerOperationRequestRequestDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CompleteWorkerOperationRequest_request_digest",
     ///  "type": "string",
-    ///  "maxLength": 128,
-    ///  "minLength": 43
+    ///  "pattern": "^[a-f0-9]{64}$"
     ///}
     /// ```
     /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
-    pub struct CodeVerifier(::std::string::String);
-    impl ::std::ops::Deref for CodeVerifier {
+    pub struct CompleteWorkerOperationRequestRequestDigest(::std::string::String);
+    impl ::std::ops::Deref for CompleteWorkerOperationRequestRequestDigest {
         type Target = ::std::string::String;
         fn deref(&self) -> &::std::string::String {
             &self.0
         }
     }
 
-    impl ::std::convert::From<CodeVerifier> for ::std::string::String {
-        fn from(value: CodeVerifier) -> Self {
+    impl ::std::convert::From<CompleteWorkerOperationRequestRequestDigest> for ::std::string::String {
+        fn from(value: CompleteWorkerOperationRequestRequestDigest) -> Self {
             value.0
         }
     }
 
-    impl ::std::str::FromStr for CodeVerifier {
+    impl ::std::str::FromStr for CompleteWorkerOperationRequestRequestDigest {
         type Err = self::error::ConversionError;
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            if value.chars().count() > 128usize {
-                return Err("longer than 128 characters".into());
-            }
-            if value.chars().count() < 43usize {
-                return Err("shorter than 43 characters".into());
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[a-f0-9]{64}$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-f0-9]{64}$\"".into());
             }
             Ok(Self(value.to_string()))
         }
     }
 
-    impl ::std::convert::TryFrom<&str> for CodeVerifier {
+    impl ::std::convert::TryFrom<&str> for CompleteWorkerOperationRequestRequestDigest {
         type Error = self::error::ConversionError;
         fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
     }
 
-    impl ::std::convert::TryFrom<&::std::string::String> for CodeVerifier {
+    impl ::std::convert::TryFrom<&::std::string::String>
+        for CompleteWorkerOperationRequestRequestDigest
+    {
         type Error = self::error::ConversionError;
         fn try_from(
             value: &::std::string::String,
@@ -1880,7 +3093,9 @@ pub mod types {
         }
     }
 
-    impl ::std::convert::TryFrom<::std::string::String> for CodeVerifier {
+    impl ::std::convert::TryFrom<::std::string::String>
+        for CompleteWorkerOperationRequestRequestDigest
+    {
         type Error = self::error::ConversionError;
         fn try_from(
             value: ::std::string::String,
@@ -1889,7 +3104,7 @@ pub mod types {
         }
     }
 
-    impl<'de> ::serde::Deserialize<'de> for CodeVerifier {
+    impl<'de> ::serde::Deserialize<'de> for CompleteWorkerOperationRequestRequestDigest {
         fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
         where
             D: ::serde::Deserializer<'de>,
@@ -1991,52 +3206,99 @@ pub mod types {
         }
     }
 
-    ///`Description`
+    ///`ConvertOfficePdf`
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "title": "Description",
-    ///  "type": "string",
-    ///  "maxLength": 1000
+    ///  "title": "ConvertOfficePdf",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind",
+    ///    "path"
+    ///  ],
+    ///  "properties": {
+    ///    "kind": {
+    ///      "title": "ConvertOfficePdf_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "convert_office_pdf"
+    ///      ]
+    ///    },
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": "string"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
     ///}
     /// ```
     /// </details>
-    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    #[serde(transparent)]
-    pub struct Description(::std::string::String);
-    impl ::std::ops::Deref for Description {
-        type Target = ::std::string::String;
-        fn deref(&self) -> &::std::string::String {
-            &self.0
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct ConvertOfficePdf {
+        pub kind: ConvertOfficePdfKind,
+        pub path: ::std::string::String,
+    }
+
+    ///`ConvertOfficePdfKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConvertOfficePdf_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "convert_office_pdf"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ConvertOfficePdfKind {
+        #[serde(rename = "convert_office_pdf")]
+        ConvertOfficePdf,
+    }
+
+    impl ::std::fmt::Display for ConvertOfficePdfKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::ConvertOfficePdf => f.write_str("convert_office_pdf"),
+            }
         }
     }
 
-    impl ::std::convert::From<Description> for ::std::string::String {
-        fn from(value: Description) -> Self {
-            value.0
-        }
-    }
-
-    impl ::std::str::FromStr for Description {
+    impl ::std::str::FromStr for ConvertOfficePdfKind {
         type Err = self::error::ConversionError;
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            if value.chars().count() > 1000usize {
-                return Err("longer than 1000 characters".into());
+            match value {
+                "convert_office_pdf" => Ok(Self::ConvertOfficePdf),
+                _ => Err("invalid value".into()),
             }
-            Ok(Self(value.to_string()))
         }
     }
 
-    impl ::std::convert::TryFrom<&str> for Description {
+    impl ::std::convert::TryFrom<&str> for ConvertOfficePdfKind {
         type Error = self::error::ConversionError;
         fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
     }
 
-    impl ::std::convert::TryFrom<&::std::string::String> for Description {
+    impl ::std::convert::TryFrom<&::std::string::String> for ConvertOfficePdfKind {
         type Error = self::error::ConversionError;
         fn try_from(
             value: &::std::string::String,
@@ -2045,7 +3307,7 @@ pub mod types {
         }
     }
 
-    impl ::std::convert::TryFrom<::std::string::String> for Description {
+    impl ::std::convert::TryFrom<::std::string::String> for ConvertOfficePdfKind {
         type Error = self::error::ConversionError;
         fn try_from(
             value: ::std::string::String,
@@ -2054,7 +3316,119 @@ pub mod types {
         }
     }
 
-    impl<'de> ::serde::Deserialize<'de> for Description {
+    ///`CreateOutpostRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CreateOutpostRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "name"
+    ///  ],
+    ///  "properties": {
+    ///    "name": {
+    ///      "title": "CreateOutpostRequest_name",
+    ///      "type": "string",
+    ///      "maxLength": 255,
+    ///      "minLength": 1,
+    ///      "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+    ///    },
+    ///    "shared": {
+    ///      "title": "Shared",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct CreateOutpostRequest {
+        pub name: CreateOutpostRequestName,
+        #[serde(default)]
+        pub shared: bool,
+    }
+
+    ///`CreateOutpostRequestName`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CreateOutpostRequest_name",
+    ///  "type": "string",
+    ///  "maxLength": 255,
+    ///  "minLength": 1,
+    ///  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct CreateOutpostRequestName(::std::string::String);
+    impl ::std::ops::Deref for CreateOutpostRequestName {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<CreateOutpostRequestName> for ::std::string::String {
+        fn from(value: CreateOutpostRequestName) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for CreateOutpostRequestName {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 255usize {
+                return Err("longer than 255 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[^\\x00-\\x1f\\x7f]+$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[^\\x00-\\x1f\\x7f]+$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CreateOutpostRequestName {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CreateOutpostRequestName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CreateOutpostRequestName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for CreateOutpostRequestName {
         fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
         where
             D: ::serde::Deserializer<'de>,
@@ -2067,56 +3441,107 @@ pub mod types {
         }
     }
 
-    ///`DeviceCode`
+    ///`ExchangeWorkerRegistrationRequest`
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "title": "Device Code",
-    ///  "type": "string",
-    ///  "maxLength": 128,
-    ///  "minLength": 43
+    ///  "title": "ExchangeWorkerRegistrationRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "reference"
+    ///  ],
+    ///  "properties": {
+    ///    "reference": {
+    ///      "title": "Reference",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
     ///}
     /// ```
     /// </details>
-    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    #[serde(transparent)]
-    pub struct DeviceCode(::std::string::String);
-    impl ::std::ops::Deref for DeviceCode {
-        type Target = ::std::string::String;
-        fn deref(&self) -> &::std::string::String {
-            &self.0
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct ExchangeWorkerRegistrationRequest {
+        pub reference: ::std::string::String,
+    }
+
+    ///`ExecutorAvailability`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ExecutorAvailability",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "available",
+    ///    "pending",
+    ///    "incompatible",
+    ///    "offline"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ExecutorAvailability {
+        #[serde(rename = "available")]
+        Available,
+        #[serde(rename = "pending")]
+        Pending,
+        #[serde(rename = "incompatible")]
+        Incompatible,
+        #[serde(rename = "offline")]
+        Offline,
+    }
+
+    impl ::std::fmt::Display for ExecutorAvailability {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Available => f.write_str("available"),
+                Self::Pending => f.write_str("pending"),
+                Self::Incompatible => f.write_str("incompatible"),
+                Self::Offline => f.write_str("offline"),
+            }
         }
     }
 
-    impl ::std::convert::From<DeviceCode> for ::std::string::String {
-        fn from(value: DeviceCode) -> Self {
-            value.0
-        }
-    }
-
-    impl ::std::str::FromStr for DeviceCode {
+    impl ::std::str::FromStr for ExecutorAvailability {
         type Err = self::error::ConversionError;
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            if value.chars().count() > 128usize {
-                return Err("longer than 128 characters".into());
+            match value {
+                "available" => Ok(Self::Available),
+                "pending" => Ok(Self::Pending),
+                "incompatible" => Ok(Self::Incompatible),
+                "offline" => Ok(Self::Offline),
+                _ => Err("invalid value".into()),
             }
-            if value.chars().count() < 43usize {
-                return Err("shorter than 43 characters".into());
-            }
-            Ok(Self(value.to_string()))
         }
     }
 
-    impl ::std::convert::TryFrom<&str> for DeviceCode {
+    impl ::std::convert::TryFrom<&str> for ExecutorAvailability {
         type Error = self::error::ConversionError;
         fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
     }
 
-    impl ::std::convert::TryFrom<&::std::string::String> for DeviceCode {
+    impl ::std::convert::TryFrom<&::std::string::String> for ExecutorAvailability {
         type Error = self::error::ConversionError;
         fn try_from(
             value: &::std::string::String,
@@ -2125,7 +3550,7 @@ pub mod types {
         }
     }
 
-    impl ::std::convert::TryFrom<::std::string::String> for DeviceCode {
+    impl ::std::convert::TryFrom<::std::string::String> for ExecutorAvailability {
         type Error = self::error::ConversionError;
         fn try_from(
             value: ::std::string::String,
@@ -2134,16 +3559,1917 @@ pub mod types {
         }
     }
 
-    impl<'de> ::serde::Deserialize<'de> for DeviceCode {
-        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-        where
-            D: ::serde::Deserializer<'de>,
-        {
-            ::std::string::String::deserialize(deserializer)?
-                .parse()
-                .map_err(|e: self::error::ConversionError| {
-                    <D::Error as ::serde::de::Error>::custom(e.to_string())
-                })
+    ///`ExecutorCapability`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ExecutorCapability",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "files_read",
+    ///    "files_write",
+    ///    "shell",
+    ///    "artifacts",
+    ///    "connections",
+    ///    "mcp",
+    ///    "background_shell"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ExecutorCapability {
+        #[serde(rename = "files_read")]
+        FilesRead,
+        #[serde(rename = "files_write")]
+        FilesWrite,
+        #[serde(rename = "shell")]
+        Shell,
+        #[serde(rename = "artifacts")]
+        Artifacts,
+        #[serde(rename = "connections")]
+        Connections,
+        #[serde(rename = "mcp")]
+        Mcp,
+        #[serde(rename = "background_shell")]
+        BackgroundShell,
+    }
+
+    impl ::std::fmt::Display for ExecutorCapability {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::FilesRead => f.write_str("files_read"),
+                Self::FilesWrite => f.write_str("files_write"),
+                Self::Shell => f.write_str("shell"),
+                Self::Artifacts => f.write_str("artifacts"),
+                Self::Connections => f.write_str("connections"),
+                Self::Mcp => f.write_str("mcp"),
+                Self::BackgroundShell => f.write_str("background_shell"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ExecutorCapability {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "files_read" => Ok(Self::FilesRead),
+                "files_write" => Ok(Self::FilesWrite),
+                "shell" => Ok(Self::Shell),
+                "artifacts" => Ok(Self::Artifacts),
+                "connections" => Ok(Self::Connections),
+                "mcp" => Ok(Self::Mcp),
+                "background_shell" => Ok(Self::BackgroundShell),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ExecutorCapability {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ExecutorCapability {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ExecutorCapability {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`ExecutorChoiceKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ExecutorChoiceKind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "managed",
+    ///    "outpost"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ExecutorChoiceKind {
+        #[serde(rename = "managed")]
+        Managed,
+        #[serde(rename = "outpost")]
+        Outpost,
+    }
+
+    impl ::std::fmt::Display for ExecutorChoiceKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Managed => f.write_str("managed"),
+                Self::Outpost => f.write_str("outpost"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ExecutorChoiceKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "managed" => Ok(Self::Managed),
+                "outpost" => Ok(Self::Outpost),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ExecutorChoiceKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ExecutorChoiceKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ExecutorChoiceKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`ExecutorChoicePublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ExecutorChoicePublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "availability",
+    ///    "capabilities",
+    ///    "kind",
+    ///    "name",
+    ///    "scope",
+    ///    "target_id"
+    ///  ],
+    ///  "properties": {
+    ///    "availability": {
+    ///      "$ref": "#/components/schemas/ExecutorAvailability"
+    ///    },
+    ///    "capabilities": {
+    ///      "title": "Capabilities",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ExecutorCapability"
+    ///      }
+    ///    },
+    ///    "kind": {
+    ///      "$ref": "#/components/schemas/ExecutorChoiceKind"
+    ///    },
+    ///    "last_verified_at": {
+    ///      "title": "Last Verified At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "scope": {
+    ///      "$ref": "#/components/schemas/ExecutorScope"
+    ///    },
+    ///    "target_id": {
+    ///      "title": "Target Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct ExecutorChoicePublic {
+        pub availability: ExecutorAvailability,
+        pub capabilities: ::std::vec::Vec<ExecutorCapability>,
+        pub kind: ExecutorChoiceKind,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub last_verified_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub name: ::std::string::String,
+        pub scope: ExecutorScope,
+        pub target_id: ::std::option::Option<::uuid::Uuid>,
+    }
+
+    ///`ExecutorScope`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ExecutorScope",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "managed",
+    ///    "personal",
+    ///    "workspace"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ExecutorScope {
+        #[serde(rename = "managed")]
+        Managed,
+        #[serde(rename = "personal")]
+        Personal,
+        #[serde(rename = "workspace")]
+        Workspace,
+    }
+
+    impl ::std::fmt::Display for ExecutorScope {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Managed => f.write_str("managed"),
+                Self::Personal => f.write_str("personal"),
+                Self::Workspace => f.write_str("workspace"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ExecutorScope {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "managed" => Ok(Self::Managed),
+                "personal" => Ok(Self::Personal),
+                "workspace" => Ok(Self::Workspace),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ExecutorScope {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ExecutorScope {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ExecutorScope {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`FileContent`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileContent",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind",
+    ///    "path"
+    ///  ],
+    ///  "properties": {
+    ///    "kind": {
+    ///      "title": "FileContent_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "file_content"
+    ///      ]
+    ///    },
+    ///    "max_bytes": {
+    ///      "title": "Max Bytes",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": "string"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct FileContent {
+        pub kind: FileContentKind,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub max_bytes: ::std::option::Option<i64>,
+        pub path: ::std::string::String,
+    }
+
+    ///`FileContentKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileContent_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "file_content"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum FileContentKind {
+        #[serde(rename = "file_content")]
+        FileContent,
+    }
+
+    impl ::std::fmt::Display for FileContentKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::FileContent => f.write_str("file_content"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for FileContentKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "file_content" => Ok(Self::FileContent),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for FileContentKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for FileContentKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for FileContentKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`FileDownload`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileDownload",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind",
+    ///    "path"
+    ///  ],
+    ///  "properties": {
+    ///    "kind": {
+    ///      "title": "FileDownload_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "file_download"
+    ///      ]
+    ///    },
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": "string"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct FileDownload {
+        pub kind: FileDownloadKind,
+        pub path: ::std::string::String,
+    }
+
+    ///`FileDownloadKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileDownload_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "file_download"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum FileDownloadKind {
+        #[serde(rename = "file_download")]
+        FileDownload,
+    }
+
+    impl ::std::fmt::Display for FileDownloadKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::FileDownload => f.write_str("file_download"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for FileDownloadKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "file_download" => Ok(Self::FileDownload),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for FileDownloadKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for FileDownloadKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for FileDownloadKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`FileEndpoint`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileEndpoint",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "read",
+    ///    "write",
+    ///    "edit",
+    ///    "list_directory",
+    ///    "glob",
+    ///    "grep",
+    ///    "write_binary",
+    ///    "rename",
+    ///    "conventions",
+    ///    "convention_chains",
+    ///    "glob_read"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum FileEndpoint {
+        #[serde(rename = "read")]
+        Read,
+        #[serde(rename = "write")]
+        Write,
+        #[serde(rename = "edit")]
+        Edit,
+        #[serde(rename = "list_directory")]
+        ListDirectory,
+        #[serde(rename = "glob")]
+        Glob,
+        #[serde(rename = "grep")]
+        Grep,
+        #[serde(rename = "write_binary")]
+        WriteBinary,
+        #[serde(rename = "rename")]
+        Rename,
+        #[serde(rename = "conventions")]
+        Conventions,
+        #[serde(rename = "convention_chains")]
+        ConventionChains,
+        #[serde(rename = "glob_read")]
+        GlobRead,
+    }
+
+    impl ::std::fmt::Display for FileEndpoint {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Read => f.write_str("read"),
+                Self::Write => f.write_str("write"),
+                Self::Edit => f.write_str("edit"),
+                Self::ListDirectory => f.write_str("list_directory"),
+                Self::Glob => f.write_str("glob"),
+                Self::Grep => f.write_str("grep"),
+                Self::WriteBinary => f.write_str("write_binary"),
+                Self::Rename => f.write_str("rename"),
+                Self::Conventions => f.write_str("conventions"),
+                Self::ConventionChains => f.write_str("convention_chains"),
+                Self::GlobRead => f.write_str("glob_read"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for FileEndpoint {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "read" => Ok(Self::Read),
+                "write" => Ok(Self::Write),
+                "edit" => Ok(Self::Edit),
+                "list_directory" => Ok(Self::ListDirectory),
+                "glob" => Ok(Self::Glob),
+                "grep" => Ok(Self::Grep),
+                "write_binary" => Ok(Self::WriteBinary),
+                "rename" => Ok(Self::Rename),
+                "conventions" => Ok(Self::Conventions),
+                "convention_chains" => Ok(Self::ConventionChains),
+                "glob_read" => Ok(Self::GlobRead),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for FileEndpoint {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for FileEndpoint {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for FileEndpoint {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`FileOperation`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileOperation",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "endpoint",
+    ///    "kind",
+    ///    "request"
+    ///  ],
+    ///  "properties": {
+    ///    "endpoint": {
+    ///      "$ref": "#/components/schemas/FileEndpoint"
+    ///    },
+    ///    "kind": {
+    ///      "title": "FileOperation_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "file_operation"
+    ///      ]
+    ///    },
+    ///    "request": {
+    ///      "$ref": "#/components/schemas/FileRequest"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct FileOperation {
+        pub endpoint: FileEndpoint,
+        pub kind: FileOperationKind,
+        pub request: FileRequest,
+    }
+
+    ///`FileOperationKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileOperation_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "file_operation"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum FileOperationKind {
+        #[serde(rename = "file_operation")]
+        FileOperation,
+    }
+
+    impl ::std::fmt::Display for FileOperationKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::FileOperation => f.write_str("file_operation"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for FileOperationKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "file_operation" => Ok(Self::FileOperation),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for FileOperationKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for FileOperationKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for FileOperationKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`FileRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileRequest",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "auto_detect_binary": {
+    ///      "title": "Auto Detect Binary",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "binary": {
+    ///      "title": "Binary",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "case_insensitive": {
+    ///      "title": "Case Insensitive",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "content": {
+    ///      "title": "Content",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "content_base64": {
+    ///      "title": "Content Base64",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "context": {
+    ///      "title": "Context",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "integer"
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "context_after": {
+    ///      "title": "Context After",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "integer"
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "context_before": {
+    ///      "title": "Context Before",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "integer"
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "convention_filenames": {
+    ///      "title": "Convention Filenames",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "convention_patterns": {
+    ///      "title": "Convention Patterns",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "dst_path": {
+    ///      "title": "Dst Path",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "file_path": {
+    ///      "title": "File Path",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "file_paths": {
+    ///      "title": "File Paths",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "file_type": {
+    ///      "title": "File Type",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "follow_symlinks": {
+    ///      "title": "Follow Symlinks",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "glob": {
+    ///      "title": "Glob",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "head_limit": {
+    ///      "title": "Head Limit",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "integer"
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "ignore": {
+    ///      "title": "Ignore",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "array",
+    ///              "items": {
+    ///                "type": "string"
+    ///              }
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "include_content": {
+    ///      "title": "Include Content",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "include_memory_staleness": {
+    ///      "title": "Include Memory Staleness",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "limit": {
+    ///      "title": "Limit",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "integer"
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "line_limit": {
+    ///      "title": "Line Limit",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "line_numbers": {
+    ///      "title": "Line Numbers",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "max_bytes": {
+    ///      "title": "Max Bytes",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "multiline": {
+    ///      "title": "Multiline",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "new_string": {
+    ///      "title": "New String",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "offset": {
+    ///      "title": "Offset",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "integer"
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "old_string": {
+    ///      "title": "Old String",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "output_mode": {
+    ///      "title": "Output Mode",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "overwrite": {
+    ///      "title": "Overwrite",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "pattern": {
+    ///      "title": "Pattern",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "raw": {
+    ///      "title": "Raw",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "replace_all": {
+    ///      "title": "Replace All",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "repository_root": {
+    ///      "title": "Repository Root",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "src_path": {
+    ///      "title": "Src Path",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "strip_memory_staleness": {
+    ///      "title": "Strip Memory Staleness",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "trusted_root": {
+    ///      "title": "FileRequest_trusted_root",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "enum": [
+    ///        "workspace_memory",
+    ///        "conversation_tmp",
+    ///        "review_rules",
+    ///        "conversation_research"
+    ///      ]
+    ///    },
+    ///    "trusted_root_name": {
+    ///      "title": "Trusted Root Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct FileRequest {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub auto_detect_binary: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub binary: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub case_insensitive: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub content: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub content_base64: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub context: ::std::option::Option<FileRequestContext>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub context_after: ::std::option::Option<FileRequestContextAfter>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub context_before: ::std::option::Option<FileRequestContextBefore>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub convention_filenames: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub convention_patterns: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub dst_path: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub file_path: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub file_paths: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub file_type: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub follow_symlinks: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub glob: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub head_limit: ::std::option::Option<FileRequestHeadLimit>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub ignore: ::std::option::Option<FileRequestIgnore>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub include_content: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub include_memory_staleness: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub limit: ::std::option::Option<FileRequestLimit>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub line_limit: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub line_numbers: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub max_bytes: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub multiline: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub new_string: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub offset: ::std::option::Option<FileRequestOffset>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub old_string: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub output_mode: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub overwrite: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub path: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub pattern: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub raw: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub replace_all: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub repository_root: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub src_path: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub strip_memory_staleness: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub trusted_root: ::std::option::Option<FileRequestTrustedRoot>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub trusted_root_name: ::std::option::Option<::std::string::String>,
+    }
+
+    impl ::std::default::Default for FileRequest {
+        fn default() -> Self {
+            Self {
+                auto_detect_binary: Default::default(),
+                binary: Default::default(),
+                case_insensitive: Default::default(),
+                content: Default::default(),
+                content_base64: Default::default(),
+                context: Default::default(),
+                context_after: Default::default(),
+                context_before: Default::default(),
+                convention_filenames: Default::default(),
+                convention_patterns: Default::default(),
+                dst_path: Default::default(),
+                file_path: Default::default(),
+                file_paths: Default::default(),
+                file_type: Default::default(),
+                follow_symlinks: Default::default(),
+                glob: Default::default(),
+                head_limit: Default::default(),
+                ignore: Default::default(),
+                include_content: Default::default(),
+                include_memory_staleness: Default::default(),
+                limit: Default::default(),
+                line_limit: Default::default(),
+                line_numbers: Default::default(),
+                max_bytes: Default::default(),
+                multiline: Default::default(),
+                new_string: Default::default(),
+                offset: Default::default(),
+                old_string: Default::default(),
+                output_mode: Default::default(),
+                overwrite: Default::default(),
+                path: Default::default(),
+                pattern: Default::default(),
+                raw: Default::default(),
+                replace_all: Default::default(),
+                repository_root: Default::default(),
+                src_path: Default::default(),
+                strip_memory_staleness: Default::default(),
+                trusted_root: Default::default(),
+                trusted_root_name: Default::default(),
+            }
+        }
+    }
+
+    ///`FileRequestContext`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "integer"
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(untagged)]
+    pub enum FileRequestContext {
+        Integer(i64),
+        String(::std::string::String),
+    }
+
+    impl ::std::fmt::Display for FileRequestContext {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match self {
+                Self::Integer(x) => x.fmt(f),
+                Self::String(x) => x.fmt(f),
+            }
+        }
+    }
+
+    impl ::std::convert::From<i64> for FileRequestContext {
+        fn from(value: i64) -> Self {
+            Self::Integer(value)
+        }
+    }
+
+    ///`FileRequestContextAfter`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "integer"
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(untagged)]
+    pub enum FileRequestContextAfter {
+        Integer(i64),
+        String(::std::string::String),
+    }
+
+    impl ::std::fmt::Display for FileRequestContextAfter {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match self {
+                Self::Integer(x) => x.fmt(f),
+                Self::String(x) => x.fmt(f),
+            }
+        }
+    }
+
+    impl ::std::convert::From<i64> for FileRequestContextAfter {
+        fn from(value: i64) -> Self {
+            Self::Integer(value)
+        }
+    }
+
+    ///`FileRequestContextBefore`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "integer"
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(untagged)]
+    pub enum FileRequestContextBefore {
+        Integer(i64),
+        String(::std::string::String),
+    }
+
+    impl ::std::fmt::Display for FileRequestContextBefore {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match self {
+                Self::Integer(x) => x.fmt(f),
+                Self::String(x) => x.fmt(f),
+            }
+        }
+    }
+
+    impl ::std::convert::From<i64> for FileRequestContextBefore {
+        fn from(value: i64) -> Self {
+            Self::Integer(value)
+        }
+    }
+
+    ///`FileRequestHeadLimit`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "integer"
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(untagged)]
+    pub enum FileRequestHeadLimit {
+        Integer(i64),
+        String(::std::string::String),
+    }
+
+    impl ::std::fmt::Display for FileRequestHeadLimit {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match self {
+                Self::Integer(x) => x.fmt(f),
+                Self::String(x) => x.fmt(f),
+            }
+        }
+    }
+
+    impl ::std::convert::From<i64> for FileRequestHeadLimit {
+        fn from(value: i64) -> Self {
+            Self::Integer(value)
+        }
+    }
+
+    ///`FileRequestIgnore`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(untagged)]
+    pub enum FileRequestIgnore {
+        Array(::std::vec::Vec<::std::string::String>),
+        String(::std::string::String),
+    }
+
+    impl ::std::convert::From<::std::vec::Vec<::std::string::String>> for FileRequestIgnore {
+        fn from(value: ::std::vec::Vec<::std::string::String>) -> Self {
+            Self::Array(value)
+        }
+    }
+
+    ///`FileRequestLimit`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "integer"
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(untagged)]
+    pub enum FileRequestLimit {
+        Integer(i64),
+        String(::std::string::String),
+    }
+
+    impl ::std::fmt::Display for FileRequestLimit {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match self {
+                Self::Integer(x) => x.fmt(f),
+                Self::String(x) => x.fmt(f),
+            }
+        }
+    }
+
+    impl ::std::convert::From<i64> for FileRequestLimit {
+        fn from(value: i64) -> Self {
+            Self::Integer(value)
+        }
+    }
+
+    ///`FileRequestOffset`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "integer"
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(untagged)]
+    pub enum FileRequestOffset {
+        Integer(i64),
+        String(::std::string::String),
+    }
+
+    impl ::std::fmt::Display for FileRequestOffset {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match self {
+                Self::Integer(x) => x.fmt(f),
+                Self::String(x) => x.fmt(f),
+            }
+        }
+    }
+
+    impl ::std::convert::From<i64> for FileRequestOffset {
+        fn from(value: i64) -> Self {
+            Self::Integer(value)
+        }
+    }
+
+    ///`FileRequestTrustedRoot`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileRequest_trusted_root",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "workspace_memory",
+    ///    "conversation_tmp",
+    ///    "review_rules",
+    ///    "conversation_research"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum FileRequestTrustedRoot {
+        #[serde(rename = "workspace_memory")]
+        WorkspaceMemory,
+        #[serde(rename = "conversation_tmp")]
+        ConversationTmp,
+        #[serde(rename = "review_rules")]
+        ReviewRules,
+        #[serde(rename = "conversation_research")]
+        ConversationResearch,
+    }
+
+    impl ::std::fmt::Display for FileRequestTrustedRoot {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::WorkspaceMemory => f.write_str("workspace_memory"),
+                Self::ConversationTmp => f.write_str("conversation_tmp"),
+                Self::ReviewRules => f.write_str("review_rules"),
+                Self::ConversationResearch => f.write_str("conversation_research"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for FileRequestTrustedRoot {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "workspace_memory" => Ok(Self::WorkspaceMemory),
+                "conversation_tmp" => Ok(Self::ConversationTmp),
+                "review_rules" => Ok(Self::ReviewRules),
+                "conversation_research" => Ok(Self::ConversationResearch),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for FileRequestTrustedRoot {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for FileRequestTrustedRoot {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for FileRequestTrustedRoot {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`FilesDeliverables`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FilesDeliverables",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind"
+    ///  ],
+    ///  "properties": {
+    ///    "kind": {
+    ///      "title": "FilesDeliverables_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "files_deliverables"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct FilesDeliverables {
+        pub kind: FilesDeliverablesKind,
+    }
+
+    ///`FilesDeliverablesKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FilesDeliverables_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "files_deliverables"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum FilesDeliverablesKind {
+        #[serde(rename = "files_deliverables")]
+        FilesDeliverables,
+    }
+
+    impl ::std::fmt::Display for FilesDeliverablesKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::FilesDeliverables => f.write_str("files_deliverables"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for FilesDeliverablesKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "files_deliverables" => Ok(Self::FilesDeliverables),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for FilesDeliverablesKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for FilesDeliverablesKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for FilesDeliverablesKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`FilesList`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FilesList",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind"
+    ///  ],
+    ///  "properties": {
+    ///    "kind": {
+    ///      "title": "FilesList_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "files_list"
+    ///      ]
+    ///    },
+    ///    "limit": {
+    ///      "title": "Limit",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "page": {
+    ///      "title": "Page",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "search": {
+    ///      "title": "Search",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct FilesList {
+        pub kind: FilesListKind,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub limit: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub page: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub path: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub search: ::std::option::Option<::std::string::String>,
+    }
+
+    ///`FilesListKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FilesList_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "files_list"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum FilesListKind {
+        #[serde(rename = "files_list")]
+        FilesList,
+    }
+
+    impl ::std::fmt::Display for FilesListKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::FilesList => f.write_str("files_list"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for FilesListKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "files_list" => Ok(Self::FilesList),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for FilesListKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for FilesListKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for FilesListKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
 
@@ -2230,6 +5556,110 @@ pub mod types {
     }
 
     impl ::std::convert::TryFrom<::std::string::String> for FindingPublicationStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`FlushOutput`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FlushOutput",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind"
+    ///  ],
+    ///  "properties": {
+    ///    "kind": {
+    ///      "title": "FlushOutput_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "flush_output"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct FlushOutput {
+        pub kind: FlushOutputKind,
+    }
+
+    ///`FlushOutputKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FlushOutput_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "flush_output"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum FlushOutputKind {
+        #[serde(rename = "flush_output")]
+        FlushOutput,
+    }
+
+    impl ::std::fmt::Display for FlushOutputKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::FlushOutput => f.write_str("flush_output"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for FlushOutputKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "flush_output" => Ok(Self::FlushOutput),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for FlushOutputKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for FlushOutputKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for FlushOutputKind {
         type Error = self::error::ConversionError;
         fn try_from(
             value: ::std::string::String,
@@ -2463,57 +5893,127 @@ pub mod types {
         pub web_url: ::std::string::String,
     }
 
-    ///Optional caller-supplied key (workspace-scoped). A retried submit with
-    /// the same key returns the original run instead of creating a duplicate.
-    /// Omit for at-least-once submit.
+    ///`HeartbeatAssignmentRequest`
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "title": "Idempotency Key",
-    ///  "description": "Optional caller-supplied key (workspace-scoped). A
-    /// retried submit with the same key returns the original run instead of
-    /// creating a duplicate. Omit for at-least-once submit.",
-    ///  "type": "string",
-    ///  "maxLength": 255
+    ///  "title": "HeartbeatAssignmentRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "state",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "state": {
+    ///      "title": "HeartbeatAssignmentRequest_state",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "starting",
+    ///        "active",
+    ///        "draining"
+    ///      ]
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
     ///}
     /// ```
     /// </details>
-    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    #[serde(transparent)]
-    pub struct IdempotencyKey(::std::string::String);
-    impl ::std::ops::Deref for IdempotencyKey {
-        type Target = ::std::string::String;
-        fn deref(&self) -> &::std::string::String {
-            &self.0
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct HeartbeatAssignmentRequest {
+        pub fence_token: ::std::num::NonZeroU64,
+        pub lease_token: ::std::string::String,
+        pub state: HeartbeatAssignmentRequestState,
+        pub worker_id: ::uuid::Uuid,
+    }
+
+    ///`HeartbeatAssignmentRequestState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "HeartbeatAssignmentRequest_state",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "starting",
+    ///    "active",
+    ///    "draining"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum HeartbeatAssignmentRequestState {
+        #[serde(rename = "starting")]
+        Starting,
+        #[serde(rename = "active")]
+        Active,
+        #[serde(rename = "draining")]
+        Draining,
+    }
+
+    impl ::std::fmt::Display for HeartbeatAssignmentRequestState {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Starting => f.write_str("starting"),
+                Self::Active => f.write_str("active"),
+                Self::Draining => f.write_str("draining"),
+            }
         }
     }
 
-    impl ::std::convert::From<IdempotencyKey> for ::std::string::String {
-        fn from(value: IdempotencyKey) -> Self {
-            value.0
-        }
-    }
-
-    impl ::std::str::FromStr for IdempotencyKey {
+    impl ::std::str::FromStr for HeartbeatAssignmentRequestState {
         type Err = self::error::ConversionError;
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            if value.chars().count() > 255usize {
-                return Err("longer than 255 characters".into());
+            match value {
+                "starting" => Ok(Self::Starting),
+                "active" => Ok(Self::Active),
+                "draining" => Ok(Self::Draining),
+                _ => Err("invalid value".into()),
             }
-            Ok(Self(value.to_string()))
         }
     }
 
-    impl ::std::convert::TryFrom<&str> for IdempotencyKey {
+    impl ::std::convert::TryFrom<&str> for HeartbeatAssignmentRequestState {
         type Error = self::error::ConversionError;
         fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
     }
 
-    impl ::std::convert::TryFrom<&::std::string::String> for IdempotencyKey {
+    impl ::std::convert::TryFrom<&::std::string::String> for HeartbeatAssignmentRequestState {
         type Error = self::error::ConversionError;
         fn try_from(
             value: &::std::string::String,
@@ -2522,7 +6022,7 @@ pub mod types {
         }
     }
 
-    impl ::std::convert::TryFrom<::std::string::String> for IdempotencyKey {
+    impl ::std::convert::TryFrom<::std::string::String> for HeartbeatAssignmentRequestState {
         type Error = self::error::ConversionError;
         fn try_from(
             value: ::std::string::String,
@@ -2531,7 +6031,145 @@ pub mod types {
         }
     }
 
-    impl<'de> ::serde::Deserialize<'de> for IdempotencyKey {
+    ///`IssueArtifactGrantRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IssueArtifactGrantRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "digest",
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "operation_id",
+    ///    "path",
+    ///    "size",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "digest": {
+    ///      "title": "IssueArtifactGrantRequest_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "operation_id": {
+    ///      "title": "Operation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "path": {
+    ///      "title": "IssueArtifactGrantRequest_path",
+    ///      "type": "string",
+    ///      "maxLength": 1024,
+    ///      "minLength": 1
+    ///    },
+    ///    "size": {
+    ///      "title": "Size",
+    ///      "type": "integer",
+    ///      "maximum": 1400000.0,
+    ///      "minimum": 0.0
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct IssueArtifactGrantRequest {
+        pub digest: IssueArtifactGrantRequestDigest,
+        pub fence_token: ::std::num::NonZeroU64,
+        pub lease_token: ::std::string::String,
+        pub operation_id: ::uuid::Uuid,
+        pub path: IssueArtifactGrantRequestPath,
+        pub size: i64,
+        pub worker_id: ::uuid::Uuid,
+    }
+
+    ///`IssueArtifactGrantRequestDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IssueArtifactGrantRequest_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[a-f0-9]{64}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct IssueArtifactGrantRequestDigest(::std::string::String);
+    impl ::std::ops::Deref for IssueArtifactGrantRequestDigest {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<IssueArtifactGrantRequestDigest> for ::std::string::String {
+        fn from(value: IssueArtifactGrantRequestDigest) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for IssueArtifactGrantRequestDigest {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[a-f0-9]{64}$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-f0-9]{64}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for IssueArtifactGrantRequestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for IssueArtifactGrantRequestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for IssueArtifactGrantRequestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for IssueArtifactGrantRequestDigest {
         fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
         where
             D: ::serde::Deserializer<'de>,
@@ -2542,6 +6180,299 @@ pub mod types {
                     <D::Error as ::serde::de::Error>::custom(e.to_string())
                 })
         }
+    }
+
+    ///`IssueArtifactGrantRequestPath`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IssueArtifactGrantRequest_path",
+    ///  "type": "string",
+    ///  "maxLength": 1024,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct IssueArtifactGrantRequestPath(::std::string::String);
+    impl ::std::ops::Deref for IssueArtifactGrantRequestPath {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<IssueArtifactGrantRequestPath> for ::std::string::String {
+        fn from(value: IssueArtifactGrantRequestPath) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for IssueArtifactGrantRequestPath {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 1024usize {
+                return Err("longer than 1024 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for IssueArtifactGrantRequestPath {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for IssueArtifactGrantRequestPath {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for IssueArtifactGrantRequestPath {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for IssueArtifactGrantRequestPath {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`LocalInputSchema`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LocalInputSchema",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "type"
+    ///  ],
+    ///  "properties": {
+    ///    "additionalProperties": {
+    ///      "title": "Additionalproperties",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "items": {
+    ///      "$ref": "#/components/schemas/LocalInputSchema"
+    ///    },
+    ///    "properties": {
+    ///      "title": "Properties",
+    ///      "type": [
+    ///        "object",
+    ///        "null"
+    ///      ],
+    ///      "maxProperties": 64
+    ///    },
+    ///    "required": {
+    ///      "title": "Required",
+    ///      "default": [],
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string",
+    ///        "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///      },
+    ///      "maxItems": 64
+    ///    },
+    ///    "type": {
+    ///      "title": "LocalInputSchema_type",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "object",
+    ///        "array",
+    ///        "string",
+    ///        "number",
+    ///        "integer",
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct LocalInputSchema {
+        #[serde(
+            rename = "additionalProperties",
+            default,
+            skip_serializing_if = "::std::option::Option::is_none"
+        )]
+        pub additional_properties: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub items: ::std::option::Option<::std::boxed::Box<LocalInputSchema>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub properties:
+            ::std::option::Option<::serde_json::Map<::std::string::String, ::serde_json::Value>>,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub required: ::std::vec::Vec<RequiredItem>,
+        #[serde(rename = "type")]
+        pub type_: LocalInputSchemaType,
+    }
+
+    ///`LocalInputSchemaType`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LocalInputSchema_type",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "object",
+    ///    "array",
+    ///    "string",
+    ///    "number",
+    ///    "integer",
+    ///    "boolean",
+    ///    "null"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum LocalInputSchemaType {
+        #[serde(rename = "object")]
+        Object,
+        #[serde(rename = "array")]
+        Array,
+        #[serde(rename = "string")]
+        String,
+        #[serde(rename = "number")]
+        Number,
+        #[serde(rename = "integer")]
+        Integer,
+        #[serde(rename = "boolean")]
+        Boolean,
+        #[serde(rename = "null")]
+        Null,
+    }
+
+    impl ::std::fmt::Display for LocalInputSchemaType {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Object => f.write_str("object"),
+                Self::Array => f.write_str("array"),
+                Self::String => f.write_str("string"),
+                Self::Number => f.write_str("number"),
+                Self::Integer => f.write_str("integer"),
+                Self::Boolean => f.write_str("boolean"),
+                Self::Null => f.write_str("null"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for LocalInputSchemaType {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "object" => Ok(Self::Object),
+                "array" => Ok(Self::Array),
+                "string" => Ok(Self::String),
+                "number" => Ok(Self::Number),
+                "integer" => Ok(Self::Integer),
+                "boolean" => Ok(Self::Boolean),
+                "null" => Ok(Self::Null),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for LocalInputSchemaType {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for LocalInputSchemaType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for LocalInputSchemaType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`LocalToolAnnouncement`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LocalToolAnnouncement",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "input_schema",
+    ///    "mapping"
+    ///  ],
+    ///  "properties": {
+    ///    "input_schema": {
+    ///      "$ref": "#/components/schemas/LocalInputSchema"
+    ///    },
+    ///    "mapping": {
+    ///      "$ref": "#/components/schemas/TargetToolMapping"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct LocalToolAnnouncement {
+        pub input_schema: LocalInputSchema,
+        pub mapping: TargetToolMapping,
     }
 
     ///`ManualTriggerDisabledReason`
@@ -2722,56 +6653,73 @@ pub mod types {
         }
     }
 
-    ///`Name`
+    ///`OperationEffect`
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "title": "Name",
+    ///  "title": "OperationEffect",
     ///  "type": "string",
-    ///  "maxLength": 255,
-    ///  "minLength": 1
+    ///  "enum": [
+    ///    "read",
+    ///    "mutation",
+    ///    "idempotent_mutation"
+    ///  ]
     ///}
     /// ```
     /// </details>
-    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    #[serde(transparent)]
-    pub struct Name(::std::string::String);
-    impl ::std::ops::Deref for Name {
-        type Target = ::std::string::String;
-        fn deref(&self) -> &::std::string::String {
-            &self.0
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum OperationEffect {
+        #[serde(rename = "read")]
+        Read,
+        #[serde(rename = "mutation")]
+        Mutation,
+        #[serde(rename = "idempotent_mutation")]
+        IdempotentMutation,
+    }
+
+    impl ::std::fmt::Display for OperationEffect {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Read => f.write_str("read"),
+                Self::Mutation => f.write_str("mutation"),
+                Self::IdempotentMutation => f.write_str("idempotent_mutation"),
+            }
         }
     }
 
-    impl ::std::convert::From<Name> for ::std::string::String {
-        fn from(value: Name) -> Self {
-            value.0
-        }
-    }
-
-    impl ::std::str::FromStr for Name {
+    impl ::std::str::FromStr for OperationEffect {
         type Err = self::error::ConversionError;
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            if value.chars().count() > 255usize {
-                return Err("longer than 255 characters".into());
+            match value {
+                "read" => Ok(Self::Read),
+                "mutation" => Ok(Self::Mutation),
+                "idempotent_mutation" => Ok(Self::IdempotentMutation),
+                _ => Err("invalid value".into()),
             }
-            if value.chars().count() < 1usize {
-                return Err("shorter than 1 characters".into());
-            }
-            Ok(Self(value.to_string()))
         }
     }
 
-    impl ::std::convert::TryFrom<&str> for Name {
+    impl ::std::convert::TryFrom<&str> for OperationEffect {
         type Error = self::error::ConversionError;
         fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
     }
 
-    impl ::std::convert::TryFrom<&::std::string::String> for Name {
+    impl ::std::convert::TryFrom<&::std::string::String> for OperationEffect {
         type Error = self::error::ConversionError;
         fn try_from(
             value: &::std::string::String,
@@ -2780,7 +6728,7 @@ pub mod types {
         }
     }
 
-    impl ::std::convert::TryFrom<::std::string::String> for Name {
+    impl ::std::convert::TryFrom<::std::string::String> for OperationEffect {
         type Error = self::error::ConversionError;
         fn try_from(
             value: ::std::string::String,
@@ -2789,7 +6737,539 @@ pub mod types {
         }
     }
 
-    impl<'de> ::serde::Deserialize<'de> for Name {
+    ///`OperationEnvelope`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OperationEnvelope",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "assignment_id",
+    ///    "deadline_at",
+    ///    "effect",
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "nonce",
+    ///    "operation_id",
+    ///    "operation_sequence",
+    ///    "payload",
+    ///    "request_digest",
+    ///    "session_id",
+    ///    "target_id"
+    ///  ],
+    ///  "properties": {
+    ///    "assignment_id": {
+    ///      "title": "Assignment Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "deadline_at": {
+    ///      "title": "Deadline At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "effect": {
+    ///      "$ref": "#/components/schemas/OperationEffect"
+    ///    },
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer"
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "type": "string"
+    ///    },
+    ///    "nonce": {
+    ///      "title": "Nonce",
+    ///      "type": "string"
+    ///    },
+    ///    "operation_id": {
+    ///      "title": "Operation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "operation_sequence": {
+    ///      "title": "Operation Sequence",
+    ///      "type": "integer"
+    ///    },
+    ///    "payload": {
+    ///      "title": "Payload",
+    ///      "oneOf": [
+    ///        {
+    ///          "$ref": "#/components/schemas/SkillBundleChunk"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/ScriptRun"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/FileOperation"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/FilesList"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/FileContent"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/FileDownload"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/FilesDeliverables"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/FlushOutput"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/ConvertOfficePdf"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/RepositoryOperation"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/BackgroundOperation"
+    ///        }
+    ///      ]
+    ///    },
+    ///    "protocol_version": {
+    ///      "title": "Protocol Version",
+    ///      "default": 1,
+    ///      "type": "integer"
+    ///    },
+    ///    "request_digest": {
+    ///      "title": "Request Digest",
+    ///      "type": "string"
+    ///    },
+    ///    "session_id": {
+    ///      "title": "Session Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "target_id": {
+    ///      "title": "Target Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct OperationEnvelope {
+        pub assignment_id: ::uuid::Uuid,
+        pub deadline_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub effect: OperationEffect,
+        pub fence_token: i64,
+        pub lease_token: ::std::string::String,
+        pub nonce: ::std::string::String,
+        pub operation_id: ::uuid::Uuid,
+        pub operation_sequence: i64,
+        pub payload: Payload,
+        #[serde(default = "defaults::default_u64::<i64, 1>")]
+        pub protocol_version: i64,
+        pub request_digest: ::std::string::String,
+        pub session_id: ::uuid::Uuid,
+        pub target_id: ::uuid::Uuid,
+    }
+
+    ///`OperationReceiptPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OperationReceiptPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "assignment_id",
+    ///    "operation_id",
+    ///    "operation_sequence",
+    ///    "request_digest",
+    ///    "session_id",
+    ///    "state"
+    ///  ],
+    ///  "properties": {
+    ///    "assignment_complete": {
+    ///      "title": "Assignment Complete",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "assignment_id": {
+    ///      "title": "Assignment Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "operation_id": {
+    ///      "title": "Operation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "operation_sequence": {
+    ///      "title": "Operation Sequence",
+    ///      "type": "integer"
+    ///    },
+    ///    "request_digest": {
+    ///      "title": "Request Digest",
+    ///      "type": "string"
+    ///    },
+    ///    "resolution": {
+    ///      "$ref": "#/components/schemas/OperationResolution"
+    ///    },
+    ///    "result": {
+    ///      "$ref": "#/components/schemas/WorkerOperationResult"
+    ///    },
+    ///    "session_id": {
+    ///      "title": "Session Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "state": {
+    ///      "$ref": "#/components/schemas/OperationReceiptState"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct OperationReceiptPublic {
+        #[serde(default)]
+        pub assignment_complete: bool,
+        pub assignment_id: ::uuid::Uuid,
+        pub operation_id: ::uuid::Uuid,
+        pub operation_sequence: i64,
+        pub request_digest: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub resolution: ::std::option::Option<OperationResolution>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub result: ::std::option::Option<WorkerOperationResult>,
+        pub session_id: ::uuid::Uuid,
+        pub state: OperationReceiptState,
+    }
+
+    ///`OperationReceiptState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OperationReceiptState",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "prepared",
+    ///    "delivered",
+    ///    "running",
+    ///    "succeeded",
+    ///    "failed",
+    ///    "cancelled",
+    ///    "unknown"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum OperationReceiptState {
+        #[serde(rename = "prepared")]
+        Prepared,
+        #[serde(rename = "delivered")]
+        Delivered,
+        #[serde(rename = "running")]
+        Running,
+        #[serde(rename = "succeeded")]
+        Succeeded,
+        #[serde(rename = "failed")]
+        Failed,
+        #[serde(rename = "cancelled")]
+        Cancelled,
+        #[serde(rename = "unknown")]
+        Unknown,
+    }
+
+    impl ::std::fmt::Display for OperationReceiptState {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Prepared => f.write_str("prepared"),
+                Self::Delivered => f.write_str("delivered"),
+                Self::Running => f.write_str("running"),
+                Self::Succeeded => f.write_str("succeeded"),
+                Self::Failed => f.write_str("failed"),
+                Self::Cancelled => f.write_str("cancelled"),
+                Self::Unknown => f.write_str("unknown"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for OperationReceiptState {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "prepared" => Ok(Self::Prepared),
+                "delivered" => Ok(Self::Delivered),
+                "running" => Ok(Self::Running),
+                "succeeded" => Ok(Self::Succeeded),
+                "failed" => Ok(Self::Failed),
+                "cancelled" => Ok(Self::Cancelled),
+                "unknown" => Ok(Self::Unknown),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for OperationReceiptState {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for OperationReceiptState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for OperationReceiptState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`OperationResolution`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OperationResolution",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "succeeded",
+    ///    "failed",
+    ///    "abandoned_unverified"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum OperationResolution {
+        #[serde(rename = "succeeded")]
+        Succeeded,
+        #[serde(rename = "failed")]
+        Failed,
+        #[serde(rename = "abandoned_unverified")]
+        AbandonedUnverified,
+    }
+
+    impl ::std::fmt::Display for OperationResolution {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Succeeded => f.write_str("succeeded"),
+                Self::Failed => f.write_str("failed"),
+                Self::AbandonedUnverified => f.write_str("abandoned_unverified"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for OperationResolution {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "succeeded" => Ok(Self::Succeeded),
+                "failed" => Ok(Self::Failed),
+                "abandoned_unverified" => Ok(Self::AbandonedUnverified),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for OperationResolution {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for OperationResolution {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for OperationResolution {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`OperationStartRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OperationStartRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "nonce",
+    ///    "operation_sequence",
+    ///    "request_digest",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "nonce": {
+    ///      "title": "Nonce",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "operation_sequence": {
+    ///      "title": "Operation Sequence",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "request_digest": {
+    ///      "title": "OperationStartRequest_request_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct OperationStartRequest {
+        pub fence_token: ::std::num::NonZeroU64,
+        pub lease_token: ::std::string::String,
+        pub nonce: ::std::string::String,
+        pub operation_sequence: ::std::num::NonZeroU64,
+        pub request_digest: OperationStartRequestRequestDigest,
+        pub worker_id: ::uuid::Uuid,
+    }
+
+    ///`OperationStartRequestRequestDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OperationStartRequest_request_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[a-f0-9]{64}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct OperationStartRequestRequestDigest(::std::string::String);
+    impl ::std::ops::Deref for OperationStartRequestRequestDigest {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<OperationStartRequestRequestDigest> for ::std::string::String {
+        fn from(value: OperationStartRequestRequestDigest) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for OperationStartRequestRequestDigest {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[a-f0-9]{64}$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-f0-9]{64}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for OperationStartRequestRequestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for OperationStartRequestRequestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for OperationStartRequestRequestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for OperationStartRequestRequestDigest {
         fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
         where
             D: ::serde::Deserializer<'de>,
@@ -2802,164 +7282,197 @@ pub mod types {
         }
     }
 
-    ///`OptionId`
+    ///`OutpostCreatedPublic`
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "title": "Option Id",
-    ///  "type": "string",
-    ///  "maxLength": 128,
-    ///  "minLength": 1
+    ///  "title": "OutpostCreatedPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "registration",
+    ///    "target"
+    ///  ],
+    ///  "properties": {
+    ///    "registration": {
+    ///      "$ref": "#/components/schemas/WorkerRegistrationReference"
+    ///    },
+    ///    "target": {
+    ///      "$ref": "#/components/schemas/ExecutorChoicePublic"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
     ///}
     /// ```
     /// </details>
-    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    #[serde(transparent)]
-    pub struct OptionId(::std::string::String);
-    impl ::std::ops::Deref for OptionId {
-        type Target = ::std::string::String;
-        fn deref(&self) -> &::std::string::String {
-            &self.0
-        }
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct OutpostCreatedPublic {
+        pub registration: WorkerRegistrationReference,
+        pub target: ExecutorChoicePublic,
     }
 
-    impl ::std::convert::From<OptionId> for ::std::string::String {
-        fn from(value: OptionId) -> Self {
-            value.0
-        }
-    }
-
-    impl ::std::str::FromStr for OptionId {
-        type Err = self::error::ConversionError;
-        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            if value.chars().count() > 128usize {
-                return Err("longer than 128 characters".into());
-            }
-            if value.chars().count() < 1usize {
-                return Err("shorter than 1 characters".into());
-            }
-            Ok(Self(value.to_string()))
-        }
-    }
-
-    impl ::std::convert::TryFrom<&str> for OptionId {
-        type Error = self::error::ConversionError;
-        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<&::std::string::String> for OptionId {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: &::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<::std::string::String> for OptionId {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: ::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl<'de> ::serde::Deserialize<'de> for OptionId {
-        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-        where
-            D: ::serde::Deserializer<'de>,
-        {
-            ::std::string::String::deserialize(deserializer)?
-                .parse()
-                .map_err(|e: self::error::ConversionError| {
-                    <D::Error as ::serde::de::Error>::custom(e.to_string())
-                })
-        }
-    }
-
-    ///`Prompt`
+    ///`Payload`
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "title": "Prompt",
-    ///  "type": "string",
-    ///  "maxLength": 50000,
-    ///  "minLength": 1
+    ///  "title": "Payload",
+    ///  "oneOf": [
+    ///    {
+    ///      "$ref": "#/components/schemas/SkillBundleChunk"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/ScriptRun"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/FileOperation"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/FilesList"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/FileContent"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/FileDownload"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/FilesDeliverables"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/FlushOutput"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/ConvertOfficePdf"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/RepositoryOperation"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/BackgroundOperation"
+    ///    }
+    ///  ]
     ///}
     /// ```
     /// </details>
-    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    #[serde(transparent)]
-    pub struct Prompt(::std::string::String);
-    impl ::std::ops::Deref for Prompt {
-        type Target = ::std::string::String;
-        fn deref(&self) -> &::std::string::String {
-            &self.0
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(untagged)]
+    pub enum Payload {
+        SkillBundleChunk(SkillBundleChunk),
+        ScriptRun(ScriptRun),
+        FileOperation(FileOperation),
+        FilesList(FilesList),
+        FileContent(FileContent),
+        FileDownload(FileDownload),
+        FilesDeliverables(FilesDeliverables),
+        FlushOutput(FlushOutput),
+        ConvertOfficePdf(ConvertOfficePdf),
+        RepositoryOperation(RepositoryOperation),
+        BackgroundOperation(BackgroundOperation),
+    }
+
+    impl ::std::convert::From<SkillBundleChunk> for Payload {
+        fn from(value: SkillBundleChunk) -> Self {
+            Self::SkillBundleChunk(value)
         }
     }
 
-    impl ::std::convert::From<Prompt> for ::std::string::String {
-        fn from(value: Prompt) -> Self {
-            value.0
+    impl ::std::convert::From<ScriptRun> for Payload {
+        fn from(value: ScriptRun) -> Self {
+            Self::ScriptRun(value)
         }
     }
 
-    impl ::std::str::FromStr for Prompt {
-        type Err = self::error::ConversionError;
-        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            if value.chars().count() > 50000usize {
-                return Err("longer than 50000 characters".into());
-            }
-            if value.chars().count() < 1usize {
-                return Err("shorter than 1 characters".into());
-            }
-            Ok(Self(value.to_string()))
+    impl ::std::convert::From<FileOperation> for Payload {
+        fn from(value: FileOperation) -> Self {
+            Self::FileOperation(value)
         }
     }
 
-    impl ::std::convert::TryFrom<&str> for Prompt {
-        type Error = self::error::ConversionError;
-        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
+    impl ::std::convert::From<FilesList> for Payload {
+        fn from(value: FilesList) -> Self {
+            Self::FilesList(value)
         }
     }
 
-    impl ::std::convert::TryFrom<&::std::string::String> for Prompt {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: &::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
+    impl ::std::convert::From<FileContent> for Payload {
+        fn from(value: FileContent) -> Self {
+            Self::FileContent(value)
         }
     }
 
-    impl ::std::convert::TryFrom<::std::string::String> for Prompt {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: ::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
+    impl ::std::convert::From<FileDownload> for Payload {
+        fn from(value: FileDownload) -> Self {
+            Self::FileDownload(value)
         }
     }
 
-    impl<'de> ::serde::Deserialize<'de> for Prompt {
-        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-        where
-            D: ::serde::Deserializer<'de>,
-        {
-            ::std::string::String::deserialize(deserializer)?
-                .parse()
-                .map_err(|e: self::error::ConversionError| {
-                    <D::Error as ::serde::de::Error>::custom(e.to_string())
-                })
+    impl ::std::convert::From<FilesDeliverables> for Payload {
+        fn from(value: FilesDeliverables) -> Self {
+            Self::FilesDeliverables(value)
         }
+    }
+
+    impl ::std::convert::From<FlushOutput> for Payload {
+        fn from(value: FlushOutput) -> Self {
+            Self::FlushOutput(value)
+        }
+    }
+
+    impl ::std::convert::From<ConvertOfficePdf> for Payload {
+        fn from(value: ConvertOfficePdf) -> Self {
+            Self::ConvertOfficePdf(value)
+        }
+    }
+
+    impl ::std::convert::From<RepositoryOperation> for Payload {
+        fn from(value: RepositoryOperation) -> Self {
+            Self::RepositoryOperation(value)
+        }
+    }
+
+    impl ::std::convert::From<BackgroundOperation> for Payload {
+        fn from(value: BackgroundOperation) -> Self {
+            Self::BackgroundOperation(value)
+        }
+    }
+
+    ///`PendingAssignmentPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "PendingAssignmentPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "assignment_id",
+    ///    "session_id"
+    ///  ],
+    ///  "properties": {
+    ///    "assignment_id": {
+    ///      "title": "Assignment Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "session_id": {
+    ///      "title": "Session Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct PendingAssignmentPublic {
+        pub assignment_id: ::uuid::Uuid,
+        pub session_id: ::uuid::Uuid,
     }
 
     ///Request to refresh access token.
@@ -3017,6 +7530,637 @@ pub mod types {
                 refresh_token: Default::default(),
                 workspace_id: Default::default(),
             }
+        }
+    }
+
+    ///`RegisterWorkerRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RegisterWorkerRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "capabilities",
+    ///    "max_assignments",
+    ///    "os_arch",
+    ///    "workdir_id",
+    ///    "worker_installation_id",
+    ///    "worker_instance_id"
+    ///  ],
+    ///  "properties": {
+    ///    "capabilities": {
+    ///      "title": "Capabilities",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ExecutorCapability"
+    ///      }
+    ///    },
+    ///    "max_assignments": {
+    ///      "title": "Max Assignments",
+    ///      "type": "integer",
+    ///      "maximum": 64.0,
+    ///      "minimum": 1.0
+    ///    },
+    ///    "os_arch": {
+    ///      "title": "RegisterWorkerRequest_os_arch",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "linux-x86_64",
+    ///        "linux-aarch64",
+    ///        "darwin-x86_64",
+    ///        "darwin-aarch64"
+    ///      ]
+    ///    },
+    ///    "protocol_version": {
+    ///      "title": "Protocol Version",
+    ///      "default": 1,
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "workdir_id": {
+    ///      "title": "Workdir Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "worker_installation_id": {
+    ///      "title": "Worker Installation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "worker_instance_id": {
+    ///      "title": "Worker Instance Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct RegisterWorkerRequest {
+        pub capabilities: ::std::vec::Vec<ExecutorCapability>,
+        pub max_assignments: ::std::num::NonZeroU64,
+        pub os_arch: RegisterWorkerRequestOsArch,
+        #[serde(default = "defaults::default_nzu64::<::std::num::NonZeroU64, 1>")]
+        pub protocol_version: ::std::num::NonZeroU64,
+        pub workdir_id: ::uuid::Uuid,
+        pub worker_installation_id: ::uuid::Uuid,
+        pub worker_instance_id: ::uuid::Uuid,
+    }
+
+    ///`RegisterWorkerRequestOsArch`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RegisterWorkerRequest_os_arch",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "linux-x86_64",
+    ///    "linux-aarch64",
+    ///    "darwin-x86_64",
+    ///    "darwin-aarch64"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum RegisterWorkerRequestOsArch {
+        #[serde(rename = "linux-x86_64")]
+        LinuxX8664,
+        #[serde(rename = "linux-aarch64")]
+        LinuxAarch64,
+        #[serde(rename = "darwin-x86_64")]
+        DarwinX8664,
+        #[serde(rename = "darwin-aarch64")]
+        DarwinAarch64,
+    }
+
+    impl ::std::fmt::Display for RegisterWorkerRequestOsArch {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::LinuxX8664 => f.write_str("linux-x86_64"),
+                Self::LinuxAarch64 => f.write_str("linux-aarch64"),
+                Self::DarwinX8664 => f.write_str("darwin-x86_64"),
+                Self::DarwinAarch64 => f.write_str("darwin-aarch64"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for RegisterWorkerRequestOsArch {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "linux-x86_64" => Ok(Self::LinuxX8664),
+                "linux-aarch64" => Ok(Self::LinuxAarch64),
+                "darwin-x86_64" => Ok(Self::DarwinX8664),
+                "darwin-aarch64" => Ok(Self::DarwinAarch64),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RegisterWorkerRequestOsArch {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for RegisterWorkerRequestOsArch {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RegisterWorkerRequestOsArch {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`RepositoryAction`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RepositoryAction",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "create-worktree",
+    ///    "delete-worktree",
+    ///    "sync-repository",
+    ///    "initialize-symlinks",
+    ///    "initialize-links",
+    ///    "disk-cleanup",
+    ///    "delete-repositories",
+    ///    "clone-repository",
+    ///    "clone-github-repository",
+    ///    "clone-bitbucket-repository",
+    ///    "clone-azure-devops-repository",
+    ///    "clone-aws-codecommit-repository",
+    ///    "check-convention-files"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum RepositoryAction {
+        #[serde(rename = "create-worktree")]
+        CreateWorktree,
+        #[serde(rename = "delete-worktree")]
+        DeleteWorktree,
+        #[serde(rename = "sync-repository")]
+        SyncRepository,
+        #[serde(rename = "initialize-symlinks")]
+        InitializeSymlinks,
+        #[serde(rename = "initialize-links")]
+        InitializeLinks,
+        #[serde(rename = "disk-cleanup")]
+        DiskCleanup,
+        #[serde(rename = "delete-repositories")]
+        DeleteRepositories,
+        #[serde(rename = "clone-repository")]
+        CloneRepository,
+        #[serde(rename = "clone-github-repository")]
+        CloneGithubRepository,
+        #[serde(rename = "clone-bitbucket-repository")]
+        CloneBitbucketRepository,
+        #[serde(rename = "clone-azure-devops-repository")]
+        CloneAzureDevopsRepository,
+        #[serde(rename = "clone-aws-codecommit-repository")]
+        CloneAwsCodecommitRepository,
+        #[serde(rename = "check-convention-files")]
+        CheckConventionFiles,
+    }
+
+    impl ::std::fmt::Display for RepositoryAction {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::CreateWorktree => f.write_str("create-worktree"),
+                Self::DeleteWorktree => f.write_str("delete-worktree"),
+                Self::SyncRepository => f.write_str("sync-repository"),
+                Self::InitializeSymlinks => f.write_str("initialize-symlinks"),
+                Self::InitializeLinks => f.write_str("initialize-links"),
+                Self::DiskCleanup => f.write_str("disk-cleanup"),
+                Self::DeleteRepositories => f.write_str("delete-repositories"),
+                Self::CloneRepository => f.write_str("clone-repository"),
+                Self::CloneGithubRepository => f.write_str("clone-github-repository"),
+                Self::CloneBitbucketRepository => f.write_str("clone-bitbucket-repository"),
+                Self::CloneAzureDevopsRepository => f.write_str("clone-azure-devops-repository"),
+                Self::CloneAwsCodecommitRepository => {
+                    f.write_str("clone-aws-codecommit-repository")
+                }
+                Self::CheckConventionFiles => f.write_str("check-convention-files"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for RepositoryAction {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "create-worktree" => Ok(Self::CreateWorktree),
+                "delete-worktree" => Ok(Self::DeleteWorktree),
+                "sync-repository" => Ok(Self::SyncRepository),
+                "initialize-symlinks" => Ok(Self::InitializeSymlinks),
+                "initialize-links" => Ok(Self::InitializeLinks),
+                "disk-cleanup" => Ok(Self::DiskCleanup),
+                "delete-repositories" => Ok(Self::DeleteRepositories),
+                "clone-repository" => Ok(Self::CloneRepository),
+                "clone-github-repository" => Ok(Self::CloneGithubRepository),
+                "clone-bitbucket-repository" => Ok(Self::CloneBitbucketRepository),
+                "clone-azure-devops-repository" => Ok(Self::CloneAzureDevopsRepository),
+                "clone-aws-codecommit-repository" => Ok(Self::CloneAwsCodecommitRepository),
+                "check-convention-files" => Ok(Self::CheckConventionFiles),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RepositoryAction {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for RepositoryAction {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RepositoryAction {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`RepositoryOperation`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RepositoryOperation",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "action",
+    ///    "kind"
+    ///  ],
+    ///  "properties": {
+    ///    "action": {
+    ///      "$ref": "#/components/schemas/RepositoryAction"
+    ///    },
+    ///    "branch": {
+    ///      "title": "Branch",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "commit_sha": {
+    ///      "title": "Commit Sha",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "credential_ref": {
+    ///      "title": "Credential Ref",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "dir_patterns": {
+    ///      "title": "Dir Patterns",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "file_patterns": {
+    ///      "title": "File Patterns",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "kind": {
+    ///      "title": "RepositoryOperation_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "repository"
+    ///      ]
+    ///    },
+    ///    "links": {
+    ///      "title": "Links",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ScopedWorkspaceLink"
+    ///      }
+    ///    },
+    ///    "pipeline_id": {
+    ///      "title": "Pipeline Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "pr_number": {
+    ///      "title": "Pr Number",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "provider": {
+    ///      "title": "Provider",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "repo_name": {
+    ///      "title": "Repo Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "repo_names": {
+    ///      "title": "Repo Names",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "repository_filter": {
+    ///      "title": "Repository Filter",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "seed_commit_sha": {
+    ///      "title": "Seed Commit Sha",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "source": {
+    ///      "title": "Source",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct RepositoryOperation {
+        pub action: RepositoryAction,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub branch: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub commit_sha: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub credential_ref: ::std::option::Option<::uuid::Uuid>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub dir_patterns: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub file_patterns: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
+        pub kind: RepositoryOperationKind,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub links: ::std::option::Option<::std::vec::Vec<ScopedWorkspaceLink>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub pipeline_id: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub pr_number: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub provider: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub repo_name: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub repo_names: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub repository_filter: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub seed_commit_sha: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub source: ::std::option::Option<::std::string::String>,
+    }
+
+    ///`RepositoryOperationKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RepositoryOperation_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "repository"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum RepositoryOperationKind {
+        #[serde(rename = "repository")]
+        Repository,
+    }
+
+    impl ::std::fmt::Display for RepositoryOperationKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Repository => f.write_str("repository"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for RepositoryOperationKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "repository" => Ok(Self::Repository),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RepositoryOperationKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for RepositoryOperationKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RepositoryOperationKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`RequiredItem`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct RequiredItem(::std::string::String);
+    impl ::std::ops::Deref for RequiredItem {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<RequiredItem> for ::std::string::String {
+        fn from(value: RequiredItem) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for RequiredItem {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RequiredItem {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for RequiredItem {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RequiredItem {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for RequiredItem {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
         }
     }
 
@@ -3258,13 +8402,13 @@ pub mod types {
     ///  ],
     ///  "properties": {
     ///    "option_id": {
-    ///      "title": "Option Id",
+    ///      "title": "SavedSelection_option_id",
     ///      "type": "string",
     ///      "maxLength": 128,
     ///      "minLength": 1
     ///    },
     ///    "thinking_effort": {
-    ///      "title": "Thinking Effort",
+    ///      "title": "SavedSelection_thinking_effort",
     ///      "type": [
     ///        "string",
     ///        "null"
@@ -3279,9 +8423,518 @@ pub mod types {
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct SavedSelection {
-        pub option_id: OptionId,
+        pub option_id: SavedSelectionOptionId,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub thinking_effort: ::std::option::Option<ThinkingEffort>,
+        pub thinking_effort: ::std::option::Option<SavedSelectionThinkingEffort>,
+    }
+
+    ///`SavedSelectionOptionId`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SavedSelection_option_id",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct SavedSelectionOptionId(::std::string::String);
+    impl ::std::ops::Deref for SavedSelectionOptionId {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<SavedSelectionOptionId> for ::std::string::String {
+        fn from(value: SavedSelectionOptionId) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for SavedSelectionOptionId {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 128usize {
+                return Err("longer than 128 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for SavedSelectionOptionId {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for SavedSelectionOptionId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for SavedSelectionOptionId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for SavedSelectionOptionId {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`SavedSelectionThinkingEffort`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SavedSelection_thinking_effort",
+    ///  "type": "string",
+    ///  "maxLength": 64
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct SavedSelectionThinkingEffort(::std::string::String);
+    impl ::std::ops::Deref for SavedSelectionThinkingEffort {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<SavedSelectionThinkingEffort> for ::std::string::String {
+        fn from(value: SavedSelectionThinkingEffort) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for SavedSelectionThinkingEffort {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 64usize {
+                return Err("longer than 64 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for SavedSelectionThinkingEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for SavedSelectionThinkingEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for SavedSelectionThinkingEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for SavedSelectionThinkingEffort {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`ScopedWorkspaceLink`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ScopedWorkspaceLink",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "name",
+    ///    "relative_target"
+    ///  ],
+    ///  "properties": {
+    ///    "name": {
+    ///      "title": "ScopedWorkspaceLink_name",
+    ///      "type": "string",
+    ///      "maxLength": 128,
+    ///      "minLength": 1
+    ///    },
+    ///    "relative_target": {
+    ///      "title": "ScopedWorkspaceLink_relative_target",
+    ///      "type": "string",
+    ///      "maxLength": 512,
+    ///      "minLength": 1
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct ScopedWorkspaceLink {
+        pub name: ScopedWorkspaceLinkName,
+        pub relative_target: ScopedWorkspaceLinkRelativeTarget,
+    }
+
+    ///`ScopedWorkspaceLinkName`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ScopedWorkspaceLink_name",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct ScopedWorkspaceLinkName(::std::string::String);
+    impl ::std::ops::Deref for ScopedWorkspaceLinkName {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<ScopedWorkspaceLinkName> for ::std::string::String {
+        fn from(value: ScopedWorkspaceLinkName) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for ScopedWorkspaceLinkName {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 128usize {
+                return Err("longer than 128 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ScopedWorkspaceLinkName {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ScopedWorkspaceLinkName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ScopedWorkspaceLinkName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for ScopedWorkspaceLinkName {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`ScopedWorkspaceLinkRelativeTarget`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ScopedWorkspaceLink_relative_target",
+    ///  "type": "string",
+    ///  "maxLength": 512,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct ScopedWorkspaceLinkRelativeTarget(::std::string::String);
+    impl ::std::ops::Deref for ScopedWorkspaceLinkRelativeTarget {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<ScopedWorkspaceLinkRelativeTarget> for ::std::string::String {
+        fn from(value: ScopedWorkspaceLinkRelativeTarget) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for ScopedWorkspaceLinkRelativeTarget {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 512usize {
+                return Err("longer than 512 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ScopedWorkspaceLinkRelativeTarget {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ScopedWorkspaceLinkRelativeTarget {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ScopedWorkspaceLinkRelativeTarget {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for ScopedWorkspaceLinkRelativeTarget {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`ScriptRun`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ScriptRun",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind",
+    ///    "script"
+    ///  ],
+    ///  "properties": {
+    ///    "authorized_working_directory_root": {
+    ///      "title": "Authorized Working Directory Root",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "credential_ref": {
+    ///      "title": "Credential Ref",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "kind": {
+    ///      "title": "ScriptRun_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "script"
+    ///      ]
+    ///    },
+    ///    "script": {
+    ///      "title": "Script",
+    ///      "type": "string"
+    ///    },
+    ///    "task_id": {
+    ///      "title": "Task Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "timeout": {
+    ///      "title": "Timeout",
+    ///      "type": [
+    ///        "number",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "working_directory": {
+    ///      "title": "Working Directory",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct ScriptRun {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub authorized_working_directory_root: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub credential_ref: ::std::option::Option<::uuid::Uuid>,
+        pub kind: ScriptRunKind,
+        pub script: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub task_id: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub timeout: ::std::option::Option<f64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub working_directory: ::std::option::Option<::std::string::String>,
+    }
+
+    ///`ScriptRunKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ScriptRun_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "script"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ScriptRunKind {
+        #[serde(rename = "script")]
+        Script,
+    }
+
+    impl ::std::fmt::Display for ScriptRunKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Script => f.write_str("script"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ScriptRunKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "script" => Ok(Self::Script),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ScriptRunKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ScriptRunKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ScriptRunKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
     }
 
     ///Simple message response schema.
@@ -3308,6 +8961,302 @@ pub mod types {
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SimpleMessage {
         pub message: ::std::string::String,
+    }
+
+    ///`SkillBundleChunk`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SkillBundleChunk",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "archive_size",
+    ///    "chunk_count",
+    ///    "chunk_index",
+    ///    "content_base64",
+    ///    "digest",
+    ///    "kind"
+    ///  ],
+    ///  "properties": {
+    ///    "archive_size": {
+    ///      "title": "Archive Size",
+    ///      "type": "integer",
+    ///      "maximum": 8388608.0,
+    ///      "exclusiveMinimum": 0.0
+    ///    },
+    ///    "chunk_count": {
+    ///      "title": "Chunk Count",
+    ///      "type": "integer",
+    ///      "maximum": 64.0,
+    ///      "exclusiveMinimum": 0.0
+    ///    },
+    ///    "chunk_index": {
+    ///      "title": "Chunk Index",
+    ///      "type": "integer",
+    ///      "exclusiveMaximum": 64.0,
+    ///      "minimum": 0.0
+    ///    },
+    ///    "content_base64": {
+    ///      "title": "SkillBundleChunk_content_base64",
+    ///      "type": "string",
+    ///      "maxLength": 174764
+    ///    },
+    ///    "digest": {
+    ///      "title": "SkillBundleChunk_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[0-9a-f]{64}$"
+    ///    },
+    ///    "kind": {
+    ///      "title": "SkillBundleChunk_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "skill_bundle_chunk"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct SkillBundleChunk {
+        pub archive_size: ::std::num::NonZeroU64,
+        pub chunk_count: ::std::num::NonZeroU64,
+        pub chunk_index: i64,
+        pub content_base64: SkillBundleChunkContentBase64,
+        pub digest: SkillBundleChunkDigest,
+        pub kind: SkillBundleChunkKind,
+    }
+
+    ///`SkillBundleChunkContentBase64`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SkillBundleChunk_content_base64",
+    ///  "type": "string",
+    ///  "maxLength": 174764
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct SkillBundleChunkContentBase64(::std::string::String);
+    impl ::std::ops::Deref for SkillBundleChunkContentBase64 {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<SkillBundleChunkContentBase64> for ::std::string::String {
+        fn from(value: SkillBundleChunkContentBase64) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for SkillBundleChunkContentBase64 {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 174764usize {
+                return Err("longer than 174764 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for SkillBundleChunkContentBase64 {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for SkillBundleChunkContentBase64 {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for SkillBundleChunkContentBase64 {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for SkillBundleChunkContentBase64 {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`SkillBundleChunkDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SkillBundleChunk_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[0-9a-f]{64}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct SkillBundleChunkDigest(::std::string::String);
+    impl ::std::ops::Deref for SkillBundleChunkDigest {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<SkillBundleChunkDigest> for ::std::string::String {
+        fn from(value: SkillBundleChunkDigest) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for SkillBundleChunkDigest {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[0-9a-f]{64}$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[0-9a-f]{64}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for SkillBundleChunkDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for SkillBundleChunkDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for SkillBundleChunkDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for SkillBundleChunkDigest {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`SkillBundleChunkKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SkillBundleChunk_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "skill_bundle_chunk"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum SkillBundleChunkKind {
+        #[serde(rename = "skill_bundle_chunk")]
+        SkillBundleChunk,
+    }
+
+    impl ::std::fmt::Display for SkillBundleChunkKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::SkillBundleChunk => f.write_str("skill_bundle_chunk"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for SkillBundleChunkKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "skill_bundle_chunk" => Ok(Self::SkillBundleChunk),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for SkillBundleChunkKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for SkillBundleChunkKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for SkillBundleChunkKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
     }
 
     ///Whether the file the finding sits in was added or modified by the MR.
@@ -3409,6 +9358,34 @@ pub mod types {
         }
     }
 
+    ///`StartWorkerConformanceRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "StartWorkerConformanceRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct StartWorkerConformanceRequest {
+        pub worker_id: ::uuid::Uuid,
+    }
+
     ///Body for `POST /cli/runs`.
     ///
     ///`agent_mode` is intentionally NOT exposed in V1 — the server picks the
@@ -3442,7 +9419,7 @@ pub mod types {
     ///      "format": "uuid"
     ///    },
     ///    "idempotency_key": {
-    ///      "title": "Idempotency Key",
+    ///      "title": "SubmitHeadlessRunRequest_idempotency_key",
     ///      "description": "Optional caller-supplied key (workspace-scoped). A
     /// retried submit with the same key returns the original run instead of
     /// creating a duplicate. Omit for at-least-once submit.",
@@ -3453,7 +9430,7 @@ pub mod types {
     ///      "maxLength": 255
     ///    },
     ///    "prompt": {
-    ///      "title": "Prompt",
+    ///      "title": "SubmitHeadlessRunRequest_prompt",
     ///      "type": "string",
     ///      "maxLength": 50000,
     ///      "minLength": 1
@@ -3487,8 +9464,8 @@ pub mod types {
         /// with the same key returns the original run instead of creating a
         /// duplicate. Omit for at-least-once submit.
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub idempotency_key: ::std::option::Option<IdempotencyKey>,
-        pub prompt: Prompt,
+        pub idempotency_key: ::std::option::Option<SubmitHeadlessRunRequestIdempotencyKey>,
+        pub prompt: SubmitHeadlessRunRequestPrompt,
         pub selection: SavedSelection,
         ///Optional. The AGENT_CLI conversation whose terminal watches this
         /// run. Only for a new run: it cannot be combined with
@@ -3497,52 +9474,57 @@ pub mod types {
         pub source_conversation_id: ::std::option::Option<::uuid::Uuid>,
     }
 
-    ///`ThinkingEffort`
+    ///Optional caller-supplied key (workspace-scoped). A retried submit with
+    /// the same key returns the original run instead of creating a duplicate.
+    /// Omit for at-least-once submit.
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "title": "Thinking Effort",
+    ///  "title": "SubmitHeadlessRunRequest_idempotency_key",
+    ///  "description": "Optional caller-supplied key (workspace-scoped). A
+    /// retried submit with the same key returns the original run instead of
+    /// creating a duplicate. Omit for at-least-once submit.",
     ///  "type": "string",
-    ///  "maxLength": 64
+    ///  "maxLength": 255
     ///}
     /// ```
     /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
-    pub struct ThinkingEffort(::std::string::String);
-    impl ::std::ops::Deref for ThinkingEffort {
+    pub struct SubmitHeadlessRunRequestIdempotencyKey(::std::string::String);
+    impl ::std::ops::Deref for SubmitHeadlessRunRequestIdempotencyKey {
         type Target = ::std::string::String;
         fn deref(&self) -> &::std::string::String {
             &self.0
         }
     }
 
-    impl ::std::convert::From<ThinkingEffort> for ::std::string::String {
-        fn from(value: ThinkingEffort) -> Self {
+    impl ::std::convert::From<SubmitHeadlessRunRequestIdempotencyKey> for ::std::string::String {
+        fn from(value: SubmitHeadlessRunRequestIdempotencyKey) -> Self {
             value.0
         }
     }
 
-    impl ::std::str::FromStr for ThinkingEffort {
+    impl ::std::str::FromStr for SubmitHeadlessRunRequestIdempotencyKey {
         type Err = self::error::ConversionError;
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            if value.chars().count() > 64usize {
-                return Err("longer than 64 characters".into());
+            if value.chars().count() > 255usize {
+                return Err("longer than 255 characters".into());
             }
             Ok(Self(value.to_string()))
         }
     }
 
-    impl ::std::convert::TryFrom<&str> for ThinkingEffort {
+    impl ::std::convert::TryFrom<&str> for SubmitHeadlessRunRequestIdempotencyKey {
         type Error = self::error::ConversionError;
         fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
     }
 
-    impl ::std::convert::TryFrom<&::std::string::String> for ThinkingEffort {
+    impl ::std::convert::TryFrom<&::std::string::String> for SubmitHeadlessRunRequestIdempotencyKey {
         type Error = self::error::ConversionError;
         fn try_from(
             value: &::std::string::String,
@@ -3551,7 +9533,7 @@ pub mod types {
         }
     }
 
-    impl ::std::convert::TryFrom<::std::string::String> for ThinkingEffort {
+    impl ::std::convert::TryFrom<::std::string::String> for SubmitHeadlessRunRequestIdempotencyKey {
         type Error = self::error::ConversionError;
         fn try_from(
             value: ::std::string::String,
@@ -3560,7 +9542,7 @@ pub mod types {
         }
     }
 
-    impl<'de> ::serde::Deserialize<'de> for ThinkingEffort {
+    impl<'de> ::serde::Deserialize<'de> for SubmitHeadlessRunRequestIdempotencyKey {
         fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
         where
             D: ::serde::Deserializer<'de>,
@@ -3570,6 +9552,1284 @@ pub mod types {
                 .map_err(|e: self::error::ConversionError| {
                     <D::Error as ::serde::de::Error>::custom(e.to_string())
                 })
+        }
+    }
+
+    ///`SubmitHeadlessRunRequestPrompt`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SubmitHeadlessRunRequest_prompt",
+    ///  "type": "string",
+    ///  "maxLength": 50000,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct SubmitHeadlessRunRequestPrompt(::std::string::String);
+    impl ::std::ops::Deref for SubmitHeadlessRunRequestPrompt {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<SubmitHeadlessRunRequestPrompt> for ::std::string::String {
+        fn from(value: SubmitHeadlessRunRequestPrompt) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for SubmitHeadlessRunRequestPrompt {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 50000usize {
+                return Err("longer than 50000 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for SubmitHeadlessRunRequestPrompt {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for SubmitHeadlessRunRequestPrompt {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for SubmitHeadlessRunRequestPrompt {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for SubmitHeadlessRunRequestPrompt {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`TargetConnectionHealth`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionHealth",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "credential_generation",
+    ///    "manifest_digest",
+    ///    "manifest_revision",
+    ///    "state",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "credential_generation": {
+    ///      "title": "Credential Generation",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "manifest_digest": {
+    ///      "title": "TargetConnectionHealth_manifest_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
+    ///    "manifest_revision": {
+    ///      "title": "Manifest Revision",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "state": {
+    ///      "title": "TargetConnectionHealth_state",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "ready",
+    ///        "offline",
+    ///        "missing",
+    ///        "invalid"
+    ///      ]
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct TargetConnectionHealth {
+        pub credential_generation: ::std::num::NonZeroU64,
+        pub manifest_digest: TargetConnectionHealthManifestDigest,
+        pub manifest_revision: ::std::num::NonZeroU64,
+        pub state: TargetConnectionHealthState,
+        pub worker_id: ::uuid::Uuid,
+    }
+
+    ///`TargetConnectionHealthManifestDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionHealth_manifest_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[a-f0-9]{64}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct TargetConnectionHealthManifestDigest(::std::string::String);
+    impl ::std::ops::Deref for TargetConnectionHealthManifestDigest {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<TargetConnectionHealthManifestDigest> for ::std::string::String {
+        fn from(value: TargetConnectionHealthManifestDigest) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for TargetConnectionHealthManifestDigest {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[a-f0-9]{64}$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-f0-9]{64}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TargetConnectionHealthManifestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionHealthManifestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionHealthManifestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for TargetConnectionHealthManifestDigest {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`TargetConnectionHealthState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionHealth_state",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "ready",
+    ///    "offline",
+    ///    "missing",
+    ///    "invalid"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum TargetConnectionHealthState {
+        #[serde(rename = "ready")]
+        Ready,
+        #[serde(rename = "offline")]
+        Offline,
+        #[serde(rename = "missing")]
+        Missing,
+        #[serde(rename = "invalid")]
+        Invalid,
+    }
+
+    impl ::std::fmt::Display for TargetConnectionHealthState {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Ready => f.write_str("ready"),
+                Self::Offline => f.write_str("offline"),
+                Self::Missing => f.write_str("missing"),
+                Self::Invalid => f.write_str("invalid"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for TargetConnectionHealthState {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "ready" => Ok(Self::Ready),
+                "offline" => Ok(Self::Offline),
+                "missing" => Ok(Self::Missing),
+                "invalid" => Ok(Self::Invalid),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TargetConnectionHealthState {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionHealthState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionHealthState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`TargetConnectionPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "alias",
+    ///    "approved",
+    ///    "credential_generation",
+    ///    "identity",
+    ///    "kind",
+    ///    "manifest_digest",
+    ///    "manifest_revision",
+    ///    "state",
+    ///    "tools"
+    ///  ],
+    ///  "properties": {
+    ///    "alias": {
+    ///      "title": "TargetConnectionPublic_alias",
+    ///      "type": "string",
+    ///      "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///    },
+    ///    "approved": {
+    ///      "title": "Approved",
+    ///      "type": "boolean"
+    ///    },
+    ///    "credential_generation": {
+    ///      "title": "Credential Generation",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "identity": {
+    ///      "title": "TargetConnectionPublic_identity",
+    ///      "type": "string",
+    ///      "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///    },
+    ///    "kind": {
+    ///      "title": "TargetConnectionPublic_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "builtin",
+    ///        "mcp"
+    ///      ]
+    ///    },
+    ///    "manifest_digest": {
+    ///      "title": "TargetConnectionPublic_manifest_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
+    ///    "manifest_revision": {
+    ///      "title": "Manifest Revision",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "state": {
+    ///      "$ref": "#/components/schemas/TargetConnectionState"
+    ///    },
+    ///    "tools": {
+    ///      "title": "Tools",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/TargetToolMapping"
+    ///      }
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct TargetConnectionPublic {
+        pub alias: TargetConnectionPublicAlias,
+        pub approved: bool,
+        pub credential_generation: ::std::num::NonZeroU64,
+        pub identity: TargetConnectionPublicIdentity,
+        pub kind: TargetConnectionPublicKind,
+        pub manifest_digest: TargetConnectionPublicManifestDigest,
+        pub manifest_revision: ::std::num::NonZeroU64,
+        pub state: TargetConnectionState,
+        pub tools: ::std::vec::Vec<TargetToolMapping>,
+    }
+
+    ///`TargetConnectionPublicAlias`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionPublic_alias",
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct TargetConnectionPublicAlias(::std::string::String);
+    impl ::std::ops::Deref for TargetConnectionPublicAlias {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<TargetConnectionPublicAlias> for ::std::string::String {
+        fn from(value: TargetConnectionPublicAlias) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for TargetConnectionPublicAlias {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TargetConnectionPublicAlias {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionPublicAlias {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionPublicAlias {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for TargetConnectionPublicAlias {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`TargetConnectionPublicIdentity`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionPublic_identity",
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct TargetConnectionPublicIdentity(::std::string::String);
+    impl ::std::ops::Deref for TargetConnectionPublicIdentity {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<TargetConnectionPublicIdentity> for ::std::string::String {
+        fn from(value: TargetConnectionPublicIdentity) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for TargetConnectionPublicIdentity {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TargetConnectionPublicIdentity {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionPublicIdentity {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionPublicIdentity {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for TargetConnectionPublicIdentity {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`TargetConnectionPublicKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionPublic_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "builtin",
+    ///    "mcp"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum TargetConnectionPublicKind {
+        #[serde(rename = "builtin")]
+        Builtin,
+        #[serde(rename = "mcp")]
+        Mcp,
+    }
+
+    impl ::std::fmt::Display for TargetConnectionPublicKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Builtin => f.write_str("builtin"),
+                Self::Mcp => f.write_str("mcp"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for TargetConnectionPublicKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "builtin" => Ok(Self::Builtin),
+                "mcp" => Ok(Self::Mcp),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TargetConnectionPublicKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionPublicKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionPublicKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`TargetConnectionPublicManifestDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionPublic_manifest_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[a-f0-9]{64}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct TargetConnectionPublicManifestDigest(::std::string::String);
+    impl ::std::ops::Deref for TargetConnectionPublicManifestDigest {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<TargetConnectionPublicManifestDigest> for ::std::string::String {
+        fn from(value: TargetConnectionPublicManifestDigest) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for TargetConnectionPublicManifestDigest {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[a-f0-9]{64}$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-f0-9]{64}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TargetConnectionPublicManifestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionPublicManifestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionPublicManifestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for TargetConnectionPublicManifestDigest {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`TargetConnectionState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionState",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "pending",
+    ///    "ready",
+    ///    "rotation_required",
+    ///    "revoked",
+    ///    "schema_mismatch",
+    ///    "offline"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum TargetConnectionState {
+        #[serde(rename = "pending")]
+        Pending,
+        #[serde(rename = "ready")]
+        Ready,
+        #[serde(rename = "rotation_required")]
+        RotationRequired,
+        #[serde(rename = "revoked")]
+        Revoked,
+        #[serde(rename = "schema_mismatch")]
+        SchemaMismatch,
+        #[serde(rename = "offline")]
+        Offline,
+    }
+
+    impl ::std::fmt::Display for TargetConnectionState {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Pending => f.write_str("pending"),
+                Self::Ready => f.write_str("ready"),
+                Self::RotationRequired => f.write_str("rotation_required"),
+                Self::Revoked => f.write_str("revoked"),
+                Self::SchemaMismatch => f.write_str("schema_mismatch"),
+                Self::Offline => f.write_str("offline"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for TargetConnectionState {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "pending" => Ok(Self::Pending),
+                "ready" => Ok(Self::Ready),
+                "rotation_required" => Ok(Self::RotationRequired),
+                "revoked" => Ok(Self::Revoked),
+                "schema_mismatch" => Ok(Self::SchemaMismatch),
+                "offline" => Ok(Self::Offline),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TargetConnectionState {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`TargetToolMapping`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetToolMapping",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "canonical_skill",
+    ///    "effect",
+    ///    "input_schema_digest",
+    ///    "provider_name",
+    ///    "requires_user_approval",
+    ///    "tool_key"
+    ///  ],
+    ///  "properties": {
+    ///    "canonical_skill": {
+    ///      "title": "TargetToolMapping_canonical_skill",
+    ///      "type": "string",
+    ///      "pattern": "^[a-z][a-z0-9_.-]{0,63}/[a-z][a-z0-9_.-]{0,63}$"
+    ///    },
+    ///    "effect": {
+    ///      "title": "TargetToolMapping_effect",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "read",
+    ///        "write"
+    ///      ]
+    ///    },
+    ///    "input_schema_digest": {
+    ///      "title": "TargetToolMapping_input_schema_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
+    ///    "provider_name": {
+    ///      "title": "TargetToolMapping_provider_name",
+    ///      "type": "string",
+    ///      "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///    },
+    ///    "requires_user_approval": {
+    ///      "title": "Requires User Approval",
+    ///      "type": "boolean"
+    ///    },
+    ///    "tool_key": {
+    ///      "title": "TargetToolMapping_tool_key",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "computer_cli_read",
+    ///        "computer_cli_write"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct TargetToolMapping {
+        pub canonical_skill: TargetToolMappingCanonicalSkill,
+        pub effect: TargetToolMappingEffect,
+        pub input_schema_digest: TargetToolMappingInputSchemaDigest,
+        pub provider_name: TargetToolMappingProviderName,
+        pub requires_user_approval: bool,
+        pub tool_key: TargetToolMappingToolKey,
+    }
+
+    ///`TargetToolMappingCanonicalSkill`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetToolMapping_canonical_skill",
+    ///  "type": "string",
+    ///  "pattern": "^[a-z][a-z0-9_.-]{0,63}/[a-z][a-z0-9_.-]{0,63}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct TargetToolMappingCanonicalSkill(::std::string::String);
+    impl ::std::ops::Deref for TargetToolMappingCanonicalSkill {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<TargetToolMappingCanonicalSkill> for ::std::string::String {
+        fn from(value: TargetToolMappingCanonicalSkill) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for TargetToolMappingCanonicalSkill {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[a-z][a-z0-9_.-]{0,63}/[a-z][a-z0-9_.-]{0,63}$")
+                        .unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err(
+                    "doesn't match pattern \"^[a-z][a-z0-9_.-]{0,63}/[a-z][a-z0-9_.-]{0,63}$\""
+                        .into(),
+                );
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TargetToolMappingCanonicalSkill {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetToolMappingCanonicalSkill {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TargetToolMappingCanonicalSkill {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for TargetToolMappingCanonicalSkill {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`TargetToolMappingEffect`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetToolMapping_effect",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "read",
+    ///    "write"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum TargetToolMappingEffect {
+        #[serde(rename = "read")]
+        Read,
+        #[serde(rename = "write")]
+        Write,
+    }
+
+    impl ::std::fmt::Display for TargetToolMappingEffect {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Read => f.write_str("read"),
+                Self::Write => f.write_str("write"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for TargetToolMappingEffect {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "read" => Ok(Self::Read),
+                "write" => Ok(Self::Write),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TargetToolMappingEffect {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetToolMappingEffect {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TargetToolMappingEffect {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`TargetToolMappingInputSchemaDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetToolMapping_input_schema_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[a-f0-9]{64}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct TargetToolMappingInputSchemaDigest(::std::string::String);
+    impl ::std::ops::Deref for TargetToolMappingInputSchemaDigest {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<TargetToolMappingInputSchemaDigest> for ::std::string::String {
+        fn from(value: TargetToolMappingInputSchemaDigest) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for TargetToolMappingInputSchemaDigest {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[a-f0-9]{64}$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-f0-9]{64}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TargetToolMappingInputSchemaDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetToolMappingInputSchemaDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TargetToolMappingInputSchemaDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for TargetToolMappingInputSchemaDigest {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`TargetToolMappingProviderName`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetToolMapping_provider_name",
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct TargetToolMappingProviderName(::std::string::String);
+    impl ::std::ops::Deref for TargetToolMappingProviderName {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<TargetToolMappingProviderName> for ::std::string::String {
+        fn from(value: TargetToolMappingProviderName) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for TargetToolMappingProviderName {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TargetToolMappingProviderName {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetToolMappingProviderName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TargetToolMappingProviderName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for TargetToolMappingProviderName {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`TargetToolMappingToolKey`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetToolMapping_tool_key",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "computer_cli_read",
+    ///    "computer_cli_write"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum TargetToolMappingToolKey {
+        #[serde(rename = "computer_cli_read")]
+        ComputerCliRead,
+        #[serde(rename = "computer_cli_write")]
+        ComputerCliWrite,
+    }
+
+    impl ::std::fmt::Display for TargetToolMappingToolKey {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::ComputerCliRead => f.write_str("computer_cli_read"),
+                Self::ComputerCliWrite => f.write_str("computer_cli_write"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for TargetToolMappingToolKey {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "computer_cli_read" => Ok(Self::ComputerCliRead),
+                "computer_cli_write" => Ok(Self::ComputerCliWrite),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TargetToolMappingToolKey {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetToolMappingToolKey {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TargetToolMappingToolKey {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
 
@@ -3849,6 +11109,140 @@ pub mod types {
         pub workspace_id: ::std::option::Option<::uuid::Uuid>,
     }
 
+    ///`UploadWorkerArtifactRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "UploadWorkerArtifactRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "content_base64",
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "token",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "content_base64": {
+    ///      "title": "UploadWorkerArtifactRequest_content_base64",
+    ///      "type": "string",
+    ///      "maxLength": 1866672
+    ///    },
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "token": {
+    ///      "title": "Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct UploadWorkerArtifactRequest {
+        pub content_base64: UploadWorkerArtifactRequestContentBase64,
+        pub fence_token: ::std::num::NonZeroU64,
+        pub lease_token: ::std::string::String,
+        pub token: ::std::string::String,
+        pub worker_id: ::uuid::Uuid,
+    }
+
+    ///`UploadWorkerArtifactRequestContentBase64`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "UploadWorkerArtifactRequest_content_base64",
+    ///  "type": "string",
+    ///  "maxLength": 1866672
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct UploadWorkerArtifactRequestContentBase64(::std::string::String);
+    impl ::std::ops::Deref for UploadWorkerArtifactRequestContentBase64 {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<UploadWorkerArtifactRequestContentBase64> for ::std::string::String {
+        fn from(value: UploadWorkerArtifactRequestContentBase64) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for UploadWorkerArtifactRequestContentBase64 {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 1866672usize {
+                return Err("longer than 1866672 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for UploadWorkerArtifactRequestContentBase64 {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for UploadWorkerArtifactRequestContentBase64 {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for UploadWorkerArtifactRequestContentBase64 {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for UploadWorkerArtifactRequestContentBase64 {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
     ///Minimal organization info for user's organization list
     ///
     /// <details><summary>JSON schema</summary>
@@ -3887,6 +11281,764 @@ pub mod types {
         pub id: ::uuid::Uuid,
         pub is_owner: bool,
         pub name: ::std::string::String,
+    }
+
+    ///`WorkerArtifactPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerArtifactPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "digest",
+    ///    "path",
+    ///    "size"
+    ///  ],
+    ///  "properties": {
+    ///    "digest": {
+    ///      "title": "Digest",
+    ///      "type": "string"
+    ///    },
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": "string"
+    ///    },
+    ///    "size": {
+    ///      "title": "Size",
+    ///      "type": "integer"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct WorkerArtifactPublic {
+        pub digest: ::std::string::String,
+        pub path: ::std::string::String,
+        pub size: i64,
+    }
+
+    ///`WorkerBootstrap`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerBootstrap",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "credential",
+    ///    "credential_generation",
+    ///    "expires_at",
+    ///    "target_id"
+    ///  ],
+    ///  "properties": {
+    ///    "credential": {
+    ///      "title": "Credential",
+    ///      "type": "string"
+    ///    },
+    ///    "credential_generation": {
+    ///      "title": "Credential Generation",
+    ///      "type": "integer"
+    ///    },
+    ///    "expires_at": {
+    ///      "title": "Expires At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "target_id": {
+    ///      "title": "Target Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct WorkerBootstrap {
+        pub credential: ::std::string::String,
+        pub credential_generation: i64,
+        pub expires_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub target_id: ::uuid::Uuid,
+    }
+
+    ///`WorkerConformancePublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerConformancePublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "complete",
+    ///    "session_id"
+    ///  ],
+    ///  "properties": {
+    ///    "complete": {
+    ///      "title": "Complete",
+    ///      "type": "boolean"
+    ///    },
+    ///    "session_id": {
+    ///      "title": "Session Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct WorkerConformancePublic {
+        pub complete: bool,
+        pub session_id: ::uuid::Uuid,
+    }
+
+    ///`WorkerHeartbeatRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerHeartbeatRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "state",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "state": {
+    ///      "title": "WorkerHeartbeatRequest_state",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "online",
+    ///        "draining"
+    ///      ]
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct WorkerHeartbeatRequest {
+        pub state: WorkerHeartbeatRequestState,
+        pub worker_id: ::uuid::Uuid,
+    }
+
+    ///`WorkerHeartbeatRequestState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerHeartbeatRequest_state",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "online",
+    ///    "draining"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum WorkerHeartbeatRequestState {
+        #[serde(rename = "online")]
+        Online,
+        #[serde(rename = "draining")]
+        Draining,
+    }
+
+    impl ::std::fmt::Display for WorkerHeartbeatRequestState {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Online => f.write_str("online"),
+                Self::Draining => f.write_str("draining"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for WorkerHeartbeatRequestState {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "online" => Ok(Self::Online),
+                "draining" => Ok(Self::Draining),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for WorkerHeartbeatRequestState {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkerHeartbeatRequestState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for WorkerHeartbeatRequestState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`WorkerOperationResult`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerOperationResult",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "content_base64",
+    ///    "state",
+    ///    "status_code"
+    ///  ],
+    ///  "properties": {
+    ///    "content_base64": {
+    ///      "title": "WorkerOperationResult_content_base64",
+    ///      "type": "string",
+    ///      "maxLength": 2796204
+    ///    },
+    ///    "content_type": {
+    ///      "title": "WorkerOperationResult_content_type",
+    ///      "default": "application/json",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "application/json",
+    ///        "text/plain",
+    ///        "application/octet-stream",
+    ///        "application/pdf"
+    ///      ]
+    ///    },
+    ///    "state": {
+    ///      "title": "WorkerOperationResult_state",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "succeeded",
+    ///        "failed",
+    ///        "cancelled"
+    ///      ]
+    ///    },
+    ///    "status_code": {
+    ///      "title": "Status Code",
+    ///      "type": "integer",
+    ///      "maximum": 599.0,
+    ///      "minimum": 100.0
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct WorkerOperationResult {
+        pub content_base64: WorkerOperationResultContentBase64,
+        #[serde(default = "defaults::worker_operation_result_content_type")]
+        pub content_type: WorkerOperationResultContentType,
+        pub state: WorkerOperationResultState,
+        pub status_code: i64,
+    }
+
+    ///`WorkerOperationResultContentBase64`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerOperationResult_content_base64",
+    ///  "type": "string",
+    ///  "maxLength": 2796204
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct WorkerOperationResultContentBase64(::std::string::String);
+    impl ::std::ops::Deref for WorkerOperationResultContentBase64 {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<WorkerOperationResultContentBase64> for ::std::string::String {
+        fn from(value: WorkerOperationResultContentBase64) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for WorkerOperationResultContentBase64 {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 2796204usize {
+                return Err("longer than 2796204 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for WorkerOperationResultContentBase64 {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkerOperationResultContentBase64 {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for WorkerOperationResultContentBase64 {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for WorkerOperationResultContentBase64 {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`WorkerOperationResultContentType`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerOperationResult_content_type",
+    ///  "default": "application/json",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "application/json",
+    ///    "text/plain",
+    ///    "application/octet-stream",
+    ///    "application/pdf"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum WorkerOperationResultContentType {
+        #[serde(rename = "application/json")]
+        ApplicationJson,
+        #[serde(rename = "text/plain")]
+        TextPlain,
+        #[serde(rename = "application/octet-stream")]
+        ApplicationOctetStream,
+        #[serde(rename = "application/pdf")]
+        ApplicationPdf,
+    }
+
+    impl ::std::fmt::Display for WorkerOperationResultContentType {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::ApplicationJson => f.write_str("application/json"),
+                Self::TextPlain => f.write_str("text/plain"),
+                Self::ApplicationOctetStream => f.write_str("application/octet-stream"),
+                Self::ApplicationPdf => f.write_str("application/pdf"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for WorkerOperationResultContentType {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "application/json" => Ok(Self::ApplicationJson),
+                "text/plain" => Ok(Self::TextPlain),
+                "application/octet-stream" => Ok(Self::ApplicationOctetStream),
+                "application/pdf" => Ok(Self::ApplicationPdf),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for WorkerOperationResultContentType {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkerOperationResultContentType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for WorkerOperationResultContentType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::default::Default for WorkerOperationResultContentType {
+        fn default() -> Self {
+            WorkerOperationResultContentType::ApplicationJson
+        }
+    }
+
+    ///`WorkerOperationResultState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerOperationResult_state",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "succeeded",
+    ///    "failed",
+    ///    "cancelled"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum WorkerOperationResultState {
+        #[serde(rename = "succeeded")]
+        Succeeded,
+        #[serde(rename = "failed")]
+        Failed,
+        #[serde(rename = "cancelled")]
+        Cancelled,
+    }
+
+    impl ::std::fmt::Display for WorkerOperationResultState {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Succeeded => f.write_str("succeeded"),
+                Self::Failed => f.write_str("failed"),
+                Self::Cancelled => f.write_str("cancelled"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for WorkerOperationResultState {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "succeeded" => Ok(Self::Succeeded),
+                "failed" => Ok(Self::Failed),
+                "cancelled" => Ok(Self::Cancelled),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for WorkerOperationResultState {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkerOperationResultState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for WorkerOperationResultState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`WorkerPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "max_assignments",
+    ///    "state",
+    ///    "target_id",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "max_assignments": {
+    ///      "title": "Max Assignments",
+    ///      "type": "integer"
+    ///    },
+    ///    "state": {
+    ///      "$ref": "#/components/schemas/WorkerState"
+    ///    },
+    ///    "target_id": {
+    ///      "title": "Target Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct WorkerPublic {
+        pub max_assignments: i64,
+        pub state: WorkerState,
+        pub target_id: ::uuid::Uuid,
+        pub worker_id: ::uuid::Uuid,
+    }
+
+    ///`WorkerRegistrationIssue`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerRegistrationIssue",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "max_assignments": {
+    ///      "title": "Max Assignments",
+    ///      "default": 1,
+    ///      "type": "integer",
+    ///      "maximum": 64.0,
+    ///      "minimum": 1.0
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct WorkerRegistrationIssue {
+        #[serde(default = "defaults::default_nzu64::<::std::num::NonZeroU64, 1>")]
+        pub max_assignments: ::std::num::NonZeroU64,
+    }
+
+    impl ::std::default::Default for WorkerRegistrationIssue {
+        fn default() -> Self {
+            Self {
+                max_assignments: defaults::default_nzu64::<::std::num::NonZeroU64, 1>(),
+            }
+        }
+    }
+
+    ///`WorkerRegistrationReference`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerRegistrationReference",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "expires_at",
+    ///    "reference"
+    ///  ],
+    ///  "properties": {
+    ///    "expires_at": {
+    ///      "title": "Expires At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "reference": {
+    ///      "title": "Reference",
+    ///      "type": "string"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct WorkerRegistrationReference {
+        pub expires_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub reference: ::std::string::String,
+    }
+
+    ///`WorkerState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerState",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "registered",
+    ///    "online",
+    ///    "draining",
+    ///    "offline"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum WorkerState {
+        #[serde(rename = "registered")]
+        Registered,
+        #[serde(rename = "online")]
+        Online,
+        #[serde(rename = "draining")]
+        Draining,
+        #[serde(rename = "offline")]
+        Offline,
+    }
+
+    impl ::std::fmt::Display for WorkerState {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Registered => f.write_str("registered"),
+                Self::Online => f.write_str("online"),
+                Self::Draining => f.write_str("draining"),
+                Self::Offline => f.write_str("offline"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for WorkerState {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "registered" => Ok(Self::Registered),
+                "online" => Ok(Self::Online),
+                "draining" => Ok(Self::Draining),
+                "offline" => Ok(Self::Offline),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for WorkerState {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkerState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for WorkerState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
     }
 
     ///`WorkspaceCreate`
@@ -3988,7 +12140,7 @@ pub mod types {
     ///      "format": "date-time"
     ///    },
     ///    "description": {
-    ///      "title": "Description",
+    ///      "title": "WorkspacePublic_description",
     ///      "type": [
     ///        "string",
     ///        "null"
@@ -4023,7 +12175,7 @@ pub mod types {
     ///      "type": "integer"
     ///    },
     ///    "name": {
-    ///      "title": "Name",
+    ///      "title": "WorkspacePublic_name",
     ///      "type": "string",
     ///      "maxLength": 255,
     ///      "minLength": 1
@@ -4087,7 +12239,7 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub created_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub description: ::std::option::Option<Description>,
+        pub description: ::std::option::Option<WorkspacePublicDescription>,
         pub id: ::uuid::Uuid,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub interrupt_approver_ids: ::std::vec::Vec<::uuid::Uuid>,
@@ -4096,7 +12248,7 @@ pub mod types {
         pub is_deleted: bool,
         #[serde(default)]
         pub member_count: i64,
-        pub name: Name,
+        pub name: WorkspacePublicName,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub notification_additional_emails: ::std::vec::Vec<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -4109,6 +12261,162 @@ pub mod types {
         pub pulse_auto_subscribe: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub updated_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+    }
+
+    ///`WorkspacePublicDescription`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspacePublic_description",
+    ///  "type": "string",
+    ///  "maxLength": 1000
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct WorkspacePublicDescription(::std::string::String);
+    impl ::std::ops::Deref for WorkspacePublicDescription {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<WorkspacePublicDescription> for ::std::string::String {
+        fn from(value: WorkspacePublicDescription) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for WorkspacePublicDescription {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 1000usize {
+                return Err("longer than 1000 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for WorkspacePublicDescription {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkspacePublicDescription {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for WorkspacePublicDescription {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for WorkspacePublicDescription {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`WorkspacePublicName`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspacePublic_name",
+    ///  "type": "string",
+    ///  "maxLength": 255,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct WorkspacePublicName(::std::string::String);
+    impl ::std::ops::Deref for WorkspacePublicName {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<WorkspacePublicName> for ::std::string::String {
+        fn from(value: WorkspacePublicName) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for WorkspacePublicName {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 255usize {
+                return Err("longer than 255 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for WorkspacePublicName {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkspacePublicName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for WorkspacePublicName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for WorkspacePublicName {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
     }
 
     ///Workspace-level roles for RBAC.
@@ -4286,7 +12594,7 @@ pub mod types {
     ///      "$ref": "#/components/schemas/WorkspaceRole"
     ///    },
     ///    "description": {
-    ///      "title": "Description",
+    ///      "title": "WorkspaceWithRolePublic_description",
     ///      "type": [
     ///        "string",
     ///        "null"
@@ -4321,7 +12629,7 @@ pub mod types {
     ///      "type": "integer"
     ///    },
     ///    "name": {
-    ///      "title": "Name",
+    ///      "title": "WorkspaceWithRolePublic_name",
     ///      "type": "string",
     ///      "maxLength": 255,
     ///      "minLength": 1
@@ -4388,7 +12696,7 @@ pub mod types {
         pub created_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub current_user_role: WorkspaceRole,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub description: ::std::option::Option<Description>,
+        pub description: ::std::option::Option<WorkspaceWithRolePublicDescription>,
         pub id: ::uuid::Uuid,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub interrupt_approver_ids: ::std::vec::Vec<::uuid::Uuid>,
@@ -4397,7 +12705,7 @@ pub mod types {
         pub is_deleted: bool,
         #[serde(default)]
         pub member_count: i64,
-        pub name: Name,
+        pub name: WorkspaceWithRolePublicName,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub notification_additional_emails: ::std::vec::Vec<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -4410,6 +12718,162 @@ pub mod types {
         pub pulse_auto_subscribe: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub updated_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+    }
+
+    ///`WorkspaceWithRolePublicDescription`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspaceWithRolePublic_description",
+    ///  "type": "string",
+    ///  "maxLength": 1000
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct WorkspaceWithRolePublicDescription(::std::string::String);
+    impl ::std::ops::Deref for WorkspaceWithRolePublicDescription {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<WorkspaceWithRolePublicDescription> for ::std::string::String {
+        fn from(value: WorkspaceWithRolePublicDescription) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for WorkspaceWithRolePublicDescription {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 1000usize {
+                return Err("longer than 1000 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for WorkspaceWithRolePublicDescription {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkspaceWithRolePublicDescription {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for WorkspaceWithRolePublicDescription {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for WorkspaceWithRolePublicDescription {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`WorkspaceWithRolePublicName`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspaceWithRolePublic_name",
+    ///  "type": "string",
+    ///  "maxLength": 255,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct WorkspaceWithRolePublicName(::std::string::String);
+    impl ::std::ops::Deref for WorkspaceWithRolePublicName {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<WorkspaceWithRolePublicName> for ::std::string::String {
+        fn from(value: WorkspaceWithRolePublicName) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for WorkspaceWithRolePublicName {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 255usize {
+                return Err("longer than 255 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for WorkspaceWithRolePublicName {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkspaceWithRolePublicName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for WorkspaceWithRolePublicName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for WorkspaceWithRolePublicName {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
     }
 
     ///List of workspaces with the current user's role.
@@ -4453,12 +12917,33 @@ pub mod types {
             V
         }
 
+        pub(super) fn default_u64<T, const V: u64>() -> T
+        where
+            T: ::std::convert::TryFrom<u64>,
+            <T as ::std::convert::TryFrom<u64>>::Error: ::std::fmt::Debug,
+        {
+            T::try_from(V).unwrap()
+        }
+
+        pub(super) fn default_nzu64<T, const V: u64>() -> T
+        where
+            T: ::std::convert::TryFrom<::std::num::NonZeroU64>,
+            <T as ::std::convert::TryFrom<::std::num::NonZeroU64>>::Error: ::std::fmt::Debug,
+        {
+            T::try_from(::std::num::NonZeroU64::try_from(V).unwrap()).unwrap()
+        }
+
         pub(super) fn code_review_detail_finding_finding_source() -> ::std::string::String {
             "code_review".to_string()
         }
 
         pub(super) fn token_token_type() -> ::std::string::String {
             "bearer".to_string()
+        }
+
+        pub(super) fn worker_operation_result_content_type(
+        ) -> super::WorkerOperationResultContentType {
+            super::WorkerOperationResultContentType::ApplicationJson
         }
     }
 }
@@ -4752,6 +13237,796 @@ impl Client {
             .build()?;
         let info = OperationInfo {
             operation_id: "code_review_lookup_code_review_merge_request",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Get Executor Target
+    ///
+    ///Sends a `GET` request to `/api/v1/executor-targets/{target_id}`
+    pub async fn executor_targets_get_executor_target<'a>(
+        &'a self,
+        target_id: &'a ::uuid::Uuid,
+    ) -> Result<ResponseValue<types::ExecutorChoicePublic>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-targets/{}",
+            self.baseurl,
+            encode_path(&target_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_get_executor_target",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Archive Outpost
+    ///
+    ///Sends a `DELETE` request to `/api/v1/executor-targets/{target_id}`
+    pub async fn executor_targets_archive_outpost<'a>(
+        &'a self,
+        target_id: &'a ::uuid::Uuid,
+    ) -> Result<ResponseValue<()>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-targets/{}",
+            self.baseurl,
+            encode_path(&target_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self.client.delete(url).headers(header_map).build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_archive_outpost",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            204u16 => Ok(ResponseValue::empty(response)),
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Issue Registration
+    ///
+    ///Sends a `POST` request to
+    /// `/api/v1/executor-targets/{target_id}/worker-registrations`
+    pub async fn executor_targets_issue_registration<'a>(
+        &'a self,
+        target_id: &'a ::uuid::Uuid,
+        body: &'a types::WorkerRegistrationIssue,
+    ) -> Result<ResponseValue<types::WorkerRegistrationReference>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-targets/{}/worker-registrations",
+            self.baseurl,
+            encode_path(&target_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_issue_registration",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Pending Assignments
+    ///
+    ///Sends a `GET` request to `/api/v1/executor-workers/assignments`
+    pub async fn executor_targets_pending_assignments<'a>(
+        &'a self,
+        wait: Option<f64>,
+        worker_id: &'a ::uuid::Uuid,
+    ) -> Result<ResponseValue<::std::vec::Vec<types::PendingAssignmentPublic>>, Error<()>> {
+        let url = format!("{}/api/v1/executor-workers/assignments", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new("wait", &wait))
+            .query(&progenitor_client::QueryParam::new("worker_id", &worker_id))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_pending_assignments",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Issue Artifact Grant
+    ///
+    ///Sends a `POST` request to
+    /// `/api/v1/executor-workers/assignments/{assignment_id}/artifact-grants`
+    pub async fn executor_targets_issue_artifact_grant<'a>(
+        &'a self,
+        assignment_id: &'a ::uuid::Uuid,
+        body: &'a types::IssueArtifactGrantRequest,
+    ) -> Result<ResponseValue<types::ArtifactGrantPublic>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-workers/assignments/{}/artifact-grants",
+            self.baseurl,
+            encode_path(&assignment_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_issue_artifact_grant",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Upload Worker Artifact
+    ///
+    ///Sends a `POST` request to
+    /// `/api/v1/executor-workers/assignments/{assignment_id}/artifact-grants/
+    /// {grant_id}`
+    pub async fn executor_targets_upload_worker_artifact<'a>(
+        &'a self,
+        assignment_id: &'a ::uuid::Uuid,
+        grant_id: &'a ::uuid::Uuid,
+        body: &'a types::UploadWorkerArtifactRequest,
+    ) -> Result<ResponseValue<types::WorkerArtifactPublic>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-workers/assignments/{}/artifact-grants/{}",
+            self.baseurl,
+            encode_path(&assignment_id.to_string()),
+            encode_path(&grant_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_upload_worker_artifact",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Claim Assignment
+    ///
+    ///Sends a `POST` request to
+    /// `/api/v1/executor-workers/assignments/{assignment_id}/claim`
+    pub async fn executor_targets_claim_assignment<'a>(
+        &'a self,
+        assignment_id: &'a ::uuid::Uuid,
+        body: &'a types::ClaimAssignmentRequest,
+    ) -> Result<ResponseValue<types::AssignmentLease>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-workers/assignments/{}/claim",
+            self.baseurl,
+            encode_path(&assignment_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_claim_assignment",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Heartbeat Assignment
+    ///
+    ///Sends a `POST` request to
+    /// `/api/v1/executor-workers/assignments/{assignment_id}/heartbeat`
+    pub async fn executor_targets_heartbeat_assignment<'a>(
+        &'a self,
+        assignment_id: &'a ::uuid::Uuid,
+        body: &'a types::HeartbeatAssignmentRequest,
+    ) -> Result<ResponseValue<types::AssignmentLease>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-workers/assignments/{}/heartbeat",
+            self.baseurl,
+            encode_path(&assignment_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_heartbeat_assignment",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Assignment Operations
+    ///
+    ///Sends a `GET` request to
+    /// `/api/v1/executor-workers/assignments/{assignment_id}/operations`
+    pub async fn executor_targets_assignment_operations<'a>(
+        &'a self,
+        assignment_id: &'a ::uuid::Uuid,
+        after: Option<u64>,
+        batch_size: Option<::std::num::NonZeroU64>,
+        wait: Option<f64>,
+        worker_id: &'a ::uuid::Uuid,
+        x_executor_fence: ::std::num::NonZeroU64,
+        x_executor_lease: &'a str,
+    ) -> Result<ResponseValue<::std::vec::Vec<types::OperationEnvelope>>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-workers/assignments/{}/operations",
+            self.baseurl,
+            encode_path(&assignment_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(3usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        header_map.append("x-executor-fence", x_executor_fence.to_string().try_into()?);
+        header_map.append("x-executor-lease", x_executor_lease.to_string().try_into()?);
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new("after", &after))
+            .query(&progenitor_client::QueryParam::new(
+                "batch_size",
+                &batch_size,
+            ))
+            .query(&progenitor_client::QueryParam::new("wait", &wait))
+            .query(&progenitor_client::QueryParam::new("worker_id", &worker_id))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_assignment_operations",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Read Receipt
+    ///
+    ///Sends a `GET` request to
+    /// `/api/v1/executor-workers/assignments/{assignment_id}/operations/
+    /// {operation_id}/result`
+    pub async fn executor_targets_read_receipt<'a>(
+        &'a self,
+        assignment_id: &'a ::uuid::Uuid,
+        operation_id: &'a ::uuid::Uuid,
+        worker_id: &'a ::uuid::Uuid,
+    ) -> Result<ResponseValue<types::OperationReceiptPublic>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-workers/assignments/{}/operations/{}/result",
+            self.baseurl,
+            encode_path(&assignment_id.to_string()),
+            encode_path(&operation_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new("worker_id", &worker_id))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_read_receipt",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Complete Operation
+    ///
+    ///Sends a `POST` request to
+    /// `/api/v1/executor-workers/assignments/{assignment_id}/operations/
+    /// {operation_id}/result`
+    pub async fn executor_targets_complete_operation<'a>(
+        &'a self,
+        assignment_id: &'a ::uuid::Uuid,
+        operation_id: &'a ::uuid::Uuid,
+        body: &'a types::CompleteWorkerOperationRequest,
+    ) -> Result<ResponseValue<types::OperationReceiptPublic>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-workers/assignments/{}/operations/{}/result",
+            self.baseurl,
+            encode_path(&assignment_id.to_string()),
+            encode_path(&operation_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_complete_operation",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Start Operation
+    ///
+    ///Sends a `POST` request to
+    /// `/api/v1/executor-workers/assignments/{assignment_id}/operations/
+    /// {operation_id}/start`
+    pub async fn executor_targets_start_operation<'a>(
+        &'a self,
+        assignment_id: &'a ::uuid::Uuid,
+        operation_id: &'a ::uuid::Uuid,
+        body: &'a types::OperationStartRequest,
+    ) -> Result<ResponseValue<()>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-workers/assignments/{}/operations/{}/start",
+            self.baseurl,
+            encode_path(&assignment_id.to_string()),
+            encode_path(&operation_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_start_operation",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            204u16 => Ok(ResponseValue::empty(response)),
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Release Assignment
+    ///
+    ///Sends a `POST` request to
+    /// `/api/v1/executor-workers/assignments/{assignment_id}/release`
+    pub async fn executor_targets_release_assignment<'a>(
+        &'a self,
+        assignment_id: &'a ::uuid::Uuid,
+        body: &'a types::AssignmentLeaseRequest,
+    ) -> Result<ResponseValue<()>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-workers/assignments/{}/release",
+            self.baseurl,
+            encode_path(&assignment_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_release_assignment",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            204u16 => Ok(ResponseValue::empty(response)),
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Worker Conformance
+    ///
+    ///Sends a `POST` request to `/api/v1/executor-workers/conformance`
+    pub async fn executor_targets_worker_conformance<'a>(
+        &'a self,
+        body: &'a types::StartWorkerConformanceRequest,
+    ) -> Result<ResponseValue<types::WorkerConformancePublic>, Error<()>> {
+        let url = format!("{}/api/v1/executor-workers/conformance", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_worker_conformance",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Announce Connection
+    ///
+    ///Sends a `POST` request to
+    /// `/api/v1/executor-workers/connections/announce`
+    pub async fn executor_targets_announce_connection<'a>(
+        &'a self,
+        body: &'a types::AnnounceTargetConnection,
+    ) -> Result<ResponseValue<types::TargetConnectionPublic>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-workers/connections/announce",
+            self.baseurl,
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_announce_connection",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Report Connection Health
+    ///
+    ///Sends a `POST` request to
+    /// `/api/v1/executor-workers/connections/{alias}/health`
+    pub async fn executor_targets_report_connection_health<'a>(
+        &'a self,
+        alias: &'a types::Alias,
+        body: &'a types::TargetConnectionHealth,
+    ) -> Result<ResponseValue<types::TargetConnectionPublic>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/executor-workers/connections/{}/health",
+            self.baseurl,
+            encode_path(&alias.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_report_connection_health",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Exchange Registration
+    ///
+    ///Sends a `POST` request to `/api/v1/executor-workers/exchange`
+    pub async fn executor_targets_exchange_registration<'a>(
+        &'a self,
+        body: &'a types::ExchangeWorkerRegistrationRequest,
+    ) -> Result<ResponseValue<types::WorkerBootstrap>, Error<()>> {
+        let url = format!("{}/api/v1/executor-workers/exchange", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_exchange_registration",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Worker Heartbeat
+    ///
+    ///Sends a `POST` request to `/api/v1/executor-workers/heartbeat`
+    pub async fn executor_targets_worker_heartbeat<'a>(
+        &'a self,
+        body: &'a types::WorkerHeartbeatRequest,
+    ) -> Result<ResponseValue<types::WorkerPublic>, Error<()>> {
+        let url = format!("{}/api/v1/executor-workers/heartbeat", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_worker_heartbeat",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Register Worker
+    ///
+    ///Sends a `POST` request to `/api/v1/executor-workers/register`
+    pub async fn executor_targets_register_worker<'a>(
+        &'a self,
+        body: &'a types::RegisterWorkerRequest,
+    ) -> Result<ResponseValue<types::WorkerPublic>, Error<()>> {
+        let url = format!("{}/api/v1/executor-workers/register", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_register_worker",
         };
         self.pre(&mut request, &info).await?;
         let result = self.exec(request, &info).await;
@@ -5057,6 +14332,92 @@ impl Client {
         let response = result?;
         match response.status().as_u16() {
             200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///List Executor Targets
+    ///
+    ///Sends a `GET` request to
+    /// `/api/v1/workspaces/{workspace_id}/executor-targets`
+    pub async fn executor_targets_list_executor_targets<'a>(
+        &'a self,
+        workspace_id: &'a ::uuid::Uuid,
+        scope: Option<types::ExecutorScope>,
+    ) -> Result<ResponseValue<::std::vec::Vec<types::ExecutorChoicePublic>>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/workspaces/{}/executor-targets",
+            self.baseurl,
+            encode_path(&workspace_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new("scope", &scope))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_list_executor_targets",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Create Outpost
+    ///
+    ///Sends a `POST` request to
+    /// `/api/v1/workspaces/{workspace_id}/executor-targets`
+    pub async fn executor_targets_create_outpost<'a>(
+        &'a self,
+        workspace_id: &'a ::uuid::Uuid,
+        body: &'a types::CreateOutpostRequest,
+    ) -> Result<ResponseValue<types::OutpostCreatedPublic>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/workspaces/{}/executor-targets",
+            self.baseurl,
+            encode_path(&workspace_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "executor_targets_create_outpost",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            201u16 => ResponseValue::from_response(response).await,
             _ => Err(Error::UnexpectedResponse(response)),
         }
     }

@@ -1,3 +1,16 @@
+## [0.7.0]
+
+- Run agent background shell commands on an outpost: the worker starts, tails, cancels, and cleans up a detached supervisor that owns the command's output, exit code, and deadline, so a job outlives the operation that started it. A tail may block on the worker for up to 20 s until new output or the exit code appears.
+
+## [0.6.0]
+
+- Serve an outpost from the CloudThinker CLI with outbound broker connections, durable receipts, and target-local connection credentials.
+- Worker outposts retry transient heartbeat and long-poll transport failures with bounded backoff.
+- The worker installs verified public and custom skill runtime bundles from chunked gateway operations into its private state cache, reuses completed bundles after restart, and exposes their read-only roots to shell operations through `CLOUDTHINKER_SKILL_BUNDLES`.
+- The CLI can install, inspect, start, stop, and remove a per-user worker service through systemd user units on Linux or LaunchAgents on macOS. Service descriptors persist only explicit non-secret worker arguments and always load credentials from the private worker store.
+- Reject new skill bundle downloads when the worker cache holds 64 installed or staging digests; existing installed bundles remain usable.
+- Expose `cloudthinker whoami --json` with the authenticated user, workspace, and host IDs for Desktop integrations.
+
 ## [0.5.11]
 
 - Updating from the start-up offer now shows one spinner line, `Updating cloudthinker to <version>`, and one `Updated cloudthinker from <old> to <new>` line, instead of the installer log and a separate agent download line; a failed install still prints the installer output (APT-1028).

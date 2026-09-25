@@ -6,6 +6,7 @@ pub enum Module {
     Auth,
     Chat,
     Review,
+    Worker,
 }
 
 impl Module {
@@ -15,6 +16,7 @@ impl Module {
             Self::Auth => include_str!("../skills/cloudthinker-cli/auth.md"),
             Self::Chat => include_str!("../skills/cloudthinker-cli/chat.md"),
             Self::Review => include_str!("../skills/cloudthinker-cli/review.md"),
+            Self::Worker => include_str!("../skills/cloudthinker-cli/worker.md"),
         }
     }
 }

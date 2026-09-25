@@ -13,11 +13,190 @@
         "title": "AgentRunStatus",
         "type": "string"
       },
+      "AnnounceTargetConnection": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$",
+            "title": "AnnounceTargetConnection_alias",
+            "type": "string"
+          },
+          "credential_generation": {
+            "minimum": 1,
+            "title": "Credential Generation",
+            "type": "integer"
+          },
+          "expected_revision": {
+            "minimum": 0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "identity": {
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$",
+            "title": "AnnounceTargetConnection_identity",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "builtin",
+              "mcp"
+            ],
+            "title": "AnnounceTargetConnection_kind",
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/LocalToolAnnouncement"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Tools",
+            "type": "array"
+          },
+          "worker_id": {
+            "format": "uuid",
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "alias",
+          "identity",
+          "kind",
+          "expected_revision",
+          "credential_generation",
+          "tools"
+        ],
+        "title": "AnnounceTargetConnection",
+        "type": "object"
+      },
       "ApplyFixDisabledReason": {
         "enum": [
           "unsupported_provider"
         ],
         "title": "ApplyFixDisabledReason",
+        "type": "string"
+      },
+      "ArtifactGrantPublic": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "grant_id": {
+            "format": "uuid",
+            "title": "Grant Id",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "grant_id",
+          "token",
+          "expires_at"
+        ],
+        "title": "ArtifactGrantPublic",
+        "type": "object"
+      },
+      "AssignmentLease": {
+        "additionalProperties": false,
+        "properties": {
+          "assignment_id": {
+            "format": "uuid",
+            "title": "Assignment Id",
+            "type": "string"
+          },
+          "fence_token": {
+            "title": "Fence Token",
+            "type": "integer"
+          },
+          "lease_expires_at": {
+            "format": "date-time",
+            "title": "Lease Expires At",
+            "type": "string"
+          },
+          "lease_token": {
+            "title": "Lease Token",
+            "type": "string"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AssignmentState"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "worker_id": {
+            "format": "uuid",
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assignment_id",
+          "session_id",
+          "target_id",
+          "worker_id",
+          "fence_token",
+          "lease_token",
+          "lease_expires_at",
+          "state"
+        ],
+        "title": "AssignmentLease",
+        "type": "object"
+      },
+      "AssignmentLeaseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "fence_token": {
+            "minimum": 1,
+            "title": "Fence Token",
+            "type": "integer"
+          },
+          "lease_token": {
+            "format": "password",
+            "title": "Lease Token",
+            "type": "string",
+            "writeOnly": true
+          },
+          "worker_id": {
+            "format": "uuid",
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "fence_token",
+          "lease_token"
+        ],
+        "title": "AssignmentLeaseRequest",
+        "type": "object"
+      },
+      "AssignmentState": {
+        "enum": [
+          "pending",
+          "claimed",
+          "starting",
+          "active",
+          "draining",
+          "orphaned",
+          "resolution_required",
+          "closed"
+        ],
+        "title": "AssignmentState",
         "type": "string"
       },
       "AutofixDisabledReason": {
@@ -28,6 +207,100 @@
         ],
         "title": "AutofixDisabledReason",
         "type": "string"
+      },
+      "BackgroundAction": {
+        "enum": [
+          "start",
+          "tail",
+          "cancel",
+          "cleanup"
+        ],
+        "title": "BackgroundAction",
+        "type": "string"
+      },
+      "BackgroundOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/BackgroundAction"
+          },
+          "authorized_working_directory_root": {
+            "nullable": true,
+            "title": "Authorized Working Directory Root",
+            "type": "string"
+          },
+          "cmd": {
+            "nullable": true,
+            "title": "Cmd",
+            "type": "string"
+          },
+          "credential_ref": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Credential Ref",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "background"
+            ],
+            "title": "BackgroundOperation_kind",
+            "type": "string"
+          },
+          "offset": {
+            "nullable": true,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "stderr_offset": {
+            "nullable": true,
+            "title": "Stderr Offset",
+            "type": "integer"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "timeout": {
+            "nullable": true,
+            "title": "Timeout",
+            "type": "integer"
+          },
+          "wait_seconds": {
+            "maximum": 20,
+            "minimum": 0,
+            "nullable": true,
+            "title": "Wait Seconds",
+            "type": "integer"
+          },
+          "working_directory": {
+            "nullable": true,
+            "title": "Working Directory",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "task_id",
+          "kind"
+        ],
+        "title": "BackgroundOperation",
+        "type": "object"
+      },
+      "ClaimAssignmentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "worker_id": {
+            "format": "uuid",
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id"
+        ],
+        "title": "ClaimAssignmentRequest",
+        "type": "object"
       },
       "CliDeviceAuthorizationResponse": {
         "description": "Short user code plus the private device credential used for polling.",
@@ -97,7 +370,7 @@
           "device_code": {
             "maxLength": 128,
             "minLength": 43,
-            "title": "Device Code",
+            "title": "CliDeviceTokenRequest_device_code",
             "type": "string"
           }
         },
@@ -113,13 +386,13 @@
           "code": {
             "maxLength": 64,
             "minLength": 1,
-            "title": "Code",
+            "title": "CliTokenRequest_code",
             "type": "string"
           },
           "code_verifier": {
             "maxLength": 128,
             "minLength": 43,
-            "title": "Code Verifier",
+            "title": "CliTokenRequest_code_verifier",
             "type": "string"
           }
         },
@@ -144,6 +417,11 @@
             "title": "User Email",
             "type": "string"
           },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
           "workspace_id": {
             "format": "uuid",
             "title": "Workspace Id",
@@ -155,6 +433,7 @@
           }
         },
         "required": [
+          "user_id",
           "user_email",
           "workspace_id",
           "workspace_name"
@@ -758,6 +1037,63 @@
         "title": "CodeReviewSeverityCounts",
         "type": "object"
       },
+      "CompleteWorkerOperationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "fence_token": {
+            "minimum": 1,
+            "title": "Fence Token",
+            "type": "integer"
+          },
+          "lease_token": {
+            "format": "password",
+            "title": "Lease Token",
+            "type": "string",
+            "writeOnly": true
+          },
+          "nonce": {
+            "format": "password",
+            "title": "Nonce",
+            "type": "string",
+            "writeOnly": true
+          },
+          "operation_sequence": {
+            "minimum": 1,
+            "title": "Operation Sequence",
+            "type": "integer"
+          },
+          "request_digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "CompleteWorkerOperationRequest_request_digest",
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/WorkerOperationResult"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "worker_id": {
+            "format": "uuid",
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "fence_token",
+          "lease_token",
+          "session_id",
+          "operation_sequence",
+          "request_digest",
+          "nonce",
+          "result"
+        ],
+        "title": "CompleteWorkerOperationRequest",
+        "type": "object"
+      },
       "ConventionRuleCategory": {
         "enum": [
           "security",
@@ -767,6 +1103,566 @@
         ],
         "title": "ConventionRuleCategory",
         "type": "string"
+      },
+      "ConvertOfficePdf": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "convert_office_pdf"
+            ],
+            "title": "ConvertOfficePdf_kind",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "kind"
+        ],
+        "title": "ConvertOfficePdf",
+        "type": "object"
+      },
+      "CreateOutpostRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "CreateOutpostRequest_name",
+            "type": "string"
+          },
+          "shared": {
+            "default": false,
+            "title": "Shared",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateOutpostRequest",
+        "type": "object"
+      },
+      "ExchangeWorkerRegistrationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reference": {
+            "format": "password",
+            "title": "Reference",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "reference"
+        ],
+        "title": "ExchangeWorkerRegistrationRequest",
+        "type": "object"
+      },
+      "ExecutorAvailability": {
+        "enum": [
+          "available",
+          "pending",
+          "incompatible",
+          "offline"
+        ],
+        "title": "ExecutorAvailability",
+        "type": "string"
+      },
+      "ExecutorCapability": {
+        "enum": [
+          "files_read",
+          "files_write",
+          "shell",
+          "artifacts",
+          "connections",
+          "mcp",
+          "background_shell"
+        ],
+        "title": "ExecutorCapability",
+        "type": "string"
+      },
+      "ExecutorChoiceKind": {
+        "enum": [
+          "managed",
+          "outpost"
+        ],
+        "title": "ExecutorChoiceKind",
+        "type": "string"
+      },
+      "ExecutorChoicePublic": {
+        "properties": {
+          "availability": {
+            "$ref": "#/components/schemas/ExecutorAvailability"
+          },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutorCapability"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ExecutorChoiceKind"
+          },
+          "last_verified_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Last Verified At",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ExecutorScope"
+          },
+          "target_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id",
+          "kind",
+          "name",
+          "scope",
+          "availability",
+          "capabilities"
+        ],
+        "title": "ExecutorChoicePublic",
+        "type": "object"
+      },
+      "ExecutorScope": {
+        "enum": [
+          "managed",
+          "personal",
+          "workspace"
+        ],
+        "title": "ExecutorScope",
+        "type": "string"
+      },
+      "FileContent": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "file_content"
+            ],
+            "title": "FileContent_kind",
+            "type": "string"
+          },
+          "max_bytes": {
+            "nullable": true,
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "kind"
+        ],
+        "title": "FileContent",
+        "type": "object"
+      },
+      "FileDownload": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "file_download"
+            ],
+            "title": "FileDownload_kind",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "kind"
+        ],
+        "title": "FileDownload",
+        "type": "object"
+      },
+      "FileEndpoint": {
+        "enum": [
+          "read",
+          "write",
+          "edit",
+          "list_directory",
+          "glob",
+          "grep",
+          "write_binary",
+          "rename",
+          "conventions",
+          "convention_chains",
+          "glob_read"
+        ],
+        "title": "FileEndpoint",
+        "type": "string"
+      },
+      "FileOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "endpoint": {
+            "$ref": "#/components/schemas/FileEndpoint"
+          },
+          "kind": {
+            "enum": [
+              "file_operation"
+            ],
+            "title": "FileOperation_kind",
+            "type": "string"
+          },
+          "request": {
+            "$ref": "#/components/schemas/FileRequest"
+          }
+        },
+        "required": [
+          "endpoint",
+          "request",
+          "kind"
+        ],
+        "title": "FileOperation",
+        "type": "object"
+      },
+      "FileRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "auto_detect_binary": {
+            "nullable": true,
+            "title": "Auto Detect Binary",
+            "type": "boolean"
+          },
+          "binary": {
+            "nullable": true,
+            "title": "Binary",
+            "type": "boolean"
+          },
+          "case_insensitive": {
+            "nullable": true,
+            "title": "Case Insensitive",
+            "type": "boolean"
+          },
+          "content": {
+            "nullable": true,
+            "title": "Content",
+            "type": "string"
+          },
+          "content_base64": {
+            "nullable": true,
+            "title": "Content Base64",
+            "type": "string"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Context"
+          },
+          "context_after": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Context After"
+          },
+          "context_before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Context Before"
+          },
+          "convention_filenames": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "Convention Filenames",
+            "type": "array"
+          },
+          "convention_patterns": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "Convention Patterns",
+            "type": "array"
+          },
+          "dst_path": {
+            "nullable": true,
+            "title": "Dst Path",
+            "type": "string"
+          },
+          "file_path": {
+            "nullable": true,
+            "title": "File Path",
+            "type": "string"
+          },
+          "file_paths": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "File Paths",
+            "type": "array"
+          },
+          "file_type": {
+            "nullable": true,
+            "title": "File Type",
+            "type": "string"
+          },
+          "follow_symlinks": {
+            "nullable": true,
+            "title": "Follow Symlinks",
+            "type": "boolean"
+          },
+          "glob": {
+            "nullable": true,
+            "title": "Glob",
+            "type": "string"
+          },
+          "head_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Head Limit"
+          },
+          "ignore": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Ignore"
+          },
+          "include_content": {
+            "nullable": true,
+            "title": "Include Content",
+            "type": "boolean"
+          },
+          "include_memory_staleness": {
+            "nullable": true,
+            "title": "Include Memory Staleness",
+            "type": "boolean"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Limit"
+          },
+          "line_limit": {
+            "nullable": true,
+            "title": "Line Limit",
+            "type": "integer"
+          },
+          "line_numbers": {
+            "nullable": true,
+            "title": "Line Numbers",
+            "type": "boolean"
+          },
+          "max_bytes": {
+            "nullable": true,
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "multiline": {
+            "nullable": true,
+            "title": "Multiline",
+            "type": "boolean"
+          },
+          "new_string": {
+            "nullable": true,
+            "title": "New String",
+            "type": "string"
+          },
+          "offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Offset"
+          },
+          "old_string": {
+            "nullable": true,
+            "title": "Old String",
+            "type": "string"
+          },
+          "output_mode": {
+            "nullable": true,
+            "title": "Output Mode",
+            "type": "string"
+          },
+          "overwrite": {
+            "nullable": true,
+            "title": "Overwrite",
+            "type": "boolean"
+          },
+          "path": {
+            "nullable": true,
+            "title": "Path",
+            "type": "string"
+          },
+          "pattern": {
+            "nullable": true,
+            "title": "Pattern",
+            "type": "string"
+          },
+          "raw": {
+            "nullable": true,
+            "title": "Raw",
+            "type": "boolean"
+          },
+          "replace_all": {
+            "nullable": true,
+            "title": "Replace All",
+            "type": "boolean"
+          },
+          "repository_root": {
+            "nullable": true,
+            "title": "Repository Root",
+            "type": "string"
+          },
+          "src_path": {
+            "nullable": true,
+            "title": "Src Path",
+            "type": "string"
+          },
+          "strip_memory_staleness": {
+            "nullable": true,
+            "title": "Strip Memory Staleness",
+            "type": "boolean"
+          },
+          "trusted_root": {
+            "enum": [
+              "workspace_memory",
+              "conversation_tmp",
+              "review_rules",
+              "conversation_research"
+            ],
+            "nullable": true,
+            "title": "FileRequest_trusted_root",
+            "type": "string"
+          },
+          "trusted_root_name": {
+            "nullable": true,
+            "title": "Trusted Root Name",
+            "type": "string"
+          }
+        },
+        "title": "FileRequest",
+        "type": "object"
+      },
+      "FilesDeliverables": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "files_deliverables"
+            ],
+            "title": "FilesDeliverables_kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "FilesDeliverables",
+        "type": "object"
+      },
+      "FilesList": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "files_list"
+            ],
+            "title": "FilesList_kind",
+            "type": "string"
+          },
+          "limit": {
+            "nullable": true,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "page": {
+            "nullable": true,
+            "title": "Page",
+            "type": "integer"
+          },
+          "path": {
+            "nullable": true,
+            "title": "Path",
+            "type": "string"
+          },
+          "search": {
+            "nullable": true,
+            "title": "Search",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "FilesList",
+        "type": "object"
       },
       "FindingPublicationStatus": {
         "description": "Provider publication state for the durable finding admission record.",
@@ -778,6 +1674,23 @@
         ],
         "title": "FindingPublicationStatus",
         "type": "string"
+      },
+      "FlushOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "flush_output"
+            ],
+            "title": "FlushOutput_kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "FlushOutput",
+        "type": "object"
       },
       "HeadlessRunListItem": {
         "description": "One recent CLI run; deliberately omits answer and internal failure data.",
@@ -923,6 +1836,164 @@
         "title": "HeadlessRunSubmitted",
         "type": "object"
       },
+      "HeartbeatAssignmentRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "fence_token": {
+            "minimum": 1,
+            "title": "Fence Token",
+            "type": "integer"
+          },
+          "lease_token": {
+            "format": "password",
+            "title": "Lease Token",
+            "type": "string",
+            "writeOnly": true
+          },
+          "state": {
+            "enum": [
+              "starting",
+              "active",
+              "draining"
+            ],
+            "title": "HeartbeatAssignmentRequest_state",
+            "type": "string"
+          },
+          "worker_id": {
+            "format": "uuid",
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "fence_token",
+          "lease_token",
+          "state"
+        ],
+        "title": "HeartbeatAssignmentRequest",
+        "type": "object"
+      },
+      "IssueArtifactGrantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "IssueArtifactGrantRequest_digest",
+            "type": "string"
+          },
+          "fence_token": {
+            "minimum": 1,
+            "title": "Fence Token",
+            "type": "integer"
+          },
+          "lease_token": {
+            "format": "password",
+            "title": "Lease Token",
+            "type": "string",
+            "writeOnly": true
+          },
+          "operation_id": {
+            "format": "uuid",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "IssueArtifactGrantRequest_path",
+            "type": "string"
+          },
+          "size": {
+            "maximum": 1400000,
+            "minimum": 0,
+            "title": "Size",
+            "type": "integer"
+          },
+          "worker_id": {
+            "format": "uuid",
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "fence_token",
+          "lease_token",
+          "operation_id",
+          "path",
+          "digest",
+          "size"
+        ],
+        "title": "IssueArtifactGrantRequest",
+        "type": "object"
+      },
+      "LocalInputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "additionalProperties": {
+            "const": false,
+            "nullable": true,
+            "title": "Additionalproperties",
+            "type": "boolean"
+          },
+          "items": {
+            "$ref": "#/components/schemas/LocalInputSchema",
+            "nullable": true
+          },
+          "properties": {
+            "maxProperties": 64,
+            "nullable": true,
+            "title": "Properties",
+            "type": "object"
+          },
+          "required": {
+            "default": [],
+            "items": {
+              "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$",
+              "type": "string"
+            },
+            "maxItems": 64,
+            "title": "Required",
+            "type": "array"
+          },
+          "type": {
+            "enum": [
+              "object",
+              "array",
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "null"
+            ],
+            "title": "LocalInputSchema_type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "LocalInputSchema",
+        "type": "object"
+      },
+      "LocalToolAnnouncement": {
+        "additionalProperties": false,
+        "properties": {
+          "input_schema": {
+            "$ref": "#/components/schemas/LocalInputSchema"
+          },
+          "mapping": {
+            "$ref": "#/components/schemas/TargetToolMapping"
+          }
+        },
+        "required": [
+          "mapping",
+          "input_schema"
+        ],
+        "title": "LocalToolAnnouncement",
+        "type": "object"
+      },
       "MRState": {
         "enum": [
           "open",
@@ -943,6 +2014,304 @@
         "title": "ManualTriggerDisabledReason",
         "type": "string"
       },
+      "OperationEffect": {
+        "enum": [
+          "read",
+          "mutation",
+          "idempotent_mutation"
+        ],
+        "title": "OperationEffect",
+        "type": "string"
+      },
+      "OperationEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "assignment_id": {
+            "format": "uuid",
+            "title": "Assignment Id",
+            "type": "string"
+          },
+          "deadline_at": {
+            "format": "date-time",
+            "title": "Deadline At",
+            "type": "string"
+          },
+          "effect": {
+            "$ref": "#/components/schemas/OperationEffect"
+          },
+          "fence_token": {
+            "title": "Fence Token",
+            "type": "integer"
+          },
+          "lease_token": {
+            "title": "Lease Token",
+            "type": "string"
+          },
+          "nonce": {
+            "title": "Nonce",
+            "type": "string"
+          },
+          "operation_id": {
+            "format": "uuid",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "operation_sequence": {
+            "title": "Operation Sequence",
+            "type": "integer"
+          },
+          "payload": {
+            "discriminator": {
+              "mapping": {
+                "background": "#/components/schemas/BackgroundOperation",
+                "convert_office_pdf": "#/components/schemas/ConvertOfficePdf",
+                "file_content": "#/components/schemas/FileContent",
+                "file_download": "#/components/schemas/FileDownload",
+                "file_operation": "#/components/schemas/FileOperation",
+                "files_deliverables": "#/components/schemas/FilesDeliverables",
+                "files_list": "#/components/schemas/FilesList",
+                "flush_output": "#/components/schemas/FlushOutput",
+                "repository": "#/components/schemas/RepositoryOperation",
+                "script": "#/components/schemas/ScriptRun",
+                "skill_bundle_chunk": "#/components/schemas/SkillBundleChunk"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SkillBundleChunk"
+              },
+              {
+                "$ref": "#/components/schemas/ScriptRun"
+              },
+              {
+                "$ref": "#/components/schemas/FileOperation"
+              },
+              {
+                "$ref": "#/components/schemas/FilesList"
+              },
+              {
+                "$ref": "#/components/schemas/FileContent"
+              },
+              {
+                "$ref": "#/components/schemas/FileDownload"
+              },
+              {
+                "$ref": "#/components/schemas/FilesDeliverables"
+              },
+              {
+                "$ref": "#/components/schemas/FlushOutput"
+              },
+              {
+                "$ref": "#/components/schemas/ConvertOfficePdf"
+              },
+              {
+                "$ref": "#/components/schemas/RepositoryOperation"
+              },
+              {
+                "$ref": "#/components/schemas/BackgroundOperation"
+              }
+            ],
+            "title": "Payload"
+          },
+          "protocol_version": {
+            "default": 1,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
+          "request_digest": {
+            "title": "Request Digest",
+            "type": "string"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id",
+          "session_id",
+          "assignment_id",
+          "operation_id",
+          "operation_sequence",
+          "fence_token",
+          "lease_token",
+          "nonce",
+          "deadline_at",
+          "effect",
+          "payload",
+          "request_digest"
+        ],
+        "title": "OperationEnvelope",
+        "type": "object"
+      },
+      "OperationReceiptPublic": {
+        "additionalProperties": false,
+        "properties": {
+          "assignment_complete": {
+            "default": false,
+            "title": "Assignment Complete",
+            "type": "boolean"
+          },
+          "assignment_id": {
+            "format": "uuid",
+            "title": "Assignment Id",
+            "type": "string"
+          },
+          "operation_id": {
+            "format": "uuid",
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "operation_sequence": {
+            "title": "Operation Sequence",
+            "type": "integer"
+          },
+          "request_digest": {
+            "title": "Request Digest",
+            "type": "string"
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/OperationResolution",
+            "nullable": true
+          },
+          "result": {
+            "$ref": "#/components/schemas/WorkerOperationResult",
+            "nullable": true
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OperationReceiptState"
+          }
+        },
+        "required": [
+          "operation_id",
+          "assignment_id",
+          "session_id",
+          "operation_sequence",
+          "request_digest",
+          "state"
+        ],
+        "title": "OperationReceiptPublic",
+        "type": "object"
+      },
+      "OperationReceiptState": {
+        "enum": [
+          "prepared",
+          "delivered",
+          "running",
+          "succeeded",
+          "failed",
+          "cancelled",
+          "unknown"
+        ],
+        "title": "OperationReceiptState",
+        "type": "string"
+      },
+      "OperationResolution": {
+        "enum": [
+          "succeeded",
+          "failed",
+          "abandoned_unverified"
+        ],
+        "title": "OperationResolution",
+        "type": "string"
+      },
+      "OperationStartRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "fence_token": {
+            "minimum": 1,
+            "title": "Fence Token",
+            "type": "integer"
+          },
+          "lease_token": {
+            "format": "password",
+            "title": "Lease Token",
+            "type": "string",
+            "writeOnly": true
+          },
+          "nonce": {
+            "format": "password",
+            "title": "Nonce",
+            "type": "string",
+            "writeOnly": true
+          },
+          "operation_sequence": {
+            "minimum": 1,
+            "title": "Operation Sequence",
+            "type": "integer"
+          },
+          "request_digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "OperationStartRequest_request_digest",
+            "type": "string"
+          },
+          "worker_id": {
+            "format": "uuid",
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "fence_token",
+          "lease_token",
+          "operation_sequence",
+          "request_digest",
+          "nonce"
+        ],
+        "title": "OperationStartRequest",
+        "type": "object"
+      },
+      "OutpostCreatedPublic": {
+        "additionalProperties": false,
+        "properties": {
+          "registration": {
+            "$ref": "#/components/schemas/WorkerRegistrationReference"
+          },
+          "target": {
+            "$ref": "#/components/schemas/ExecutorChoicePublic"
+          }
+        },
+        "required": [
+          "target",
+          "registration"
+        ],
+        "title": "OutpostCreatedPublic",
+        "type": "object"
+      },
+      "PendingAssignmentPublic": {
+        "additionalProperties": false,
+        "properties": {
+          "assignment_id": {
+            "format": "uuid",
+            "title": "Assignment Id",
+            "type": "string"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assignment_id",
+          "session_id"
+        ],
+        "title": "PendingAssignmentPublic",
+        "type": "object"
+      },
       "RefreshTokenRequest": {
         "description": "Request to refresh access token.\n\nAttributes:\n    refresh_token: The refresh token JWT. Optional \u2014 the cookie-auth flow\n        sends it as an httpOnly cookie and omits the body field.\n    workspace_id: Optional workspace context to include in new access token.\n        The organization_id is derived from the workspace's organization.",
         "properties": {
@@ -959,6 +2328,188 @@
           }
         },
         "title": "RefreshTokenRequest",
+        "type": "object"
+      },
+      "RegisterWorkerRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutorCapability"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
+          "max_assignments": {
+            "maximum": 64,
+            "minimum": 1,
+            "title": "Max Assignments",
+            "type": "integer"
+          },
+          "os_arch": {
+            "enum": [
+              "linux-x86_64",
+              "linux-aarch64",
+              "darwin-x86_64",
+              "darwin-aarch64"
+            ],
+            "title": "RegisterWorkerRequest_os_arch",
+            "type": "string"
+          },
+          "protocol_version": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
+          "workdir_id": {
+            "format": "uuid",
+            "title": "Workdir Id",
+            "type": "string"
+          },
+          "worker_installation_id": {
+            "format": "uuid",
+            "title": "Worker Installation Id",
+            "type": "string"
+          },
+          "worker_instance_id": {
+            "format": "uuid",
+            "title": "Worker Instance Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_instance_id",
+          "worker_installation_id",
+          "workdir_id",
+          "capabilities",
+          "max_assignments",
+          "os_arch"
+        ],
+        "title": "RegisterWorkerRequest",
+        "type": "object"
+      },
+      "RepositoryAction": {
+        "enum": [
+          "create-worktree",
+          "delete-worktree",
+          "sync-repository",
+          "initialize-symlinks",
+          "initialize-links",
+          "disk-cleanup",
+          "delete-repositories",
+          "clone-repository",
+          "clone-github-repository",
+          "clone-bitbucket-repository",
+          "clone-azure-devops-repository",
+          "clone-aws-codecommit-repository",
+          "check-convention-files"
+        ],
+        "title": "RepositoryAction",
+        "type": "string"
+      },
+      "RepositoryOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/RepositoryAction"
+          },
+          "branch": {
+            "nullable": true,
+            "title": "Branch",
+            "type": "string"
+          },
+          "commit_sha": {
+            "nullable": true,
+            "title": "Commit Sha",
+            "type": "string"
+          },
+          "credential_ref": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Credential Ref",
+            "type": "string"
+          },
+          "dir_patterns": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "Dir Patterns",
+            "type": "array"
+          },
+          "file_patterns": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "File Patterns",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "repository"
+            ],
+            "title": "RepositoryOperation_kind",
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/ScopedWorkspaceLink"
+            },
+            "nullable": true,
+            "title": "Links",
+            "type": "array"
+          },
+          "pipeline_id": {
+            "nullable": true,
+            "title": "Pipeline Id",
+            "type": "string"
+          },
+          "pr_number": {
+            "nullable": true,
+            "title": "Pr Number",
+            "type": "string"
+          },
+          "provider": {
+            "nullable": true,
+            "title": "Provider",
+            "type": "string"
+          },
+          "repo_name": {
+            "nullable": true,
+            "title": "Repo Name",
+            "type": "string"
+          },
+          "repo_names": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "Repo Names",
+            "type": "array"
+          },
+          "repository_filter": {
+            "nullable": true,
+            "title": "Repository Filter",
+            "type": "string"
+          },
+          "seed_commit_sha": {
+            "nullable": true,
+            "title": "Seed Commit Sha",
+            "type": "string"
+          },
+          "source": {
+            "nullable": true,
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "kind"
+        ],
+        "title": "RepositoryOperation",
         "type": "object"
       },
       "ReviewEffort": {
@@ -998,13 +2549,13 @@
           "option_id": {
             "maxLength": 128,
             "minLength": 1,
-            "title": "Option Id",
+            "title": "SavedSelection_option_id",
             "type": "string"
           },
           "thinking_effort": {
             "maxLength": 64,
             "nullable": true,
-            "title": "Thinking Effort",
+            "title": "SavedSelection_thinking_effort",
             "type": "string"
           }
         },
@@ -1012,6 +2563,77 @@
           "option_id"
         ],
         "title": "SavedSelection",
+        "type": "object"
+      },
+      "ScopedWorkspaceLink": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "ScopedWorkspaceLink_name",
+            "type": "string"
+          },
+          "relative_target": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "ScopedWorkspaceLink_relative_target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "relative_target"
+        ],
+        "title": "ScopedWorkspaceLink",
+        "type": "object"
+      },
+      "ScriptRun": {
+        "additionalProperties": false,
+        "properties": {
+          "authorized_working_directory_root": {
+            "nullable": true,
+            "title": "Authorized Working Directory Root",
+            "type": "string"
+          },
+          "credential_ref": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Credential Ref",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "script"
+            ],
+            "title": "ScriptRun_kind",
+            "type": "string"
+          },
+          "script": {
+            "title": "Script",
+            "type": "string"
+          },
+          "task_id": {
+            "nullable": true,
+            "title": "Task Id",
+            "type": "string"
+          },
+          "timeout": {
+            "nullable": true,
+            "title": "Timeout",
+            "type": "number"
+          },
+          "working_directory": {
+            "nullable": true,
+            "title": "Working Directory",
+            "type": "string"
+          }
+        },
+        "required": [
+          "script",
+          "kind"
+        ],
+        "title": "ScriptRun",
         "type": "object"
       },
       "SimpleMessage": {
@@ -1028,6 +2650,59 @@
         "title": "SimpleMessage",
         "type": "object"
       },
+      "SkillBundleChunk": {
+        "additionalProperties": false,
+        "properties": {
+          "archive_size": {
+            "exclusiveMinimum": true,
+            "maximum": 8388608,
+            "minimum": 0,
+            "title": "Archive Size",
+            "type": "integer"
+          },
+          "chunk_count": {
+            "exclusiveMinimum": true,
+            "maximum": 64,
+            "minimum": 0,
+            "title": "Chunk Count",
+            "type": "integer"
+          },
+          "chunk_index": {
+            "exclusiveMaximum": true,
+            "maximum": 64,
+            "minimum": 0,
+            "title": "Chunk Index",
+            "type": "integer"
+          },
+          "content_base64": {
+            "maxLength": 174764,
+            "title": "SkillBundleChunk_content_base64",
+            "type": "string"
+          },
+          "digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "SkillBundleChunk_digest",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "skill_bundle_chunk"
+            ],
+            "title": "SkillBundleChunk_kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "digest",
+          "chunk_index",
+          "chunk_count",
+          "archive_size",
+          "content_base64",
+          "kind"
+        ],
+        "title": "SkillBundleChunk",
+        "type": "object"
+      },
       "SnapshotFileChangeType": {
         "description": "Whether the file the finding sits in was added or modified by the MR.\n\nDrives how the detail page tints the finding's lines: a newly-added file\nreads as green (its lines are additions, matching the provider's own diff),\na modified file reads as a red \"current\" line the fix replaces. Stored as its\nstring value in a VARCHAR column, never a native Postgres enum, so\nUPPER()/LOWER() and enum-type migrations (DB-02) never enter the picture.\n\nAbsent (NULL) when the file's status could not be determined at review time,\nor for a `posting_range` finding that has no snapshot row at all.",
         "enum": [
@@ -1036,6 +2711,21 @@
         ],
         "title": "SnapshotFileChangeType",
         "type": "string"
+      },
+      "StartWorkerConformanceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "worker_id": {
+            "format": "uuid",
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id"
+        ],
+        "title": "StartWorkerConformanceRequest",
+        "type": "object"
       },
       "SubmitHeadlessRunRequest": {
         "description": "Body for `POST /cli/runs`.\n\n`agent_mode` is intentionally NOT exposed in V1 \u2014 the server picks the tier\n(Starter is coerced to Light at submit; every other plan runs the default).",
@@ -1051,13 +2741,13 @@
             "description": "Optional caller-supplied key (workspace-scoped). A retried submit with the same key returns the original run instead of creating a duplicate. Omit for at-least-once submit.",
             "maxLength": 255,
             "nullable": true,
-            "title": "Idempotency Key",
+            "title": "SubmitHeadlessRunRequest_idempotency_key",
             "type": "string"
           },
           "prompt": {
             "maxLength": 50000,
             "minLength": 1,
-            "title": "Prompt",
+            "title": "SubmitHeadlessRunRequest_prompt",
             "type": "string"
           },
           "selection": {
@@ -1076,6 +2766,177 @@
           "selection"
         ],
         "title": "SubmitHeadlessRunRequest",
+        "type": "object"
+      },
+      "TargetConnectionHealth": {
+        "additionalProperties": false,
+        "properties": {
+          "credential_generation": {
+            "minimum": 1,
+            "title": "Credential Generation",
+            "type": "integer"
+          },
+          "manifest_digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "TargetConnectionHealth_manifest_digest",
+            "type": "string"
+          },
+          "manifest_revision": {
+            "minimum": 1,
+            "title": "Manifest Revision",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "ready",
+              "offline",
+              "missing",
+              "invalid"
+            ],
+            "title": "TargetConnectionHealth_state",
+            "type": "string"
+          },
+          "worker_id": {
+            "format": "uuid",
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "manifest_revision",
+          "manifest_digest",
+          "credential_generation",
+          "worker_id",
+          "state"
+        ],
+        "title": "TargetConnectionHealth",
+        "type": "object"
+      },
+      "TargetConnectionPublic": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$",
+            "title": "TargetConnectionPublic_alias",
+            "type": "string"
+          },
+          "approved": {
+            "title": "Approved",
+            "type": "boolean"
+          },
+          "credential_generation": {
+            "minimum": 1,
+            "title": "Credential Generation",
+            "type": "integer"
+          },
+          "identity": {
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$",
+            "title": "TargetConnectionPublic_identity",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "builtin",
+              "mcp"
+            ],
+            "title": "TargetConnectionPublic_kind",
+            "type": "string"
+          },
+          "manifest_digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "TargetConnectionPublic_manifest_digest",
+            "type": "string"
+          },
+          "manifest_revision": {
+            "minimum": 1,
+            "title": "Manifest Revision",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TargetConnectionState"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/TargetToolMapping"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "manifest_revision",
+          "manifest_digest",
+          "credential_generation",
+          "alias",
+          "identity",
+          "kind",
+          "state",
+          "approved",
+          "tools"
+        ],
+        "title": "TargetConnectionPublic",
+        "type": "object"
+      },
+      "TargetConnectionState": {
+        "enum": [
+          "pending",
+          "ready",
+          "rotation_required",
+          "revoked",
+          "schema_mismatch",
+          "offline"
+        ],
+        "title": "TargetConnectionState",
+        "type": "string"
+      },
+      "TargetToolMapping": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_skill": {
+            "pattern": "^[a-z][a-z0-9_.-]{0,63}/[a-z][a-z0-9_.-]{0,63}$",
+            "title": "TargetToolMapping_canonical_skill",
+            "type": "string"
+          },
+          "effect": {
+            "enum": [
+              "read",
+              "write"
+            ],
+            "title": "TargetToolMapping_effect",
+            "type": "string"
+          },
+          "input_schema_digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "TargetToolMapping_input_schema_digest",
+            "type": "string"
+          },
+          "provider_name": {
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$",
+            "title": "TargetToolMapping_provider_name",
+            "type": "string"
+          },
+          "requires_user_approval": {
+            "title": "Requires User Approval",
+            "type": "boolean"
+          },
+          "tool_key": {
+            "enum": [
+              "computer_cli_read",
+              "computer_cli_write"
+            ],
+            "title": "TargetToolMapping_tool_key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_name",
+          "canonical_skill",
+          "tool_key",
+          "effect",
+          "requires_user_approval",
+          "input_schema_digest"
+        ],
+        "title": "TargetToolMapping",
         "type": "object"
       },
       "TicketComplianceStatus": {
@@ -1186,6 +3047,47 @@
         "title": "Token",
         "type": "object"
       },
+      "UploadWorkerArtifactRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "content_base64": {
+            "maxLength": 1866672,
+            "title": "UploadWorkerArtifactRequest_content_base64",
+            "type": "string"
+          },
+          "fence_token": {
+            "minimum": 1,
+            "title": "Fence Token",
+            "type": "integer"
+          },
+          "lease_token": {
+            "format": "password",
+            "title": "Lease Token",
+            "type": "string",
+            "writeOnly": true
+          },
+          "token": {
+            "format": "password",
+            "title": "Token",
+            "type": "string",
+            "writeOnly": true
+          },
+          "worker_id": {
+            "format": "uuid",
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "fence_token",
+          "lease_token",
+          "token",
+          "content_base64"
+        ],
+        "title": "UploadWorkerArtifactRequest",
+        "type": "object"
+      },
       "UserOrganizationMinimal": {
         "description": "Minimal organization info for user's organization list",
         "properties": {
@@ -1210,6 +3112,222 @@
         ],
         "title": "UserOrganizationMinimal",
         "type": "object"
+      },
+      "WorkerArtifactPublic": {
+        "additionalProperties": false,
+        "properties": {
+          "digest": {
+            "title": "Digest",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "digest",
+          "size"
+        ],
+        "title": "WorkerArtifactPublic",
+        "type": "object"
+      },
+      "WorkerBootstrap": {
+        "additionalProperties": false,
+        "properties": {
+          "credential": {
+            "title": "Credential",
+            "type": "string"
+          },
+          "credential_generation": {
+            "title": "Credential Generation",
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id",
+          "credential",
+          "credential_generation",
+          "expires_at"
+        ],
+        "title": "WorkerBootstrap",
+        "type": "object"
+      },
+      "WorkerConformancePublic": {
+        "additionalProperties": false,
+        "properties": {
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "complete"
+        ],
+        "title": "WorkerConformancePublic",
+        "type": "object"
+      },
+      "WorkerHeartbeatRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "online",
+              "draining"
+            ],
+            "title": "WorkerHeartbeatRequest_state",
+            "type": "string"
+          },
+          "worker_id": {
+            "format": "uuid",
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "state"
+        ],
+        "title": "WorkerHeartbeatRequest",
+        "type": "object"
+      },
+      "WorkerOperationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "content_base64": {
+            "maxLength": 2796204,
+            "title": "WorkerOperationResult_content_base64",
+            "type": "string"
+          },
+          "content_type": {
+            "default": "application/json",
+            "enum": [
+              "application/json",
+              "text/plain",
+              "application/octet-stream",
+              "application/pdf"
+            ],
+            "title": "WorkerOperationResult_content_type",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "WorkerOperationResult_state",
+            "type": "string"
+          },
+          "status_code": {
+            "maximum": 599,
+            "minimum": 100,
+            "title": "Status Code",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "state",
+          "status_code",
+          "content_base64"
+        ],
+        "title": "WorkerOperationResult",
+        "type": "object"
+      },
+      "WorkerPublic": {
+        "additionalProperties": false,
+        "properties": {
+          "max_assignments": {
+            "title": "Max Assignments",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/WorkerState"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "worker_id": {
+            "format": "uuid",
+            "title": "Worker Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worker_id",
+          "target_id",
+          "max_assignments",
+          "state"
+        ],
+        "title": "WorkerPublic",
+        "type": "object"
+      },
+      "WorkerRegistrationIssue": {
+        "additionalProperties": false,
+        "properties": {
+          "max_assignments": {
+            "default": 1,
+            "maximum": 64,
+            "minimum": 1,
+            "title": "Max Assignments",
+            "type": "integer"
+          }
+        },
+        "title": "WorkerRegistrationIssue",
+        "type": "object"
+      },
+      "WorkerRegistrationReference": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reference",
+          "expires_at"
+        ],
+        "title": "WorkerRegistrationReference",
+        "type": "object"
+      },
+      "WorkerState": {
+        "enum": [
+          "registered",
+          "online",
+          "draining",
+          "offline"
+        ],
+        "title": "WorkerState",
+        "type": "string"
       },
       "WorkspaceCreate": {
         "properties": {
@@ -1272,7 +3390,7 @@
           "description": {
             "maxLength": 1000,
             "nullable": true,
-            "title": "Description",
+            "title": "WorkspacePublic_description",
             "type": "string"
           },
           "id": {
@@ -1305,7 +3423,7 @@
           "name": {
             "maxLength": 255,
             "minLength": 1,
-            "title": "Name",
+            "title": "WorkspacePublic_name",
             "type": "string"
           },
           "notification_additional_emails": {
@@ -1411,7 +3529,7 @@
           "description": {
             "maxLength": 1000,
             "nullable": true,
-            "title": "Description",
+            "title": "WorkspaceWithRolePublic_description",
             "type": "string"
           },
           "id": {
@@ -1444,7 +3562,7 @@
           "name": {
             "maxLength": 255,
             "minLength": 1,
-            "title": "Name",
+            "title": "WorkspaceWithRolePublic_name",
             "type": "string"
           },
           "notification_additional_emails": {
@@ -1750,6 +3868,840 @@
         ]
       }
     },
+    "/api/v1/executor-targets/{target_id}": {
+      "delete": {
+        "operationId": "executor-targets-archive_outpost",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Target Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Archive Outpost",
+        "tags": [
+          "executor-targets",
+          "executor-targets"
+        ]
+      },
+      "get": {
+        "operationId": "executor-targets-get_executor_target",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Target Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutorChoicePublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Executor Target",
+        "tags": [
+          "executor-targets"
+        ]
+      }
+    },
+    "/api/v1/executor-targets/{target_id}/worker-registrations": {
+      "post": {
+        "operationId": "executor-targets-issue_registration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Target Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerRegistrationIssue"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerRegistrationReference"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Issue Registration",
+        "tags": [
+          "executor-targets",
+          "executor-targets"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/assignments": {
+      "get": {
+        "operationId": "executor-targets-pending_assignments",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "wait",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 25,
+              "minimum": 0,
+              "title": "Wait",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PendingAssignmentPublic"
+                  },
+                  "title": "Response Executor-Targets-Pending Assignments",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Pending Assignments",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/assignments/{assignment_id}/artifact-grants": {
+      "post": {
+        "operationId": "executor-targets-issue_artifact_grant",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueArtifactGrantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactGrantPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Issue Artifact Grant",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/assignments/{assignment_id}/artifact-grants/{grant_id}": {
+      "post": {
+        "operationId": "executor-targets-upload_worker_artifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "grant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Grant Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadWorkerArtifactRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerArtifactPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Upload Worker Artifact",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/assignments/{assignment_id}/claim": {
+      "post": {
+        "operationId": "executor-targets-claim_assignment",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentLease"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Claim Assignment",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/assignments/{assignment_id}/heartbeat": {
+      "post": {
+        "operationId": "executor-targets-heartbeat_assignment",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatAssignmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignmentLease"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Heartbeat Assignment",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/assignments/{assignment_id}/operations": {
+      "get": {
+        "operationId": "executor-targets-assignment_operations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Worker Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "batch_size",
+            "required": false,
+            "schema": {
+              "default": 64,
+              "maximum": 64,
+              "minimum": 1,
+              "title": "Batch Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "wait",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 25,
+              "minimum": 0,
+              "title": "Wait",
+              "type": "number"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-executor-lease",
+            "required": true,
+            "schema": {
+              "title": "X-Executor-Lease",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-executor-fence",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "X-Executor-Fence",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OperationEnvelope"
+                  },
+                  "title": "Response Executor-Targets-Assignment Operations",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Assignment Operations",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/assignments/{assignment_id}/operations/{operation_id}/result": {
+      "get": {
+        "operationId": "executor-targets-read_receipt",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "worker_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Worker Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationReceiptPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Receipt",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      },
+      "post": {
+        "operationId": "executor-targets-complete_operation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteWorkerOperationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationReceiptPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Complete Operation",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/assignments/{assignment_id}/operations/{operation_id}/start": {
+      "post": {
+        "operationId": "executor-targets-start_operation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OperationStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Start Operation",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/assignments/{assignment_id}/release": {
+      "post": {
+        "operationId": "executor-targets-release_assignment",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assignment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Assignment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignmentLeaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Release Assignment",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/conformance": {
+      "post": {
+        "operationId": "executor-targets-worker_conformance",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartWorkerConformanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerConformancePublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Worker Conformance",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/connections/announce": {
+      "post": {
+        "operationId": "executor-targets-announce_connection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnnounceTargetConnection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TargetConnectionPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Announce Connection",
+        "tags": [
+          "executor-targets",
+          "target-local-connections"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/connections/{alias}/health": {
+      "post": {
+        "operationId": "executor-targets-report_connection_health",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alias",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$",
+              "title": "Alias",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TargetConnectionHealth"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TargetConnectionPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Report Connection Health",
+        "tags": [
+          "executor-targets",
+          "target-local-connections"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/exchange": {
+      "post": {
+        "operationId": "executor-targets-exchange_registration",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExchangeWorkerRegistrationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerBootstrap"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Exchange Registration",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/heartbeat": {
+      "post": {
+        "operationId": "executor-targets-worker_heartbeat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkerHeartbeatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Worker Heartbeat",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      }
+    },
+    "/api/v1/executor-workers/register": {
+      "post": {
+        "operationId": "executor-targets-register_worker",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterWorkerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Register Worker",
+        "tags": [
+          "executor-targets",
+          "executor-workers"
+        ]
+      }
+    },
     "/api/v1/login/cli/device/start": {
       "post": {
         "description": "Create a short-lived device authorization for an outbound-only CLI.",
@@ -1994,6 +4946,95 @@
         "summary": "Create Workspace",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/executor-targets": {
+      "get": {
+        "operationId": "executor-targets-list_executor_targets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ExecutorScope",
+              "nullable": true,
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExecutorChoicePublic"
+                  },
+                  "title": "Response Executor-Targets-List Executor Targets",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Executor Targets",
+        "tags": [
+          "executor-targets"
+        ]
+      },
+      "post": {
+        "operationId": "executor-targets-create_outpost",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOutpostRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutpostCreatedPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Create Outpost",
+        "tags": [
+          "executor-targets",
+          "executor-targets"
         ]
       }
     }

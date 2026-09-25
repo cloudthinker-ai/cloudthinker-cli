@@ -162,6 +162,37 @@ def _normalize_error_responses(spec: dict) -> None:
                     responses.pop(status)
 
 
+def _require_discriminator_tags(spec: dict) -> None:
+    schemas = spec.get("components", {}).get("schemas", {})
+    for schema in schemas.values():
+        for field in schema.get("properties", {}).values():
+            discriminator = field.get("discriminator", {})
+            key = discriminator.get("propertyName")
+            for reference in discriminator.get("mapping", {}).values():
+                variant = schemas[reference.rsplit("/", 1)[-1]]
+                tag = variant.get("properties", {}).get(key, {})
+                if tag.get("default") in tag.get("enum", []) and len(tag["enum"]) == 1:
+                    tag.pop("default")
+                    if key not in variant.setdefault("required", []):
+                        variant["required"].append(key)
+
+
+_CONSTRAINT_KEYWORDS = ("enum", "pattern", "minLength", "maxLength")
+
+
+def _title_constrained_properties(spec: dict) -> None:
+    """Give every inline-constrained property a schema-unique title.
+
+    progenitor names the newtype it emits for a constrained inline field after
+    that field's title, so two schemas whose fields share a name collide on one
+    generated type.
+    """
+    for name, schema in spec.get("components", {}).get("schemas", {}).items():
+        for key, field in schema.get("properties", {}).items():
+            if any(keyword in field for keyword in _CONSTRAINT_KEYWORDS):
+                field["title"] = f"{name}_{key}"
+
+
 def fixup(spec: dict) -> dict:
     spec = _fix_nullable(spec)
     _fix_exclusive_bounds(spec)
@@ -169,6 +200,8 @@ def fixup(spec: dict) -> dict:
     _pin_title(spec)
     _keep_typed_device_poll_error(spec)
     _normalize_error_responses(spec)
+    _require_discriminator_tags(spec)
+    _title_constrained_properties(spec)
     prune_unused_schemas(spec)
     return spec
 

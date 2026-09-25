@@ -31,6 +31,10 @@ axum = { version = "0.8", default-features = false, features = ["tokio", "http1"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "vendored"] }
 dirs = "6"
 fs2 = "0.4"
+cap-std = "4"
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["process", "fs"] }
 
 [dev-dependencies]
 wiremock = "0.6"

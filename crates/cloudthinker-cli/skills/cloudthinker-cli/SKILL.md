@@ -29,8 +29,9 @@ Read every module whose signal matches the task:
 - `cloudthinker --skill auth` ([auth.md](auth.md)): login, identity, host selection, workspace selection, authentication errors.
 - `cloudthinker --skill chat` ([chat.md](chat.md)): delegate to Anna, recover a run, continue a conversation, timeout or approval handling.
 - `cloudthinker --skill review` ([review.md](review.md)): inspect the status or findings of a tracked merge request or pull request.
+- `cloudthinker --skill worker` ([worker.md](worker.md)): create an outpost, serve a local project, check availability, and drain before an update.
 
-Typical combinations: first delegation = auth + chat. Review lookup in a named workspace = auth + review. Continuing an identified conversation = chat.
+Typical combinations: first delegation = auth + chat. Review lookup in a named workspace = auth + review. Continuing an identified conversation = chat. Serving a local folder to Anna = auth + worker + chat.
 
 ## Verify
 
