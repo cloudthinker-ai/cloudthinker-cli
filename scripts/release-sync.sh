@@ -42,6 +42,11 @@ if grep -q 'GH_RELEASES_TOKEN' "$CLI_DIR/.github/workflows/release.yml"; then
   exit 1
 fi
 
+if [ -e "$CLI_DIR/docs" ]; then
+  echo "error: cli/docs/ must not exist; maintainer docs stay in the monorepo (docs/ and the cloudthinker-cli-kit skill)" >&2
+  exit 1
+fi
+
 # Preflight: the active gh account must be able to push to the release repo.
 push=$(gh api "/repos/$REPO" --jq '.permissions.push' 2>/dev/null || echo false)
 if [ "$push" != "true" ]; then

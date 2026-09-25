@@ -225,8 +225,7 @@ Report a bug or request a feature in
 [GitHub Issues](https://github.com/cloudthinker-ai/cloudthinker-cli/issues).
 This repository is a publish mirror of the CLI tree in CloudThinker's internal
 monorepo. Each sync replaces the tree, so a maintainer applies an accepted pull
-request upstream instead of merging it here. [docs/releasing.md](docs/releasing.md)
-describes the release process.
+request upstream instead of merging it here.
 
 ## Documentation
 
