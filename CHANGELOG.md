@@ -1,3 +1,8 @@
+## [0.7.1]
+
+- On macOS, outpost shell commands now run in their working directory instead of failing with `SHELL_UNAVAILABLE`.
+- The bundled agent now displays Markdown tables with light horizontal separators and aligned values.
+
 ## [0.7.0]
 
 - Run agent background shell commands on an outpost: the worker starts, tails, cancels, and cleans up a detached supervisor that owns the command's output, exit code, and deadline, so a job outlives the operation that started it. A tail may block on the worker for up to 20 s until new output or the exit code appears.

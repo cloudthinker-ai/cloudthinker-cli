@@ -503,14 +503,17 @@ fn launchd_domain() -> CtResult<String> {
     {
         return Ok(format!("gui/{uid}"));
     }
-    #[cfg(target_os = "macos")]
-    {
-        return Ok(format!("gui/{}", rustix::process::geteuid().as_raw()));
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Err(CtError::Usage("launchd is available only on macOS".into()))
-    }
+    launchd_user_domain()
+}
+
+#[cfg(target_os = "macos")]
+fn launchd_user_domain() -> CtResult<String> {
+    Ok(format!("gui/{}", rustix::process::geteuid().as_raw()))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn launchd_user_domain() -> CtResult<String> {
+    Err(CtError::Usage("launchd is available only on macOS".into()))
 }
 
 fn launchd_service(target: &ServiceTarget) -> CtResult<String> {

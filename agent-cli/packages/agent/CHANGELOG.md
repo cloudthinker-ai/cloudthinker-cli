@@ -1,3 +1,7 @@
+## [0.7.1]
+
+- Render Markdown tables in the terminal with open columns and restrained separators.
+
 ## [0.5.9]
 
 - A new session now starts with Cloud off when the agent's `settings.json` sets `cloudDefault` to false, and a delegated child inherits that state even without a recorded session choice.

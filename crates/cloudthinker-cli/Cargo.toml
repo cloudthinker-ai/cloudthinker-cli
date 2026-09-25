@@ -1,6 +1,6 @@
 [package]
 name = "cloudthinker-cli"
-version = "0.7.0-dev.1"
+version = "0.7.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -22,16 +22,7 @@ serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 rand.workspace = true
-chrono.workspace = true
-base64.workspace = true
 sha2.workspace = true
-flate2.workspace = true
-tar.workspace = true
-cap-std = "4"
-fs2 = "0.4"
-tokio-util = { version = "0.7", features = ["rt"] }
-globset = "0.4"
-regex = "1"
 open = "5"
 owo-colors = "4"
 supports-color = "3"
@@ -42,6 +33,15 @@ indicatif = "0.18"
 axoupdater = "0.10"
 
 [target.'cfg(unix)'.dependencies]
+chrono.workspace = true
+base64.workspace = true
+flate2.workspace = true
+tar.workspace = true
+cap-std = "4"
+fs2 = "0.4"
+tokio-util = { version = "0.7", features = ["rt"] }
+globset = "0.4"
+regex = "1"
 rustix = { version = "1", features = ["process", "fs"] }
 
 [dev-dependencies]

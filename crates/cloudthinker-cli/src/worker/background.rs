@@ -1154,7 +1154,7 @@ mod tests {
     #[tokio::test]
     async fn ca_bg_10_capped_stream_carries_one_truncation_marker() {
         let fixture = fixture().await;
-        fixture.start("t13", "yes | head -c 40M").await;
+        fixture.start("t13", "yes | head -c 41943040").await;
         let (stdout, stderr, code, pages) = fixture.drain("t13").await;
         assert_eq!(code, 0);
         assert_eq!(stdout.len() as u64, STREAM_CAP_BYTES);

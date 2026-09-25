@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::os::fd::AsRawFd;
 use std::process::Stdio;
 use std::time::Duration;
 
@@ -52,6 +51,25 @@ pub fn environment(
     Ok(env)
 }
 
+#[cfg(target_os = "linux")]
+fn working_directory(dir: &Dir) -> Result<std::path::PathBuf, &'static str> {
+    use std::os::fd::AsRawFd;
+    Ok(format!("/proc/self/fd/{}", dir.as_raw_fd()).into())
+}
+
+#[cfg(target_vendor = "apple")]
+fn working_directory(dir: &Dir) -> Result<std::path::PathBuf, &'static str> {
+    use std::os::unix::ffi::OsStringExt;
+    let path = rustix::fs::getpath(dir).map_err(|_| "TRUSTED_ROOT_REJECTED")?;
+    Ok(std::ffi::OsString::from_vec(path.into_bytes()).into())
+}
+
+#[cfg(not(any(target_os = "linux", target_vendor = "apple")))]
+fn working_directory(dir: &Dir) -> Result<std::path::PathBuf, &'static str> {
+    use std::os::fd::AsRawFd;
+    Ok(format!("/dev/fd/{}", dir.as_raw_fd()).into())
+}
+
 pub async fn execute(
     dir: &Dir,
     script: &api::ScriptRun,
@@ -67,10 +85,7 @@ pub async fn execute(
             script.working_directory.as_deref().unwrap_or("."),
         )?)
         .map_err(|_| "TRUSTED_ROOT_REJECTED")?;
-    #[cfg(target_os = "linux")]
-    let cwd_path = format!("/proc/self/fd/{}", cwd.as_raw_fd());
-    #[cfg(not(target_os = "linux"))]
-    let cwd_path = format!("/dev/fd/{}", cwd.as_raw_fd());
+    let cwd_path = working_directory(&cwd)?;
     let started = std::time::Instant::now();
     let duration = (deadline - Utc::now()).to_std().map_err(|_| "TIMEOUT")?;
     let duration = script

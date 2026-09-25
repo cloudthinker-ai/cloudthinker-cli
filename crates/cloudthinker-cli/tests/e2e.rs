@@ -1789,6 +1789,8 @@ fn outpost_json(name: &str, target_id: Option<&str>) -> String {
 
 fn worker_state_dir(config_home: &std::path::Path, origin: &str) -> std::path::PathBuf {
     use sha2::{Digest, Sha256};
+    #[cfg(target_os = "macos")]
+    let config_home = config_home.join("Library/Application Support");
     config_home
         .join("cloudthinker/worker-state")
         .join(format!("{:x}", Sha256::digest(origin.as_bytes())))
@@ -2017,7 +2019,7 @@ fn service_cli(config_home: &std::path::Path, bin: &std::path::Path) -> Command 
     command
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 #[test]
 fn ca_wo_41_repeating_one_service_install_is_unchanged_and_a_different_one_is_refused() {
     let root = tempfile::tempdir().unwrap();
