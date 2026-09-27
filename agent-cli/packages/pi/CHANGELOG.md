@@ -1,3 +1,7 @@
+## [0.7.4]
+
+- Upgrade fflate to 0.8.3 so a malformed ZIP64 skill archive cannot hang skill sync (GHSA-px8p-9vwx-vf98).
+
 ## [0.7.3]
 
 - Add a local review session mode that uses CloudThinker inference without mirroring local review content, and confine its file tools and results to existing, non-ignored paths inside the checkout.

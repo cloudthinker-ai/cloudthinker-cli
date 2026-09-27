@@ -1,3 +1,7 @@
+## [0.7.4]
+
+- Ship the bundled agent with fflate 0.8.3, which fixes an infinite loop on malformed ZIP64 skill archives.
+
 ## [0.7.3]
 
 - Review the local checkout with a bundled read-only Pi agent using CloudThinker inference; keep the prompt, transcript, findings, and rendered result local.
