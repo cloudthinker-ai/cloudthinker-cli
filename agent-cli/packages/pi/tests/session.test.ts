@@ -15,7 +15,7 @@ import {
 	CloudThinkerRuntime,
 	SESSION_ENTRY_TYPE,
 } from "../src/runtime.ts";
-import { findLinkedSession, linkSession, startSession } from "../src/session.ts";
+import { findLinkedSession, linkSession, startLocalReviewSession, startSession } from "../src/session.ts";
 import { hostVersionsFrom } from "../src/versions.ts";
 
 const WORKSPACE = "22222222-2222-4222-8222-222222222222";
@@ -111,6 +111,18 @@ test("a resumed session reuses the carried link and its stored mode and thread",
 	assert.deepEqual(runtime.autoMode, { enabled: true, canEdit: true });
 	assert.deepEqual(runtime.askThread, { conversation_id: "h-1", web_url: "http://web/h-1" });
 	assert.deepEqual(appended, []);
+});
+
+test("local review links a generic gateway session without sending the checkout path", async () => {
+	const { client, bodies } = creating();
+	const { runtime, appended } = harness(client, []);
+
+	const session = await startLocalReviewSession(runtime);
+
+	assert.deepEqual(bodies, [{ cwd: "local-review", title: "Local code review", skip_sandbox_warmup: true }]);
+	assert.deepEqual(session, created);
+	assert.deepEqual(appended, [{ type: SESSION_ENTRY_TYPE, data: created }]);
+	assert.equal(runtime.session, created);
 });
 
 test("a fork opens a new conversation sourced from the carried one and drops the thread", async () => {

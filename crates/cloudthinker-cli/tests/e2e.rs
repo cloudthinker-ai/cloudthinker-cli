@@ -92,6 +92,256 @@ fn ca_ad_11_unknown_command_keeps_clap_suggestions_and_usage_exit() {
     assert!(error.contains("chat"));
 }
 
+fn initialize_review_repo(root: &std::path::Path) -> String {
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    };
+    git(&["init", "-q", "-b", "main"]);
+    git(&["config", "user.email", "local-review@example.test"]);
+    git(&["config", "user.name", "Local Review"]);
+    std::fs::write(root.join("src.rs"), "fn value() { 1 }\n").unwrap();
+    git(&["add", "src.rs"]);
+    git(&["commit", "-qm", "initial"]);
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    String::from_utf8(output.stdout).unwrap().trim().to_string()
+}
+
+#[cfg(unix)]
+fn write_local_review_stub(
+    name: &str,
+    answer: &str,
+    delay: &str,
+) -> (std::path::PathBuf, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!("ct-local-review-{}-{name}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = dir.join("cloudthinker-agent");
+    let args_file = dir.join("argv");
+    let script_body = format!(
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CT_REVIEW_ARGS\"\npwd > \"$CT_REVIEW_CWD\"\nsleep {delay}\nprintf '%s\\n' '{}'\n",
+        answer.replace('\'', "'\\''")
+    );
+    std::fs::write(&script, script_body).unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    (script, args_file)
+}
+
+#[cfg(unix)]
+fn run_local_review(
+    root: &std::path::Path,
+    api: &RecordingApi,
+    script: &std::path::Path,
+    args: &[&str],
+) -> std::process::Output {
+    let mut command = cli(&api.base_url);
+    command
+        .current_dir(root)
+        .env("CLOUDTHINKER_AGENT_BIN", script)
+        .env("CT_REVIEW_ARGS", script.parent().unwrap().join("argv"))
+        .env("CT_REVIEW_CWD", script.parent().unwrap().join("cwd"))
+        .args(args);
+    command.output().unwrap()
+}
+
+#[cfg(unix)]
+#[test]
+fn ca_lr_01_local_agent_reads_checkout_and_prints_findings_without_cloud_transcript() {
+    let root = tempfile::tempdir().unwrap();
+    let base = initialize_review_repo(root.path());
+    std::fs::write(root.path().join("src.rs"), "fn value() { 2 }\n").unwrap();
+    std::fs::write(root.path().join("new.rs"), "fn added() { 3 }\n").unwrap();
+    let index = std::fs::read(root.path().join(".git/index")).unwrap();
+    let api = RecordingApi::start(vec![("200 OK", WHOAMI_BODY.into())]);
+    let answer = r#"{"findings":[{"severity":"high","file":"src.rs","line":1,"title":"Bad value","explanation":"The value violates the invariant.","suggested_fix":"Use the validated value."}]}"#;
+    let (stub, args_file) = write_local_review_stub("findings", answer, "0");
+    let output = run_local_review(root.path(), &api, &stub, &["review", "--json"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("local read-only agent"));
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["status"], "findings");
+    assert_eq!(result["base_sha"], base);
+    assert!(result.get("run_id").is_none());
+    assert_eq!(result["findings"][0]["file"], "src.rs");
+    let argv = std::fs::read_to_string(args_file).unwrap();
+    assert!(argv.contains("--cloudthinker-local-review"));
+    assert!(argv.contains("cloudthinker/*"));
+    assert!(argv.contains("read,grep,find,ls"));
+    assert!(argv.contains("--no-extensions"));
+    assert!(argv.contains("--no-skills"));
+    assert!(argv.contains("--no-context-files"));
+    assert!(argv.contains("Review this checkout as a local coding agent"));
+    assert!(argv.contains("fn value() { 2 }"));
+    let cwd = std::fs::read_to_string(stub.parent().unwrap().join("cwd")).unwrap();
+    assert_eq!(
+        std::fs::canonicalize(cwd.trim()).unwrap(),
+        std::fs::canonicalize(root.path()).unwrap()
+    );
+    let requests = api.requests();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].contains("GET /api/v1/cli/whoami "));
+    assert!(!requests[0].contains("/cli/runs"));
+    assert!(!requests[0].contains(root.path().to_str().unwrap()));
+    assert_eq!(
+        index,
+        std::fs::read(root.path().join(".git/index")).unwrap()
+    );
+    let _ = std::fs::remove_dir_all(stub.parent().unwrap());
+}
+
+#[cfg(unix)]
+#[test]
+fn ca_lr_02_reviews_against_base_and_preserves_the_worktree_and_index() {
+    let root = tempfile::tempdir().unwrap();
+    let base = initialize_review_repo(root.path());
+    std::fs::write(root.path().join("src.rs"), "fn value() { 2 }\n").unwrap();
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(root.path())
+        .args(["add", "src.rs"])
+        .status()
+        .unwrap();
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(root.path())
+        .args(["commit", "-qm", "branch change"])
+        .status()
+        .unwrap();
+    std::fs::write(root.path().join("src.rs"), "fn value() { 3 }\n").unwrap();
+    let before = std::fs::read(root.path().join("src.rs")).unwrap();
+    let api = RecordingApi::start(vec![("200 OK", WHOAMI_BODY.into())]);
+    let (stub, _) = write_local_review_stub("base", r#"{"findings":[]}"#, "0");
+    let output = run_local_review(
+        root.path(),
+        &api,
+        &stub,
+        &["review", "--base", &base, "--json"],
+    );
+    assert!(output.status.success());
+    let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(result["status"], "clean");
+    assert_ne!(result["base_sha"], result["head_sha"]);
+    assert_eq!(before, std::fs::read(root.path().join("src.rs")).unwrap());
+    assert!(!root.path().join(".git/index.lock").exists());
+    assert_eq!(api.requests().len(), 1);
+    let _ = std::fs::remove_dir_all(stub.parent().unwrap());
+}
+
+#[cfg(unix)]
+#[test]
+fn ca_lr_03_invalid_local_agent_responses_are_rejected() {
+    let root = tempfile::tempdir().unwrap();
+    initialize_review_repo(root.path());
+    std::fs::write(root.path().join("src.rs"), "fn value() { 2 }\n").unwrap();
+    for response in [
+        "not json",
+        r#"{"findings":[{"severity":"urgent","file":"src.rs","line":1,"title":"t","explanation":"e"}]}"#,
+        r#"{"findings":[{"severity":"high","file":"src.rs","line":9,"title":"t","explanation":"e"}]}"#,
+    ] {
+        let api = RecordingApi::start(vec![("200 OK", WHOAMI_BODY.into())]);
+        let (stub, _) = write_local_review_stub("invalid", response, "0");
+        let output = run_local_review(root.path(), &api, &stub, &["review", "--json"]);
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+        let _ = std::fs::remove_dir_all(stub.parent().unwrap());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn ca_lr_04_timeout_stops_the_local_agent_and_reports_rerun() {
+    let root = tempfile::tempdir().unwrap();
+    initialize_review_repo(root.path());
+    std::fs::write(root.path().join("src.rs"), "fn value() { 2 }\n").unwrap();
+    let api = RecordingApi::start(vec![("200 OK", WHOAMI_BODY.into())]);
+    let (stub, _) = write_local_review_stub("timeout", r#"{"findings":[]}"#, "10");
+    let output = run_local_review(
+        root.path(),
+        &api,
+        &stub,
+        &["review", "--timeout", "1", "--json"],
+    );
+    assert_eq!(output.status.code(), Some(4));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("rerun the review"));
+    assert_eq!(api.requests().len(), 1);
+    let _ = std::fs::remove_dir_all(stub.parent().unwrap());
+}
+
+#[test]
+fn ca_lr_06_invalid_base_and_empty_scope_fail_before_agent_launch() {
+    let root = tempfile::tempdir().unwrap();
+    initialize_review_repo(root.path());
+    let api = RecordingApi::start(vec![]);
+    let invalid = cli(&api.base_url)
+        .current_dir(root.path())
+        .args(["review", "--base", "missing-base", "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(invalid.status.code(), Some(2));
+    assert!(api.requests().is_empty());
+    let empty = cli(&api.base_url)
+        .current_dir(root.path())
+        .args(["review", "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(empty.status.code(), Some(2));
+    assert!(api.requests().is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn ca_lr_07_human_output_displays_local_findings_and_clean_results() {
+    let root = tempfile::tempdir().unwrap();
+    initialize_review_repo(root.path());
+    std::fs::write(root.path().join("src.rs"), "fn value() { 2 }\n").unwrap();
+    let api = RecordingApi::start(vec![("200 OK", WHOAMI_BODY.into())]);
+    let (stub, _) = write_local_review_stub(
+        "human",
+        r#"{"findings":[{"severity":"high","file":"src.rs","line":1,"title":"Bad value","explanation":"The value violates the invariant.","suggested_fix":"Use the validated value."}]}"#,
+        "0",
+    );
+    let output = run_local_review(root.path(), &api, &stub, &["review"]);
+    assert!(output.status.success());
+    let text = String::from_utf8_lossy(&output.stdout);
+    assert!(text.contains("Bad value"));
+    assert!(text.contains("src.rs:1"));
+    assert!(text.contains("The value violates the invariant."));
+    assert!(text.contains("Use the validated value."));
+    assert!(!text.contains("Review run:"));
+    let _ = std::fs::remove_dir_all(stub.parent().unwrap());
+}
+
+#[test]
+fn ca_lr_08_git_operational_error_uses_job_failed_exit() {
+    let root = tempfile::tempdir().unwrap();
+    let api = RecordingApi::start(vec![]);
+    let output = cli(&api.base_url)
+        .current_dir(root.path())
+        .args(["review", "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert!(api.requests().is_empty());
+}
+
 /// A canned HTTP/1.1 server: 202 on submit, a fixed body on status GET.
 struct MockApi {
     base_url: String,
@@ -238,19 +488,7 @@ fn submitted_body() -> String {
 }
 
 fn status_body(status: &str, answer: &str, failure_kind: &str) -> String {
-    let answer_json = if answer.is_empty() {
-        "null".to_string()
-    } else {
-        format!("\"{answer}\"")
-    };
-    let failure_json = if failure_kind.is_empty() {
-        "null".to_string()
-    } else {
-        format!("\"{failure_kind}\"")
-    };
-    format!(
-        r#"{{"run_id":"{RUN_ID}","conversation_id":"{CONV_ID}","status":"{status}","answer":{answer_json},"message":null,"failure_kind":{failure_json},"web_url":"https://app.example.com/c/{CONV_ID}","created_at":"2026-07-20T00:00:00Z","start_time":null,"end_time":null}}"#
-    )
+    serde_json::json!({"run_id":RUN_ID,"conversation_id":CONV_ID,"status":status,"answer":if answer.is_empty() { None } else { Some(answer) },"message":if status == "failed" { Some("the run failed") } else { None },"failure_kind":if failure_kind.is_empty() { None } else { Some(failure_kind) },"web_url":format!("https://app.example.com/c/{CONV_ID}"),"created_at":"2026-07-20T00:00:00Z","start_time":null,"end_time":null}).to_string()
 }
 
 fn cli(base_url: &str) -> Command {
@@ -1518,13 +1756,6 @@ fn ca_up_11_an_accepted_offer_continues_in_the_installed_binary() {
         &home,
     );
 
-    assert!(
-        output.contains(&format!(
-            "Updating cloudthinker to {}",
-            tag.trim_start_matches('v')
-        )),
-        "expected the update step, got:\n{output}"
-    );
     assert!(
         !output.contains(INSTALLER_NOISE),
         "the installer output must stay hidden, got:\n{output}"

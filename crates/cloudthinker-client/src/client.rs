@@ -318,7 +318,7 @@ pub struct CtClient {
     refresh: RefreshCoordinator,
     // Reqwest pools connections; rebuild only when the bearer token rotates so
     // polling reuses one TLS connection across the run.
-    http_cache: Mutex<Option<(String, reqwest::Client)>>,
+    http_cache: Mutex<Option<(String, Duration, reqwest::Client)>>,
     // Anonymous client for endpoints that carry no bearer (exchange, refresh,
     // best-effort logout).
     anon_http: reqwest::Client,
@@ -521,7 +521,7 @@ impl CtClient {
     }
 
     async fn whoami_with_access(&self, access: &str) -> CtResult<CliIdentity> {
-        let api = self.api_client(access)?;
+        let api = self.api_client(access, Duration::from_secs(REQUEST_TIMEOUT_SECS))?;
         let response = match api.login_cli_whoami().await {
             Ok(response) => response,
             Err(error) => return Err(to_ct_error(error).await),
@@ -699,8 +699,19 @@ impl CtClient {
         )
             -> Result<cloudthinker_api::ResponseValue<T>, cloudthinker_api::Error<()>>,
     {
+        self.authed_with_timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS), call)
+            .await
+    }
+
+    async fn authed_with_timeout<T, F>(&self, timeout: Duration, call: F) -> CtResult<T>
+    where
+        F: AsyncFn(
+            cloudthinker_api::Client,
+        )
+            -> Result<cloudthinker_api::ResponseValue<T>, cloudthinker_api::Error<()>>,
+    {
         let access = self.access_token().await?;
-        let client = self.api_client(&access)?;
+        let client = self.api_client(&access, timeout)?;
         match call(client).await {
             Ok(rv) => {
                 self.accept_credential(&access);
@@ -714,7 +725,7 @@ impl CtClient {
                         .refresh(&access)
                         .await
                         .map_err(|error| self.record_auth_failure(&access, error))?;
-                    let client = self.api_client(&rotated.access_token)?;
+                    let client = self.api_client(&rotated.access_token, timeout)?;
                     match call(client).await {
                         Ok(rv) => {
                             self.accept_credential(&rotated.access_token);
@@ -733,20 +744,22 @@ impl CtClient {
     }
 
     /// Build (or reuse) an API client whose bearer header is `access`.
-    fn api_client(&self, access: &str) -> CtResult<cloudthinker_api::Client> {
+    fn api_client(&self, access: &str, timeout: Duration) -> CtResult<cloudthinker_api::Client> {
         let mut guard = self
             .http_cache
             .lock()
             .map_err(|_| CtError::Transport("http cache poisoned".into()))?;
         let cached = match guard.as_ref() {
-            Some((tok, client)) if tok == access => Some(client.clone()),
+            Some((tok, cached_timeout, client)) if tok == access && *cached_timeout == timeout => {
+                Some(client.clone())
+            }
             _ => None,
         };
         let http = match cached {
             Some(client) => client,
             None => {
-                let client = build_authed_http(access)?;
-                *guard = Some((access.to_string(), client.clone()));
+                let client = build_authed_http(access, timeout)?;
+                *guard = Some((access.to_string(), timeout, client.clone()));
                 client
             }
         };
@@ -758,13 +771,13 @@ impl CtClient {
     }
 }
 
-fn build_authed_http(access: &str) -> CtResult<reqwest::Client> {
+fn build_authed_http(access: &str, timeout: Duration) -> CtResult<reqwest::Client> {
     let mut headers = reqwest::header::HeaderMap::new();
     let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {access}"))
         .map_err(|e| CtError::Auth(format!("invalid token header: {e}")))?;
     headers.insert(reqwest::header::AUTHORIZATION, value);
     reqwest::Client::builder()
-        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+        .timeout(timeout)
         .default_headers(headers)
         .build()
         .map_err(|e| CtError::Transport(format!("http client build: {e}")))

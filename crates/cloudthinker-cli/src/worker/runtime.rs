@@ -519,12 +519,20 @@ where
     if timeout.is_zero() {
         return Err(CtError::Transport(expired.into()));
     }
-    tokio::time::timeout(
-        timeout,
-        watch(|| async { fetch().await.map(Poll::Terminal) }, config),
-    )
-    .await
-    .map_err(|_| CtError::Transport(expired.into()))?
+    let deadline = Instant::now() + timeout;
+    tokio::select! {
+        biased;
+        _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => {
+            Err(CtError::Transport(expired.into()))
+        }
+        result = watch(|| async { fetch().await.map(Poll::Terminal) }, config) => {
+            if Instant::now() >= deadline {
+                Err(CtError::Transport(expired.into()))
+            } else {
+                result
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -731,7 +739,7 @@ mod tests {
         assert!(renewal_wait(&lease) < Duration::from_secs(2));
     }
 
-    #[tokio::test]
+    #[tokio::test(start_paused = true)]
     async fn transport_retry_deadline_includes_a_slow_fetch() {
         let config = WatchConfig {
             base_delay: Duration::from_millis(1),
@@ -741,19 +749,22 @@ mod tests {
             max_transport_errors: 5,
             overall_timeout: Duration::from_secs(1),
         };
-        let started = Instant::now();
-        let result = retry_within(
-            || async {
-                tokio::time::sleep(Duration::from_millis(50)).await;
-                Ok::<(), CtError>(())
-            },
-            &config,
-            Duration::from_millis(5),
-            "worker transport retry deadline exceeded",
-        )
-        .await;
+        let task = tokio::spawn(async move {
+            retry_within(
+                || async {
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    Ok::<(), CtError>(())
+                },
+                &config,
+                Duration::from_millis(5),
+                "worker transport retry deadline exceeded",
+            )
+            .await
+        });
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_millis(60)).await;
+        let result = task.await.expect("retry task");
 
         assert!(matches!(result, Err(CtError::Transport(_))));
-        assert!(started.elapsed() < Duration::from_millis(40));
     }
 }

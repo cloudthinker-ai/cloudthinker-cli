@@ -21,7 +21,8 @@ cloudthinker
 | --- | --- |
 | Run the coding agent in the current directory | `cloudthinker` |
 | Ask Anna one question and pipe the answer | `cloudthinker chat -p "Check production health"` |
-| Follow a code review on a merge request or pull request | `cloudthinker review watch <MR_URL>` |
+| Review local Git changes with CloudThinker | `cloudthinker review [--base <REF>]` |
+| Follow a CloudThinker review on a merge request or pull request | `cloudthinker review watch <MR_URL>` |
 | Let CloudThinker conversations work in a local folder | `cloudthinker worker start --outpost <name> --workdir "$PWD"` |
 | Give a coding agent the CLI's usage guide | `cloudthinker --skill` |
 
@@ -110,7 +111,17 @@ server.
 
 ## Code review
 
-Inspect the CloudThinker review of a merge request or pull request by its URL:
+Review local changes through CloudThinker and print the findings in your terminal:
+
+```sh
+cloudthinker review                         # staged, unstaged, and untracked changes vs HEAD
+cloudthinker review --base origin/develop   # branch diff from the merge base, including dirty edits
+cloudthinker review --json                  # one machine-readable result on stdout
+```
+
+The command requires `cloudthinker login`. It starts the bundled local Pi agent in the checkout with read-only `read`, `grep`, `find`, and `ls` tools. CloudThinker supplies model inference, so model requests and responses pass through its gateway and normal observability traces. The local Pi transcript and findings are not mirrored as Agent CLI session entries or saved chat messages; the session metadata uses a generic title and cwd. Findings are validated against changed paths and lines and printed here. It does not create a source-control review, post comments, apply fixes, or change the Git index or worktree. `--timeout <secs>` limits the local agent run; rerun the command after a timeout.
+
+Inspect a CloudThinker review of a merge request or pull request by its URL:
 
 ```sh
 cloudthinker review status <MR_URL>

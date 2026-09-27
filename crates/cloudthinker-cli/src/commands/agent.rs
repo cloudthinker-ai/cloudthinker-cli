@@ -3,6 +3,7 @@
 use std::ffi::OsString;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 use cloudthinker_client::{
     CliIdentity, CtError, DEFAULT_RELEASE_BASE_URL, agent_bin_root, any_agent_installed,
@@ -85,6 +86,86 @@ async fn resolve_identity(
                 .map_err(|error| exit::report(&error))
         }
     }
+}
+
+pub(super) async fn run_local_review(
+    base_url: &str,
+    workspace: Option<&str>,
+    repository: &Path,
+    prompt: &str,
+    timeout: std::time::Duration,
+) -> Result<String, ExitCode> {
+    let identity = resolve_identity(base_url, workspace).await?;
+    let binary = resolve_binary()
+        .await
+        .map_err(|error| exit::report(&error))?;
+    let session_dir = tempfile::tempdir().map_err(|error| {
+        output::eprintln_error(&format!(
+            "could not create a temporary local agent session: {error}"
+        ));
+        ExitCode::JobFailed
+    })?;
+    let mut command = tokio::process::Command::new(&binary);
+    command
+        .current_dir(repository)
+        .args([
+            "--cloudthinker-local-review",
+            "--models",
+            "cloudthinker/*",
+            "--tools",
+            "read,grep,find,ls",
+            "--no-extensions",
+            "--no-skills",
+            "--no-context-files",
+            "--session-dir",
+        ])
+        .arg(session_dir.path())
+        .args(["--print", "-p", prompt])
+        .env(URL_ENV_VAR, base_url)
+        .env_remove(WORKSPACE_ENV_VAR)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    if !env_token_is_set() {
+        command.env(WORKSPACE_ENV_VAR, identity.workspace_id.to_string());
+    }
+    let child = command.spawn().map_err(|error| {
+        output::eprintln_error(&format!(
+            "could not run local CloudThinker agent {}: {error}",
+            binary.display()
+        ));
+        ExitCode::JobFailed
+    })?;
+    let result = tokio::time::timeout(timeout, child.wait_with_output()).await;
+    let output = match result {
+        Ok(Ok(output)) if output.status.success() => output,
+        Ok(Ok(output)) => {
+            let detail = String::from_utf8_lossy(&output.stderr);
+            output::eprintln_error(&format!(
+                "local CloudThinker agent failed: {}",
+                detail.trim()
+            ));
+            return Err(ExitCode::JobFailed);
+        }
+        Ok(Err(error)) => {
+            output::eprintln_error(&format!(
+                "could not wait for local CloudThinker agent: {error}"
+            ));
+            return Err(ExitCode::JobFailed);
+        }
+        Err(_) => {
+            output::eprintln_error(
+                "timed out waiting for the local CloudThinker agent; rerun the review to try again",
+            );
+            return Err(ExitCode::Timeout);
+        }
+    };
+    String::from_utf8(output.stdout).map_err(|error| {
+        output::eprintln_error(&format!(
+            "local CloudThinker agent returned non-UTF-8 output: {error}"
+        ));
+        ExitCode::JobFailed
+    })
 }
 
 async fn whoami(base_url: &str, workspace: Option<&str>) -> Result<CliIdentity, CtError> {

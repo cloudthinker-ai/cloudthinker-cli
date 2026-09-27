@@ -1,3 +1,9 @@
+## [0.7.3]
+
+- Review the local checkout with a bundled read-only Pi agent using CloudThinker inference; keep the prompt, transcript, findings, and rendered result local.
+- Confine the review agent's file tools to existing, non-ignored paths within the checkout and hide Git metadata and ignored paths from tool results.
+- Enforce worker transport retry deadlines even when fetch completion and the deadline become ready before the runtime is polled.
+
 ## [0.7.2]
 
 - The bundled agent now hides cloud read and write output until you press ctrl+o, so the chat shows what each command is for instead of its raw output.

@@ -273,6 +273,7 @@ export class CloudThinkerClient {
 		cwd: string;
 		title?: string;
 		source_conversation_id?: string;
+		skip_sandbox_warmup?: boolean;
 	}): Promise<SessionCreated> {
 		return this.json({
 			method: "POST",

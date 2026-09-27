@@ -216,6 +216,7 @@ pub fn execute(dir: &Dir, operation: &api::FileOperation) -> Result<Value, &'sta
         E::Conventions | E::ConventionChains => {
             json!({"convention_files":conventions(dir,path,r)?})
         }
+        E::WriteBatch => return Err("UNSUPPORTED_ENDPOINT"),
     };
     let mut result = result;
     if let Some(fields) = result.as_object_mut()

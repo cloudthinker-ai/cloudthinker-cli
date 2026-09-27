@@ -6,6 +6,7 @@
 
 use std::io::{self, IsTerminal, Write};
 
+use crate::engine::local_review::LocalReviewResult;
 use cloudthinker_client::{
     CliIdentity, ReviewFinding, ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView,
     RunListItem, RunStatus, RunView, SubmittedRun, worker_types::ExecutorChoicePublic,
@@ -319,6 +320,46 @@ pub fn print_review_findings(view: &ReviewView) -> Result<(), String> {
         )?;
     }
     Ok(())
+}
+
+pub fn print_local_review(result: &LocalReviewResult) -> Result<(), String> {
+    let mut out = std::io::stdout().lock();
+    if result.findings.is_empty() {
+        write_line(&mut out, "No findings.")?;
+    } else {
+        for finding in &result.findings {
+            write_line(
+                &mut out,
+                &format!(
+                    "[{}] {}:{} — {}",
+                    format!("{:?}", finding.severity).to_uppercase(),
+                    terminal_text(&finding.file),
+                    finding.line,
+                    terminal_text(&finding.title)
+                ),
+            )?;
+            write_line(
+                &mut out,
+                &format!("  {}", terminal_text(&finding.explanation)),
+            )?;
+            if !finding.suggested_fix.trim().is_empty() {
+                write_line(
+                    &mut out,
+                    &format!("  Suggested fix: {}", terminal_text(&finding.suggested_fix)),
+                )?;
+            }
+        }
+    }
+    write_line(
+        &mut out,
+        &format!(
+            "Reviewed {} changed file(s) with {} (base {}, head {}).",
+            result.changed_files,
+            terminal_text(&result.inference),
+            &result.base_sha[..result.base_sha.len().min(12)],
+            &result.head_sha[..result.head_sha.len().min(12)]
+        ),
+    )
 }
 
 fn review_status_label(status: ReviewStatus) -> &'static str {

@@ -11,6 +11,7 @@ import cloudthinker from "@cloudthinker/pi/src/index.ts";
 import { markStartup } from "@cloudthinker/pi/src/timing.ts";
 
 import { NO_SESSION_REFUSAL, applyGuard, hasNoSessionFlag } from "./guard.ts";
+import { isLocalReview, withoutLocalReviewFlag } from "./local-review-mode.ts";
 import { modelScopeArgs } from "./models.ts";
 import bundledSubagents from "./subagents.ts";
 import { bundledThemePaths, themeArgs } from "./theme.ts";
@@ -21,11 +22,13 @@ process.env.PI_CODING_AGENT = "true";
 process.env.AI_AGENT = "pi";
 process.env.PI_SKIP_VERSION_CHECK = "1";
 
-const argv = process.argv.slice(2);
-if (hasNoSessionFlag(argv)) {
+const rawArgs = process.argv.slice(2);
+if (hasNoSessionFlag(rawArgs)) {
 	process.stderr.write(`${NO_SESSION_REFUSAL}\n`);
 	process.exit(2);
 }
+const localReview = isLocalReview(rawArgs);
+const argv = withoutLocalReviewFlag(rawArgs);
 
 applyGuard();
 markStartup("agent.guard");
@@ -39,7 +42,7 @@ markStartup("agent.settings");
 
 await main([...themes, ...modelScopeArgs(argv), ...argv], {
 	extensionFactories: [
-		{ name: "cloudthinker", factory: cloudthinker },
-		{ name: "subagents", factory: bundledSubagents },
+		{ name: "cloudthinker", factory: (pi) => cloudthinker(pi, { localReview }) },
+		...(localReview ? [] : [{ name: "subagents", factory: bundledSubagents }]),
 	],
 });

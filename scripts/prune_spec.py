@@ -69,7 +69,11 @@ _CHAT_PATHS = frozenset(
     }
 )
 
-_REVIEW_PATHS = frozenset({"/api/v1/code-review/merge-requests/lookup"})
+_REVIEW_PATHS = frozenset(
+    {
+        "/api/v1/code-review/merge-requests/lookup",
+    }
+)
 
 ALLOWED_PATHS = (
     _OUTPOST_PATHS | _WORKER_PATHS | _LOGIN_PATHS | _CHAT_PATHS | _REVIEW_PATHS

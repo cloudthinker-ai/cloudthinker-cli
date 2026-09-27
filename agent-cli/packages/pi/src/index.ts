@@ -21,7 +21,7 @@ import {
 } from "./provider.ts";
 import { CLOUD_ENTRY_TYPE, CloudThinkerRuntime, describeError, detach } from "./runtime.ts";
 import { cloudDefaultEnabled, resolveCloudEnabled } from "./settings.ts";
-import { linkLazily, refreshConnections, refreshIdentity, startSession } from "./session.ts";
+import { linkLazily, refreshConnections, refreshIdentity, startLocalReviewSession, startSession } from "./session.ts";
 import { discoverSkillPaths, hasSkillIndex, refreshSkills } from "./skills.ts";
 import { markStartup } from "./timing.ts";
 import { TOUR_OFFER } from "./tour.ts";
@@ -30,6 +30,7 @@ import { registerSandboxRead } from "./tools/ct-sandbox-read.ts";
 import { registerSandboxWrite } from "./tools/ct-sandbox-write.ts";
 import { registerRunStatus } from "./tools/ct-run-status.ts";
 import { registerReadTaskOutput } from "./tools/read-task-output.ts";
+import { registerLocalReviewBoundary } from "./tools/local-review-boundary.ts";
 
 const SHUTDOWN_FLUSH_MS = 5_000;
 
@@ -41,12 +42,14 @@ export function sessionTitle(cwd: string, workspaceName: string | undefined): st
 
 export interface CloudThinkerSessionOptions {
 	cloudEnabled?: boolean;
+	localReview?: boolean;
 	sourceConversationId?: string;
 }
 
 export default async function cloudthinker(pi: ExtensionAPI, options: CloudThinkerSessionOptions = {}): Promise<void> {
 	const root = options.cloudEnabled === undefined && options.sourceConversationId === undefined;
 	const runtime = new CloudThinkerRuntime(pi, undefined, undefined, root);
+	const localReview = options.localReview === true;
 	const mirror = new SessionMirror(runtime.client, (status) =>
 		runtime.setStatus(formatMirrorStatus(status)),
 	);
@@ -61,12 +64,14 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 	const modelsUnavailable = await registerProvider(runtime);
 	markStartup("agent.models");
 	let modelsUnavailableAnnounced = false;
-	registerSandboxRead(runtime);
-	registerSandboxWrite(runtime);
-	registerReadTaskOutput(runtime);
-	registerAsk(runtime);
-	registerRunStatus(runtime);
-	registerCommands(runtime);
+	if (!localReview) {
+		registerSandboxRead(runtime);
+		registerSandboxWrite(runtime);
+		registerReadTaskOutput(runtime);
+		registerAsk(runtime);
+		registerRunStatus(runtime);
+		registerCommands(runtime);
+	}
 
 	const workspaceId = (): string | undefined =>
 		runtime.identity?.workspace_id ?? runtime.session?.workspace_id;
@@ -115,7 +120,7 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 			(entry) => entry.type === "custom" && entry.customType === CLOUD_ENTRY_TYPE,
 		);
 		const cloudData = cloudEntry?.type === "custom" ? cloudEntry.data as { enabled?: unknown } | undefined : undefined;
-		runtime.setCloudEnabled(resolveCloudEnabled(cloudData?.enabled, options.cloudEnabled, cloudDefaultEnabled(ctx.cwd, ctx.isProjectTrusted())), false);
+		runtime.setCloudEnabled(localReview ? false : resolveCloudEnabled(cloudData?.enabled, options.cloudEnabled, cloudDefaultEnabled(ctx.cwd, ctx.isProjectTrusted())), false);
 		if (options.cloudEnabled === false && cloudData?.enabled !== false) pi.appendEntry(CLOUD_ENTRY_TYPE, { enabled: false });
 		locations.reset();
 		if (ctx.mode === "tui") {
@@ -131,9 +136,14 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 				runtime.notify(modelsUnavailableMessage(modelsUnavailable), "error");
 			}
 		}
-		// A session that starts Cloud-off performs no remote startup work; its
-		// conversation link is established lazily on the first model turn.
-		if (runtime.cloudEnabled) {
+		if (localReview) {
+			try {
+				await startLocalReviewSession(runtime);
+			} catch (error) {
+				runtime.setStatus("✕ cloud unavailable");
+				runtime.notify(`CloudThinker review session could not be opened: ${describeError(error)}`, "error");
+			}
+		} else if (runtime.cloudEnabled) {
 			await startSession(runtime, event, ctx, options.sourceConversationId);
 		}
 		markStartup("agent.session_link");
@@ -155,12 +165,12 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 		}
 		const session = runtime.session;
 		if (!session) return;
-		await initializeLinked(ctx);
+		if (!localReview) await initializeLinked(ctx);
 		markStartup("agent.session_start");
 	});
 
 	pi.on("resources_discover", async () => ({
-		skillPaths: await discoverSkillPaths(workspaceId()),
+		skillPaths: localReview ? [] : await discoverSkillPaths(workspaceId()),
 	}));
 
 	pi.on("tool_result", (event) => {
@@ -169,6 +179,7 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 		if (!localMissingFile(body)) return;
 		return { content: [...event.content, { type: "text" as const, text: MISSING_LOCAL_FILE_HINT }] };
 	});
+	if (localReview) registerLocalReviewBoundary(pi);
 
 	pi.on("before_provider_headers", (event, ctx) => {
 		runtime.bind(ctx);
@@ -181,6 +192,10 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		runtime.bind(ctx);
+		if (localReview) {
+			if (!runtime.session) throw new Error("CloudThinker local review session is unavailable");
+			return { systemPrompt: event.systemPrompt };
+		}
 		if (!runtime.session) {
 			await linkLazily(runtime, ctx);
 			detach(() => refreshIdentity(runtime), silent);
@@ -193,18 +208,20 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 		};
 	});
 
-	pi.on("turn_end", (_event, ctx) => {
+	if (!localReview) pi.on("turn_end", (_event, ctx) => {
 		sync(ctx);
 		detach(() => locations.record(ctx.cwd), silent);
 	});
-	pi.on("agent_end", (_event, ctx) => {
+	if (!localReview) pi.on("agent_end", (_event, ctx) => {
 		sync(ctx);
 		credits.refresh();
 	});
-	pi.on("session_compact", (_event, ctx) => sync(ctx));
-	pi.on("session_tree", (_event, ctx) => sync(ctx));
+	if (!localReview) {
+		pi.on("session_compact", (_event, ctx) => sync(ctx));
+		pi.on("session_tree", (_event, ctx) => sync(ctx));
+	}
 
-	pi.on("session_shutdown", async (_event, ctx) => {
+	if (!localReview) pi.on("session_shutdown", async (_event, ctx) => {
 		runtime.bind(ctx);
 		await withinBudget(
 			mirror.flush(ctx.sessionManager.getEntries()).catch(silent),

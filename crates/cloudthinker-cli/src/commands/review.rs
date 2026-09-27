@@ -1,16 +1,108 @@
-//! `cloudthinker review` — inspect or watch a tracked code review by pasting
-//! its GitLab/GitHub merge-request URL. Never triggers a review; reads one
-//! already tracked server-side (`plans/product-cli-mr-f-review.md`).
-
 use std::time::Duration;
 
 use cloudthinker_client::{CtError, ReviewStatus, ReviewView, parse_mr_url};
 
 use crate::engine::exit::{self, ExitCode};
+use crate::engine::local_review::{self, ReviewScope};
 use crate::engine::output::{self, ReviewEnvelope};
 use crate::engine::watch::{Poll, WatchConfig, watch};
 
 use super::build_client;
+
+pub struct LocalReviewOptions<'a> {
+    pub base_url: &'a str,
+    pub workspace: Option<&'a str>,
+    pub base_ref: Option<&'a str>,
+    pub json: bool,
+    pub timeout_secs: u64,
+}
+
+pub async fn run_local(options: LocalReviewOptions<'_>) -> ExitCode {
+    let cwd = match std::env::current_dir() {
+        Ok(cwd) => cwd,
+        Err(error) => {
+            output::eprintln_error(&format!(
+                "could not determine the current directory: {error}"
+            ));
+            return ExitCode::JobFailed;
+        }
+    };
+    let review_scope = ReviewScope {
+        base_ref: options.base_ref.map(str::to_string),
+    };
+    let snapshot = match local_review::collect_snapshot(&cwd, review_scope.clone()) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            output::eprintln_error(&error.to_string());
+            return if error.is_usage() {
+                ExitCode::Usage
+            } else {
+                ExitCode::JobFailed
+            };
+        }
+    };
+    let scope = options.base_ref.map_or_else(
+        || "the worktree delta against HEAD".to_string(),
+        |base| format!("the merge-base with {base}"),
+    );
+    output::progress(&format!(
+        "Reviewing {} changed file(s) from {scope} with a local read-only agent; CloudThinker provides inference and findings stay in this terminal.",
+        snapshot.changed_file_count
+    ));
+    let prompt = local_review::build_review_prompt(&snapshot);
+    let answer = match super::agent::run_local_review(
+        options.base_url,
+        options.workspace,
+        &snapshot.repository,
+        &prompt,
+        Duration::from_secs(options.timeout_secs),
+    )
+    .await
+    {
+        Ok(answer) => answer,
+        Err(code) => return code,
+    };
+    let current = match local_review::collect_snapshot(&cwd, review_scope) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            output::eprintln_error(&error.to_string());
+            return ExitCode::JobFailed;
+        }
+    };
+    if current.base_sha != snapshot.base_sha
+        || current.head_sha != snapshot.head_sha
+        || current.diff != snapshot.diff
+    {
+        output::eprintln_error(
+            "the review scope changed while the agent was working; rerun the review",
+        );
+        return ExitCode::JobFailed;
+    }
+    let findings = match local_review::parse_agent_answer(&answer) {
+        Ok(findings) => findings,
+        Err(error) => {
+            output::eprintln_error(&error);
+            return ExitCode::JobFailed;
+        }
+    };
+    let result = match local_review::validate_result(&snapshot, findings) {
+        Ok(result) => result,
+        Err(error) => {
+            output::eprintln_error(&error);
+            return ExitCode::JobFailed;
+        }
+    };
+    let rendered = if options.json {
+        output::emit_json(&result)
+    } else {
+        output::print_local_review(&result)
+    };
+    if let Err(error) = rendered {
+        output::eprintln_error(&error);
+        return ExitCode::JobFailed;
+    }
+    ExitCode::Ok
+}
 
 /// Show a review's current status. A read: exits 0 on any successful fetch —
 /// the review's own status/verdict is advisory, not failure (CA-RV-SP5,

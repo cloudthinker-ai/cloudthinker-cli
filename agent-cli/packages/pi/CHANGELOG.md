@@ -1,3 +1,7 @@
+## [0.7.3]
+
+- Add a local review session mode that uses CloudThinker inference without mirroring local review content, and confine its file tools and results to existing, non-ignored paths inside the checkout.
+
 ## [0.7.2]
 
 - A collapsed `ct_sandbox_read` or `ct_sandbox_write` result now shows only the reasoning and a line count; press ctrl+o to see the output. An error result still previews its last lines.

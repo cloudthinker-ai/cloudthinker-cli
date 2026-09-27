@@ -1,3 +1,8 @@
+## [0.7.3]
+
+- Add a private local review launch mode that runs without cloud tools or subagents.
+- Add `/exit`, `/clear`, and `/config` aliases for `/quit`, `/new`, and `/settings` in the interactive agent.
+
 ## [0.7.1]
 
 - Render Markdown tables in the terminal with open columns and restrained separators.

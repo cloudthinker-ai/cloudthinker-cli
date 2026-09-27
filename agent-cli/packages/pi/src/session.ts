@@ -5,6 +5,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 
 import type { SessionCreated } from "./client.ts";
+import { pinProviderWorkspace } from "./provider.ts";
 import {
 	ASK_THREAD_ENTRY_TYPE,
 	type AskThread,
@@ -111,6 +112,21 @@ export async function startSession(
 			"error",
 		);
 	}
+}
+
+export async function startLocalReviewSession(
+	runtime: CloudThinkerRuntime,
+): Promise<SessionCreated> {
+	const created = await runtime.client.createSession({
+		cwd: "local-review",
+		title: "Local code review",
+		skip_sandbox_warmup: true,
+	});
+	runtime.session = created;
+	runtime.setAutoMode(autoModeFrom(created));
+	pinProviderWorkspace(runtime, created.workspace_id);
+	runtime.pi.appendEntry(SESSION_ENTRY_TYPE, created);
+	return created;
 }
 
 export async function linkLazily(

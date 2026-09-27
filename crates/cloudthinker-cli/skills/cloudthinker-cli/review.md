@@ -1,4 +1,24 @@
-# Inspect a tracked code review
+# Review local changes or inspect a tracked review
+
+## Review the current worktree locally
+
+```bash
+cloudthinker review
+cloudthinker review --base origin/develop --json
+```
+
+Bare `review` checks staged, unstaged, and non-ignored untracked changes against `HEAD`. `--base`
+checks from the merge base with that ref and includes dirty edits. This path requires CloudThinker
+login and starts the bundled Pi agent in the local checkout with read-only `read`, `grep`, `find`,
+and `ls` tools. CloudThinker supplies model inference, so requests and responses pass through its normal gateway observability. Local Pi entries and findings are not mirrored as Agent CLI session entries or saved chat messages. Findings are validated and printed by the CLI. It does not create
+a source-control review, post comments, edit files, or change the Git index. A clean result means
+the model returned no findings; it is not a guarantee that the change is defect-free.
+
+When the scope is empty, the base cannot resolve, authentication fails, CloudThinker is unavailable,
+or the model response is invalid, report the error as a failed review. Do not turn an incomplete
+review into a clean result. A timeout stops the local agent; rerun the review to try again.
+
+## Inspect a tracked review
 
 Read this module when checking review progress or findings for a merge request or pull request. Establish the intended identity using the auth module before the first authenticated command.
 

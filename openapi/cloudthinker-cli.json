@@ -1260,6 +1260,25 @@
         "title": "ExecutorScope",
         "type": "string"
       },
+      "FileBatchEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "file_path": {
+            "title": "File Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "content"
+        ],
+        "title": "FileBatchEntry",
+        "type": "object"
+      },
       "FileContent": {
         "additionalProperties": false,
         "properties": {
@@ -1321,7 +1340,8 @@
           "rename",
           "conventions",
           "convention_chains",
-          "glob_read"
+          "glob_read",
+          "write_batch"
         ],
         "title": "FileEndpoint",
         "type": "string"
@@ -1453,6 +1473,14 @@
             "nullable": true,
             "title": "File Type",
             "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileBatchEntry"
+            },
+            "nullable": true,
+            "title": "Files",
+            "type": "array"
           },
           "follow_symlinks": {
             "nullable": true,

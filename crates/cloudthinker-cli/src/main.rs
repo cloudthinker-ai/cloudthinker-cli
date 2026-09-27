@@ -37,7 +37,7 @@ const DEFAULT_TIMEOUT_SECS: u64 = 2400;
 #[command(
     name = "cloudthinker",
     version,
-    about = "CloudThinker CLI — headless chat with Anna",
+    about = "CloudThinker CLI — chat, local code review, and developer workflows",
     disable_help_subcommand = true,
     after_help = "Agent guidance: cloudthinker --skill (then --skill <module> as needed)."
 )]
@@ -76,7 +76,7 @@ enum Command {
     Auth(AuthArgs),
     /// Send a headless prompt to Anna, or check a run's status.
     Chat(ChatArgs),
-    /// Inspect or watch a tracked code review by its merge-request URL.
+    /// Review local changes or inspect a tracked review by its merge-request URL.
     Review(ReviewArgs),
     /// Update `cloudthinker` to the latest GitHub release.
     Update(UpdateArgs),
@@ -187,9 +187,25 @@ enum ChatSub {
 }
 
 #[derive(Debug, Args)]
+#[command(
+    args_conflicts_with_subcommands = true,
+    after_help = "Examples:\n  cloudthinker review\n  cloudthinker review --base origin/develop\n  cloudthinker review --json --timeout 300\n  cloudthinker review status <MR_URL> --json"
+)]
 struct ReviewArgs {
     #[command(subcommand)]
-    command: ReviewSub,
+    command: Option<ReviewSub>,
+
+    /// Review changes since the merge base with this ref, including dirty edits.
+    #[arg(long)]
+    base: Option<String>,
+
+    /// Emit one JSON result object on stdout.
+    #[arg(long)]
+    json: bool,
+
+    /// Stop the local review agent after this many seconds.
+    #[arg(long, default_value_t = DEFAULT_TIMEOUT_SECS, value_parser = clap::value_parser!(u64).range(1..=7200))]
+    timeout: u64,
 }
 
 #[derive(Debug, Subcommand)]
@@ -256,13 +272,13 @@ async fn dispatch(cli: Cli) -> ExitCode {
     }
     let base_url = cli.url;
     let workspace = cli.workspace;
+    let command = cli
+        .command
+        .unwrap_or_else(|| Command::Agent(AgentArgs { args: Vec::new() }));
     if workspace.is_some() && commands::env_token_is_set() {
         engine::output::eprintln_error("--workspace cannot be used with CLOUDTHINKER_TOKEN");
         return ExitCode::Usage;
     }
-    let command = cli
-        .command
-        .unwrap_or_else(|| Command::Agent(AgentArgs { args: Vec::new() }));
     if workspace.is_some() && matches!(&command, Command::Login(_)) {
         engine::output::eprintln_error(
             "--workspace selects stored credentials and cannot be used with login",
@@ -329,17 +345,27 @@ async fn dispatch(cli: Cli) -> ExitCode {
             },
         },
         Command::Review(args) => match args.command {
-            ReviewSub::Status { mr_url, json } => {
+            None => {
+                commands::review::run_local(commands::review::LocalReviewOptions {
+                    base_url: &base_url,
+                    workspace: workspace.as_deref(),
+                    base_ref: args.base.as_deref(),
+                    json: args.json,
+                    timeout_secs: args.timeout,
+                })
+                .await
+            }
+            Some(ReviewSub::Status { mr_url, json }) => {
                 commands::review::run_status(&base_url, workspace.as_deref(), &mr_url, json).await
             }
-            ReviewSub::Findings { mr_url, json } => {
+            Some(ReviewSub::Findings { mr_url, json }) => {
                 commands::review::run_findings(&base_url, workspace.as_deref(), &mr_url, json).await
             }
-            ReviewSub::Watch {
+            Some(ReviewSub::Watch {
                 mr_url,
                 json,
                 timeout,
-            } => {
+            }) => {
                 commands::review::run_watch(&base_url, workspace.as_deref(), &mr_url, json, timeout)
                     .await
             }

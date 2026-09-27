@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+	COMMAND_ALIASES,
 	DISABLED_COMMANDS,
 	SESSION_REPLACEMENT,
 	SHARE_STATUS,
@@ -11,6 +12,8 @@ import {
 	hasNoSessionFlag,
 	interactiveModePrototype,
 	removeDisabledCommands,
+	registerCommandAliases,
+	rewrittenCommand,
 	wrapSubmitHandler,
 } from "../src/guard.ts";
 
@@ -84,6 +87,44 @@ test("the wrapped handler swallows the disabled commands and delegates the rest"
 	assert.equal(host.cleared, 3);
 });
 
+test("slash aliases rewrite only exact command input", () => {
+	assert.deepEqual(
+		COMMAND_ALIASES.map(({ alias, target }) => [alias, target]),
+		[
+			["exit", "quit"],
+			["clear", "new"],
+			["config", "settings"],
+		],
+	);
+	assert.equal(rewrittenCommand(" /exit "), "/quit");
+	assert.equal(rewrittenCommand("/clear"), "/new");
+	assert.equal(rewrittenCommand("/config"), "/settings");
+	assert.equal(rewrittenCommand("/exit now"), undefined);
+	assert.equal(rewrittenCommand("please /clear"), undefined);
+});
+
+test("aliases dispatch through Pi's real built-in command handler", async () => {
+	const actions: string[] = [];
+	const host = Object.assign(fakeHost(), {
+		showSettingsSelector: () => actions.push("settings"),
+		handleClearCommand: async () => actions.push("new"),
+		shutdown: async () => actions.push("quit"),
+	});
+	const prototype = { setupEditorSubmitHandler: interactiveModePrototype().setupEditorSubmitHandler };
+	wrapSubmitHandler(prototype);
+	prototype.setupEditorSubmitHandler?.call(host);
+	const submit = host.defaultEditor.onSubmit;
+	assert.ok(submit);
+
+	await submit("/config");
+	await submit("/clear");
+	await submit("/exit");
+
+	assert.deepEqual(actions, ["settings", "new", "quit"]);
+	assert.deepEqual(host.delivered, []);
+	assert.equal(host.cleared, 6);
+});
+
 test("a missing submit handler fails loudly instead of silently leaving the commands live", () => {
 	assert.throws(() => wrapSubmitHandler({}), /setupEditorSubmitHandler/);
 });
@@ -102,6 +143,16 @@ test("only the disabled names are spliced out of a command list", () => {
 	);
 });
 
+test("command aliases appear in Pi's slash-command picker", () => {
+	const commands = ["quit", "new", "settings"].map((name) => ({ name }));
+	registerCommandAliases(commands);
+	assert.deepEqual(
+		commands.map(({ name }) => name),
+		["quit", "new", "settings", "exit", "clear", "config"],
+	);
+	assert.throws(() => registerCommandAliases([{ name: "quit" }]), /no longer offers \/new/);
+});
+
 test("the guard takes the two commands off the installed pi and then refuses to run twice", () => {
 	applyGuard();
 	const offered = builtinSlashCommands().map((command) => command.name);
@@ -109,6 +160,7 @@ test("the guard takes the two commands off the installed pi and then refuses to 
 		assert.equal(offered.includes(name), false);
 	}
 	assert.ok(offered.includes("model"));
+	for (const { alias } of COMMAND_ALIASES) assert.ok(offered.includes(alias));
 	assert.throws(() => applyGuard(), /BUILTIN_SLASH_COMMANDS/);
 });
 

@@ -17,6 +17,16 @@ export const THINKING_STATUS =
 	"/thinking is disabled: the agent mode you pick with /model carries its own thinking level.";
 export const SESSION_COMMAND = "/session";
 export const SESSION_REPLACEMENT = `/${PRODUCT_NAME} session`;
+export const COMMAND_ALIASES = [
+	{ alias: "exit", target: "quit", description: "Exit the agent (alias for /quit)" },
+	{ alias: "clear", target: "new", description: "Start a new session (alias for /new)" },
+	{ alias: "config", target: "settings", description: "Open settings (alias for /settings)" },
+] as const;
+
+export interface SlashCommand {
+	name: string;
+	description?: string;
+}
 
 export type SubmitHandler = (text: string) => unknown;
 
@@ -37,7 +47,10 @@ export function hasNoSessionFlag(argv: string[]): boolean {
 }
 
 export function rewrittenCommand(text: string): string | undefined {
-	return text.trim() === SESSION_COMMAND ? SESSION_REPLACEMENT : undefined;
+	const trimmed = text.trim();
+	if (trimmed === SESSION_COMMAND) return SESSION_REPLACEMENT;
+	const alias = COMMAND_ALIASES.find((entry) => trimmed === `/${entry.alias}`);
+	return alias ? `/${alias.target}` : undefined;
 }
 
 export function disabledCommandStatus(text: string): string | undefined {
@@ -80,7 +93,7 @@ export function wrapSubmitHandler(prototype: SubmitHostPrototype): void {
 	};
 }
 
-export function removeDisabledCommands(commands: { name: string }[]): string[] {
+export function removeDisabledCommands(commands: SlashCommand[]): string[] {
 	const removed: string[] = [];
 	for (let index = commands.length - 1; index >= 0; index -= 1) {
 		const command = commands[index];
@@ -92,12 +105,25 @@ export function removeDisabledCommands(commands: { name: string }[]): string[] {
 	return removed;
 }
 
+export function registerCommandAliases(commands: SlashCommand[]): void {
+	const names = new Set(commands.map((command) => command.name));
+	for (const alias of COMMAND_ALIASES) {
+		if (!names.has(alias.target)) {
+			throw new Error(`pi no longer offers /${alias.target}, so /${alias.alias} cannot be registered`);
+		}
+		if (!names.has(alias.alias)) {
+			commands.push({ name: alias.alias, description: alias.description });
+			names.add(alias.alias);
+		}
+	}
+}
+
 export function interactiveModePrototype(): SubmitHostPrototype {
 	return InteractiveMode.prototype as unknown as SubmitHostPrototype;
 }
 
-export function builtinSlashCommands(): { name: string }[] {
-	return BUILTIN_SLASH_COMMANDS as unknown as { name: string }[];
+export function builtinSlashCommands(): SlashCommand[] {
+	return BUILTIN_SLASH_COMMANDS as unknown as SlashCommand[];
 }
 
 export function applyGuard(): void {
@@ -108,6 +134,7 @@ export function applyGuard(): void {
 			`pi's BUILTIN_SLASH_COMMANDS no longer offers ${DISABLED_COMMANDS.join(" and ")}, so the guard removed only ${removed.length}`,
 		);
 	}
+	registerCommandAliases(builtinSlashCommands());
 	applyReasoningUiGuard();
 	applyAwarenessUi();
 	applyStartupUi();
