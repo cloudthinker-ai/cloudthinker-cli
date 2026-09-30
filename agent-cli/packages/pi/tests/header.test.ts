@@ -207,7 +207,10 @@ test("an unknown palette color falls back to the dark stops instead of crashing"
 	assert.deepEqual(rows.map(stripVTControlCharacters), renderLogo(plain, true));
 });
 
-test("the wide header stacks the gradient wordmark above the identity lines", () => {
+test("the wide header stacks the gradient wordmark above the identity lines", (t) => {
+	const previous = process.env.NO_COLOR;
+	t.after(() => { if (previous === undefined) delete process.env.NO_COLOR; else process.env.NO_COLOR = previous; });
+	delete process.env.NO_COLOR;
 	const header = formatHeaderText(
 		{ link: "linked", workspaceName: "acme-prod", userEmail: "dev@acme.io", webUrl: "https://app.cloudthinker.io/chat/c-1" },
 		versions, plain, { compact: "", expanded: "", more: "" }, false, 80);

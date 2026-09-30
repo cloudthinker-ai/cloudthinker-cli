@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 import test from "node:test";
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { ModelRuntime, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 import { CloudThinkerClient, TokenSource } from "../src/client.ts";
 import {
@@ -151,6 +154,14 @@ test("the token spec is pinned by the environment until a session names the work
 	);
 });
 
+test("the token spec runs the wrapper's own binary", () => {
+	assert.equal(
+		apiKeySpec(WORKSPACE_SESSION, { CLOUDTHINKER_BIN: "/home/u/.cargo/bin/cloudthinker" }),
+		`!/home/u/.cargo/bin/cloudthinker auth token --workspace ${WORKSPACE_SESSION}`,
+	);
+	assert.equal(apiKeySpec(undefined, { CLOUDTHINKER_BIN: "/x y/cloudthinker" }), "!cloudthinker auth token");
+});
+
 test("a workspace that is not a UUID never reaches the token shell command", () => {
 	assert.equal(apiKeySpec("ws; touch /tmp/pwned", {}), "!cloudthinker auth token");
 	assert.equal(apiKeySpec(undefined, { CLOUDTHINKER_WORKSPACE: "$(id)" }), "!cloudthinker auth token");
@@ -160,8 +171,10 @@ test("a workspace that is not a UUID never reaches the token shell command", () 
 test("the session's workspace re-registers the provider without listing the modes again", async () => {
 	const token = process.env.CLOUDTHINKER_TOKEN;
 	const workspace = process.env.CLOUDTHINKER_WORKSPACE;
+	const binary = process.env.CLOUDTHINKER_BIN;
 	delete process.env.CLOUDTHINKER_TOKEN;
 	delete process.env.CLOUDTHINKER_WORKSPACE;
+	delete process.env.CLOUDTHINKER_BIN;
 	let listings = 0;
 	const server = await startFakeServer((request) => {
 		if (request.path !== "/api/v1/agent-cli/models") return undefined;
@@ -187,6 +200,7 @@ test("the session's workspace re-registers the provider without listing the mode
 	} finally {
 		if (token !== undefined) process.env.CLOUDTHINKER_TOKEN = token;
 		if (workspace !== undefined) process.env.CLOUDTHINKER_WORKSPACE = workspace;
+		if (binary !== undefined) process.env.CLOUDTHINKER_BIN = binary;
 		await server.close();
 	}
 });
@@ -203,5 +217,30 @@ test("a failed model listing leaves the workspace pin nothing to register", asyn
 		assert.deepEqual(registrations, []);
 	} finally {
 		await server.close();
+	}
+});
+
+test("a failed stored auth command is retried and can recover", async () => {
+	const bin = mkdtempSync(join(tmpdir(), "pi-provider-auth-"));
+	const previousPath = process.env.PATH;
+	const previousAnthropicKey = process.env.ANTHROPIC_API_KEY;
+	process.env.PATH = `${bin}${delimiter}${previousPath ?? ""}`;
+	delete process.env.ANTHROPIC_API_KEY;
+	const cloudCommand = "!ct-cloudthinker-auth";
+	const authPath = join(bin, "auth.json");
+	writeFileSync(authPath, JSON.stringify({ anthropic: { type: "api_key", key: cloudCommand } }));
+	const models = await ModelRuntime.create({ authPath, modelsPath: null, refreshOnCreate: false });
+	try {
+		assert.equal(await models.getAuth("anthropic"), undefined);
+		const commandPath = join(bin, cloudCommand.slice(1));
+		writeFileSync(commandPath, "#!/bin/sh\nprintf 'resolved-token\\n'\n");
+		chmodSync(commandPath, 0o700);
+		assert.equal((await models.getAuth("anthropic"))?.auth.apiKey, "resolved-token");
+	} finally {
+		if (previousPath === undefined) delete process.env.PATH;
+		else process.env.PATH = previousPath;
+		if (previousAnthropicKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+		else process.env.ANTHROPIC_API_KEY = previousAnthropicKey;
+		rmSync(bin, { recursive: true, force: true });
 	}
 });

@@ -4,16 +4,17 @@
 //! login, token storage/refresh, and the `CtError` taxonomy. Future TUI/MCP
 //! surfaces reuse this crate unchanged.
 
-// Tests lean on unwrap/expect/panic for fixture setup and assertions; the deny
-// lints stay in force for all non-test code.
-#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
-
 mod agent_release;
 pub mod auth;
+mod cli_config;
 mod client;
+pub mod cyber_run_guard;
+mod discovery;
 mod error;
 mod outposts;
+mod retry;
 mod review_url;
+mod toolpack;
 pub mod worker_api;
 pub use cloudthinker_api::types as worker_types;
 mod update_cache;
@@ -29,14 +30,29 @@ pub use auth::device::wait_for_device_token;
 pub use auth::pkce::{Loopback, PkceChallenge, consent_url};
 pub use auth::refresh::{PROACTIVE_REFRESH_SKEW_SECS, RefreshCoordinator};
 pub use auth::store::{
-    CredentialProvenance, CredentialSource, EnvTokenStore, FileStore, StoredToken, TOKEN_ENV_VAR,
-    TokenStore, WorkspaceSelector,
+    CredentialProvenance, CredentialSource, EnvTokenStore, FileStore, StoredToken, StoredWorkspace,
+    TOKEN_ENV_VAR, TokenStore, WorkspaceSelector,
 };
+pub use cli_config::{CliConfig, cli_config_path, effective_default_url, resolve_base_url};
 pub use client::{
-    CliIdentity, CtClient, DeviceAuthorization, DeviceTokenPoll, ReviewFinding,
-    ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView, RunListItem, RunStatus, RunView,
-    SubmittedRun, origin_of, persistent_store, resolve_store,
+    CliIdentity, Coverage, CoverageReport, CoverageRow, CoverageStatus, CtClient, CyberApp,
+    CyberDiscoveryTarget, CyberDomain, CyberExecutionHost, CyberExport, CyberFinding,
+    CyberFindingPage, CyberFindingStatus, CyberIntensity, CyberMemoryContextSource,
+    CyberMemoryFile, CyberMemorySnapshot, CyberMode, CyberRun, CyberRunBrief, CyberRunResult,
+    CyberSessionEntry, CyberSeverity, CyberTriageState, DEFAULT_BASE_URL, DeviceAuthorization,
+    DeviceTokenPoll, EvidenceFile, EvidenceReceipt, EvidenceSkipped, FindingFilter,
+    LocalCyberWorkspace, LogoutOutcome, Observation, Partition, PlanCheck, ProbeOutcome,
+    ReviewFinding, ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView, RunListItem,
+    RunStatus, RunView, SettleResult, Shard, SubmittedRun, Surface, WorkPlan, login_command,
+    origin_of, persistent_store, resolve_store,
 };
-pub use error::{CtError, CtResult};
+pub use cyber_run_guard::{wait_for_run_stop, while_run_running};
+pub use discovery::{
+    CyberDiscoveryArtifacts, CyberDiscoveryCollectorHealth, CyberDiscoveryHealth,
+    CyberDiscoveryManifest, cyber_discovery_artifacts, cyber_discovery_auth_value,
+    cyber_discovery_identity_manifest, cyber_discovery_redact,
+};
+pub use error::{CtError, CtResult, is_retryable_status};
 pub use review_url::{MrCoordinates, MrProvider, parse_mr_url};
+pub use toolpack::{install_tool, installed_tool_binary, tool_install_dir, tools_bin_root};
 pub use update_cache::{UpdateCache, update_cache_path};

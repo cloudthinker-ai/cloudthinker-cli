@@ -1,7 +1,9 @@
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 export const DEFAULT_BASE_URL = "https://app.cloudthinker.io";
-export const TOKEN_COMMAND = "cloudthinker auth token";
+const TOKEN_COMMAND_TIMEOUT_MS = 120_000;
+const SAFE_BINARY_PATH = /^\/[A-Za-z0-9._\/+-]+$/;
 
 export class CloudThinkerApiError extends Error {
 	readonly status: number;
@@ -18,12 +20,31 @@ export interface CommandResult {
 	stdout: string;
 }
 
-export type CommandRunner = (command: string, args: string[]) => CommandResult;
+export type CommandRunner = (command: string, args: string[]) => Promise<CommandResult>;
 
-const runCommand: CommandRunner = (command, args) => {
-	const result = spawnSync(command, args, { encoding: "utf8", timeout: 20_000 });
-	return { status: result.status, stdout: result.stdout ?? "" };
+const execFileAsync = promisify(execFile);
+const runCommand: CommandRunner = async (command, args) => {
+	try {
+		const result = await execFileAsync(command, args, { encoding: "utf8", timeout: TOKEN_COMMAND_TIMEOUT_MS });
+		return { status: 0, stdout: result.stdout };
+	} catch (error) {
+		const code = error && typeof error === "object" && "code" in error ? error.code : null;
+		const stdout = error && typeof error === "object" && "stdout" in error ? error.stdout : "";
+		return {
+			status: typeof code === "number" ? code : null,
+			stdout: typeof stdout === "string" ? stdout : "",
+		};
+	}
 };
+
+export function tokenBinary(env: NodeJS.ProcessEnv = process.env): string {
+	const configured = env.CLOUDTHINKER_BIN?.trim();
+	return configured && SAFE_BINARY_PATH.test(configured) ? configured : "cloudthinker";
+}
+
+export function tokenCommand(env: NodeJS.ProcessEnv = process.env): string {
+	return `${tokenBinary(env)} auth token`;
+}
 
 export function tokenCommandArgs(env: NodeJS.ProcessEnv = process.env): string[] {
 	const workspace = env.CLOUDTHINKER_WORKSPACE?.trim();
@@ -38,6 +59,7 @@ export function resolveBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
 
 export class TokenSource {
 	private cached: string | undefined;
+	private pending: Promise<string> | undefined;
 	private readonly env: NodeJS.ProcessEnv;
 	private readonly run: CommandRunner;
 
@@ -50,25 +72,34 @@ export class TokenSource {
 		return (this.env.CLOUDTHINKER_TOKEN?.trim() ?? "").length > 0;
 	}
 
-	resolve(): string {
+	async resolve(): Promise<string> {
 		const configured = this.env.CLOUDTHINKER_TOKEN?.trim();
 		if (configured) return configured;
 		if (this.cached) return this.cached;
+		if (this.pending) return this.pending;
 		const args = tokenCommandArgs(this.env);
-		const result = this.run("cloudthinker", args);
-		const token = result.stdout.trim();
-		if (result.status !== 0 || token.length === 0) {
-			throw new CloudThinkerApiError(
-				401,
-				`\`cloudthinker ${args.join(" ")}\` exited with code ${result.status ?? "null"}. Run \`cloudthinker login\`.`,
-			);
+		const pending = (async () => {
+			const result = await this.run(tokenBinary(this.env), args);
+			const token = result.stdout.trim();
+			if (result.status !== 0 || token.length === 0) {
+				throw new CloudThinkerApiError(
+					401,
+					`\`cloudthinker ${args.join(" ")}\` exited with code ${result.status ?? "null"}. Run \`cloudthinker login\`.`,
+				);
+			}
+			this.cached = token;
+			return token;
+		})();
+		this.pending = pending;
+		try {
+			return await pending;
+		} finally {
+			if (this.pending === pending) this.pending = undefined;
 		}
-		this.cached = token;
-		return token;
 	}
 
-	invalidate(): void {
-		this.cached = undefined;
+	invalidate(rejectedToken?: string): void {
+		if (rejectedToken === undefined || this.cached === rejectedToken) this.cached = undefined;
 	}
 }
 
@@ -473,21 +504,22 @@ export class CloudThinkerClient {
 	}
 
 	private async send(options: CallOptions): Promise<Response> {
-		const response = await this.attempt(options);
+		const token = await this.tokens.resolve();
+		const response = await this.attempt(options, token);
 		if (response.status === 401 && !this.tokens.fromEnvironment) {
-			this.tokens.invalidate();
-			return this.checked(await this.attempt(options));
+			this.tokens.invalidate(token);
+			return this.checked(await this.attempt(options, await this.tokens.resolve()));
 		}
 		return this.checked(response);
 	}
 
-	private async attempt(options: CallOptions): Promise<Response> {
+	private async attempt(options: CallOptions, token: string): Promise<Response> {
 		const url = new URL(`${this.apiUrl}${options.path}`);
 		for (const [key, value] of Object.entries(options.query ?? {})) {
 			if (value !== undefined) url.searchParams.set(key, String(value));
 		}
 		const headers: Record<string, string> = {
-			Authorization: `Bearer ${this.tokens.resolve()}`,
+			Authorization: `Bearer ${token}`,
 			Accept: "application/json",
 		};
 		if (options.body !== undefined) headers["Content-Type"] = "application/json";

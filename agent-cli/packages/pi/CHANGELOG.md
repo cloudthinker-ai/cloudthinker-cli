@@ -1,3 +1,15 @@
+## Additional changes for 0.7.6
+
+- Replace the fixed tour command with a bundled /skill:tour that explains Local and Cloud and helps users choose a first task.
+
+## [0.7.6]
+
+- The agent asks the `cloudthinker` binary that started it for a token, instead of the first `cloudthinker` on `PATH`, and waits up to 2 minutes for a token refresh to finish.
+- Route local pentest requests through the Cyber skill and the shared workflow runner, with session-bound runs and progress in the terminal.
+- Resolve API credentials without blocking the terminal client, sharing concurrent refreshes and preserving safe failure messages.
+- Distinguish local files from cloud workspace files and remote paths returned by APIs.
+- Direct local shell searches to `rg` for contents and `fd` for file and directory names in the internal system prompt, with Cloud on or off; use scoped searches with ignore rules and fall back only when the preferred command is unavailable.
+
 ## [0.7.4]
 
 - Upgrade fflate to 0.8.3 so a malformed ZIP64 skill archive cannot hang skill sync (GHSA-px8p-9vwx-vf98).

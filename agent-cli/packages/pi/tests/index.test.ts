@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { loadSkills, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 import { CLOUD_ENTRY_TYPE, CloudThinkerRuntime, SESSION_ENTRY_TYPE } from "../src/runtime.ts";
 import { machineBarLines, TAG_LEGEND } from "../src/awareness.ts";
@@ -246,7 +246,7 @@ test("CA-AWARE-10: a brand-new TUI session offers the tour in one line and never
 	const { pi, handlers, dispose } = piHarness();
 	process.env.CLOUDTHINKER_URL = server.origin;
 	process.env.CLOUDTHINKER_TOKEN = "t";
-	const OFFER = "New here? /tour shows which machine runs what";
+	const OFFER = "New here? /skill:tour helps you get started with Local and Cloud";
 	const count = (notices: string[]) => notices.filter((message) => message === OFFER).length;
 	const history = [{ type: "message", id: "m1", parentId: null, timestamp: "", message: { role: "user", content: "hi" } }];
 	try {
@@ -342,6 +342,11 @@ test("CA-CLOUD-10: cloud off by default starts nothing remote, and /cloud on ini
 		await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, ctx);
 		await settle();
 		assert.deepEqual(remote(), []);
+		assert.equal(commands.has("tour"), false);
+		const discovered = await handlers.get("resources_discover")?.({}, ctx) as { skillPaths: string[] };
+		const loaded = loadSkills({ cwd: root, agentDir: root, includeDefaults: false, skillPaths: discovered.skillPaths });
+		assert.equal(loaded.skills.filter((skill) => skill.name === "tour").length, 1);
+		assert.equal(loaded.diagnostics.length, 0);
 
 		await commands.get("cloud")!.handler("on", ctx);
 		await until(() => remote().length >= 3);

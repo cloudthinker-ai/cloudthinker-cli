@@ -5,9 +5,11 @@
 ![Platforms: macOS | Linux](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-lightgrey.svg)
 
 `cloudthinker` brings [CloudThinker](https://cloudthinker.io) to your terminal.
-Run the CloudThinker coding agent in your own repository, ask Anna about your
-cloud from any shell or CI job, follow code reviews, and let CloudThinker
-conversations work in a folder on your machine.
+Type `cloudthinker`, describe what you want in plain language, and watch the
+agent work in your current directory. For example, ask it to pentest an API;
+CloudThinker checks and repairs its local setup, runs the work, and shows
+progress and results in the terminal. Headless chat and focused commands remain
+available for scripts and automation.
 
 ```sh
 curl -fsSL https://cloudthinker.io/install.sh | sh
@@ -19,12 +21,13 @@ cloudthinker
 
 | Task | Command |
 | --- | --- |
-| Run the coding agent in the current directory | `cloudthinker` |
-| Ask Anna one question and pipe the answer | `cloudthinker chat -p "Check production health"` |
+| Start work in the current directory | `cloudthinker`, then describe the task |
+| Ask for a local pentest | `cloudthinker`, then say “Pentest http://localhost:3000” |
+| Ask CloudThinker one question and pipe the answer | `cloudthinker chat -p "Check production health"` |
 | Review local Git changes with CloudThinker | `cloudthinker review [--base <REF>]` |
 | Follow a CloudThinker review on a merge request or pull request | `cloudthinker review watch <MR_URL>` |
 | Let CloudThinker conversations work in a local folder | `cloudthinker worker start --outpost <name> --workdir "$PWD"` |
-| Give a coding agent the CLI's usage guide | `cloudthinker --skill` |
+| Give an AI agent the CLI's internal operating guide | `cloudthinker --skill` |
 
 ## Install
 
@@ -40,27 +43,50 @@ Every release is on the [releases page](https://github.com/cloudthinker-ai/cloud
 with a SHA-256 checksum for each archive.
 
 Run `cloudthinker update` to update. On an interactive terminal, the CLI also
-offers the update when a newer release exists. It checks at most every 20 hours.
+offers the update when a newer release exists, and other commands end with one
+line that names it. It checks at most every 20 hours.
 Answer `s` to skip that version until a newer one ships. Set
 `CLOUDTHINKER_NO_UPDATE_CHECK=1` to turn off the offer.
 
 ## Quick start
 
 ```sh
-cloudthinker login     # log in through the browser, then pick a workspace
-cloudthinker whoami    # show the host, the account, and the active workspace
-cloudthinker           # run the coding agent in this directory
+cloudthinker
 ```
 
-On a machine with no browser, `login --no-browser` prints the consent URL.
-`login --device-auth` uses a short code instead of a loopback callback.
+On first use, CloudThinker verifies your login and opens the interactive agent.
+Describe the task there; for a local pentest, name the target in plain language.
+The agent checks its Cyber setup, repairs its pinned tools, saves confirmed
+project settings in `.cloudthinker/config.toml`, runs the pentest, and reports
+progress and results. It asks only when required target or authorization
+details cannot be determined safely.
+
+Over SSH, or on Linux with no display, `login` shows a short code to enter in
+any browser instead of waiting for a loopback callback. `login --device-auth`
+forces the code, and `CLOUDTHINKER_LOGIN=browser` forces the browser callback.
+`login --no-browser` prints the consent URL without opening a browser.
+
+`login --url <origin>` remembers that address, so later commands need no
+`--url`. Log in with `--url https://app.cloudthinker.io` to return to
+production. A logout that removes the last login for the remembered address
+also returns the default to production.
+
+Shell completion:
+
+```sh
+cloudthinker completion bash > ~/.local/share/bash-completion/completions/cloudthinker
+cloudthinker completion zsh > "${fpath[1]}/_cloudthinker"
+cloudthinker completion fish > ~/.config/fish/completions/cloudthinker.fish
+```
+
 
 ## The coding agent
 
-`cloudthinker agent` runs the CloudThinker coding agent in your directory. The
-agent edits files and runs shell commands on your machine. The model and your
-workspace Connections stay in the cloud. A bare `cloudthinker` runs the same
-command.
+`cloudthinker` opens the interactive CloudThinker agent in your directory. The
+agent can edit files, run shell commands, and operate supported CloudThinker
+workflows such as local Cyber pentests. It configures and repairs workflow
+settings itself when the required facts are available. The model and your
+workspace Connections stay in the cloud.
 
 ```sh
 cloudthinker agent
@@ -75,19 +101,25 @@ release as the binary. It checks the build against the release's SHA-256
 sidecar and installs it under `~/.cloudthinker/agent/bin/<version>/`. Later runs
 reuse that build, and a new version replaces it.
 
-`agent` is the one command that starts a login by itself, because it is the
-first command a new user runs. Every other command prints the login command.
+The interactive agent is the one command that starts a login by itself. Focused
+commands continue to print a login hint when authentication is missing.
 
 ## Headless chat
 
-`chat -p` sends a prompt to Anna and waits for the answer. stdout carries only
-Anna's final answer, so you can pipe it. Progress and continuation hints go to
+`chat -p` sends a prompt to CloudThinker and waits for the answer. stdout carries only
+the final answer, so you can pipe it. Progress and continuation hints go to
 stderr.
 
 ```sh
 cloudthinker chat -p "Check production health"
 cloudthinker chat -p "Draft the rollout plan" --json
+kubectl logs deploy/api --tail 200 | cloudthinker chat -p "Why does this crash?"
+cloudthinker chat -p - < prompt.md
 ```
+
+Piped stdin joins the prompt. `-p -` reads the whole prompt from stdin. On a
+terminal a spinner shows the run status while you wait. Ctrl-C stops the wait
+and prints the command that resumes it; the run continues on the server.
 
 Continue a thread with a run UUID or a conversation UUID. After each finished
 run, the CLI prints `continue_with=<conversation_id>` on stderr:
@@ -117,6 +149,7 @@ Review local changes through CloudThinker and print the findings in your termina
 cloudthinker review                         # staged, unstaged, and untracked changes vs HEAD
 cloudthinker review --base origin/develop   # branch diff from the merge base, including dirty edits
 cloudthinker review --json                  # one machine-readable result on stdout
+cloudthinker review --fail-on high          # exit 6 when a high or critical finding exists
 ```
 
 The command requires `cloudthinker login`. It starts the bundled local Pi agent in the checkout with read-only `read`, `grep`, `find`, and `ls` tools. CloudThinker supplies model inference, so model requests and responses pass through its gateway and normal observability traces. The local Pi transcript and findings are not mirrored as Agent CLI session entries or saved chat messages; the session metadata uses a generic title and cwd. Findings are validated against changed paths and lines and printed here. It does not create a source-control review, post comments, apply fixes, or change the Git index or worktree. `--timeout <secs>` limits the local agent run; rerun the command after a timeout.
@@ -127,6 +160,7 @@ Inspect a CloudThinker review of a merge request or pull request by its URL:
 cloudthinker review status <MR_URL>
 cloudthinker review findings <MR_URL>          # worst severity first
 cloudthinker review watch <MR_URL> --json      # poll until the review finishes
+cloudthinker review watch <MR_URL> --fail-on high
 ```
 
 ## Outposts
@@ -147,16 +181,19 @@ guide.
 
 ## Use with coding agents
 
-The binary carries a usage skill that matches its release:
+The binary carries an internal operating guide for AI agents that matches its
+release. People start with `cloudthinker`; agents can read the guide when they
+need to operate the CLI themselves:
 
 ```sh
 cloudthinker --skill
 cloudthinker --skill chat
 ```
 
-The hub holds the shared rules and routes each task to a module: `auth`, `chat`,
-`review`, or `worker`. Each command prints Markdown and exits. It needs no
-login, no network access, and no local agent. To make the skill available to a
+The hub holds shared rules and routes an agent task to a module: `auth`, `chat`,
+`review`, `cyber`, or `worker`. Each command prints Markdown and exits. It needs
+no login, no network access, and no local agent. Users do not need to run these
+commands or learn the Cyber command sequence. To make the skill available to a
 coding agent, save the hub in that agent's skill directory:
 
 ```sh
@@ -196,10 +233,11 @@ operating system's config directory, with mode 0600.
 
 | Variable | Effect |
 | --- | --- |
-| `CLOUDTHINKER_URL` | API base URL. Defaults to `https://app.cloudthinker.io`. Pass the bare origin. |
+| `CLOUDTHINKER_URL` | API base URL. Defaults to the origin of your last `login --url`, else `https://app.cloudthinker.io`. Pass the bare origin. |
+| `CLOUDTHINKER_LOGIN` | `browser` or `device` overrides the login flow that `login` picks for this machine. |
 | `CLOUDTHINKER_WORKSPACE` | Same as `--workspace`. |
 | `CLOUDTHINKER_TOKEN` | Uses this bearer instead of stored credentials. Cannot be combined with `--workspace`. |
-| `CLOUDTHINKER_NO_UPDATE_CHECK` | Turns off the start-up update offer. |
+| `CLOUDTHINKER_NO_UPDATE_CHECK` | Turns off the start-up update offer and the update notice. |
 
 ## Exit codes
 
@@ -208,9 +246,11 @@ operating system's config directory, with mode 0600.
 | 0 | Success. |
 | 1 | The job failed: a FAILED run, an unknown run, or exhausted transport retries. |
 | 2 | Bad usage, or a server-side validation or secret-gate rejection. |
-| 3 | Not logged in, or the credential expired. |
+| 3 | Not logged in, the credential expired, or the server refused access (403). |
 | 4 | A client deadline elapsed. The run continues server-side. |
 | 5 | The run paused for human approval in the browser. |
+| 6 | A review found an issue at or above its `--fail-on` severity. |
+| 130 | Ctrl-C stopped a `chat` wait. The run continues server-side. |
 
 ## Build from source
 

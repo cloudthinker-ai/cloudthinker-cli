@@ -56,39 +56,73 @@ where
     F: Fn() -> Fut,
     Fut: Future<Output = CtResult<Poll<T>>>,
 {
-    let start = Instant::now();
-    let mut delay = cfg.base_delay;
-    let mut consecutive_errors: u32 = 0;
-
+    let mut policy = WatchPolicy::new(cfg);
     loop {
-        if start.elapsed() >= cfg.overall_timeout {
-            return Err(CtError::Timeout(
-                "run did not finish before the deadline".into(),
-            ));
-        }
-
+        policy.before_fetch()?;
         match fetch().await {
             Ok(Poll::Terminal(value)) => return Ok(value),
-            Ok(Poll::Pending) => consecutive_errors = 0,
-            Err(err) if err.is_transport() => {
-                consecutive_errors += 1;
-                if consecutive_errors > cfg.max_transport_errors {
-                    return Err(err);
-                }
-            }
-            Err(err) => return Err(err),
+            Ok(Poll::Pending) => policy.pending(),
+            Err(err) => policy.failed(err)?,
         }
-
-        let remaining = cfg.overall_timeout.saturating_sub(start.elapsed());
-        if remaining.is_zero() {
-            return Err(CtError::Timeout(
-                "run did not finish before the deadline".into(),
-            ));
-        }
-        let nap = jittered(delay, cfg.jitter, cfg.max_delay).min(remaining);
-        tokio::time::sleep(nap).await;
-        delay = next_delay(delay, cfg.factor, cfg.max_delay);
+        tokio::time::sleep(policy.next_nap()?).await;
     }
+}
+
+struct WatchPolicy<'a> {
+    cfg: &'a WatchConfig,
+    start: Instant,
+    delay: Duration,
+    consecutive_errors: u32,
+}
+
+impl<'a> WatchPolicy<'a> {
+    fn new(cfg: &'a WatchConfig) -> Self {
+        Self {
+            cfg,
+            start: Instant::now(),
+            delay: cfg.base_delay,
+            consecutive_errors: 0,
+        }
+    }
+
+    fn before_fetch(&self) -> CtResult<()> {
+        if self.start.elapsed() >= self.cfg.overall_timeout {
+            return Err(deadline_elapsed());
+        }
+        Ok(())
+    }
+
+    fn pending(&mut self) {
+        self.consecutive_errors = 0;
+    }
+
+    fn failed(&mut self, err: CtError) -> CtResult<()> {
+        if !err.is_transport() {
+            return Err(err);
+        }
+        self.consecutive_errors += 1;
+        if self.consecutive_errors > self.cfg.max_transport_errors {
+            return Err(err);
+        }
+        Ok(())
+    }
+
+    fn next_nap(&mut self) -> CtResult<Duration> {
+        let remaining = self
+            .cfg
+            .overall_timeout
+            .saturating_sub(self.start.elapsed());
+        if remaining.is_zero() {
+            return Err(deadline_elapsed());
+        }
+        let nap = jittered(self.delay, self.cfg.jitter, self.cfg.max_delay).min(remaining);
+        self.delay = next_delay(self.delay, self.cfg.factor, self.cfg.max_delay);
+        Ok(nap)
+    }
+}
+
+fn deadline_elapsed() -> CtError {
+    CtError::Timeout("run did not finish before the deadline".into())
 }
 
 fn next_delay(current: Duration, factor: f64, max: Duration) -> Duration {
@@ -191,6 +225,70 @@ mod tests {
         .await;
         assert!(matches!(result, Err(CtError::Auth(_))));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn policy_refuses_to_fetch_once_the_deadline_is_zero() {
+        let cfg = fast_config(Duration::ZERO, 5);
+        let mut policy = WatchPolicy::new(&cfg);
+        assert!(matches!(policy.before_fetch(), Err(CtError::Timeout(_))));
+        assert!(matches!(policy.next_nap(), Err(CtError::Timeout(_))));
+    }
+
+    #[test]
+    fn policy_with_no_error_budget_aborts_on_the_first_transport_error() {
+        let cfg = fast_config(Duration::from_secs(30), 0);
+        let mut policy = WatchPolicy::new(&cfg);
+        assert!(matches!(
+            policy.failed(CtError::Transport("reset".into())),
+            Err(CtError::Transport(_))
+        ));
+    }
+
+    #[test]
+    fn policy_pending_resets_the_consecutive_transport_error_count() {
+        let cfg = fast_config(Duration::from_secs(30), 2);
+        let mut policy = WatchPolicy::new(&cfg);
+        for _ in 0..3 {
+            assert!(policy.failed(CtError::Transport("blip".into())).is_ok());
+            assert!(policy.failed(CtError::Transport("blip".into())).is_ok());
+            policy.pending();
+        }
+        assert!(policy.failed(CtError::Transport("blip".into())).is_ok());
+        assert!(policy.failed(CtError::Transport("blip".into())).is_ok());
+        assert!(policy.failed(CtError::Transport("blip".into())).is_err());
+    }
+
+    #[test]
+    fn policy_backoff_grows_by_the_factor_and_stops_at_the_cap() {
+        let cfg = WatchConfig {
+            base_delay: Duration::from_millis(100),
+            max_delay: Duration::from_millis(200),
+            factor: 1.5,
+            jitter: 0.0,
+            max_transport_errors: 5,
+            overall_timeout: Duration::from_secs(3600),
+        };
+        let mut policy = WatchPolicy::new(&cfg);
+        let naps: Vec<_> = (0..4).map(|_| policy.next_nap().unwrap()).collect();
+        assert_eq!(
+            naps,
+            [100, 150, 200, 200].map(Duration::from_millis).to_vec()
+        );
+    }
+
+    #[test]
+    fn policy_nap_never_outlives_the_remaining_deadline() {
+        let cfg = WatchConfig {
+            base_delay: Duration::from_secs(60),
+            max_delay: Duration::from_secs(60),
+            factor: 1.0,
+            jitter: 0.0,
+            max_transport_errors: 5,
+            overall_timeout: Duration::from_secs(1),
+        };
+        let mut policy = WatchPolicy::new(&cfg);
+        assert!(policy.next_nap().unwrap() <= Duration::from_secs(1));
     }
 
     #[test]

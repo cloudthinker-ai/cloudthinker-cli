@@ -1,6 +1,122 @@
 {
   "components": {
     "schemas": {
+      "AgentCliEntriesAppended": {
+        "description": "Response for an append: what landed, and the session's arrival high-water mark.",
+        "properties": {
+          "last_seq": {
+            "title": "Last Seq",
+            "type": "integer"
+          },
+          "stored": {
+            "title": "Stored",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "stored",
+          "last_seq"
+        ],
+        "title": "AgentCliEntriesAppended",
+        "type": "object"
+      },
+      "AgentCliEntryInput": {
+        "description": "One pi JSONL entry the local agent mirrors.",
+        "properties": {
+          "entry_id": {
+            "description": "pi's own `id` for this entry. Unique within the session, and what makes a re-send idempotent.",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "AgentCliEntryInput_entry_id",
+            "type": "string"
+          },
+          "entry_type": {
+            "description": "pi's `type`: session_info, message, model_change, thinking_level_change, compaction, branch_summary, custom, custom_message, or label.",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "AgentCliEntryInput_entry_type",
+            "type": "string"
+          },
+          "parent_id": {
+            "description": "pi's `parentId`. The edge a reader walks to rebuild the active path; null only for the session root.",
+            "maxLength": 128,
+            "nullable": true,
+            "title": "AgentCliEntryInput_parent_id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "description": "The pi entry verbatim, stored as JSONB and never rewritten.",
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "entry_id",
+          "entry_type",
+          "payload"
+        ],
+        "title": "AgentCliEntryInput",
+        "type": "object"
+      },
+      "AgentCliEntryPage": {
+        "description": "One ascending page of the mirror.\n\n`last_seq` is the cursor for the next page, not the session's high-water\nmark: pass it back as `after_seq`. An empty page returns the `after_seq` it\nwas asked for.",
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/AgentCliEntryPublic"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "last_seq": {
+            "title": "Last Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entries",
+          "last_seq"
+        ],
+        "title": "AgentCliEntryPage",
+        "type": "object"
+      },
+      "AgentCliEntryPublic": {
+        "description": "One mirrored entry as a reader gets it back.",
+        "properties": {
+          "entry_id": {
+            "title": "Entry Id",
+            "type": "string"
+          },
+          "entry_type": {
+            "title": "Entry Type",
+            "type": "string"
+          },
+          "parent_id": {
+            "nullable": true,
+            "title": "Parent Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "entry_id",
+          "parent_id",
+          "entry_type",
+          "payload"
+        ],
+        "title": "AgentCliEntryPublic",
+        "type": "object"
+      },
       "AgentRunStatus": {
         "description": "Lifecycle state of a background agent run.\n\nValues are deliberately identical to TaskScheduleStatus (app/models/tasks.py)\nso AgentExecutionResult.status needs zero remapping when origins migrate onto\nAgentRun (plan decision, plans/product-cli-mr-c-agentrun.md).",
         "enum": [
@@ -69,6 +185,571 @@
           "tools"
         ],
         "title": "AnnounceTargetConnection",
+        "type": "object"
+      },
+      "AppCreate": {
+        "additionalProperties": false,
+        "description": "Request body for POST /appsec/apps/.",
+        "properties": {
+          "default_intensity": {
+            "$ref": "#/components/schemas/Intensity",
+            "nullable": true
+          },
+          "default_selection": {
+            "$ref": "#/components/schemas/SavedSelection",
+            "nullable": true
+          },
+          "frameworks": {
+            "items": {
+              "$ref": "#/components/schemas/OwaspFramework"
+            },
+            "title": "Frameworks",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "setup_step": {
+            "$ref": "#/components/schemas/AppSetupStep"
+          },
+          "target_ref": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "AppCreate_target_ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "target_ref",
+          "frameworks"
+        ],
+        "title": "AppCreate",
+        "type": "object"
+      },
+      "AppDomainVerificationPublic": {
+        "description": "AppSec-owned workspace domain verification view.",
+        "properties": {
+          "blocked_reason": {
+            "nullable": true,
+            "title": "Blocked Reason",
+            "type": "string"
+          },
+          "can_manage": {
+            "default": false,
+            "title": "Can Manage",
+            "type": "boolean"
+          },
+          "dns_record_name": {
+            "nullable": true,
+            "title": "Dns Record Name",
+            "type": "string"
+          },
+          "dns_record_value": {
+            "nullable": true,
+            "title": "Dns Record Value",
+            "type": "string"
+          },
+          "domain_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Domain Id",
+            "type": "string"
+          },
+          "matched_domain": {
+            "nullable": true,
+            "title": "Matched Domain",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AppDomainVerificationStatus"
+          },
+          "target_domain": {
+            "nullable": true,
+            "title": "Target Domain",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "AppDomainVerificationPublic",
+        "type": "object"
+      },
+      "AppDomainVerificationStatus": {
+        "description": "Domain verification state for an AppSec app target.",
+        "enum": [
+          "not_required",
+          "unclaimed",
+          "pending",
+          "verified",
+          "failed"
+        ],
+        "title": "AppDomainVerificationStatus",
+        "type": "string"
+      },
+      "AppListResponse": {
+        "description": "Response shape for GET /appsec/apps/.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AppPublic"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "data"
+        ],
+        "title": "AppListResponse",
+        "type": "object"
+      },
+      "AppPublic": {
+        "description": "Response shape for a single App \u2014 only client-rendered fields.",
+        "properties": {
+          "auth_configured": {
+            "default": false,
+            "title": "Auth Configured",
+            "type": "boolean"
+          },
+          "auth_kind": {
+            "$ref": "#/components/schemas/AuthKind",
+            "nullable": true
+          },
+          "auth_schedule_safe": {
+            "default": false,
+            "title": "Auth Schedule Safe",
+            "type": "boolean"
+          },
+          "auto_mode_run_now": {
+            "$ref": "#/components/schemas/Mode"
+          },
+          "auto_mode_schedule": {
+            "$ref": "#/components/schemas/Mode"
+          },
+          "available_modes": {
+            "items": {
+              "$ref": "#/components/schemas/Mode"
+            },
+            "title": "Available Modes",
+            "type": "array"
+          },
+          "coverage_score": {
+            "title": "Coverage Score",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "default_intensity": {
+            "$ref": "#/components/schemas/Intensity"
+          },
+          "default_selection": {
+            "$ref": "#/components/schemas/SavedSelection"
+          },
+          "domain_verification": {
+            "$ref": "#/components/schemas/AppDomainVerificationPublic"
+          },
+          "frameworks": {
+            "items": {
+              "$ref": "#/components/schemas/OwaspFramework"
+            },
+            "title": "Frameworks",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "in_flight_run_started_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "In Flight Run Started At",
+            "type": "string"
+          },
+          "last_completed_run_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Last Completed Run At",
+            "type": "string"
+          },
+          "mode_capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/ModeCapability"
+            },
+            "title": "Mode Capabilities",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "open_findings_count": {
+            "default": 0,
+            "title": "Open Findings Count",
+            "type": "integer"
+          },
+          "report_preferences": {
+            "$ref": "#/components/schemas/AppSecReportPreferences"
+          },
+          "run_in_flight": {
+            "title": "Run In Flight",
+            "type": "boolean"
+          },
+          "run_now_modes": {
+            "items": {
+              "$ref": "#/components/schemas/Mode"
+            },
+            "title": "Run Now Modes",
+            "type": "array"
+          },
+          "schedule_modes": {
+            "items": {
+              "$ref": "#/components/schemas/Mode"
+            },
+            "title": "Schedule Modes",
+            "type": "array"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ScopeSpec"
+          },
+          "setup_status": {
+            "$ref": "#/components/schemas/AppSetupStatus"
+          },
+          "setup_step": {
+            "$ref": "#/components/schemas/AppSetupStep"
+          },
+          "severity_counts": {
+            "$ref": "#/components/schemas/SeverityCounts"
+          },
+          "surface_mapped": {
+            "title": "Surface Mapped",
+            "type": "boolean"
+          },
+          "target_ref": {
+            "title": "Target Ref",
+            "type": "string"
+          },
+          "target_revision": {
+            "default": 1,
+            "title": "Target Revision",
+            "type": "integer"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/TargetType"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/AppTargetPublic"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "targets",
+          "target_type",
+          "target_ref",
+          "scope",
+          "coverage_score",
+          "frameworks",
+          "default_intensity",
+          "default_selection",
+          "setup_status",
+          "setup_step",
+          "created_at",
+          "surface_mapped",
+          "run_in_flight",
+          "domain_verification"
+        ],
+        "title": "AppPublic",
+        "type": "object"
+      },
+      "AppSecDomainCreate": {
+        "description": "Request body for POST /appsec/domains.",
+        "properties": {
+          "domain": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "AppSecDomainCreate_domain",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain"
+        ],
+        "title": "AppSecDomainCreate",
+        "type": "object"
+      },
+      "AppSecDomainListResponse": {
+        "description": "Response shape for GET /appsec/domains.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AppSecDomainPublic"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "data"
+        ],
+        "title": "AppSecDomainListResponse",
+        "type": "object"
+      },
+      "AppSecDomainPublic": {
+        "description": "Workspace-owned AppSec domain verification record.",
+        "properties": {
+          "can_manage": {
+            "default": false,
+            "title": "Can Manage",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dns_record_name": {
+            "nullable": true,
+            "title": "Dns Record Name",
+            "type": "string"
+          },
+          "dns_record_value": {
+            "nullable": true,
+            "title": "Dns Record Value",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AppDomainVerificationStatus"
+          },
+          "verified_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Verified At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "domain",
+          "status",
+          "created_at"
+        ],
+        "title": "AppSecDomainPublic",
+        "type": "object"
+      },
+      "AppSecFindingListResponse": {
+        "description": "Response shape for GET /appsec/apps/{app_id}/findings (paginated).",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/FindingPublic"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "AppSecFindingListResponse",
+        "type": "object"
+      },
+      "AppSecReportFormat": {
+        "enum": [
+          "pdf",
+          "docx"
+        ],
+        "title": "AppSecReportFormat",
+        "type": "string"
+      },
+      "AppSecReportPreferences": {
+        "additionalProperties": false,
+        "properties": {
+          "instructions": {
+            "default": "",
+            "maxLength": 12000,
+            "title": "AppSecReportPreferences_instructions",
+            "type": "string"
+          },
+          "output_format": {
+            "$ref": "#/components/schemas/AppSecReportFormat"
+          },
+          "reference_source_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Reference Source Id",
+            "type": "string"
+          },
+          "style": {
+            "$ref": "#/components/schemas/AppSecReportStyle"
+          }
+        },
+        "title": "AppSecReportPreferences",
+        "type": "object"
+      },
+      "AppSecReportStyle": {
+        "enum": [
+          "standard",
+          "custom"
+        ],
+        "title": "AppSecReportStyle",
+        "type": "string"
+      },
+      "AppSetupStatus": {
+        "enum": [
+          "draft",
+          "complete"
+        ],
+        "title": "AppSetupStatus",
+        "type": "string"
+      },
+      "AppSetupStep": {
+        "enum": [
+          "targets",
+          "users",
+          "context",
+          "coverage",
+          "review"
+        ],
+        "title": "AppSetupStep",
+        "type": "string"
+      },
+      "AppTargetPublic": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "normalized_ref": {
+            "title": "Normalized Ref",
+            "type": "string"
+          },
+          "target_ref": {
+            "title": "Target Ref",
+            "type": "string"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/TargetType"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/AppDomainVerificationPublic"
+          }
+        },
+        "required": [
+          "id",
+          "target_type",
+          "target_ref",
+          "normalized_ref",
+          "verification"
+        ],
+        "title": "AppTargetPublic",
+        "type": "object"
+      },
+      "AppUpdate": {
+        "additionalProperties": false,
+        "description": "Request body for PATCH /appsec/apps/{app_id}.",
+        "properties": {
+          "complete_setup": {
+            "nullable": true,
+            "title": "Complete Setup",
+            "type": "boolean"
+          },
+          "default_intensity": {
+            "$ref": "#/components/schemas/Intensity",
+            "nullable": true
+          },
+          "default_selection": {
+            "$ref": "#/components/schemas/SavedSelection",
+            "nullable": true
+          },
+          "frameworks": {
+            "items": {
+              "$ref": "#/components/schemas/OwaspFramework"
+            },
+            "nullable": true,
+            "title": "Frameworks",
+            "type": "array"
+          },
+          "name": {
+            "nullable": true,
+            "title": "Name",
+            "type": "string"
+          },
+          "report_preferences": {
+            "$ref": "#/components/schemas/AppSecReportPreferences",
+            "nullable": true
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ScopeSpec",
+            "nullable": true
+          },
+          "setup_step": {
+            "$ref": "#/components/schemas/AppSetupStep",
+            "nullable": true
+          },
+          "target_ref": {
+            "maxLength": 512,
+            "minLength": 1,
+            "nullable": true,
+            "title": "AppUpdate_target_ref",
+            "type": "string"
+          }
+        },
+        "title": "AppUpdate",
+        "type": "object"
+      },
+      "AppendAgentCliEntriesRequest": {
+        "description": "Body for `PUT /agent-cli/sessions/{conversation_id}/entries`.",
+        "properties": {
+          "entries": {
+            "description": "The entries this session has not acknowledged yet, oldest first. Re-sending a stored entry is free and changes no sequence.",
+            "items": {
+              "$ref": "#/components/schemas/AgentCliEntryInput"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Entries",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entries"
+        ],
+        "title": "AppendAgentCliEntriesRequest",
         "type": "object"
       },
       "ApplyFixDisabledReason": {
@@ -199,6 +880,27 @@
         "title": "AssignmentState",
         "type": "string"
       },
+      "AuthKind": {
+        "description": "Durability class for an AppSec gray-box credential.\n\nsession \u2014 pasted browser session material from cURL; useful for immediate\n          run-now only because it may expire or logout before a schedule fires.\ndurable \u2014 long-lived token/header material that may be reused by scheduled runs.",
+        "enum": [
+          "session",
+          "durable",
+          "password"
+        ],
+        "title": "AuthKind",
+        "type": "string"
+      },
+      "AuthStatus": {
+        "description": "Gray-box auth outcome for a pentest run: did the run authenticate?\n\nnot_required \u2014 run launched in a mode that never attempts auth (black-box).\nunverified   \u2014 gray/white-box run launched but auth was never confirmed\n               (default until the agent proves login succeeded).\nauthenticated \u2014 the agent confirmed the credential logged in successfully.\ndegraded     \u2014 auth was attempted but failed/expired mid-run; the run\n               continued unauthenticated rather than aborting.",
+        "enum": [
+          "not_required",
+          "unverified",
+          "authenticated",
+          "degraded"
+        ],
+        "title": "AuthStatus",
+        "type": "string"
+      },
       "AutofixDisabledReason": {
         "enum": [
           "merge_request_merged",
@@ -285,6 +987,54 @@
           "kind"
         ],
         "title": "BackgroundOperation",
+        "type": "object"
+      },
+      "ChangeFocusBaseState": {
+        "description": "WHY a target's `base_ref` is empty or set \u2014 resolves the `base_ref==\"\"`\noverload into an explicit, observable state (Gap #3).\n\n- `incremental`: `base_ref` is a real prior-run SHA; a diff is rendered.\n- `first_run`: no prior successful run for this repo yet.\n- `unchanged`: prior head SHA == current HEAD SHA (full scan, no wasted diff).\n- `provider_unsupported`: the provider couldn't resolve a base (e.g. branch\n  pagination cap in `ref_validation.branch_ref_exists`) \u2014 reserved for a\n  future producer; `_derive_diff_focus` does not emit this value today\n  (an unresolved HEAD omits the repo entirely rather than recording a row).",
+        "enum": [
+          "incremental",
+          "first_run",
+          "unchanged",
+          "provider_unsupported"
+        ],
+        "title": "ChangeFocusBaseState",
+        "type": "string"
+      },
+      "ChangeFocusTarget": {
+        "description": "One backend-derived change-focus target for one attached repo.\n\nprovider/repository_identity name WHICH attached repo (an App may attach\nseveral). `head_ref` is the commit SHA this run scanned (the durable\nper-repo cursor the next run reads); `base_ref` is the prior successful\nrun's `head_ref`, or \"\" on a first/unchanged run. `base_state` co-carries\nWHY `base_ref` is empty (or not) \u2014 `first_run`, `unchanged`, or\n`provider_unsupported` all render as `base_ref==\"\"`, but only `base_state`\ndistinguishes them (Gap #3); it defaults to `\"incremental\"` so rows stored\nbefore this field existed still validate. The run clones a real git\nworktree per repo, so the agent diffs these refs (`git diff\nbase...head`) \u2014 the backend only resolves them. NOT a scope fence: it\nsteers, it never narrows targets.\n\n`worktree_name` is the directory name the run's git worktree clones to\n(same value `app.shared.utils.repo_path_utils.worktree_dir_name`\nproduces for `_repository_roots`) \u2014 `_change_focus_line` renders\n`./<worktree_name>/`, not `repository_identity` (a GitLab identity is a\nnumeric project ID, useless prose for the agent). Defaults to `\"\"` so\nrows persisted before this field existed still validate; `_change_focus_\nline` falls back to `repository_identity` when empty (legacy rows still\nrender something, just not a worktree path).",
+        "properties": {
+          "base_ref": {
+            "title": "Base Ref",
+            "type": "string"
+          },
+          "base_state": {
+            "$ref": "#/components/schemas/ChangeFocusBaseState"
+          },
+          "head_ref": {
+            "title": "Head Ref",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "repository_identity": {
+            "title": "Repository Identity",
+            "type": "string"
+          },
+          "worktree_name": {
+            "default": "",
+            "title": "Worktree Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "repository_identity",
+          "base_ref",
+          "head_ref"
+        ],
+        "title": "ChangeFocusTarget",
         "type": "object"
       },
       "ClaimAssignmentRequest": {
@@ -754,6 +1504,11 @@
             "$ref": "#/components/schemas/AutofixDisabledReason",
             "nullable": true
           },
+          "can_merge": {
+            "default": false,
+            "title": "Can Merge",
+            "type": "boolean"
+          },
           "can_stop_review": {
             "default": false,
             "title": "Can Stop Review",
@@ -781,6 +1536,11 @@
             },
             "title": "Citations",
             "type": "object"
+          },
+          "commit_count": {
+            "nullable": true,
+            "title": "Commit Count",
+            "type": "integer"
           },
           "created_at": {
             "format": "date-time",
@@ -831,6 +1591,10 @@
           },
           "manual_trigger_disabled_reason": {
             "$ref": "#/components/schemas/ManualTriggerDisabledReason",
+            "nullable": true
+          },
+          "merge_disabled_reason": {
+            "$ref": "#/components/schemas/MergeDisabledReason",
             "nullable": true
           },
           "merge_status": {
@@ -1099,6 +1863,113 @@
         "title": "CompleteWorkerOperationRequest",
         "type": "object"
       },
+      "ContextSourceContentUrl": {
+        "description": "A short-lived presigned GET for one context file, plus what it renders as.\n\n``content_type`` is derived from the filename, NOT read from storage \u2014 every\ncontext object is stored as ``application/octet-stream``, so the stored value\ntells the client nothing about how to preview the file.",
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "content_url": {
+            "title": "Content Url",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "content_url",
+          "name",
+          "content_type"
+        ],
+        "title": "ContextSourceContentUrl",
+        "type": "object"
+      },
+      "ContextSourceListResponse": {
+        "description": "Response shape for GET /appsec/apps/{app_id}/context.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ContextSourcePublic"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "data"
+        ],
+        "title": "ContextSourceListResponse",
+        "type": "object"
+      },
+      "ContextSourcePublic": {
+        "description": "Response shape for a single AppContextSource \u2014 storage_key is excluded.",
+        "properties": {
+          "app_id": {
+            "format": "uuid",
+            "title": "App Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ContextType",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "app_id",
+          "type",
+          "name",
+          "status",
+          "created_at"
+        ],
+        "title": "ContextSourcePublic",
+        "type": "object"
+      },
+      "ContextType": {
+        "description": "App context source type for uploaded files and ENV auth links.",
+        "enum": [
+          "openapi",
+          "postman",
+          "runbook",
+          "architecture",
+          "document",
+          "environment"
+        ],
+        "title": "ContextType",
+        "type": "string"
+      },
       "ConventionRuleCategory": {
         "enum": [
           "security",
@@ -1131,6 +2002,154 @@
         "title": "ConvertOfficePdf",
         "type": "object"
       },
+      "CoveragePublic": {
+        "description": "The run-completion gate over one plan's rows.",
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "plan_id": {
+            "nullable": true,
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "terminal": {
+            "title": "Terminal",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "unresolved_candidates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unresolved Candidates",
+            "type": "array"
+          },
+          "untested": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Untested",
+            "type": "array"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "plan_id",
+          "total",
+          "terminal",
+          "valid",
+          "blockers",
+          "untested",
+          "unresolved_candidates"
+        ],
+        "title": "CoveragePublic",
+        "type": "object"
+      },
+      "CoverageReportPublic": {
+        "description": "The gate plus every row, shared by the ingest and the coverage read.",
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/CoveragePublic"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageRowPublic"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "coverage",
+          "rows"
+        ],
+        "title": "CoverageReportPublic",
+        "type": "object"
+      },
+      "CoverageRowPublic": {
+        "properties": {
+          "asset_type": {
+            "title": "Asset Type",
+            "type": "string"
+          },
+          "evidence_ref": {
+            "title": "Evidence Ref",
+            "type": "string"
+          },
+          "executable": {
+            "title": "Executable",
+            "type": "boolean"
+          },
+          "locator": {
+            "title": "Locator",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "row_id": {
+            "title": "Row Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CoverageStatus"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "worker": {
+            "title": "Worker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "row_id",
+          "asset_type",
+          "locator",
+          "method",
+          "url",
+          "executable",
+          "status",
+          "worker",
+          "reason",
+          "evidence_ref"
+        ],
+        "title": "CoverageRowPublic",
+        "type": "object"
+      },
+      "CoverageStatus": {
+        "description": "Row status, byte-identical to the executor's ledger status set.",
+        "enum": [
+          "untested",
+          "assigned",
+          "covered",
+          "candidate",
+          "candidate_promoted",
+          "candidate_dismissed",
+          "candidate_needs_verification",
+          "blocked",
+          "skipped_with_reason"
+        ],
+        "title": "CoverageStatus",
+        "type": "string"
+      },
       "CreateOutpostRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1151,6 +2170,132 @@
           "name"
         ],
         "title": "CreateOutpostRequest",
+        "type": "object"
+      },
+      "CyberDiscoveryTargetPublic": {
+        "properties": {
+          "run_scope": {
+            "$ref": "#/components/schemas/ScopeSpec"
+          },
+          "safety_scope": {
+            "$ref": "#/components/schemas/ScopeSpec"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_ref": {
+            "title": "Target Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id",
+          "target_ref",
+          "safety_scope",
+          "run_scope"
+        ],
+        "title": "CyberDiscoveryTargetPublic",
+        "type": "object"
+      },
+      "EvidenceFileUpload": {
+        "description": "One bounded text or binary artifact of local evidence.",
+        "properties": {
+          "content": {
+            "nullable": true,
+            "title": "Content",
+            "type": "string"
+          },
+          "content_base64": {
+            "maxLength": 22000000,
+            "nullable": true,
+            "title": "EvidenceFileUpload_content_base64",
+            "type": "string"
+          },
+          "mime_type": {
+            "maxLength": 255,
+            "nullable": true,
+            "title": "EvidenceFileUpload_mime_type",
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "EvidenceFileUpload_path",
+            "type": "string"
+          },
+          "size_bytes": {
+            "maximum": 16000000,
+            "minimum": 0,
+            "nullable": true,
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "EvidenceFileUpload",
+        "type": "object"
+      },
+      "EvidenceReceiptPublic": {
+        "properties": {
+          "skipped": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceSkippedFile"
+            },
+            "title": "Skipped",
+            "type": "array"
+          },
+          "written": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Written",
+            "type": "array"
+          }
+        },
+        "required": [
+          "written",
+          "skipped"
+        ],
+        "title": "EvidenceReceiptPublic",
+        "type": "object"
+      },
+      "EvidenceSkippedFile": {
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "reason"
+        ],
+        "title": "EvidenceSkippedFile",
+        "type": "object"
+      },
+      "EvidenceSubmitRequest": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceFileUpload"
+            },
+            "maxItems": 100,
+            "title": "Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "files"
+        ],
+        "title": "EvidenceSubmitRequest",
         "type": "object"
       },
       "ExchangeWorkerRegistrationRequest": {
@@ -1369,6 +2514,25 @@
           "kind"
         ],
         "title": "FileOperation",
+        "type": "object"
+      },
+      "FilePdfDownloadResponse": {
+        "description": "Presigned URL for a markdown file rendered to PDF.",
+        "properties": {
+          "download_url": {
+            "title": "Download Url",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          }
+        },
+        "required": [
+          "download_url",
+          "filename"
+        ],
+        "title": "FilePdfDownloadResponse",
         "type": "object"
       },
       "FileRequest": {
@@ -1702,6 +2866,239 @@
         "title": "FilesList",
         "type": "object"
       },
+      "FindingApiCapturePublic": {
+        "description": "One redacted API request/response pair, derived from metadata.evidence[].\n\nThe API counterpart of ``FindingEvidencePublic``, and a different shape on\npurpose: a screenshot is a presigned URL the client fetches, a capture is\nbounded text the backend already redacted at sync. It therefore needs no\n``url`` and no second request, and it renders identically in the UI and in\nevery PDF export. ``request_truncated``/``response_truncated`` tell the\nrenderer to mark an excerpt so a bounded field never reads as the whole\nexchange.",
+        "properties": {
+          "caption": {
+            "title": "Caption",
+            "type": "string"
+          },
+          "request": {
+            "title": "Request",
+            "type": "string"
+          },
+          "request_truncated": {
+            "default": false,
+            "title": "Request Truncated",
+            "type": "boolean"
+          },
+          "response": {
+            "title": "Response",
+            "type": "string"
+          },
+          "response_truncated": {
+            "default": false,
+            "title": "Response Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "caption",
+          "request",
+          "response"
+        ],
+        "title": "FindingApiCapturePublic",
+        "type": "object"
+      },
+      "FindingEvidencePublic": {
+        "description": "One browser-captured evidence image, derived from finding metadata.evidence[].\n\nA screenshot the agent saved via the `evidence` browser verb and referenced in\nthe finding markdown; sync uploaded the .png to S3. ``url`` is a short-lived\npresigned GET the FE renders inline \u2014 the raw S3 key is never exposed. ``url`` is\nNone only if the presign could not be minted (the FE hides that entry rather than\nshowing a broken image).",
+        "properties": {
+          "caption": {
+            "title": "Caption",
+            "type": "string"
+          },
+          "file": {
+            "title": "File",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "url": {
+            "nullable": true,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "kind",
+          "caption"
+        ],
+        "title": "FindingEvidencePublic",
+        "type": "object"
+      },
+      "FindingFixPRPublic": {
+        "description": "Rendered fix PR link stored in finding metadata.fix_pr.",
+        "properties": {
+          "branch": {
+            "title": "Branch",
+            "type": "string"
+          },
+          "commit_sha": {
+            "nullable": true,
+            "title": "Commit Sha",
+            "type": "string"
+          },
+          "created_at": {
+            "nullable": true,
+            "title": "Created At",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "repository_name": {
+            "title": "Repository Name",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "provider",
+          "repository_name",
+          "branch"
+        ],
+        "title": "FindingFixPRPublic",
+        "type": "object"
+      },
+      "FindingPublic": {
+        "description": "Response shape for a single Finding \u2014 only client-rendered fields.\n\nNEVER includes: signature (internal dedup key), raw finding_metadata (the\nFE reads the derived owasp/cwe/cve fields instead), or any raw internal\ncolumn not rendered by the FE.\n\nTwo orthogonal axes, both rendered by the FE's triage rail:\n- status \u2014 agent-owned, the 4-state model\n  (open/needs_verification/resolved/dismissed).\n- triage_state \u2014 human-owned work tracking on an OPEN or NEEDS_VERIFICATION\n  finding.\n\n`manually_resolved` splits the one status the two axes share. A RESOLVED\nfinding is either a scan's PoC-replay proof or a human's own verdict, and\nonly the second one a human may undo \u2014 so the FE cannot decide whether to\noffer Reopen without it. It is a derived bool, not the raw\n`manually_resolved_by` UUID, because the FE renders the choice, not the\nactor.",
+        "properties": {
+          "affected_surfaces": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SurfaceItemPublic"
+            },
+            "title": "Affected Surfaces",
+            "type": "array"
+          },
+          "agent_confidence_score": {
+            "maximum": 1,
+            "minimum": 0,
+            "nullable": true,
+            "title": "Agent Confidence Score",
+            "type": "number"
+          },
+          "api_captures": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FindingApiCapturePublic"
+            },
+            "title": "Api Captures",
+            "type": "array"
+          },
+          "app_id": {
+            "format": "uuid",
+            "title": "App Id",
+            "type": "string"
+          },
+          "app_short_id": {
+            "title": "App Short Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "cve": {
+            "nullable": true,
+            "title": "Cve",
+            "type": "string"
+          },
+          "cwe": {
+            "nullable": true,
+            "title": "Cwe",
+            "type": "string"
+          },
+          "description_md": {
+            "title": "Description Md",
+            "type": "string"
+          },
+          "display_id": {
+            "nullable": true,
+            "title": "Display Id",
+            "type": "string"
+          },
+          "evidence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FindingEvidencePublic"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "finding_type": {
+            "title": "Finding Type",
+            "type": "string"
+          },
+          "first_seen_run": {
+            "format": "uuid",
+            "title": "First Seen Run",
+            "type": "string"
+          },
+          "fix_pr": {
+            "$ref": "#/components/schemas/FindingFixPRPublic",
+            "nullable": true
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_confirmed_run": {
+            "format": "uuid",
+            "title": "Last Confirmed Run",
+            "type": "string"
+          },
+          "manually_resolved": {
+            "default": false,
+            "title": "Manually Resolved",
+            "type": "boolean"
+          },
+          "owasp": {
+            "nullable": true,
+            "title": "Owasp",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "status": {
+            "$ref": "#/components/schemas/FindingStatus"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "triage_state": {
+            "$ref": "#/components/schemas/TriageState"
+          }
+        },
+        "required": [
+          "id",
+          "app_id",
+          "app_short_id",
+          "display_id",
+          "title",
+          "finding_type",
+          "description_md",
+          "severity",
+          "status",
+          "first_seen_run",
+          "last_confirmed_run",
+          "created_at"
+        ],
+        "title": "FindingPublic",
+        "type": "object"
+      },
       "FindingPublicationStatus": {
         "description": "Provider publication state for the durable finding admission record.",
         "enum": [
@@ -1711,6 +3108,27 @@
           "unknown"
         ],
         "title": "FindingPublicationStatus",
+        "type": "string"
+      },
+      "FindingSort": {
+        "description": "Sortable columns for the findings list endpoint.",
+        "enum": [
+          "severity",
+          "title",
+          "created_at"
+        ],
+        "title": "FindingSort",
+        "type": "string"
+      },
+      "FindingStatus": {
+        "description": "Agent-owned finding lifecycle status \u2014 a 4-state model.\n\nMirrored 1:1 from the finding's folder in app-memory/ at sync()\n(open/ \u2192 open, resolved/ \u2192 resolved, dismissed/ \u2192 dismissed,\nneeds-verification/ \u2192 needs_verification). A finding in open/ is a\nreproduced, proven vulnerability \u2014 there is no verified/regressed/stale\nnuance. NEEDS_VERIFICATION is a lead the agent could not confirm\n(it needs a second tenant's session, an admin console with no signup, or an\nunreachable state), so instead of silently dropping it he parks it here for\na human to reconfirm. It is NOT proven (never counted as an open finding)\nand NOT closed (never counted as resolved/dismissed).",
+        "enum": [
+          "open",
+          "resolved",
+          "dismissed",
+          "needs_verification"
+        ],
+        "title": "FindingStatus",
         "type": "string"
       },
       "FlushOutput": {
@@ -1912,6 +3330,16 @@
         "title": "HeartbeatAssignmentRequest",
         "type": "object"
       },
+      "Intensity": {
+        "description": "Per-run probing intensity: safe|aggressive|full.\n\nConsolidates two legacy flags into one: the dead PentestRun.safe_mode\n(hardcoded True, never varied) and the live App.allow_active_probing\nconsent gate (destructive DELETE/data-changing probing). App carries a\ndefault_intensity that seeds new runs; PentestRun and AppSecSchedule each\nfreeze their own chosen intensity at construction (a schedule's frozen\nintensity survives a later change to the App's default).",
+        "enum": [
+          "safe",
+          "aggressive",
+          "full"
+        ],
+        "title": "Intensity",
+        "type": "string"
+      },
       "IssueArtifactGrantRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2015,6 +3443,149 @@
         "title": "LocalInputSchema",
         "type": "object"
       },
+      "LocalRunBriefPublic": {
+        "description": "The frozen launch state a local session drives against.\n\n`memory_root` is the canonical namespace evidence rel paths live under;\na local run's rows are projected onto it by the evidence store.",
+        "properties": {
+          "app_id": {
+            "format": "uuid",
+            "title": "App Id",
+            "type": "string"
+          },
+          "app_name": {
+            "title": "App Name",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "execution_host": {
+            "$ref": "#/components/schemas/RunExecutionHost"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Finished At",
+            "type": "string"
+          },
+          "frameworks": {
+            "items": {
+              "$ref": "#/components/schemas/OwaspFramework"
+            },
+            "title": "Frameworks",
+            "type": "array"
+          },
+          "intensity": {
+            "title": "Intensity",
+            "type": "string"
+          },
+          "memory_mount": {
+            "default": "./appsec/app-memory",
+            "title": "Memory Mount",
+            "type": "string"
+          },
+          "memory_root": {
+            "title": "Memory Root",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/Mode"
+          },
+          "report_preferences": {
+            "$ref": "#/components/schemas/AppSecReportPreferences"
+          },
+          "report_reference": {
+            "$ref": "#/components/schemas/LocalRunReportReferencePublic",
+            "nullable": true
+          },
+          "result": {
+            "$ref": "#/components/schemas/RunResult"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "run_scope": {
+            "$ref": "#/components/schemas/ScopeSpec"
+          },
+          "scan_mode": {
+            "$ref": "#/components/schemas/ScanMode"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/CyberDiscoveryTargetPublic"
+            },
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_id",
+          "app_id",
+          "app_name",
+          "conversation_id",
+          "result",
+          "execution_host",
+          "target",
+          "frameworks",
+          "mode",
+          "intensity",
+          "scan_mode",
+          "run_scope",
+          "targets",
+          "report_preferences",
+          "memory_root",
+          "started_at"
+        ],
+        "title": "LocalRunBriefPublic",
+        "type": "object"
+      },
+      "LocalRunReportReferencePublic": {
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "download_url": {
+            "title": "Download Url",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sha256": {
+            "title": "Sha256",
+            "type": "string"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "name",
+          "sha256",
+          "content_type",
+          "download_url"
+        ],
+        "title": "LocalRunReportReferencePublic",
+        "type": "object"
+      },
       "LocalToolAnnouncement": {
         "additionalProperties": false,
         "properties": {
@@ -2051,6 +3622,109 @@
         ],
         "title": "ManualTriggerDisabledReason",
         "type": "string"
+      },
+      "MergeDisabledReason": {
+        "enum": [
+          "unsupported_provider",
+          "not_open",
+          "has_conflicts",
+          "draft",
+          "no_connection",
+          "provider_blocked"
+        ],
+        "title": "MergeDisabledReason",
+        "type": "string"
+      },
+      "Mode": {
+        "description": "Pentest run mode. \u00a7B: black|gray|white.",
+        "enum": [
+          "black",
+          "gray",
+          "white"
+        ],
+        "title": "Mode",
+        "type": "string"
+      },
+      "ModeCapability": {
+        "description": "Availability of one AppSec mode for run-now and scheduled launches.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/Mode"
+          },
+          "reason": {
+            "nullable": true,
+            "title": "Reason",
+            "type": "string"
+          },
+          "run_now": {
+            "title": "Run Now",
+            "type": "boolean"
+          },
+          "schedule": {
+            "title": "Schedule",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "mode",
+          "available",
+          "run_now",
+          "schedule"
+        ],
+        "title": "ModeCapability",
+        "type": "object"
+      },
+      "ObservationIn": {
+        "properties": {
+          "evidence_ref": {
+            "default": "",
+            "title": "Evidence Ref",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "row_id": {
+            "title": "Row Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CoverageStatus"
+          },
+          "worker": {
+            "default": "",
+            "title": "Worker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "row_id",
+          "status"
+        ],
+        "title": "ObservationIn",
+        "type": "object"
+      },
+      "ObservationsIngestRequest": {
+        "properties": {
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/ObservationIn"
+            },
+            "title": "Observations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "observations"
+        ],
+        "title": "ObservationsIngestRequest",
+        "type": "object"
       },
       "OperationEffect": {
         "enum": [
@@ -2329,6 +4003,150 @@
         "title": "OutpostCreatedPublic",
         "type": "object"
       },
+      "OwaspFramework": {
+        "enum": [
+          "owasp_web",
+          "owasp_api"
+        ],
+        "title": "OwaspFramework",
+        "type": "string"
+      },
+      "PaginationMeta": {
+        "properties": {
+          "end_index": {
+            "description": "Ending index of current page items",
+            "title": "End Index",
+            "type": "integer"
+          },
+          "has_next": {
+            "description": "Whether there is a next page",
+            "title": "Has Next",
+            "type": "boolean"
+          },
+          "has_previous": {
+            "description": "Whether there is a previous page",
+            "title": "Has Previous",
+            "type": "boolean"
+          },
+          "page": {
+            "description": "Current page number (1-based)",
+            "title": "Page",
+            "type": "integer"
+          },
+          "should_show_onboarding": {
+            "default": false,
+            "description": "Whether to show onboarding page",
+            "title": "Should Show Onboarding",
+            "type": "boolean"
+          },
+          "start_index": {
+            "description": "Starting index of current page items",
+            "title": "Start Index",
+            "type": "integer"
+          },
+          "take": {
+            "description": "Number of items per page",
+            "title": "Take",
+            "type": "integer"
+          },
+          "total_items": {
+            "description": "Total number of items available",
+            "title": "Total Items",
+            "type": "integer"
+          },
+          "total_pages": {
+            "description": "Total number of pages",
+            "title": "Total Pages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page",
+          "take",
+          "total_items",
+          "total_pages",
+          "has_previous",
+          "has_next",
+          "start_index",
+          "end_index"
+        ],
+        "title": "PaginationMeta",
+        "type": "object"
+      },
+      "PartitionPublic": {
+        "description": "The surface plus the theme lanes the run fans out to.",
+        "properties": {
+          "axis": {
+            "title": "Axis",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "shards": {
+            "items": {
+              "$ref": "#/components/schemas/ShardPublic"
+            },
+            "title": "Shards",
+            "type": "array"
+          },
+          "surface": {
+            "additionalProperties": true,
+            "title": "Surface",
+            "type": "object"
+          },
+          "unmatched": {
+            "title": "Unmatched",
+            "type": "integer"
+          },
+          "unmatched_pct": {
+            "title": "Unmatched Pct",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "plan_id",
+          "surface",
+          "axis",
+          "shards",
+          "notes",
+          "unmatched",
+          "unmatched_pct"
+        ],
+        "title": "PartitionPublic",
+        "type": "object"
+      },
+      "PartitionRequest": {
+        "description": "The themes doc that carves the plan into lanes; null returns surface only.",
+        "properties": {
+          "max_rows_per_shard": {
+            "nullable": true,
+            "title": "Max Rows Per Shard",
+            "type": "integer"
+          },
+          "only_status": {
+            "nullable": true,
+            "title": "Only Status",
+            "type": "string"
+          },
+          "themes": {
+            "additionalProperties": true,
+            "nullable": true,
+            "title": "Themes",
+            "type": "object"
+          }
+        },
+        "title": "PartitionRequest",
+        "type": "object"
+      },
       "PendingAssignmentPublic": {
         "additionalProperties": false,
         "properties": {
@@ -2348,6 +4166,50 @@
           "session_id"
         ],
         "title": "PendingAssignmentPublic",
+        "type": "object"
+      },
+      "PlanCheckPublic": {
+        "description": "One in-scope row and the check a host executes for it.",
+        "properties": {
+          "asset_type": {
+            "title": "Asset Type",
+            "type": "string"
+          },
+          "executable": {
+            "title": "Executable",
+            "type": "boolean"
+          },
+          "locator": {
+            "title": "Locator",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "row_id": {
+            "title": "Row Id",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "row_id",
+          "asset_type",
+          "locator",
+          "method",
+          "url",
+          "executable",
+          "note"
+        ],
+        "title": "PlanCheckPublic",
         "type": "object"
       },
       "RefreshTokenRequest": {
@@ -2581,6 +4443,240 @@
         "title": "RevokeTokenRequest",
         "type": "object"
       },
+      "RunBindRequest": {
+        "description": "Bind the calling agent CLI session's conversation onto a local run.",
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id"
+        ],
+        "title": "RunBindRequest",
+        "type": "object"
+      },
+      "RunExecutionHost": {
+        "description": "The machine where the run executes.\n\n``cloud`` \u2014 the worker + OpenSandbox pipeline (``run_pentest_scan_task``).\n``local`` \u2014 the developer's Mac through a bound ``cloudthinker agent``\nsession; the backend never enqueues a scan task for a local row, and the\nlocal session settles it through the same ``finalize_run`` CAS. Exactly one\nhost is live per run; there is no failover between them.",
+        "enum": [
+          "cloud",
+          "local"
+        ],
+        "title": "RunExecutionHost",
+        "type": "string"
+      },
+      "RunLaunchRequest": {
+        "description": "Request body for POST /appsec/apps/{app_id}/runs.\n\nrun_scope narrows the App's scope for this run \u2014 MUST be \u2286 app.scope.\nOmit or pass null for a full-scope run. mode and intensity are\noptional \u2014 when omitted (None), the use case applies the backend default\n(Mode.BLACK / app.default_intensity). The default lives in\nlaunch_run only, not here. scan_mode is optional too \u2014 omitted (None)\ncoalesces to incremental in the use case (the single default source); pass\n\"full\" for a deep whole-worktree sweep (moot for gray/black).\n\nNote an App with NO prior SUCCESS run always runs \"full\": the use case\ncoerces scan_mode on a first run, so an explicit \"incremental\" here is\nhonoured only once a successful run exists to diff against.",
+        "properties": {
+          "execution_host": {
+            "$ref": "#/components/schemas/RunExecutionHost",
+            "nullable": true
+          },
+          "intensity": {
+            "$ref": "#/components/schemas/Intensity",
+            "nullable": true
+          },
+          "mode": {
+            "$ref": "#/components/schemas/Mode",
+            "nullable": true
+          },
+          "run_directives": {
+            "maxLength": 2000,
+            "nullable": true,
+            "title": "RunLaunchRequest_run_directives",
+            "type": "string"
+          },
+          "run_scope": {
+            "$ref": "#/components/schemas/ScopeSpec",
+            "nullable": true
+          },
+          "scan_mode": {
+            "$ref": "#/components/schemas/ScanMode",
+            "nullable": true
+          },
+          "selection": {
+            "$ref": "#/components/schemas/SavedSelection",
+            "nullable": true
+          }
+        },
+        "title": "RunLaunchRequest",
+        "type": "object"
+      },
+      "RunListResponse": {
+        "description": "Response shape for GET /appsec/apps/{app_id}/runs.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/RunPublic"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "data"
+        ],
+        "title": "RunListResponse",
+        "type": "object"
+      },
+      "RunPublic": {
+        "description": "Response shape for a single PentestRun \u2014 only client-rendered fields.",
+        "properties": {
+          "app_id": {
+            "format": "uuid",
+            "title": "App Id",
+            "type": "string"
+          },
+          "auth_status": {
+            "$ref": "#/components/schemas/AuthStatus"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "counts": {
+            "additionalProperties": true,
+            "title": "Counts",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "diff_focus": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeFocusTarget"
+            },
+            "nullable": true,
+            "title": "Diff Focus",
+            "type": "array"
+          },
+          "execution_host": {
+            "$ref": "#/components/schemas/RunExecutionHost"
+          },
+          "findings_confirmed": {
+            "default": 0,
+            "title": "Findings Confirmed",
+            "type": "integer"
+          },
+          "findings_confirmed_critical": {
+            "default": 0,
+            "title": "Findings Confirmed Critical",
+            "type": "integer"
+          },
+          "findings_critical": {
+            "default": 0,
+            "title": "Findings Critical",
+            "type": "integer"
+          },
+          "findings_discovered": {
+            "default": 0,
+            "title": "Findings Discovered",
+            "type": "integer"
+          },
+          "findings_resolved": {
+            "default": 0,
+            "title": "Findings Resolved",
+            "type": "integer"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Finished At",
+            "type": "string"
+          },
+          "frameworks": {
+            "items": {
+              "$ref": "#/components/schemas/OwaspFramework"
+            },
+            "title": "Frameworks",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "intensity": {
+            "title": "Intensity",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/Mode"
+          },
+          "report_preferences": {
+            "$ref": "#/components/schemas/AppSecReportPreferences"
+          },
+          "report_revision_conversation_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Report Revision Conversation Id",
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/RunResult"
+          },
+          "run_scope": {
+            "$ref": "#/components/schemas/ScopeSpec"
+          },
+          "scan_mode": {
+            "$ref": "#/components/schemas/ScanMode"
+          },
+          "selection": {
+            "$ref": "#/components/schemas/SavedSelection"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "surface_delta": {
+            "additionalProperties": true,
+            "title": "Surface Delta",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "app_id",
+          "frameworks",
+          "mode",
+          "intensity",
+          "run_scope",
+          "scan_mode",
+          "selection",
+          "result",
+          "auth_status",
+          "counts",
+          "surface_delta",
+          "started_at",
+          "finished_at",
+          "created_at"
+        ],
+        "title": "RunPublic",
+        "type": "object"
+      },
+      "RunResult": {
+        "description": "Pentest run lifecycle result: running | success | failed | cancelled.\n\nLifecycle only \u2014 NOT a verdict. A finished run is SUCCESS whether or not it\nfound vulnerabilities; the \"found something\" signal lives in the run's\nfinding counts (FE colors the count), never a distinct result value. FAILED\nmeans the run could not complete honestly (sync failure, missing owner,\nunexpected error) \u2014 its findings may be unwritten, so it must not read SUCCESS.",
+        "enum": [
+          "running",
+          "success",
+          "failed",
+          "cancelled"
+        ],
+        "title": "RunResult",
+        "type": "string"
+      },
       "SavedSelection": {
         "additionalProperties": false,
         "properties": {
@@ -2601,6 +4697,43 @@
           "option_id"
         ],
         "title": "SavedSelection",
+        "type": "object"
+      },
+      "ScanMode": {
+        "description": "Per-run change-focus policy: incremental|full.\n\nincremental \u2014 focus on the git diff between the prior SUCCESSFUL run's HEAD\n              and this run's HEAD (the historic always-on white-box\n              behaviour). `_derive_diff_focus` keeps each repo's `base_ref`\n              so the agent diffs `base...head`.\nfull        \u2014 a deep sweep: `_derive_diff_focus` FORCES `base_ref=\"\"` on\n              every target so no diff is rendered and the whole worktree is\n              scanned. The cursor `head_ref` is still recorded so the NEXT\n              incremental run has a base to diff from.\n\nDEFAULT for both manual and scheduled runs is INCREMENTAL (the use case, not\nthe column, is the source of that default). MOOT for gray/black-box runs:\nthey clone no worktree, so there is nothing to diff and scan_mode is inert.\n\nINVARIANT (first run): on an App with NO prior SUCCESS run,\n`launch_run_with_outcome` COERCES this column to FULL regardless of what the\ncaller asked for \u2014 interactive or scheduled. INCREMENTAL means \"diff since\nthe last successful run\"; with no prior success there is no base, so the\nvalue would lie to both the user and the agent. A schedule's frozen\nINCREMENTAL is therefore honoured only from its first post-success fire\nonward; the schedule row itself is never rewritten.",
+        "enum": [
+          "incremental",
+          "full"
+        ],
+        "title": "ScanMode",
+        "type": "string"
+      },
+      "ScopeSpec": {
+        "additionalProperties": false,
+        "description": "Strict include/exclude safety fence shared by App, run, and schedule APIs.",
+        "properties": {
+          "exclude": {
+            "items": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Exclude",
+            "type": "array"
+          },
+          "include": {
+            "items": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Include",
+            "type": "array"
+          }
+        },
+        "title": "ScopeSpec",
         "type": "object"
       },
       "ScopedWorkspaceLink": {
@@ -2672,6 +4805,136 @@
           "kind"
         ],
         "title": "ScriptRun",
+        "type": "object"
+      },
+      "SettleLocalRunRequest": {
+        "description": "Terminal claim from the owning session; the finalize CAS decides.",
+        "properties": {
+          "agent_succeeded": {
+            "title": "Agent Succeeded",
+            "type": "boolean"
+          },
+          "result_message": {
+            "maxLength": 2000,
+            "nullable": true,
+            "title": "SettleLocalRunRequest_result_message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_succeeded"
+        ],
+        "title": "SettleLocalRunRequest",
+        "type": "object"
+      },
+      "SettleLocalRunResult": {
+        "properties": {
+          "settled": {
+            "title": "Settled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "settled"
+        ],
+        "title": "SettleLocalRunResult",
+        "type": "object"
+      },
+      "Severity": {
+        "description": "Canonical operational severity bucket.\n\nFive-value ladder ordered from most to least urgent. Used by Pulse signals,\nIncidents, notifications, analytics, and the frontend. Collectors without\nground-truth severity (for example, external messaging channels) emit\n``None`` and let the LLM classifier populate this field asynchronously.",
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
+        "title": "Severity",
+        "type": "string"
+      },
+      "SeverityCounts": {
+        "description": "Open-finding counts per severity. Field set mirrors the shared Severity enum.",
+        "properties": {
+          "critical": {
+            "default": 0,
+            "title": "Critical",
+            "type": "integer"
+          },
+          "high": {
+            "default": 0,
+            "title": "High",
+            "type": "integer"
+          },
+          "info": {
+            "default": 0,
+            "title": "Info",
+            "type": "integer"
+          },
+          "low": {
+            "default": 0,
+            "title": "Low",
+            "type": "integer"
+          },
+          "medium": {
+            "default": 0,
+            "title": "Medium",
+            "type": "integer"
+          }
+        },
+        "title": "SeverityCounts",
+        "type": "object"
+      },
+      "ShardPublic": {
+        "description": "One theme lane: the disjoint rows a single scout owns for the run.",
+        "properties": {
+          "auth_context_ref": {
+            "title": "Auth Context Ref",
+            "type": "string"
+          },
+          "auth_context_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Auth Context Refs",
+            "type": "array"
+          },
+          "focus": {
+            "title": "Focus",
+            "type": "string"
+          },
+          "locators": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Locators",
+            "type": "array"
+          },
+          "row_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Row Ids",
+            "type": "array"
+          },
+          "shard_id": {
+            "title": "Shard Id",
+            "type": "string"
+          },
+          "shard_key": {
+            "title": "Shard Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shard_id",
+          "shard_key",
+          "focus",
+          "row_ids",
+          "locators",
+          "auth_context_ref",
+          "auth_context_refs"
+        ],
+        "title": "ShardPublic",
         "type": "object"
       },
       "SimpleMessage": {
@@ -2750,6 +5013,14 @@
         "title": "SnapshotFileChangeType",
         "type": "string"
       },
+      "SortOrder": {
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "title": "SortOrder",
+        "type": "string"
+      },
       "StartWorkerConformanceRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2804,6 +5075,200 @@
           "selection"
         ],
         "title": "SubmitHeadlessRunRequest",
+        "type": "object"
+      },
+      "SurfaceAssetTypeCount": {
+        "description": "Active surface-item count for one asset type, for the summary chips.",
+        "properties": {
+          "active_count": {
+            "title": "Active Count",
+            "type": "integer"
+          },
+          "asset_type": {
+            "title": "Asset Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_type",
+          "active_count"
+        ],
+        "title": "SurfaceAssetTypeCount",
+        "type": "object"
+      },
+      "SurfaceItemListResponse": {
+        "description": "Response shape for GET /appsec/apps/{app_id}/surface.\n\n`data`/`meta` describe the current page of ACTIVE surface items; `counts`\ncarries the full per-asset-type active totals (independent of pagination) so\nthe summary chips stay accurate across pages.",
+        "properties": {
+          "counts": {
+            "items": {
+              "$ref": "#/components/schemas/SurfaceAssetTypeCount"
+            },
+            "title": "Counts",
+            "type": "array"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SurfaceItemPublic"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SurfaceSummary"
+          }
+        },
+        "required": [
+          "data",
+          "meta",
+          "counts",
+          "summary"
+        ],
+        "title": "SurfaceItemListResponse",
+        "type": "object"
+      },
+      "SurfaceItemPublic": {
+        "description": "Response shape for one backend-backed AppSec surface item.",
+        "properties": {
+          "app_id": {
+            "format": "uuid",
+            "title": "App Id",
+            "type": "string"
+          },
+          "asset_type": {
+            "title": "Asset Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "first_seen_run": {
+            "format": "uuid",
+            "title": "First Seen Run",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen_run": {
+            "format": "uuid",
+            "title": "Last Seen Run",
+            "type": "string"
+          },
+          "locator": {
+            "title": "Locator",
+            "type": "string"
+          },
+          "open_finding_count": {
+            "default": 0,
+            "title": "Open Finding Count",
+            "type": "integer"
+          },
+          "properties": {
+            "additionalProperties": true,
+            "title": "Properties",
+            "type": "object"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SurfaceSource"
+          },
+          "surface_status": {
+            "$ref": "#/components/schemas/SurfaceStatus"
+          }
+        },
+        "required": [
+          "id",
+          "app_id",
+          "asset_type",
+          "locator",
+          "properties",
+          "source",
+          "first_seen_run",
+          "last_seen_run",
+          "created_at"
+        ],
+        "title": "SurfaceItemPublic",
+        "type": "object"
+      },
+      "SurfacePublic": {
+        "description": "The OWASP attack-surface overview an agent authors themes against.",
+        "properties": {
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "surface": {
+            "additionalProperties": true,
+            "title": "Surface",
+            "type": "object"
+          }
+        },
+        "required": [
+          "plan_id",
+          "surface"
+        ],
+        "title": "SurfacePublic",
+        "type": "object"
+      },
+      "SurfaceSort": {
+        "description": "Sortable columns for the surface list endpoint.",
+        "enum": [
+          "locator",
+          "created_at"
+        ],
+        "title": "SurfaceSort",
+        "type": "string"
+      },
+      "SurfaceSource": {
+        "description": "Where a surface item came from \u2014 its PROVENANCE, not its liveness.\n\nLiveness (\"is it still there?\") is unknowable to a black-box probe, so we\ndo NOT encode it as a status. We encode the one thing that IS provable and\nthat carries real risk \u2014 where the endpoint was found (matches how ASM /\nAPI-discovery tools model shadow vs documented surface):\n\n- DOCUMENTED \u2014 declared in the app's spec/context (OpenAPI, runbook, links).\n               The expected, known surface.\n- SHADOW     \u2014 discovered by the agent probing/crawling but ABSENT from the\n               docs. Undocumented attack surface \u2014 the high-value signal.\n\nA row is never deleted, never hidden, never downgraded. Freshness is the\n`last_seen_run` stamp plus the agent's free-text notes in `properties`; it\nis deliberately NOT a stored state (absence from a run proves nothing).",
+        "enum": [
+          "documented",
+          "shadow"
+        ],
+        "title": "SurfaceSource",
+        "type": "string"
+      },
+      "SurfaceStatus": {
+        "description": "Rendered test posture for one surface row.",
+        "enum": [
+          "findings",
+          "tested_clean",
+          "untested"
+        ],
+        "title": "SurfaceStatus",
+        "type": "string"
+      },
+      "SurfaceSummary": {
+        "description": "Backend-owned summary for the search-filtered attack surface.",
+        "properties": {
+          "open_findings": {
+            "default": 0,
+            "title": "Open Findings",
+            "type": "integer"
+          },
+          "tested_clean": {
+            "default": 0,
+            "title": "Tested Clean",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "untested": {
+            "default": 0,
+            "title": "Untested",
+            "type": "integer"
+          }
+        },
+        "title": "SurfaceSummary",
         "type": "object"
       },
       "TargetConnectionHealth": {
@@ -2977,6 +5442,17 @@
         "title": "TargetToolMapping",
         "type": "object"
       },
+      "TargetType": {
+        "description": "Target type. The one open plugin axis (\u00a7A/\u00a7B).\n\nV1 ships domain|ip|cidr. connection (cloud/k8s/db) is included in the enum\nso the per-target tool-binding seam can branch on it when infra audits land\n\u2014 zero migration when that happens.",
+        "enum": [
+          "domain",
+          "ip",
+          "cidr",
+          "connection"
+        ],
+        "title": "TargetType",
+        "type": "string"
+      },
       "TicketComplianceStatus": {
         "description": "How well the MR satisfies its linked ticket's acceptance criteria.\n\nOnly meaningful when the review found a linked Jira/Linear ticket and read\nits acceptance criteria (the reviewer already fetches these via the\nreviewing-jira / reviewing-linear skill). Absent (NULL) when no ticket was\nlinked \u2014 the detail's compliance card then hides rather than claiming\ncoverage it never assessed.\n\nStored as its string value in a VARCHAR column, never a native Postgres\nenum, so UPPER()/LOWER() and enum-type migrations (DB-02) never enter the\npicture \u2014 same treatment as the sibling SnapshotFileChangeType. Lives here\n(data/models) rather than in api/schemas so the column can be typed with it\nand the write path stops passing bare strings; api/schemas re-exports it for\nthe response model. The agent-facing tool declares the same value set as an\ninline Literal (the repo prefers inline Literals in model-visible schemas\nover $ref/$defs); a parity test pins the two equal.",
         "enum": [
@@ -3085,6 +5561,16 @@
         "title": "Token",
         "type": "object"
       },
+      "TriageState": {
+        "description": "Human work-tracking on an open finding \u2014 NOT a finding status.\n\nAnswers \"is a person working this?\", which `FindingStatus` cannot: a finding\nis equally OPEN whether nobody has looked at it or an engineer has been\nfixing it all week. The two axes compose into the UI's triage rail\n(open+NONE = \"needs triage\", open+IN_PROGRESS, open+AWAITING_RETEST,\nresolved = \"verified fixed\"). A human reconfirming a NEEDS_VERIFICATION\nlead reuses AWAITING_RETEST \u2014 it flags the finding for the next scan, no new\nTriageState value is minted for it.\n\nOwnership is strictly split: the agent owns `status` (mirrored from the\napp-memory folder at sync()), a human owns this. A human value can never sit\nin `status` \u2014 sync() rewrites that column from the tree every run and would\ndestroy it. AWAITING_RETEST is a LABEL, not a trigger: it flags the finding\nfor the next scan, it does not launch one.\n\nCleared to NONE by sync() when the agent resolves the finding \u2014 the question\nthis was tracking is settled.",
+        "enum": [
+          "none",
+          "in_progress",
+          "awaiting_retest"
+        ],
+        "title": "TriageState",
+        "type": "string"
+      },
       "UploadWorkerArtifactRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3149,6 +5635,44 @@
           "is_owner"
         ],
         "title": "UserOrganizationMinimal",
+        "type": "object"
+      },
+      "WorkPlanPublic": {
+        "description": "A bounded plan: the host's whole to-do list for one run.",
+        "properties": {
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/PlanCheckPublic"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "target_ref": {
+            "title": "Target Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_id",
+          "run_id",
+          "target_ref",
+          "schema_version",
+          "rows"
+        ],
+        "title": "WorkPlanPublic",
         "type": "object"
       },
       "WorkerArtifactPublic": {
@@ -3677,6 +6201,1576 @@
   },
   "openapi": "3.0.3",
   "paths": {
+    "/api/v1/agent-cli/sessions/{conversation_id}/entries": {
+      "get": {
+        "operationId": "agent-cli-list_agent_cli_session_entries",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after_seq",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After Seq",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCliEntryPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Agent Cli Session Entries",
+        "tags": [
+          "agent-cli"
+        ]
+      },
+      "put": {
+        "operationId": "agent-cli-append_agent_cli_session_entries",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppendAgentCliEntriesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCliEntriesAppended"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Append Agent Cli Session Entries",
+        "tags": [
+          "agent-cli"
+        ]
+      }
+    },
+    "/api/v1/appsec/apps/": {
+      "get": {
+        "operationId": "appsec-list_apps",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Apps",
+        "tags": [
+          "appsec"
+        ]
+      },
+      "post": {
+        "operationId": "appsec-create_app",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Create App",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/apps/{app_id}": {
+      "delete": {
+        "operationId": "appsec-archive_app",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "App Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Archive App",
+        "tags": [
+          "appsec"
+        ]
+      },
+      "get": {
+        "operationId": "appsec-get_app",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "App Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get App",
+        "tags": [
+          "appsec"
+        ]
+      },
+      "patch": {
+        "operationId": "appsec-update_app",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "App Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Update App",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/apps/{app_id}/context": {
+      "get": {
+        "operationId": "appsec-list_context",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "App Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextSourceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Context",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/apps/{app_id}/context/{source_id}/content-url": {
+      "get": {
+        "operationId": "appsec-get_context_content_url",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "App Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextSourceContentUrl"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Context Content Url",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/apps/{app_id}/domain-verification": {
+      "get": {
+        "operationId": "appsec-get_domain_verification",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "App Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppDomainVerificationPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Domain Verification",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/apps/{app_id}/findings": {
+      "get": {
+        "description": "One filtered page of an App's findings.\n\n`status` is repeatable (`?status=open&status=needs_verification`). The table\nsends one value; the triage board's `In progress` and `Awaiting retest`\ncolumns send two, because a human may work a parked lead on the triage axis\nwhile its agent-owned `status` stays `needs_verification`.",
+        "operationId": "appsec-list_findings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "App Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "take",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Take",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Severity",
+              "nullable": true,
+              "title": "Severity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/FindingStatus"
+              },
+              "nullable": true,
+              "title": "Status",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "triage_state",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TriageState",
+              "nullable": true,
+              "title": "Triage State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owasp",
+            "required": false,
+            "schema": {
+              "maxLength": 8,
+              "nullable": true,
+              "title": "Owasp",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "nullable": true,
+              "title": "Search",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/FindingSort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_dir",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortOrder"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSecFindingListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Findings",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/apps/{app_id}/findings/export-pdf": {
+      "post": {
+        "description": "Export every finding matching the caller's list filters as one PDF.\n\nDeliberately takes no `page`/`take`: the export covers the whole filtered\nset, not the page the client happens to have loaded. Board view omits\n`status` (each board column IS a status set), which reads here as \"all\".\n\n`status` is repeatable, matching the list endpoint exactly. The table sends\nthe one status it is filtered by; keeping the two endpoints on the same\nshape is what lets the workspace hand its list filters straight to the\nexport without translating them.",
+        "operationId": "appsec-export_findings_pdf",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "App Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Severity",
+              "nullable": true,
+              "title": "Severity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/FindingStatus"
+              },
+              "nullable": true,
+              "title": "Status",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "triage_state",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TriageState",
+              "nullable": true,
+              "title": "Triage State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "owasp",
+            "required": false,
+            "schema": {
+              "maxLength": 8,
+              "nullable": true,
+              "title": "Owasp",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "nullable": true,
+              "title": "Search",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/FindingSort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_dir",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortOrder"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilePdfDownloadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Export Findings Pdf",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/apps/{app_id}/runs": {
+      "get": {
+        "operationId": "appsec-list_runs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "App Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Runs",
+        "tags": [
+          "appsec"
+        ]
+      },
+      "post": {
+        "operationId": "appsec-launch_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "App Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunLaunchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Launch Run",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/apps/{app_id}/surface": {
+      "get": {
+        "operationId": "appsec-list_surface",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "App Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "take",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Take",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "nullable": true,
+              "title": "Search",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SurfaceSort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_dir",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortOrder"
+            }
+          },
+          {
+            "in": "query",
+            "name": "surface_status",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SurfaceStatus",
+              "nullable": true,
+              "title": "Surface Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfaceItemListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Surface",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/domains": {
+      "get": {
+        "operationId": "appsec-list_domains",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSecDomainListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Domains",
+        "tags": [
+          "appsec"
+        ]
+      },
+      "post": {
+        "operationId": "appsec-create_domain",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppSecDomainCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSecDomainPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Create Domain",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/domains/{domain_id}/check": {
+      "post": {
+        "operationId": "appsec-check_domain",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Domain Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSecDomainPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Check Domain",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/findings/{finding_id}": {
+      "get": {
+        "operationId": "appsec-get_finding",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Finding Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Finding",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/findings/{finding_id}/download-pdf": {
+      "post": {
+        "operationId": "appsec-download_finding_pdf",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Finding Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilePdfDownloadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Download Finding Pdf",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/runs/{run_id}": {
+      "get": {
+        "operationId": "appsec-get_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/runs/{run_id}/bind": {
+      "post": {
+        "operationId": "appsec-bind_local_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunBindRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalRunBriefPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Bind Local Run",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "appsec-cancel_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Cancel Run",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/runs/{run_id}/coverage": {
+      "get": {
+        "operationId": "appsec-get_run_coverage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverageReportPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Run Coverage",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/runs/{run_id}/evidence": {
+      "post": {
+        "operationId": "appsec-submit_local_evidence",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceSubmitRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceReceiptPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Submit Local Evidence",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/runs/{run_id}/partition": {
+      "post": {
+        "operationId": "appsec-partition_work_plan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartitionPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Partition Work Plan",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/runs/{run_id}/plan": {
+      "post": {
+        "operationId": "appsec-issue_work_plan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkPlanPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Issue Work Plan",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/runs/{run_id}/plan/{plan_id}/observations": {
+      "post": {
+        "operationId": "appsec-ingest_observations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservationsIngestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverageReportPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ingest Observations",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/runs/{run_id}/settle": {
+      "post": {
+        "operationId": "appsec-settle_local_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettleLocalRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettleLocalRunResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Settle Local Run",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/runs/{run_id}/surface": {
+      "get": {
+        "operationId": "appsec-get_run_surface",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SurfacePublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Run Surface",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
     "/api/v1/cli/runs": {
       "get": {
         "operationId": "cli-list_headless_runs",

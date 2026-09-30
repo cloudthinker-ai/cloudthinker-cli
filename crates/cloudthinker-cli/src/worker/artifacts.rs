@@ -15,6 +15,26 @@ use super::{config::WorkdirIdentity, files};
 
 const UPLOAD_CONCURRENCY: usize = 4;
 
+struct UploadLease {
+    assignment_id: Uuid,
+    operation_id: Uuid,
+    fence_token: i64,
+    lease_token: String,
+    deadline_at: chrono::DateTime<Utc>,
+}
+
+impl UploadLease {
+    fn of(envelope: &api::OperationEnvelope) -> Self {
+        Self {
+            assignment_id: envelope.assignment_id,
+            operation_id: envelope.operation_id,
+            fence_token: envelope.fence_token,
+            lease_token: envelope.lease_token.clone(),
+            deadline_at: envelope.deadline_at,
+        }
+    }
+}
+
 pub async fn flush(
     client: &WorkerClient,
     identity: Arc<WorkdirIdentity>,
@@ -26,7 +46,7 @@ pub async fn flush(
     let paths = tokio::task::spawn_blocking(move || files::artifact_paths(&scanning.root))
         .await
         .map_err(|_| "EXECUTOR_ARTIFACT_SCAN_FAILED")??;
-    let envelope = Arc::new(envelope.clone());
+    let lease = Arc::new(UploadLease::of(envelope));
     let total = Arc::new(AtomicUsize::new(0));
     let mut queued = paths.into_iter();
     let mut running = JoinSet::new();
@@ -38,7 +58,7 @@ pub async fn flush(
             running.spawn(upload(
                 client.clone(),
                 identity.clone(),
-                envelope.clone(),
+                lease.clone(),
                 worker,
                 cancel.clone(),
                 total.clone(),
@@ -63,13 +83,13 @@ pub async fn flush(
 async fn upload(
     client: WorkerClient,
     identity: Arc<WorkdirIdentity>,
-    envelope: Arc<api::OperationEnvelope>,
+    lease: Arc<UploadLease>,
     worker: Uuid,
     cancel: CancellationToken,
     total: Arc<AtomicUsize>,
     path: PathBuf,
 ) -> Result<String, &'static str> {
-    if cancel.is_cancelled() || Utc::now() >= envelope.deadline_at {
+    if cancel.is_cancelled() || Utc::now() >= lease.deadline_at {
         return Err("EXECUTOR_ARTIFACT_UPLOAD_CANCELLED");
     }
     if total.load(Ordering::SeqCst) >= files::MAX_ARTIFACT_BYTES {
@@ -88,17 +108,18 @@ async fn upload(
         return Err("EXECUTOR_ARTIFACT_LIMIT_EXCEEDED");
     }
     let digest = format!("{:x}", Sha256::digest(&bytes));
-    let fence = (envelope.fence_token as u64)
-        .try_into()
-        .map_err(|_| "EXECUTOR_ARTIFACT_LEASE_INVALID")?;
+    let fence = u64::try_from(lease.fence_token)
+        .ok()
+        .and_then(std::num::NonZeroU64::new)
+        .ok_or("EXECUTOR_ARTIFACT_LEASE_INVALID")?;
     let grant = client
         .artifact_grant(
-            envelope.assignment_id,
+            lease.assignment_id,
             &api::IssueArtifactGrantRequest {
                 worker_id: worker,
                 fence_token: fence,
-                lease_token: envelope.lease_token.clone(),
-                operation_id: envelope.operation_id,
+                lease_token: lease.lease_token.clone(),
+                operation_id: lease.operation_id,
                 path: path.parse().map_err(|_| "EXECUTOR_ARTIFACT_PATH_INVALID")?,
                 digest: digest
                     .parse()
@@ -111,7 +132,7 @@ async fn upload(
     let body = api::UploadWorkerArtifactRequest {
         worker_id: worker,
         fence_token: fence,
-        lease_token: envelope.lease_token.clone(),
+        lease_token: lease.lease_token.clone(),
         token: grant.token,
         content_base64: base64::engine::general_purpose::STANDARD
             .encode(&bytes)
@@ -120,7 +141,7 @@ async fn upload(
     };
     let receipt = tokio::select! {
         _=cancel.cancelled()=>return Err("EXECUTOR_ARTIFACT_UPLOAD_CANCELLED"),
-        result=client.upload_artifact(envelope.assignment_id, grant.grant_id, &body)=>result.map_err(|_| "EXECUTOR_ARTIFACT_UPLOAD_UNCONFIRMED")?,
+        result=client.upload_artifact(lease.assignment_id, grant.grant_id, &body)=>result.map_err(|_| "EXECUTOR_ARTIFACT_UPLOAD_UNCONFIRMED")?,
     };
     if receipt.path != path || receipt.digest != digest || receipt.size != bytes.len() as i64 {
         return Err("EXECUTOR_ARTIFACT_RECEIPT_INVALID");
@@ -370,6 +391,27 @@ mod tests {
         let peak = stub.peak.load(Ordering::SeqCst);
         assert!(peak > 1, "uploads never overlapped");
         assert!(peak <= UPLOAD_CONCURRENCY, "unbounded fan-out: {peak}");
+    }
+
+    #[tokio::test]
+    async fn flush_refuses_a_negative_fence_before_requesting_a_grant() {
+        let fixture = fixture();
+        deliverable(&fixture, "report.txt", b"payload");
+        let stub = stub(Receipt::Honest, Duration::ZERO).await;
+        let mut envelope = envelope(later());
+        envelope.fence_token = -1;
+        assert_eq!(
+            flush(
+                &client(&stub),
+                fixture.identity.clone(),
+                &envelope,
+                Uuid::new_v4(),
+                CancellationToken::new(),
+            )
+            .await,
+            Err("EXECUTOR_ARTIFACT_LEASE_INVALID")
+        );
+        assert_eq!(stub.uploads.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

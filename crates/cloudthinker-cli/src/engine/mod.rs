@@ -3,6 +3,8 @@
 pub mod exit;
 pub mod local_review;
 pub mod login_guide;
+pub mod login_mode;
 pub mod output;
+pub mod piped_input;
 pub mod timing;
 pub mod watch;

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use base64::Engine;
 use cloudthinker_client::{CtError, CtResult, worker_api::WorkerClient, worker_types as api};
@@ -21,6 +22,22 @@ pub struct WorkdirExecutor {
     secrets: Vec<String>,
     bundles: SkillBundleStore,
     shim: Arc<ShimImage>,
+    running: AtomicUsize,
+}
+
+struct Running<'a>(&'a AtomicUsize);
+
+impl<'a> Running<'a> {
+    fn enter(counter: &'a AtomicUsize) -> Self {
+        counter.fetch_add(1, Ordering::SeqCst);
+        Self(counter)
+    }
+}
+
+impl Drop for Running<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 impl WorkdirExecutor {
@@ -41,18 +58,46 @@ impl WorkdirExecutor {
             secrets,
             bundles,
             shim: Arc::new(shim),
+            running: AtomicUsize::new(0),
         }
+    }
+
+    pub fn running(&self) -> usize {
+        self.running.load(Ordering::SeqCst)
     }
 
     pub async fn execute(
         &self,
-        envelope: &api::OperationEnvelope,
+        envelope: &Arc<api::OperationEnvelope>,
         cancel: CancellationToken,
         worker: uuid::Uuid,
         client: &WorkerClient,
     ) -> CtResult<api::WorkerOperationResult> {
+        let _running = Running::enter(&self.running);
+        let started = std::time::Instant::now();
+        let kind = payload_kind(&envelope.payload);
+        crate::engine::output::worker_debug(&format!(
+            "Operation {} ({kind}) started.",
+            envelope.operation_id
+        ));
         self.identity.revalidate()?;
         let output = self.dispatch(envelope, cancel, worker, client).await?;
+        let code = match &output {
+            Err(code) => Some((*code).to_owned()),
+            Ok((value, _)) => value
+                .pointer("/result/error_code")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+        };
+        crate::engine::output::worker_event(&format!(
+            "Operation {} ({kind}) {} in {} ms.",
+            envelope.operation_id,
+            code.as_deref().map_or_else(
+                || "finished".to_owned(),
+                |code| format!("ended with {code}")
+            ),
+            started.elapsed().as_millis()
+        ));
         if matches!(
             output,
             Err("EXECUTOR_ARTIFACT_UPLOAD_UNCONFIRMED"
@@ -102,7 +147,7 @@ impl WorkdirExecutor {
 
     async fn dispatch(
         &self,
-        envelope: &api::OperationEnvelope,
+        envelope: &Arc<api::OperationEnvelope>,
         cancel: CancellationToken,
         worker: uuid::Uuid,
         client: &WorkerClient,
@@ -142,25 +187,25 @@ impl WorkdirExecutor {
             )
             .await
             .map(|value| (value, None)),
-            operation => {
+            _ => {
                 let dir = self
                     .identity
                     .root
                     .try_clone()
                     .map_err(|_| CtError::Store("worker directory unavailable".into()))?;
-                let operation = operation.clone();
-                tokio::task::spawn_blocking(move || match operation {
+                let envelope = Arc::clone(envelope);
+                tokio::task::spawn_blocking(move || match &envelope.payload {
                     api::Payload::FileOperation(operation) => {
-                        files::execute(&dir, &operation).map(|v| (v, None))
+                        files::execute(&dir, operation).map(|v| (v, None))
                     }
                     api::Payload::FilesDeliverables(_) => {
                         files::deliverables(&dir).map(|v| (v, None))
                     }
                     api::Payload::FilesList(request) => {
-                        files::list(&dir, &request).map(|v| (v, None))
+                        files::list(&dir, request).map(|v| (v, None))
                     }
                     api::Payload::FileContent(request) => {
-                        files::content(&dir, &request).map(|v| (v, None))
+                        files::content(&dir, request).map(|v| (v, None))
                     }
                     api::Payload::FileDownload(request) => {
                         files::read(&dir, &request.path, files::MAX_BYTES)
@@ -173,6 +218,28 @@ impl WorkdirExecutor {
             }
         })
     }
+}
+
+pub fn payload_kind(payload: &api::Payload) -> &'static str {
+    match payload {
+        api::Payload::SkillBundleChunk(_) => "skill_bundle_chunk",
+        api::Payload::ScriptRun(_) => "script",
+        api::Payload::FileOperation(_) => "file_operation",
+        api::Payload::FilesList(_) => "files_list",
+        api::Payload::FileContent(_) => "file_content",
+        api::Payload::FileDownload(_) => "file_download",
+        api::Payload::FilesDeliverables(_) => "files_deliverables",
+        api::Payload::FlushOutput(_) => "flush_output",
+        api::Payload::ConvertOfficePdf(_) => "convert_office_pdf",
+        api::Payload::RepositoryOperation(_) => "repository_operation",
+        api::Payload::BackgroundOperation(_) => "background_operation",
+    }
+}
+
+pub fn cancelled() -> CtResult<api::WorkerOperationResult> {
+    let mut result = failure("CANCELLED")?;
+    result.state = api::WorkerOperationResultState::Cancelled;
+    Ok(result)
 }
 
 pub fn failure(code: &str) -> CtResult<api::WorkerOperationResult> {
@@ -286,7 +353,7 @@ mod tests {
         ) -> CtResult<api::WorkerOperationResult> {
             self.executor
                 .execute(
-                    &envelope(payload),
+                    &Arc::new(envelope(payload)),
                     cancel,
                     uuid::Uuid::new_v4(),
                     &self.client,

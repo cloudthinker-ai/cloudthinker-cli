@@ -6,6 +6,56 @@ use std::thread;
 use std::time::{Duration, SystemTime};
 use tar::{Builder, Header};
 
+struct CacheRoot(tempfile::TempDir);
+
+impl CacheRoot {
+    fn new() -> Self {
+        Self(tempfile::tempdir().unwrap())
+    }
+
+    fn path(&self) -> &Path {
+        self.0.path()
+    }
+}
+
+impl Drop for CacheRoot {
+    fn drop(&mut self) {
+        restore_directory_write_access(self.0.path());
+    }
+}
+
+fn restore_directory_write_access(path: &Path) {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return;
+    };
+    if !metadata.is_dir() {
+        return;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o700));
+    }
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            restore_directory_write_access(&entry.path());
+        }
+    }
+}
+
+#[test]
+fn dropping_a_cache_root_removes_its_read_only_bundles() {
+    let temporary = CacheRoot::new();
+    let root = temporary.path().to_path_buf();
+    let store = SkillBundleStore::new(&root);
+    for chunk in &chunks(&valid_archive()) {
+        store.install(chunk).unwrap();
+    }
+    assert!(store.verify_all().is_ok());
+    drop(temporary);
+    assert!(!root.exists());
+}
+
 fn valid_archive() -> Vec<u8> {
     archive_from_entries(&[
         (
@@ -160,7 +210,7 @@ fn traversal_archive() -> Vec<u8> {
 
 #[test]
 fn installs_chunks_and_reuses_verified_bundle_after_restart() {
-    let temporary = tempfile::tempdir().unwrap();
+    let temporary = CacheRoot::new();
     let bytes = valid_archive();
     let chunks = chunks(&bytes);
     let first = SkillBundleStore::new(temporary.path());
@@ -193,7 +243,7 @@ fn installs_chunks_and_reuses_verified_bundle_after_restart() {
 
 #[test]
 fn out_of_order_chunks_resume_after_restart_and_preserve_exact_bytes() {
-    let temporary = tempfile::tempdir().unwrap();
+    let temporary = CacheRoot::new();
     let (bytes, payload) = large_archive();
     assert!(bytes.len() > CHUNK_BYTES);
     let chunks = chunks(&bytes);
@@ -232,7 +282,7 @@ fn out_of_order_chunks_resume_after_restart_and_preserve_exact_bytes() {
 
 #[test]
 fn rejects_traversal_without_publishing() {
-    let temporary = tempfile::tempdir().unwrap();
+    let temporary = CacheRoot::new();
     let bytes = traversal_archive();
     let chunks = chunks(&bytes);
     let store = SkillBundleStore::new(temporary.path());
@@ -262,7 +312,7 @@ fn malformed_skill_archives_fail_without_publishing() {
         ("malformed gzip", vec![1, 2, 3], "BUNDLE_ARCHIVE_INVALID"),
     ];
     for (name, bytes, expected) in cases {
-        let temporary = tempfile::tempdir().unwrap();
+        let temporary = CacheRoot::new();
         let chunks = chunks(&bytes);
         let store = SkillBundleStore::new(temporary.path());
         let result = store.install(&chunks[0]);
@@ -275,7 +325,7 @@ fn malformed_skill_archives_fail_without_publishing() {
 fn detects_tampered_files_before_execution() {
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
-    let temporary = tempfile::tempdir().unwrap();
+    let temporary = CacheRoot::new();
     let bytes = valid_archive();
     let chunks = chunks(&bytes);
     let store = SkillBundleStore::new(temporary.path());
@@ -290,7 +340,7 @@ fn detects_tampered_files_before_execution() {
 
 #[test]
 fn concurrent_chunk_delivery_publishes_one_verified_tree() {
-    let temporary = tempfile::tempdir().unwrap();
+    let temporary = CacheRoot::new();
     let chunks = chunks(&valid_archive());
     let store = SkillBundleStore::new(temporary.path());
     let handles = (0..4)
@@ -308,7 +358,7 @@ fn concurrent_chunk_delivery_publishes_one_verified_tree() {
 
 #[test]
 fn staging_quota_blocks_new_bundles_but_allows_existing_resume() {
-    let temporary = tempfile::tempdir().unwrap();
+    let temporary = CacheRoot::new();
     let store = SkillBundleStore::new(temporary.path());
     let bytes = valid_archive();
     let bundle_chunks = chunks(&bytes);
@@ -341,7 +391,7 @@ fn staging_quota_blocks_new_bundles_but_allows_existing_resume() {
 
 #[test]
 fn stale_staging_cleanup_removes_idle_entries_and_preserves_locked_entries() {
-    let temporary = tempfile::tempdir().unwrap();
+    let temporary = CacheRoot::new();
     let store = SkillBundleStore::new(temporary.path());
     let now = SystemTime::now();
     let old = now
@@ -367,7 +417,7 @@ fn stale_staging_cleanup_removes_idle_entries_and_preserves_locked_entries() {
 
 #[test]
 fn rejected_digests_reuse_a_bounded_lock_slot_set() {
-    let temporary = tempfile::tempdir().unwrap();
+    let temporary = CacheRoot::new();
     let store = SkillBundleStore::new(temporary.path());
     let now = SystemTime::now();
     for prefix in 0..MAX_STAGING_BUNDLES {
@@ -400,7 +450,7 @@ fn rejected_digests_reuse_a_bounded_lock_slot_set() {
 fn readonly_staging_tree_is_recoverable_after_restart() {
     use std::os::unix::fs::PermissionsExt;
 
-    let temporary = tempfile::tempdir().unwrap();
+    let temporary = CacheRoot::new();
     let tree = temporary.path().join("tree");
     let nested = tree.join("scripts");
     fs::create_dir_all(&nested).unwrap();
@@ -413,9 +463,27 @@ fn readonly_staging_tree_is_recoverable_after_restart() {
     assert!(!tree.exists());
 }
 
+#[cfg(unix)]
+#[test]
+fn lock_open_refuses_a_dangling_symlink_without_creating_its_target() {
+    let temporary = CacheRoot::new();
+    let root = temporary.path().join("root");
+    let target = temporary.path().join("elsewhere").join("planted");
+    fs::create_dir(&root).unwrap();
+    fs::create_dir(target.parent().unwrap()).unwrap();
+    let name = lock_name(&test_digest(0xab, 0));
+    std::os::unix::fs::symlink(&target, root.join(&name)).unwrap();
+
+    assert_eq!(
+        open_lock(&root, &name).err(),
+        Some("BUNDLE_CACHE_UNAVAILABLE")
+    );
+    assert!(!target.exists());
+}
+
 #[test]
 fn completed_cache_is_bounded_without_removing_installed_bundles() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = CacheRoot::new();
     let store = SkillBundleStore::new(temp.path());
     let installed = chunks(&valid_archive());
     store.install(&installed[0]).unwrap();
@@ -436,8 +504,63 @@ fn completed_cache_is_bounded_without_removing_installed_bundles() {
 }
 
 #[test]
+fn a_full_cache_evicts_the_least_recently_used_idle_bundle() {
+    let temp = CacheRoot::new();
+    let store = SkillBundleStore::new(temp.path());
+    let mut digests = Vec::new();
+    for index in 0..64 {
+        let archive = archive_from_entries(&[("SKILL.md", format!("skill {index}").as_bytes())]);
+        let chunk = chunks(&archive).remove(0);
+        store.install(&chunk).unwrap();
+        digests.push(chunk.digest);
+    }
+    let now = SystemTime::now();
+    let age = |hours: u64| now - Duration::from_secs(hours * 60 * 60);
+    for (digest, hours) in [(&digests[3], 30), (&digests[7], 40), (&digests[9], 2)] {
+        std::fs::File::open(store.root().join(digest))
+            .unwrap()
+            .set_modified(age(hours))
+            .unwrap();
+    }
+
+    let incoming = chunks(&archive_from_entries(&[("SKILL.md", b"another skill")]));
+    assert_eq!(store.install(&incoming[0]).unwrap()["installed"], true);
+
+    assert!(!store.root().join(&digests[7]).exists());
+    assert!(store.root().join(&digests[3]).exists());
+    assert!(store.root().join(&digests[9]).exists());
+    assert!(store.verify_all().is_ok());
+
+    let second = chunks(&archive_from_entries(&[("SKILL.md", b"a third skill")]));
+    assert_eq!(store.install(&second[0]).unwrap()["installed"], true);
+    assert!(!store.root().join(&digests[3]).exists());
+
+    let third = chunks(&archive_from_entries(&[("SKILL.md", b"a fourth skill")]));
+    assert_eq!(store.install(&third[0]), Err("BUNDLE_CACHE_FULL"));
+}
+
+#[test]
+fn reusing_a_bundle_marks_it_recently_used() {
+    let temp = CacheRoot::new();
+    let store = SkillBundleStore::new(temp.path());
+    let chunk = chunks(&valid_archive()).remove(0);
+    store.install(&chunk).unwrap();
+    let bundle = store.root().join(&chunk.digest);
+    let old = SystemTime::now() - Duration::from_secs(48 * 60 * 60);
+    std::fs::File::open(&bundle)
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+
+    store.install(&chunk).unwrap();
+
+    let used = std::fs::metadata(&bundle).unwrap().modified().unwrap();
+    assert!(used > old + Duration::from_secs(47 * 60 * 60));
+}
+
+#[test]
 fn staging_reserves_cache_capacity_and_can_complete_when_full() {
-    let temp = tempfile::tempdir().unwrap();
+    let temp = CacheRoot::new();
     let store = SkillBundleStore::new(temp.path());
     let staged = chunks(&large_archive().0);
     assert_eq!(store.install(&staged[0]).unwrap()["installed"], false);
@@ -479,7 +602,7 @@ fn archives_over_the_extraction_limits_fail_without_publishing() {
         (
             "duplicate path",
             vec![
-                skill.clone(),
+                skill,
                 ("scripts/validate.ts".to_owned(), b"first".to_vec()),
                 ("scripts/validate.ts".to_owned(), b"second".to_vec()),
             ],
@@ -493,7 +616,7 @@ fn archives_over_the_extraction_limits_fail_without_publishing() {
             .collect::<Vec<_>>();
         let bytes = archive_from_entries(&borrowed);
         assert!(bytes.len() <= CHUNK_BYTES, "{name} needs a single chunk");
-        let temporary = tempfile::tempdir().unwrap();
+        let temporary = CacheRoot::new();
         let store = SkillBundleStore::new(temporary.path());
         let chunks = chunks(&bytes);
         assert_eq!(store.install(&chunks[0]), Err(expected), "{name}");
@@ -504,7 +627,7 @@ fn archives_over_the_extraction_limits_fail_without_publishing() {
 
 #[test]
 fn a_chunk_that_contradicts_a_stored_one_is_refused_without_overwriting_it() {
-    let temporary = tempfile::tempdir().unwrap();
+    let temporary = CacheRoot::new();
     let store = SkillBundleStore::new(temporary.path());
     let chunks = chunks(&large_archive().0);
     assert!(chunks.len() >= 3);
@@ -544,4 +667,36 @@ fn a_chunk_that_contradicts_a_stored_one_is_refused_without_overwriting_it() {
     }
     assert_eq!(store.install(&chunks[0]).unwrap()["installed"], true);
     assert!(store.verify_all().is_ok());
+}
+
+#[test]
+fn prefix_lookup_matches_a_linear_scan_of_the_expected_files() {
+    let expected: std::collections::BTreeSet<String> = [
+        "SKILL.md",
+        "scripts/a.ts",
+        "scripts/nested/b.ts",
+        "scriptsx/c.ts",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    for prefix in [
+        "",
+        "scripts/",
+        "scripts/nested/",
+        "scriptsx/",
+        "script/",
+        "zzz/",
+        "a/",
+    ] {
+        assert_eq!(
+            super::skill_bundle_archive::any_with_prefix(&expected, prefix),
+            expected.iter().any(|file| file.starts_with(prefix)),
+            "{prefix}"
+        );
+    }
+    assert!(!super::skill_bundle_archive::any_with_prefix(
+        &std::collections::BTreeSet::new(),
+        ""
+    ));
 }

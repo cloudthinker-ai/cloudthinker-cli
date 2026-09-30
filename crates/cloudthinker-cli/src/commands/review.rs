@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use cloudthinker_client::{CtError, ReviewStatus, ReviewView, parse_mr_url};
+use cloudthinker_client::{CtError, ReviewSeverityCounts, ReviewStatus, ReviewView, parse_mr_url};
 
 use crate::engine::exit::{self, ExitCode};
-use crate::engine::local_review::{self, ReviewScope};
+use crate::engine::local_review::{self, FindingSeverity, LocalFinding, ReviewScope};
 use crate::engine::output::{self, ReviewEnvelope};
 use crate::engine::watch::{Poll, WatchConfig, watch};
 
@@ -15,6 +15,74 @@ pub struct LocalReviewOptions<'a> {
     pub base_ref: Option<&'a str>,
     pub json: bool,
     pub timeout_secs: u64,
+    pub fail_on: Option<FailOn>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
+pub enum FailOn {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+impl FailOn {
+    fn of(severity: &FindingSeverity) -> Self {
+        match severity {
+            FindingSeverity::Critical => FailOn::Critical,
+            FindingSeverity::High => FailOn::High,
+            FindingSeverity::Medium => FailOn::Medium,
+            FindingSeverity::Low => FailOn::Low,
+        }
+    }
+
+    fn local_hits(self, findings: &[LocalFinding]) -> i64 {
+        findings
+            .iter()
+            .filter(|finding| FailOn::of(&finding.severity) >= self)
+            .count()
+            .try_into()
+            .unwrap_or(i64::MAX)
+    }
+
+    fn remote_hits(self, counts: &ReviewSeverityCounts) -> i64 {
+        [
+            (FailOn::Critical, counts.critical),
+            (FailOn::High, counts.high),
+            (FailOn::Medium, counts.medium),
+            (FailOn::Low, counts.low),
+        ]
+        .into_iter()
+        .filter(|(severity, _)| *severity >= self)
+        .map(|(_, count)| count.max(0))
+        .fold(0, i64::saturating_add)
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            FailOn::Low => "low",
+            FailOn::Medium => "medium",
+            FailOn::High => "high",
+            FailOn::Critical => "critical",
+        }
+    }
+}
+
+fn threshold_code(fail_on: Option<FailOn>, hits: impl FnOnce(FailOn) -> i64) -> ExitCode {
+    let Some(threshold) = fail_on else {
+        return ExitCode::Ok;
+    };
+    match hits(threshold) {
+        0 => ExitCode::Ok,
+        count => {
+            output::eprintln_error(&format!(
+                "{count} finding(s) at {} severity or worse (--fail-on {})",
+                threshold.name(),
+                threshold.name()
+            ));
+            ExitCode::ReviewFindings
+        }
+    }
 }
 
 pub async fn run_local(options: LocalReviewOptions<'_>) -> ExitCode {
@@ -30,7 +98,7 @@ pub async fn run_local(options: LocalReviewOptions<'_>) -> ExitCode {
     let review_scope = ReviewScope {
         base_ref: options.base_ref.map(str::to_string),
     };
-    let snapshot = match local_review::collect_snapshot(&cwd, review_scope.clone()) {
+    let snapshot = match local_review::collect_snapshot(&cwd, &review_scope) {
         Ok(snapshot) => snapshot,
         Err(error) => {
             output::eprintln_error(&error.to_string());
@@ -62,7 +130,7 @@ pub async fn run_local(options: LocalReviewOptions<'_>) -> ExitCode {
         Ok(answer) => answer,
         Err(code) => return code,
     };
-    let current = match local_review::collect_snapshot(&cwd, review_scope) {
+    let current = match local_review::collect_snapshot(&cwd, &review_scope) {
         Ok(snapshot) => snapshot,
         Err(error) => {
             output::eprintln_error(&error.to_string());
@@ -101,7 +169,9 @@ pub async fn run_local(options: LocalReviewOptions<'_>) -> ExitCode {
         output::eprintln_error(&error);
         return ExitCode::JobFailed;
     }
-    ExitCode::Ok
+    threshold_code(options.fail_on, |threshold| {
+        threshold.local_hits(&result.findings)
+    })
 }
 
 /// Show a review's current status. A read: exits 0 on any successful fetch —
@@ -152,6 +222,7 @@ pub async fn run_watch(
     url: &str,
     json: bool,
     timeout_secs: u64,
+    fail_on: Option<FailOn>,
 ) -> ExitCode {
     let coords = match parse_mr_url(url) {
         Ok(coords) => coords,
@@ -181,7 +252,7 @@ pub async fn run_watch(
     .await;
 
     match outcome {
-        Ok(view) => finish_watch(&view, json),
+        Ok(view) => finish_watch(&view, json, fail_on),
         Err(CtError::Timeout(_)) => {
             output::progress(&format!(
                 "Timed out. The review continues server-side — resume with: cloudthinker review status {url}"
@@ -228,7 +299,7 @@ fn render(view: &ReviewView, json: bool, human: fn(&ReviewView) -> Result<(), St
     ExitCode::Ok
 }
 
-fn finish_watch(view: &ReviewView, json: bool) -> ExitCode {
+fn finish_watch(view: &ReviewView, json: bool, fail_on: Option<FailOn>) -> ExitCode {
     let result = if json {
         output::emit_json(&ReviewEnvelope::from_view(view))
     } else {
@@ -240,7 +311,9 @@ fn finish_watch(view: &ReviewView, json: bool) -> ExitCode {
     }
     match view.status {
         ReviewStatus::Failed => ExitCode::JobFailed,
-        _ => ExitCode::Ok,
+        _ => threshold_code(fail_on, |threshold| {
+            threshold.remote_hits(&view.severity_counts)
+        }),
     }
 }
 
@@ -254,5 +327,22 @@ fn report_lookup_error(err: &CtError, url: &str) -> ExitCode {
             ExitCode::JobFailed
         }
         other => exit::report(other),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remote_hits_saturates_instead_of_overflowing() {
+        let counts = ReviewSeverityCounts {
+            critical: i64::MAX,
+            high: i64::MAX,
+            medium: 1,
+            low: -5,
+        };
+        assert_eq!(FailOn::Low.remote_hits(&counts), i64::MAX);
+        assert_eq!(FailOn::Critical.remote_hits(&counts), i64::MAX);
     }
 }

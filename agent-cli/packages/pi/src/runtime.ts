@@ -15,7 +15,7 @@ import { PRODUCT_NAME, SessionHeader } from "./header.ts";
 import { type HostVersions, readHostVersions } from "./versions.ts";
 
 export const CLOUD_ENTRY_TYPE = "cloudthinker.cloud";
-export const CLOUD_OFF_MESSAGE = "Cloud is off for this session, so this tool did not run. It runs commands on the CloudThinker Sandbox, while this session is local-only and the local tools keep running on your machine. Use /cloud on to enable it.";
+export const CLOUD_OFF_MESSAGE = "Cloud is off, so this workspace command did not run. Local tools remain available; use /cloud on to enable workspace tools.";
 
 export const SESSION_ENTRY_TYPE = "cloudthinker";
 export const LOCATION_ENTRY_TYPE = "cloudthinker.location";
@@ -29,7 +29,7 @@ export const AUTO_MODE_OFF_REASON = "auto_mode_disabled";
 
 export function approvalWidgetLine(
 	webUrl: string,
-	subject = "Anna",
+	subject = "CloudThinker agent",
 	hint: string = NOTIFY_HINT,
 ): string {
 	const waiting = `⏸ ${subject} is waiting for your approval in the browser → ${sanitizeTerminalText(webUrl)}`;

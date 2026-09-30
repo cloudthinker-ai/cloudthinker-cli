@@ -1,8 +1,10 @@
 //! Headless chat submit, continuation, status, and run-list commands.
 
+use std::future::Future;
+use std::pin::Pin;
 use std::time::Duration;
 
-use cloudthinker_client::{CtError, RunStatus, RunView};
+use cloudthinker_client::{CtClient, CtError, RunStatus, RunView};
 use uuid::Uuid;
 
 use crate::engine::exit::{self, ExitCode};
@@ -57,35 +59,105 @@ pub async fn run_prompt(
     }
 
     let run_id = submitted.run_id;
+    let interrupted = listen_for_interrupt();
     if !json {
         output::progress(&format!(
-            "Submitted run {run_id} to your CloudThinker workspace (cloud). Anna runs there and cannot see your local files."
+            "Submitted run {run_id} to your CloudThinker workspace (cloud). It runs there and cannot see your local files."
         ));
     }
 
-    let cfg = WatchConfig::for_run(Duration::from_secs(timeout_secs));
-    let outcome = watch(
-        async || {
-            let view = client.get_run(run_id).await?;
-            if view.status.is_terminal() {
-                Ok(Poll::Terminal(view))
-            } else {
-                Ok(Poll::Pending)
-            }
-        },
-        &cfg,
+    wait_for_run(
+        &client,
+        run_id,
+        json,
+        timeout_secs,
+        &format!("cloudthinker chat status {run_id}"),
+        interrupted,
     )
-    .await;
+    .await
+}
+
+type Interrupted = Pin<Box<dyn Future<Output = ()> + Send>>;
+
+#[cfg(unix)]
+fn listen_for_interrupt() -> Interrupted {
+    use tokio::signal::unix::{SignalKind, signal};
+    match signal(SignalKind::interrupt()) {
+        Ok(mut interrupt) => Box::pin(async move {
+            interrupt.recv().await;
+        }),
+        Err(error) => {
+            output::warn(&format!(
+                "could not listen for Ctrl-C before the wait: {error}"
+            ));
+            Box::pin(async {
+                let _ = tokio::signal::ctrl_c().await;
+            })
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn listen_for_interrupt() -> Interrupted {
+    Box::pin(async {
+        let _ = tokio::signal::ctrl_c().await;
+    })
+}
+
+async fn wait_for_run(
+    client: &CtClient,
+    run_id: Uuid,
+    json: bool,
+    timeout_secs: u64,
+    resume: &str,
+    interrupted: Interrupted,
+) -> ExitCode {
+    let live = (!json).then(|| output::live_status(&waiting_line(None)));
+    let cfg = WatchConfig::for_run(Duration::from_secs(timeout_secs));
+    let outcome = tokio::select! {
+        outcome = watch(
+            async || {
+                let view = client.get_run(run_id).await?;
+                if let Some(live) = &live {
+                    live.set_message(waiting_line(Some(view.status)));
+                }
+                if view.status.is_terminal() {
+                    Ok(Poll::Terminal(view))
+                } else {
+                    Ok(Poll::Pending)
+                }
+            },
+            &cfg,
+        ) => outcome,
+        () = interrupted => {
+            drop(live);
+            output::progress(&format!(
+                "Stopped waiting. The run continues server-side — resume with: cloudthinker chat status {run_id} --wait"
+            ));
+            return ExitCode::Interrupted;
+        }
+    };
+    drop(live);
 
     match outcome {
         Ok(view) => finish(&view, json),
         Err(CtError::Timeout(_)) => {
             output::progress(&format!(
-                "Timed out. The run continues server-side — resume with: cloudthinker chat status {run_id}"
+                "Timed out. The run continues server-side — resume with: {resume}"
             ));
             ExitCode::Timeout
         }
         Err(err) => exit::report(&err),
+    }
+}
+
+fn waiting_line(status: Option<RunStatus>) -> String {
+    match status {
+        Some(status) => format!(
+            "Anna is working — {}. Ctrl-C stops waiting; the run continues",
+            output::status_label(status)
+        ),
+        None => "Anna is working. Ctrl-C stops waiting; the run continues".to_string(),
     }
 }
 
@@ -104,29 +176,15 @@ pub async fn run_status(
     };
 
     if wait {
-        let cfg = WatchConfig::for_run(Duration::from_secs(timeout_secs));
-        return match watch(
-            async || {
-                let view = client.get_run(run_id).await?;
-                if view.status.is_terminal() {
-                    Ok(Poll::Terminal(view))
-                } else {
-                    Ok(Poll::Pending)
-                }
-            },
-            &cfg,
+        return wait_for_run(
+            &client,
+            run_id,
+            json,
+            timeout_secs,
+            &format!("cloudthinker chat status {run_id} --wait"),
+            listen_for_interrupt(),
         )
-        .await
-        {
-            Ok(view) => finish(&view, json),
-            Err(CtError::Timeout(_)) => {
-                output::progress(&format!(
-                    "Timed out. The run continues server-side — resume with: cloudthinker chat status {run_id} --wait"
-                ));
-                ExitCode::Timeout
-            }
-            Err(err) => exit::report(&err),
-        };
+        .await;
     }
 
     match client.get_run(run_id).await {

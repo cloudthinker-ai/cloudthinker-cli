@@ -21,6 +21,7 @@ test("CA-AD-6 real pi assets validate, and a missing theme or unexpected entry f
 				filter: (path) => lstatSync(path).isDirectory() || (target === "theme" ? path.endsWith(".json") : target === "assets" ? path.endsWith(".png") : true),
 			});
 		}
+		cpSync(new URL("../.agents/skills/", import.meta.url), join(root, ".agents/skills"), { recursive: true });
 		mkdirSync(join(root, "export-html"));
 		for (const file of ["template.html", "template.css", "template.js", "vendor"]) {
 			cpSync(join(piRoot, "dist/core/export-html", file), join(root, "export-html", file), { recursive: true });
@@ -30,6 +31,12 @@ test("CA-AD-6 real pi assets validate, and a missing theme or unexpected entry f
 		cpSync(new URL("../node_modules/@tintinweb/pi-subagents/LICENSE", import.meta.url), join(root, "NOTICE"));
 		writeFileSync(join(root, "package.json"), JSON.stringify({ piVersion: "0.85.1", piConfig: { name: "cloudthinker" } }));
 		validateAssets(root, piRoot);
+		const tourPath = join(root, ".agents/skills/tour/SKILL.md");
+		rmSync(tourPath);
+		assert.throws(() => validateAssets(root, piRoot), /Missing bundle asset: .agents\/skills\/tour\/SKILL.md/);
+		writeFileSync(tourPath, "");
+		assert.throws(() => validateAssets(root, piRoot), /Empty bundle asset: .agents\/skills\/tour\/SKILL.md/);
+		cpSync(new URL("../.agents/skills/tour/SKILL.md", import.meta.url), tourPath);
 		writeFileSync(join(root, "NOTICE"), "pi only");
 		assert.throws(() => validateAssets(root, piRoot), /Missing pi-subagents license notice/);
 		cpSync(new URL("../node_modules/@tintinweb/pi-subagents/LICENSE", import.meta.url), join(root, "NOTICE"));

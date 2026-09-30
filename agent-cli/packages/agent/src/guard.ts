@@ -5,6 +5,7 @@ import { PRODUCT_NAME } from "@cloudthinker/pi/src/header.ts";
 import { BUILTIN_SLASH_COMMANDS } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/slash-commands.js";
 import { applyAwarenessUi } from "./awareness.ts";
 import { applyReasoningUiGuard } from "./reasoning-ui.ts";
+import { applySkillCatalogGuard } from "./skill-catalog.ts";
 import { applyStartupUi } from "./startup.ts";
 
 export const NO_SESSION_FLAG = "--no-session";
@@ -138,4 +139,5 @@ export function applyGuard(): void {
 	applyReasoningUiGuard();
 	applyAwarenessUi();
 	applyStartupUi();
+	applySkillCatalogGuard();
 }

@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+CLI_MANIFEST="$REPO_ROOT/cli/Cargo.toml"
+CLI_BIN="$REPO_ROOT/cli/target/release/cloudthinker"
+TOKEN_HELPER="$REPO_ROOT/.agents/skills/cloudthinker-cli-kit/scripts/mint_token.sh"
+SLOT_ROOT="${CLOUDTHINKER_LOCAL_SLOT:-$REPO_ROOT}"
+TARGET_SLOT="${CLOUDTHINKER_TARGET_SLOT:-}"
+CLOUDTHINKER_LOCAL_AUTH_BIN="${CLOUDTHINKER_LOCAL_AUTH_BIN:-$SCRIPT_DIR/cloudthinker-local}"
+export CLOUDTHINKER_LOCAL_AUTH_BIN
+
+RUSTUP_BIN="${CARGO_HOME:-$HOME/.cargo}/bin"
+if [[ -d "$RUSTUP_BIN" ]]; then
+  PATH="$RUSTUP_BIN:$PATH"
+fi
+if command -v rustup >/dev/null 2>&1; then
+  RUSTC_PATH="$(rustup which rustc 2>/dev/null || true)"
+  if [[ -n "$RUSTC_PATH" && -x "$RUSTC_PATH" ]]; then
+    PATH="$(dirname "$RUSTC_PATH"):$PATH"
+  fi
+fi
+export PATH
+
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "ERROR: cargo is unavailable; install Rust or add its toolchain to PATH" >&2
+  exit 1
+fi
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: cloudthinker-local [--email EMAIL] [--hours HOURS] [--no-build] [-- <cloudthinker arguments...>]
+
+Builds this checkout's customer CLI, reads the current slot URL, mints a local
+token when CLOUDTHINKER_TOKEN is unset, and opens the current source agent.
+The current directory remains the project being worked on. For example:
+
+  cloudthinker-local
+  cloudthinker-local -- --version
+
+Set CLOUDTHINKER_LOCAL_SLOT to use another checkout as CloudThinker's backend.
+Set CLOUDTHINKER_TARGET_SLOT to mint CYBER_OWNER_AUTH from a separate target stack.
+Set CLOUDTHINKER_TARGET_EMAIL to that target's owner account when using a target slot.
+Set CLOUDTHINKER_TARGET_VIEWER_EMAIL to also provide CYBER_VIEWER_AUTH for role comparisons.
+Set CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY to an integer from 1 to 8; this launcher defaults it to 4.
+EOF
+}
+
+EMAIL="${CLOUDTHINKER_LOCAL_EMAIL:-}"
+HOURS="${CLOUDTHINKER_LOCAL_TTL_HOURS:-2}"
+BUILD=1
+ARGS=()
+
+while (($#)); do
+  case "$1" in
+    --email)
+      (($# >= 2)) || { usage; exit 2; }
+      EMAIL="$2"
+      shift 2
+      ;;
+    --hours)
+      (($# >= 2)) || { usage; exit 2; }
+      HOURS="$2"
+      shift 2
+      ;;
+    --no-build)
+      BUILD=0
+      shift
+      ;;
+    --)
+      shift
+      ARGS=("$@")
+      break
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      ARGS=("$@")
+      break
+      ;;
+  esac
+done
+
+ct() {
+  (cd "$SLOT_ROOT" && cargo run --quiet --locked --release --manifest-path "$SLOT_ROOT/tools/ct-cli/Cargo.toml" -- "$@")
+}
+
+mint_token() (
+  details="$(mktemp)"
+  trap 'rm -f "$details"' EXIT
+  if token="$(env -u COMPOSE_PROJECT_NAME CLOUDTHINKER_LOCAL_SLOT="$1" "$TOKEN_HELPER" "$2" "$HOURS" 2>"$details")" && [[ -n "$token" ]]; then
+    printf '%s' "$token"
+  else
+    cat "$details" >&2
+    printf 'Could not authenticate to local slot %s.\n' "$(basename "$1")" >&2
+    exit 1
+  fi
+)
+
+REQUESTED_WORKSPACE="${CLOUDTHINKER_WORKSPACE:-}"
+FORWARDED=()
+for ((i=0; i<${#ARGS[@]}; i++)); do
+  case "${ARGS[i]}" in
+    --workspace)
+      ((i+1<${#ARGS[@]})) || { echo "ERROR: --workspace requires a value" >&2; exit 2; }
+      i=$((i+1))
+      REQUESTED_WORKSPACE="${ARGS[i]}"
+      [[ -n "$REQUESTED_WORKSPACE" ]] || { echo "ERROR: --workspace requires a value" >&2; exit 2; }
+      ;;
+    --workspace=*)
+      REQUESTED_WORKSPACE="${ARGS[i]#--workspace=}"
+      [[ -n "$REQUESTED_WORKSPACE" ]] || { echo "ERROR: --workspace requires a value" >&2; exit 2; }
+      ;;
+    --)
+      FORWARDED+=("${ARGS[@]:i}")
+      break
+      ;;
+    *) FORWARDED+=("${ARGS[i]}") ;;
+  esac
+done
+ARGS=("${FORWARDED[@]}")
+unset CLOUDTHINKER_WORKSPACE
+
+AUTH_ONLY=0
+if [[ "${ARGS[0]:-}" == auth && "${ARGS[1]:-}" == token ]]; then
+  AUTH_ONLY=1
+fi
+
+WORKFLOW_CONCURRENCY="${CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY:-4}"
+if [[ "$AUTH_ONLY" == 0 && ! "$WORKFLOW_CONCURRENCY" =~ ^[1-8]$ ]]; then
+  echo "ERROR: CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY must be an integer from 1 to 8" >&2
+  exit 2
+fi
+
+if [[ "$BUILD" == 1 && "$AUTH_ONLY" == 0 ]]; then
+  env -u CLOUDTHINKER_TOKEN -u CYBER_OWNER_AUTH -u CYBER_VIEWER_AUTH cargo build --quiet --locked --release --manifest-path "$CLI_MANIFEST" -p cloudthinker-cli >&2
+fi
+
+if [[ ! -x "$CLI_BIN" ]]; then
+  echo "ERROR: $CLI_BIN is missing; remove --no-build or build the CLI first" >&2
+  exit 1
+fi
+
+case "${ARGS[0]:-}" in
+  --version|-V|--help|-h|--skill)
+    exec "$CLI_BIN" "${ARGS[@]}"
+    ;;
+esac
+
+if [[ "$AUTH_ONLY" == 0 && -n "$TARGET_SLOT" && -z "${CYBER_OWNER_AUTH:-}" && -z "${CLOUDTHINKER_TARGET_EMAIL:-}" ]]; then
+  echo "ERROR: set CLOUDTHINKER_TARGET_EMAIL to the target owner account" >&2
+  exit 2
+fi
+
+CLOUDTHINKER_URL="$(ct env --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["backend_url"])')"
+export CLOUDTHINKER_URL
+export CLOUDTHINKER_NO_UPDATE_CHECK=1
+export CT_CLI_SOURCE="$REPO_ROOT"
+export CLOUDTHINKER_AGENT_BIN="$REPO_ROOT/tools/ct-cli/scripts/agent-source.sh"
+
+if [[ -z "${CLOUDTHINKER_TOKEN:-}" ]]; then
+  CLOUDTHINKER_TOKEN="$(mint_token "$SLOT_ROOT" "$EMAIL")"
+fi
+export CLOUDTHINKER_TOKEN
+
+if [[ -n "$REQUESTED_WORKSPACE" ]]; then
+  ACTUAL_WORKSPACE="$("$CLI_BIN" whoami --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["workspace_id"])')"
+  if [[ "$REQUESTED_WORKSPACE" != "$ACTUAL_WORKSPACE" ]]; then
+    echo "ERROR: requested workspace does not match this local slot's authenticated workspace" >&2
+    exit 3
+  fi
+fi
+
+if [[ "$AUTH_ONLY" == 0 && -z "${CYBER_OWNER_AUTH:-}" ]]; then
+  if [[ -n "$TARGET_SLOT" ]]; then
+    TARGET_TOKEN="$(mint_token "$TARGET_SLOT" "$CLOUDTHINKER_TARGET_EMAIL")"
+    export CYBER_OWNER_AUTH="Authorization: Bearer $TARGET_TOKEN"
+    unset TARGET_TOKEN
+  fi
+fi
+
+if [[ "$AUTH_ONLY" == 0 && -n "$TARGET_SLOT" && -n "${CLOUDTHINKER_TARGET_VIEWER_EMAIL:-}" && -z "${CYBER_VIEWER_AUTH:-}" ]]; then
+  TARGET_TOKEN="$(mint_token "$TARGET_SLOT" "$CLOUDTHINKER_TARGET_VIEWER_EMAIL")"
+  export CYBER_VIEWER_AUTH="Authorization: Bearer $TARGET_TOKEN"
+  unset TARGET_TOKEN
+fi
+
+if [[ ${#ARGS[@]} == 0 || "${ARGS[0]:-}" == agent ]]; then
+  "$CLI_BIN" whoami >/dev/null
+  printf '\n%s · local development\nBackend: %s (%s)\nSource: %s\nWorking directory: %s\n' \
+    "$("$CLI_BIN" --version)" "$(basename "$SLOT_ROOT")" "$CLOUDTHINKER_URL" "$REPO_ROOT" "$PWD" >&2
+  if [[ -n "$TARGET_SLOT" ]]; then
+    printf 'Test stack: %s%s\n' "$(basename "$TARGET_SLOT")" "${CLOUDTHINKER_LOCAL_TARGET_URL:+ ($CLOUDTHINKER_LOCAL_TARGET_URL)}" >&2
+  fi
+  printf '\n' >&2
+fi
+
+if [[ "$AUTH_ONLY" == 0 ]]; then
+  export CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY="$WORKFLOW_CONCURRENCY"
+fi
+exec "$CLI_BIN" "${ARGS[@]}"

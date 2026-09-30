@@ -5,15 +5,13 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
+use crate::commands::{WORKSPACE_ENV_VAR, build_client, env_token_is_set};
+use crate::engine::exit::{self, ExitCode};
+use crate::engine::{login_guide, output};
 use cloudthinker_client::{
     CliIdentity, CtError, DEFAULT_RELEASE_BASE_URL, agent_bin_root, any_agent_installed,
     host_target_triple, install_agent, installed_agent_binary,
 };
-use uuid::Uuid;
-
-use crate::commands::{WORKSPACE_ENV_VAR, build_client, env_token_is_set};
-use crate::engine::exit::{self, ExitCode};
-use crate::engine::{login_guide, output};
 
 /// The version of this binary; the agent bundle is released under the same tag.
 const AGENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -23,6 +21,8 @@ const AGENT_BIN_ENV_VAR: &str = "CLOUDTHINKER_AGENT_BIN";
 
 /// Handed to the child so its `cloudthinker auth token` resolves the same host.
 const URL_ENV_VAR: &str = "CLOUDTHINKER_URL";
+
+const BIN_ENV_VAR: &str = "CLOUDTHINKER_BIN";
 
 pub async fn run(base_url: &str, workspace: Option<&str>, args: Vec<OsString>) -> ExitCode {
     let mut timing = crate::engine::timing::PhaseTimer::from_env();
@@ -35,7 +35,7 @@ pub async fn run(base_url: &str, workspace: Option<&str>, args: Vec<OsString>) -
         let identity = resolve_identity(base_url, workspace).await;
         pending_check.settle().await;
         match identity {
-            Ok(identity) => child_workspace_env(env_token_is_set(), identity.workspace_id),
+            Ok(identity) => Some(identity.workspace_id.to_string()),
             Err(code) => return code,
         }
     };
@@ -69,15 +69,20 @@ async fn resolve_identity(
         .credential_provenance()
         .map_err(|error| exit::report(&error))?;
     let plan = login_guide::plan(&error, provenance, std::io::stdin().is_terminal());
-    if let Some((line, next)) = login_guide::explain(&error, plan) {
+    if let Some((line, next)) = login_guide::explain(&error, plan, base_url) {
         output::eprintln_error(&line);
-        output::progress(next);
+        output::progress(&next);
     }
     match plan {
         login_guide::Plan::Report => Err(exit::report(&error)),
         login_guide::Plan::Tell(_) => Err(ExitCode::Auth),
         login_guide::Plan::LogIn => {
-            match crate::commands::login::run(base_url, false, false).await {
+            match crate::commands::login::run(
+                base_url,
+                crate::commands::login::LoginOptions::default(),
+            )
+            .await
+            {
                 ExitCode::Ok => {}
                 code => return Err(code),
             }
@@ -123,11 +128,15 @@ pub(super) async fn run_local_review(
         .args(["--print", "-p", prompt])
         .env(URL_ENV_VAR, base_url)
         .env_remove(WORKSPACE_ENV_VAR)
+        .env_remove(BIN_ENV_VAR)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     if !env_token_is_set() {
         command.env(WORKSPACE_ENV_VAR, identity.workspace_id.to_string());
+    }
+    if let Some(own_binary) = own_binary() {
+        command.env(BIN_ENV_VAR, own_binary);
     }
     let child = command.spawn().map_err(|error| {
         output::eprintln_error(&format!(
@@ -218,10 +227,8 @@ pub fn bundle_in_use() -> bool {
         && agent_bin_root().is_ok_and(|bin_root| any_agent_installed(&bin_root))
 }
 
-/// A child running on the parent's `CLOUDTHINKER_TOKEN` inherits it and must
-/// get no workspace variable, because the two together are a usage error.
-fn child_workspace_env(token_env_is_set: bool, workspace_id: Uuid) -> Option<String> {
-    (!token_env_is_set).then(|| workspace_id.to_string())
+fn own_binary() -> Option<PathBuf> {
+    std::env::current_exe().ok()
 }
 
 #[cfg(unix)]
@@ -234,7 +241,14 @@ fn exec_agent(
     use std::os::unix::process::CommandExt;
 
     let mut command = std::process::Command::new(binary);
-    command.args(args).env(URL_ENV_VAR, base_url);
+    command
+        .args(args)
+        .env(URL_ENV_VAR, base_url)
+        .env_remove("CLOUDTHINKER_TOKEN");
+    match own_binary() {
+        Some(own_binary) => command.env(BIN_ENV_VAR, own_binary),
+        None => command.env_remove(BIN_ENV_VAR),
+    };
     match workspace_id {
         Some(workspace_id) => command.env(WORKSPACE_ENV_VAR, workspace_id),
         None => command.env_remove(WORKSPACE_ENV_VAR),
@@ -260,25 +274,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stored_credentials_pin_the_child_to_the_resolved_workspace() {
-        let workspace_id = Uuid::from_u128(1);
-
-        assert_eq!(
-            child_workspace_env(false, workspace_id),
-            Some("00000000-0000-0000-0000-000000000001".to_string())
-        );
-    }
-
-    #[test]
     fn a_help_request_skips_the_login() {
         assert!(asks_for_help(&["--help".into()]));
         assert!(asks_for_help(&["--tui-mode".into(), "-h".into()]));
         assert!(!asks_for_help(&["--tui-mode".into(), "fullscreen".into()]));
         assert!(!asks_for_help(&[]));
-    }
-
-    #[test]
-    fn an_environment_token_passes_through_without_a_workspace_variable() {
-        assert_eq!(child_workspace_env(true, Uuid::from_u128(1)), None);
     }
 }

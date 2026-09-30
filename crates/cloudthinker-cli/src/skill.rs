@@ -6,6 +6,10 @@ pub enum Module {
     Auth,
     Chat,
     Review,
+    Cyber,
+    CyberScan,
+    CyberVerify,
+    CyberReport,
     Worker,
 }
 
@@ -16,6 +20,10 @@ impl Module {
             Self::Auth => include_str!("../skills/cloudthinker-cli/auth.md"),
             Self::Chat => include_str!("../skills/cloudthinker-cli/chat.md"),
             Self::Review => include_str!("../skills/cloudthinker-cli/review.md"),
+            Self::Cyber => include_str!("../skills/cloudthinker-cli/cyber.md"),
+            Self::CyberScan => include_str!("../skills/cloudthinker-cli/cyber-scan.md"),
+            Self::CyberVerify => include_str!("../skills/cloudthinker-cli/cyber-verify.md"),
+            Self::CyberReport => include_str!("../skills/cloudthinker-cli/cyber-report.md"),
             Self::Worker => include_str!("../skills/cloudthinker-cli/worker.md"),
         }
     }

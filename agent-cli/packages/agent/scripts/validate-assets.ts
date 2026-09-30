@@ -9,7 +9,7 @@ const REQUIRED = [
 	"assets/clankolas.png", "export-html/template.html", "export-html/template.css",
 	"export-html/template.js", "export-html/vendor/marked.min.js",
 	"export-html/vendor/highlight.min.js", "docs/usage.md", "docs/extensions.md",
-	"examples/rpc-extension-ui.ts",
+	"examples/rpc-extension-ui.ts", ".agents/skills/tour/SKILL.md",
 ];
 
 export function assetFiles(root: string, prefix = ""): string[] {

@@ -49,6 +49,10 @@ sends `SIGTERM` and lets the worker drain current assignments;
 outpost, and workdir. A service is keyed by host, outpost, and canonical workdir;
 installing different settings for the same key requires uninstalling first.
 
+`status` reports the last exit code of a stopped or failed service and where its
+logs are: `journalctl --user -u <unit>` on Linux, and a private
+`logs/<service>.log` file in the worker state directory on macOS.
+
 The Linux unit is scoped to `systemd --user`, so closing a terminal does not stop
 it. A user manager still needs lingering enabled separately to run after logout
 or reboot. The macOS LaunchAgent loads for the logged-in user at login; it is not
@@ -61,9 +65,20 @@ whole environment belongs to the work being served. Worker credentials and shell
 startup injection variables are always excluded.
 
 Press Ctrl-C or send SIGTERM to stop claiming assignments and drain current
-work. Upgrade the CLI after it exits, then run the same command. Worker startup
-never offers an automatic update. Reusing the directory preserves its local
-identity and files; replacing the directory fails with `WORKDIR_IDENTITY_CHANGED`.
+work; the worker prints how many operations are still running. A second Ctrl-C
+cancels them and reports them as cancelled. Upgrade the CLI after it exits, then
+run the same command. Worker startup never offers an automatic update. Reusing
+the directory preserves its local identity and files; replacing the directory
+stops the worker with `WORKDIR_IDENTITY_CHANGED`. Run `worker start` once with the
+same `--outpost` and `--workdir` plus `--reset-folder` to serve the new directory;
+conversations that used the old directory stay unavailable.
+
+The worker survives short outages. It retries server errors and rate limits,
+reconnects after sleep or a network change, and reads deadlines against the
+server clock. It stops only when its credential is rejected, the folder is
+replaced, or its local state is unusable. Each assignment and operation is logged
+with its duration and error code; set `CLOUDTHINKER_WORKER_LOG=debug` to also log
+operation starts and assignments another worker claimed first.
 
 Concurrency limits assignments. Each assignment admits four operations and the
 process executes at most 16 operations at once. File reads and uploads allow
@@ -74,9 +89,11 @@ must be split or reduced before transfer.
 An uncertain mutation stays unresolved. Check the conversation and outpost
 status; do not repeat a command to guess whether it succeeded. The worker keeps
 unacknowledged receipts locally for reconciliation and retires acknowledged
-journals only after the server accepts release.
+journals only after the server accepts release. A journal left untouched for
+seven days is removed.
 
 Skill bundles use a private cache outside the project directory. The cache admits
-up to 64 installed or staging digests. At capacity, new downloads fail with
-`BUNDLE_CACHE_FULL`; installed bundles remain usable. The worker never deletes a
-bundle that a running command may still reference.
+up to 64 installed or staging digests. At capacity, the worker frees the least
+recently used bundle that was not installed or reused for 25 hours, longer than any
+command or background task can run. When no bundle is that old, new downloads fail
+with `BUNDLE_CACHE_FULL`; installed bundles remain usable.

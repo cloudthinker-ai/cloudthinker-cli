@@ -4,17 +4,33 @@ use std::future::Future;
 use std::time::Duration;
 
 use cloudthinker_client::{
-    CtClient, Loopback, PkceChallenge, StoredToken, TokenStore, consent_url, persistent_store,
-    wait_for_device_token,
+    CliConfig, CtClient, Loopback, PkceChallenge, StoredToken, TokenStore, cli_config_path,
+    consent_url, persistent_store, wait_for_device_token,
 };
 
 use crate::engine::exit::{self, ExitCode};
+use crate::engine::login_mode::{self, LoginEnvironment, LoginFlow};
 use crate::engine::output;
 
 /// Consent code TTL — mirrors the server's one-time-code lifetime.
 const LOGIN_WAIT: Duration = Duration::from_secs(300);
 
-pub async fn run(base_url: &str, no_browser: bool, device_auth: bool) -> ExitCode {
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LoginOptions {
+    pub no_browser: bool,
+    pub device_auth: bool,
+    pub remember_url: bool,
+}
+
+pub async fn run(base_url: &str, options: LoginOptions) -> ExitCode {
+    let code = log_in(base_url, options).await;
+    if code == ExitCode::Ok && options.remember_url {
+        remember_url(base_url);
+    }
+    code
+}
+
+async fn log_in(base_url: &str, options: LoginOptions) -> ExitCode {
     let store = match persistent_store(base_url, None) {
         Ok(store) => store,
         Err(err) => return exit::report(&err),
@@ -24,8 +40,16 @@ pub async fn run(base_url: &str, no_browser: bool, device_auth: bool) -> ExitCod
         Err(err) => return exit::report(&err),
     };
 
-    if device_auth {
-        return run_device_login(&client, store.as_ref(), no_browser).await;
+    let no_browser = options.no_browser;
+    match login_mode::choose(&LoginEnvironment::from_process(options.device_auth)) {
+        LoginFlow::Device => {
+            return run_device_login(&client, store.as_ref(), no_browser).await;
+        }
+        LoginFlow::HeadlessDevice(reason) => {
+            output::progress(&login_mode::switch_line(reason));
+            return run_device_login(&client, store.as_ref(), true).await;
+        }
+        LoginFlow::Browser => {}
     }
 
     let pkce = PkceChallenge::generate();
@@ -53,7 +77,7 @@ pub async fn run(base_url: &str, no_browser: bool, device_auth: bool) -> ExitCod
 
     let code = match loopback.wait_for_code(LOGIN_WAIT).await {
         Ok(code) => code,
-        Err(err) => return exit::report(&callback_wait_error(err)),
+        Err(err) => return exit::report(&callback_wait_error(err, base_url)),
     };
 
     let token = match client.exchange_code(&code, &pkce.verifier).await {
@@ -104,12 +128,73 @@ where
     }
 }
 
-fn callback_wait_error(error: cloudthinker_client::CtError) -> cloudthinker_client::CtError {
+fn callback_wait_error(
+    error: cloudthinker_client::CtError,
+    base_url: &str,
+) -> cloudthinker_client::CtError {
     match error {
-        cloudthinker_client::CtError::Timeout(_) => cloudthinker_client::CtError::Timeout(
-            "timed out waiting for browser consent; try `cloudthinker login --device-auth`".into(),
-        ),
+        cloudthinker_client::CtError::Timeout(_) => cloudthinker_client::CtError::Timeout(format!(
+            "timed out waiting for browser consent; try `{} --device-auth`",
+            cloudthinker_client::login_command(base_url)
+        )),
         error => error,
+    }
+}
+
+fn remember_url(base_url: &str) {
+    let path = match cli_config_path() {
+        Ok(path) => path,
+        Err(err) => {
+            output::warn(&format!(
+                "could not remember {base_url} as the default: {err}"
+            ));
+            return;
+        }
+    };
+    let mut config = CliConfig::load(&path);
+    match config.remember_url(base_url, crate::DEFAULT_BASE_URL) {
+        Ok(false) => {}
+        Ok(true) => match config.save(&path) {
+            Ok(()) => output::progress(&remembered_line(config.saved_url())),
+            Err(err) => output::warn(&format!(
+                "could not remember {base_url} as the default: {err}"
+            )),
+        },
+        Err(err) => output::warn(&format!(
+            "could not remember {base_url} as the default: {err}"
+        )),
+    }
+}
+
+pub(crate) fn forget_url(base_url: &str) {
+    let path = match cli_config_path() {
+        Ok(path) => path,
+        Err(err) => {
+            output::warn(&format!(
+                "could not forget {base_url} as the default: {err}"
+            ));
+            return;
+        }
+    };
+    let mut config = CliConfig::load(&path);
+    if !config.forget_url(base_url) {
+        return;
+    }
+    match config.save(&path) {
+        Ok(()) => output::progress(&remembered_line(None)),
+        Err(err) => output::warn(&format!(
+            "could not forget {base_url} as the default: {err}"
+        )),
+    }
+}
+
+fn remembered_line(saved: Option<&str>) -> String {
+    match saved {
+        Some(url) => format!(
+            "Commands now use {} by default. Pass --url to use another address.",
+            output::terminal_text(url)
+        ),
+        None => format!("Commands now use {} by default.", crate::DEFAULT_BASE_URL),
     }
 }
 
@@ -121,6 +206,12 @@ fn callback_wait_error(error: cloudthinker_client::CtError) -> cloudthinker_clie
 fn finish_login(store: &dyn TokenStore, token: &StoredToken) -> ExitCode {
     if let Err(err) = store.save(token) {
         return exit::report(&err);
+    }
+    if let Some(unreadable) = store.recovered_file() {
+        output::warn(&format!(
+            "The credentials file could not be read, so it was moved to {} and a new one was written.",
+            unreadable.display()
+        ));
     }
 
     match (&token.workspace_name, token.workspace_id) {
@@ -234,7 +325,10 @@ mod tests {
 
     #[test]
     fn callback_timeout_preserves_browser_mode_and_prints_device_recovery() {
-        let error = callback_wait_error(CtError::Timeout("old message".into()));
+        let error = callback_wait_error(
+            CtError::Timeout("old message".into()),
+            "https://app.cloudthinker.io",
+        );
 
         assert!(matches!(
             error,

@@ -1,5 +1,18 @@
+diff --git a/dist/agent-runner.d.ts b/dist/agent-runner.d.ts
+index febe8c3c4321295ed4fa669f5468ecc8fb6b62e6..15ca890cb042f2c5a4df0a3f54305e7a977c86ae 100644
+--- a/dist/agent-runner.d.ts
++++ b/dist/agent-runner.d.ts
+@@ -16,7 +16,7 @@ import type { CompiledSchema } from "./workflow/json-schema.js";
+  */
+ export declare const SUBAGENT_TOOL_NAMES: {
+     readonly AGENT: "Agent";
+-    readonly WORKFLOW: "SubagentWorkflow";
++    readonly WORKFLOW: "ct_workflow";
+     readonly GET_RESULT: "get_subagent_result";
+     readonly STEER: "steer_subagent";
+ };
 diff --git a/dist/agent-runner.js b/dist/agent-runner.js
-index f2dd0e6e0e88c064aac1bdd04ff4ebf55cbcd60e..3b343febd90a667726be1c2f842787bad9095279 100644
+index f2dd0e6e0e88c064aac1bdd04ff4ebf55cbcd60e..c097e4be4e2e8a93c9ee3076738cf76c2eb4f9b2 100644
 --- a/dist/agent-runner.js
 +++ b/dist/agent-runner.js
 @@ -1,3 +1,4 @@
@@ -7,6 +20,15 @@ index f2dd0e6e0e88c064aac1bdd04ff4ebf55cbcd60e..3b343febd90a667726be1c2f842787ba
  /**
   * agent-runner.ts — Core execution engine: creates sessions, runs agents, collects results.
   */
+@@ -23,7 +24,7 @@ import { createStructuredCapture, createStructuredOutputTool, structuredRetryPro
+  */
+ export const SUBAGENT_TOOL_NAMES = {
+     AGENT: "Agent",
+-    WORKFLOW: "SubagentWorkflow",
++    WORKFLOW: "ct_workflow",
+     GET_RESULT: "get_subagent_result",
+     STEER: "steer_subagent",
+ };
 @@ -37,6 +38,7 @@ const EXCLUDED_TOOL_NAMES = Object.values(SUBAGENT_TOOL_NAMES);
   * single-file extensions to the basename minus `.ts`/`.js`.
   */
@@ -91,7 +113,7 @@ index 0000000000000000000000000000000000000000..162d3a545e4a37777d63915f1937f385
 +  return host?.createSession(options, ctx) ?? createAgentSession(options);
 +}
 diff --git a/dist/index.js b/dist/index.js
-index 79e782077d8a4dbd3f4dbd9583fc070ede1465e5..c901ea798a66e375d7cae53e07456cd816e7cd93 100644
+index 79e782077d8a4dbd3f4dbd9583fc070ede1465e5..5db6a817b375b81a85cc63d5ae1e81f4f6d8f943 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -1,3 +1,4 @@
@@ -99,7 +121,27 @@ index 79e782077d8a4dbd3f4dbd9583fc070ede1465e5..c901ea798a66e375d7cae53e07456cd8
  /**
   * pi-agents — A pi extension providing Claude Code-style autonomous sub-agents.
   *
-@@ -1682,7 +1683,7 @@ Terse command-style prompts produce shallow, generic work.
+@@ -9,8 +10,9 @@
+  * Commands:
+  *   /agents                 — Interactive agent management menu
+  */
+-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
++import { existsSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
+ import { isAbsolute, join } from "node:path";
++import { isDeepStrictEqual } from "node:util";
+ import { defineTool, getAgentDir, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
+ import { Container, Key, matchesKey, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
+ import { Type } from "@sinclair/typebox";
+@@ -1089,7 +1091,7 @@ export default function (pi) {
+     function isSchedulingEnabled() { return schedulingEnabled; }
+     function setSchedulingEnabled(b) { schedulingEnabled = b; }
+     // Master switch for scripted workflows. Defaults to ON. Off means the
+-    // `SubagentWorkflow` tool is never registered: the model is not told the
++    // `ct_workflow` tool is never registered: the model is not told the
+     // feature exists (zero context cost) and has nothing to call. The
+     // `/agents → Workflows` view and `--subagents-workflow-file` are refused too, so
+     // there is no second door into the same machinery.
+@@ -1682,7 +1684,7 @@ Terse command-style prompts produce shallow, generic work.
                  ctx.ui.notify(scopeVerdict.message, "warning");
              const thinking = resolvedConfig.thinking;
              const inheritContext = resolvedConfig.inheritContext;
@@ -108,20 +150,168 @@ index 79e782077d8a4dbd3f4dbd9583fc070ede1465e5..c901ea798a66e375d7cae53e07456cd8
              const isolated = resolvedConfig.isolated;
              const isolation = resolvedConfig.isolation;
              // Whether this spawn writes its .output transcript. Per-agent
-@@ -2334,7 +2335,11 @@ Terse command-style prompts produce shallow, generic work.
+@@ -2121,6 +2123,24 @@ Terse command-style prompts produce shallow, generic work.
+      * background run.
+      */
+     const workflowTasks = new Map();
++    async function existingWorkflowResult(task, ctx) {
++        if (getSubagentHost() && (ctx.mode === "print" || ctx.mode === "json")) {
++            await task.completion;
++            if (task.status !== "completed")
++                throw new Error(workflowResultText(task));
++            return textResult(workflowResultText(task), { taskId: task.id });
++        }
++        return {
++            content: [{
++                    type: "text",
++                    text: `Workflow "${task.workflowName ?? task.id}" is already running.\n` +
++                        `Task ID: ${task.id}\n` +
++                        (task.scriptPath ? `Script: ${task.scriptPath}\n` : "") +
++                        "\nYou will be notified when it finishes — do NOT poll or sleep waiting for it.",
++                }],
++            details: { taskId: task.id },
++        };
++    }
+     /**
+      * Workflow runs as the fleet list wants them.
+      *
+@@ -2215,11 +2235,11 @@ Terse command-style prompts produce shallow, generic work.
+     // switch changes exactly one thing: whether pi is ever told about the tool.
+     const workflowTool = defineTool({
+         name: SUBAGENT_TOOL_NAMES.WORKFLOW,
+-        label: "SubagentWorkflow",
++        label: "ct_workflow",
+         description: renderToolDescriptionTemplate(fullWorkflowToolDescription),
+         promptSnippet: "Run a deterministic script that orchestrates many subagents",
+         promptGuidelines: [
+-            "Use SubagentWorkflow when the number of agents depends on something discovered at runtime, when work flows through stages, or when findings should be independently verified. Use Agent for one delegated task or a handful you can name up front.",
++            "Use ct_workflow when the number of agents depends on something discovered at runtime, when work flows through stages, or when findings should be independently verified. Use Agent for one delegated task or a handful you can name up front.",
+             "Prefer `pipeline` over `parallel` — a barrier costs wall-clock whenever the stages are unevenly sized.",
+             "A workflow runs in the background and notifies you when it finishes — do not poll or sleep waiting for it.",
+         ],
+@@ -2249,7 +2269,7 @@ Terse command-style prompts produce shallow, generic work.
+             description: Type.Optional(Type.String({ description: "Ignored — set the workflow description in the script's `meta` block." })),
+         }),
+         renderCall(args, theme) {
+-            return new Text(`${theme.fg("toolTitle", "▸ ")}${theme.bold(theme.fg("toolTitle", "SubagentWorkflow"))}  ${theme.fg("muted", workflowCallName(args))}`, 0, 0);
++            return new Text(`${theme.fg("toolTitle", "▸ ")}${theme.bold(theme.fg("toolTitle", "ct_workflow"))}  ${theme.fg("muted", workflowCallName(args))}`, 0, 0);
+         },
+         renderResult(result, _options, theme, renderContext) {
+             const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+@@ -2274,7 +2294,19 @@ Terse command-style prompts produce shallow, generic work.
+             }, theme);
+         },
+         execute: async (toolCallId, params, _signal, _onUpdate, ctx) => {
+-            const resumeFrom = resolveResumeTarget(params.resumeFromRunId, workflowTasks);
++            const resumeId = params.resumeFromRunId?.trim();
++            const runningResume = resumeId ? workflowTasks.get(resumeId) : undefined;
++            if (runningResume?.status === "running") {
++                return existingWorkflowResult(runningResume, ctx);
++            }
++            let taskDir;
++            try {
++                taskDir = sessionTaskDir(ctx.cwd, ctx.sessionManager.getSessionId());
++            }
++            catch {
++                taskDir = undefined;
++            }
++            const resumeFrom = resolveResumeTarget(params.resumeFromRunId, workflowTasks, taskDir);
+             if (resumeFrom !== undefined && !resumeFrom.ok)
+                 return textResult(resumeFrom.message);
+             // A resume with no source of its own re-runs what that run ran. The
+@@ -2286,6 +2318,15 @@ Terse command-style prompts produce shallow, generic work.
+                 : params, ctx.cwd);
+             if (!resolved.ok)
+                 return textResult(resolved.message);
++            let sourcePath;
++            if (resolved.scriptPath !== undefined) {
++                try {
++                    sourcePath = realpathSync(resolved.scriptPath);
++                }
++                catch {
++                    sourcePath = resolved.scriptPath;
++                }
++            }
+             // Parsed before anything is scheduled: a bad `meta` is an authoring error
+             // the model can fix immediately, and reporting it as a background run
+             // that failed a second later would just cost a turn.
+@@ -2296,6 +2337,24 @@ Terse command-style prompts produce shallow, generic work.
+             catch (err) {
+                 return textResult(err instanceof Error ? err.message : String(err));
+             }
++            const active = [...workflowTasks.values()].find((task) => {
++                if (task.status !== "running" || task.script !== resolved.script || !isDeepStrictEqual(task.args, params.args))
++                    return false;
++                if (sourcePath === undefined)
++                    return task.sourcePath === undefined;
++                if (task.sourcePath === sourcePath)
++                    return true;
++                if (task.sourcePath !== undefined || task.scriptPath === undefined)
++                    return false;
++                try {
++                    return realpathSync(task.scriptPath) === sourcePath;
++                }
++                catch {
++                    return task.scriptPath === resolved.scriptPath;
++                }
++            });
++            if (active !== undefined)
++                return existingWorkflowResult(active, ctx);
+             const runId = workflowRunId();
+             // Every invocation lands on disk next to the agent transcripts, so
+             // iterating is edit-the-file-then-rerun-with-scriptPath rather than
+@@ -2319,6 +2378,7 @@ Terse command-style prompts produce shallow, generic work.
+                 id: runId,
+                 script: resolved.script,
+                 scriptPath: resolved.scriptPath ?? savedPath,
++                sourcePath,
+                 args: params.args,
+                 meta,
+                 toolCallId,
+@@ -2334,7 +2394,14 @@ Terse command-style prompts produce shallow, generic work.
              fleet.update();
              // Background, like Claude Code: the id comes back now and the run keeps
              // going without the tool call.
 -            void runWorkflowTask(ctx, task).then(() => notifyWorkflowFinished(task));
++            task.completion = runWorkflowTask(ctx, task);
 +            if (getSubagentHost() && (ctx.mode === "print" || ctx.mode === "json")) {
-+        await runWorkflowTask(ctx, task);
-+        return { ...textResult(workflowResultText(task)), isError: task.status !== "completed" };
-+      }
-+      void runWorkflowTask(ctx, task).then(() => notifyWorkflowFinished(task));
++                await task.completion;
++                if (task.status !== "completed")
++                    throw new Error(workflowResultText(task));
++                return textResult(workflowResultText(task));
++            }
++            void task.completion.then(() => notifyWorkflowFinished(task));
              return {
                  content: [{
                          type: "text",
-@@ -3025,8 +3030,7 @@ The file format is a markdown file with YAML frontmatter and a system prompt bod
+@@ -2347,7 +2414,7 @@ Terse command-style prompts produce shallow, generic work.
+                                     ? `Nothing to replay from ${params.resumeFromRunId} — every agent runs live.\n`
+                                     : "") +
+                             `\nYou will be notified when it finishes — do NOT poll or sleep waiting for it.\n` +
+-                            `To iterate, edit the script file and call SubagentWorkflow again with scriptPath.`,
++                            `To iterate, edit the script file and call ct_workflow again with scriptPath.`,
+                     }],
+                 details: { taskId: runId },
+             };
+@@ -2476,14 +2543,15 @@ Terse command-style prompts produce shallow, generic work.
+             report(err instanceof Error ? err.message : String(err), "warning");
+             return;
+         }
+-        const task = createWorkflowTask({ id: workflowRunId(), script, scriptPath: path, meta });
++        const task = createWorkflowTask({ id: workflowRunId(), script, scriptPath: path, sourcePath: realpathSync(path), meta });
+         workflowTasks.set(task.id, task);
+         widget.update();
+         fleet.update();
+         report(`Running workflow ${meta.name}…`, "info");
+         // Detached: session_start is awaited by the host, and a workflow can run for
+         // minutes — blocking here would hold the whole session's startup.
+-        void runWorkflowTask(ctx, task).then(() => {
++        task.completion = runWorkflowTask(ctx, task);
++        void task.completion.then(() => {
+             // No tool call to attach a result card to, so the card becomes a session
+             // entry (same layout), and the outcome is handed to the model as context
+             // for its next turn rather than forcing one.
+@@ -3025,8 +3093,7 @@ The file format is a markdown file with YAML frontmatter and a system prompt bod
  description: <one-line description shown in UI>
  color: <optional agent name badge color: red, blue, green, yellow, purple, orange, pink, cyan, an Agency Agents alias, or quoted "#RRGGBB">
  tools: <comma-separated built-in tools: read, bash, edit, write, grep, find, ls. Use "none" for no tools. Omit for all tools>
@@ -131,7 +321,7 @@ index 79e782077d8a4dbd3f4dbd9583fc070ede1465e5..c901ea798a66e375d7cae53e07456cd8
  max_turns: <optional max agentic turns. 0 or omit for unlimited (default)>
  prompt_mode: <"replace" (body IS the full system prompt) or "append" (body is appended to default prompt). Default: replace>
  extensions: <true (inherit all MCP/extension tools), false (none), or comma-separated names. Default: true>
-@@ -3112,7 +3116,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
+@@ -3112,7 +3179,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
              tools = customTools;
          }
          // 4. Model
@@ -140,17 +330,18 @@ index 79e782077d8a4dbd3f4dbd9583fc070ede1465e5..c901ea798a66e375d7cae53e07456cd8
              "inherit (parent model)",
              "haiku",
              "sonnet",
-@@ -3122,7 +3126,8 @@ Write the file using the write tool. Only write the file, nothing else.`;
+@@ -3122,7 +3189,9 @@ Write the file using the write tool. Only write the file, nothing else.`;
          if (!modelChoice)
              return;
          let model;
 -        if (modelChoice === "haiku")
-+        if (getSubagentHost() && modelChoice !== "inherit (parent model)") model = modelChoice;
-+    else if (modelChoice === "haiku")
++        if (getSubagentHost() && modelChoice !== "inherit (parent model)")
++            model = modelChoice;
++        else if (modelChoice === "haiku")
              model = "anthropic/claude-haiku-4-5";
          else if (modelChoice === "sonnet")
              model = "anthropic/claude-sonnet-4-6";
-@@ -3133,7 +3138,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
+@@ -3133,7 +3202,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
          }
          // 5. Thinking
          // "inherit" is a UI-only pseudo-choice (omit the field); the rest mirror pi.
@@ -159,6 +350,15 @@ index 79e782077d8a4dbd3f4dbd9583fc070ede1465e5..c901ea798a66e375d7cae53e07456cd8
          if (!thinkingChoice)
              return;
          // 6. System prompt
+@@ -3290,7 +3359,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
+                     id: "workflowsEnabled",
+                     label: "Workflows",
+                     description: "Scripted workflows, on unless another extension provides a workflow tool "
+-                        + "(off keeps the SubagentWorkflow tool out of the tool spec; applies on next pi session)",
++                        + "(off keeps the ct_workflow tool out of the tool spec; applies on next pi session)",
+                     currentValue: isWorkflowsEnabled() ? "on" : "off",
+                     values: ["on", "off"],
+                 },
 diff --git a/dist/mention-clone.js b/dist/mention-clone.js
 index 61c6d60379b265a6996f4b5839d46919b1bfdc3c..5c2e389e3cc33e9ad4e832b53065fce286cb7a9e 100644
 --- a/dist/mention-clone.js
@@ -234,7 +434,7 @@ index 604bc2517d2bc358111d2ba7cc6d4bfa103c42d9..8a03620caa0808565d40141d9e07d6d9
          tags.push("isolated");
      if (invocation.isolation === "worktree")
 diff --git a/dist/ui/workflow-card.js b/dist/ui/workflow-card.js
-index 75aa6e974afaf20d7c99f7b5c19efaf1e9619c5c..82a6f5387e928789cdaab28fb4e136683329242c 100644
+index 75aa6e974afaf20d7c99f7b5c19efaf1e9619c5c..69edb38a091b6d13a06b4fd6028a26b25ff9e2ed 100644
 --- a/dist/ui/workflow-card.js
 +++ b/dist/ui/workflow-card.js
 @@ -1,3 +1,4 @@
@@ -252,6 +452,235 @@ index 75aa6e974afaf20d7c99f7b5c19efaf1e9619c5c..82a6f5387e928789cdaab28fb4e13668
      if (!thinking)
          return undefined;
      return requestedThinking !== undefined && requestedThinking !== thinking
+@@ -203,12 +205,12 @@ export function layoutWorkflowCard(input) {
+     const lines = [];
+     // ---- Header: `<name>` with the stats flush right ----
+     // The tool name appears only when nothing above the card already carries it.
+-    // As a tool result there is a `▸ SubagentWorkflow …` call line directly above,
++    // As a tool result there is a `▸ ct_workflow …` call line directly above,
+     // and repeating it put two near-identical pointer lines back to back.
+     const left = input.showToolTitle
+         ? [
+             { text: `${glyphs.pointer} `, color: "toolTitle" },
+-            { text: "SubagentWorkflow", color: "toolTitle", bold: true },
++            { text: "ct_workflow", color: "toolTitle", bold: true },
+             { text: "  " },
+             { text: head.name, color: "muted" },
+         ]
+diff --git a/dist/workflow/meta.js b/dist/workflow/meta.js
+index 15693dd13eb5133dbb79cf8e9e43b1bdd614f760..5672ad000101a536b561bb84458734b9000fad3e 100644
+--- a/dist/workflow/meta.js
++++ b/dist/workflow/meta.js
+@@ -291,7 +291,7 @@ export function extractMeta(source) {
+  * would give.
+  */
+ const workflowNames = new Map();
+-/** The label a `SubagentWorkflow` call renders under, from whichever field it carries. */
++/** The label a `ct_workflow` call renders under, from whichever field it carries. */
+ export function workflowCallName(args) {
+     const source = args.script;
+     if (source === undefined || source === "") {
+diff --git a/dist/workflow/runtime.js b/dist/workflow/runtime.js
+index f34a2c233c1437ba0302b843706e02bfa2da7684..03718e7834a59e64c1e201f6d1cc448964feefac 100644
+--- a/dist/workflow/runtime.js
++++ b/dist/workflow/runtime.js
+@@ -30,15 +30,9 @@ export const WORKFLOW_NESTED_CAP = 256;
+ const PREVIEW_LENGTH = 200;
+ export class WorkflowRuntimeError extends Error {
+ }
+-/**
+- * Concurrent agents allowed, leaving two cores for the host and the TUI.
+- *
+- * `Math.max(1, …)` is not decoration: the raw `min(16, cpus - 2)` is 0 on a one-
+- * or two-core machine, and a semaphore with zero permits never hands out a slot,
+- * so the run would hang before its first agent rather than fail.
+- */
+-export function workflowConcurrency(cpuCount = cpus().length) {
+-    return Math.max(1, Math.min(16, cpuCount - 2));
++export function workflowConcurrency(cpuCount = cpus().length, configured = process.env.CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY) {
++    if (configured !== undefined && !/^[1-8]$/.test(configured)) throw new Error("CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY must be an integer from 1 to 8.");
++    return Math.max(1, Math.min(configured === undefined ? 8 : Number(configured), cpuCount - 2));
+ }
+ /* ------------------------------------------------------------------------- *
+  * JSON boundary — host side
+diff --git a/dist/workflow/saved.js b/dist/workflow/saved.js
+index 5fffb9f82a8780911611ce65d6d9b6f484d15353..04b9046609d8aced74bf1352178394a67bd33d38 100644
+--- a/dist/workflow/saved.js
++++ b/dist/workflow/saved.js
+@@ -1,5 +1,5 @@
+ /**
+- * saved.ts — resolve `SubagentWorkflow({ name })` to a script on disk.
++ * saved.ts — resolve `ct_workflow({ name })` to a script on disk.
+  *
+  * A saved workflow is a plain `.js` file whose contents are exactly what
+  * `script` would have carried. Nothing is parsed here: `extractMeta` still runs
+@@ -166,7 +166,7 @@ function isWorkflowFile(path) {
+     return source !== undefined && hasMetaDeclaration(source);
+ }
+ /**
+- * Resolve which source a `SubagentWorkflow` call runs.
++ * Resolve which source a `ct_workflow` call runs.
+  *
+  * `scriptPath` wins over `script`, which wins over `name` — Claude Code's
+  * order — and at least one is required: a call with none is a mistake worth
+diff --git a/dist/workflow/task.d.ts b/dist/workflow/task.d.ts
+index 09b41857b5c681f20f8137adaec0c029a936f4db..054f5fab9854286a3df38a903a69f8a1b8118f7d 100644
+--- a/dist/workflow/task.d.ts
++++ b/dist/workflow/task.d.ts
+@@ -1,7 +1,7 @@
+ /**
+  * task.ts — the background record one workflow run lives in.
+  *
+- * A `SubagentWorkflow` tool call returns a task id immediately and the run continues
++ * A `ct_workflow` tool call returns a task id immediately and the run continues
+  * without it, so the run's state cannot live in the tool call's closure: the
+  * inline card, the completion notification and (later) the `/agents → Workflows` dialog
+  * all read it after `execute` has returned. This is that record, shaped after
+@@ -27,6 +27,8 @@ export interface WorkflowTask {
+     script: string;
+     /** Where the script can be edited and re-run from. */
+     scriptPath?: string;
++    sourcePath?: string;
++    completion?: Promise<void>;
+     args?: unknown;
+     meta?: WorkflowMeta;
+     workflowName?: string;
+@@ -79,6 +81,7 @@ export declare function createWorkflowTask(init: {
+     id: string;
+     script: string;
+     scriptPath?: string;
++    sourcePath?: string;
+     args?: unknown;
+     meta?: WorkflowMeta;
+     toolCallId?: string;
+@@ -123,7 +126,7 @@ export declare function workflowResultText(task: WorkflowTask): string;
+  * could not see through. An unknown id is an error rather than a cold start,
+  * because a caller that asked to resume is expecting not to pay.
+  */
+-export declare function resolveResumeTarget(runId: string | undefined, tasks: ReadonlyMap<string, WorkflowTask>): undefined | {
++export declare function resolveResumeTarget(runId: string | undefined, tasks: ReadonlyMap<string, WorkflowTask>, taskDir?: string): undefined | {
+     ok: true;
+     runId: string;
+     journalPath: string;
+diff --git a/dist/workflow/task.js b/dist/workflow/task.js
+index 2663251201b598dc1a3446555655089f6050006a..f64fb14cb934be81b5e952f4db701fefdcb326c6 100644
+--- a/dist/workflow/task.js
++++ b/dist/workflow/task.js
+@@ -1,7 +1,7 @@
+ /**
+  * task.ts — the background record one workflow run lives in.
+  *
+- * A `SubagentWorkflow` tool call returns a task id immediately and the run continues
++ * A `ct_workflow` tool call returns a task id immediately and the run continues
+  * without it, so the run's state cannot live in the tool call's closure: the
+  * inline card, the completion notification and (later) the `/agents → Workflows` dialog
+  * all read it after `execute` has returned. This is that record, shaped after
+@@ -14,6 +14,8 @@
+  * predecessor, and adding its tokens on top would double-count them.
+  */
+ import { randomUUID } from "node:crypto";
++import { statSync } from "node:fs";
++import { join } from "node:path";
+ import { escapeXml } from "../xml.js";
+ import { collapse, elapsedMs, stats } from "./progress.js";
+ /** `wf_` + hex, matching Claude Code's `^wf_[a-z0-9-]{6,}$` run ids. */
+@@ -27,6 +29,7 @@ export function createWorkflowTask(init) {
+         status: "running",
+         script: init.script,
+         scriptPath: init.scriptPath,
++        sourcePath: init.sourcePath,
+         args: init.args,
+         meta: init.meta,
+         workflowName: init.meta?.name,
+@@ -153,12 +156,26 @@ export function workflowResultText(task) {
+  * could not see through. An unknown id is an error rather than a cold start,
+  * because a caller that asked to resume is expecting not to pay.
+  */
+-export function resolveResumeTarget(runId, tasks) {
++export function resolveResumeTarget(runId, tasks, taskDir) {
+     const id = runId?.trim();
+     if (id === undefined || id === "")
+         return undefined;
+     const prior = tasks.get(id);
+     if (prior === undefined) {
++        if (taskDir !== undefined && /^wf_[a-z0-9-]{6,}$/.test(id)) {
++            const journalPath = join(taskDir, `${id}.workflow.jsonl`);
++            const scriptPath = join(taskDir, `${id}.workflow.js`);
++            let persistedFiles = false;
++            try {
++                persistedFiles = statSync(journalPath).isFile() && statSync(scriptPath).isFile();
++            }
++            catch {
++                persistedFiles = false;
++            }
++            if (persistedFiles) {
++                return { ok: true, runId: id, journalPath, scriptPath };
++            }
++        }
+         const known = [...tasks.keys()];
+         return {
+             ok: false,
+diff --git a/dist/workflow/tool-description.js b/dist/workflow/tool-description.js
+index c8e1461bf3a77ef037a517b8598e3a46fff02d3c..eecf5467163c9ec134a713e6b0b844f0780fd1ab 100644
+--- a/dist/workflow/tool-description.js
++++ b/dist/workflow/tool-description.js
+@@ -1,5 +1,5 @@
+ /**
+- * tool-description.ts — the model-facing description of the `SubagentWorkflow` tool.
++ * tool-description.ts — the model-facing description of the `ct_workflow` tool.
+  *
+  * This is a deliberate port of Claude Code's `Workflow` tool description, not a
+  * paraphrase of it. The rule the text is held to: **match Claude Code's wording
+@@ -39,14 +39,9 @@ export const fullWorkflowToolDescription = `Execute a workflow script that orche
+ 
+ A workflow structures work across many agents — to be comprehensive (decompose and cover in parallel), to be confident (independent perspectives and adversarial checks before committing), or to take on scale one context can't hold (migrations, audits, broad sweeps). The script is where you encode that structure: what fans out, what verifies, what synthesizes.
+ 
+-ONLY call this tool when the user has explicitly opted into multi-agent orchestration. Workflows can spawn dozens of agents and consume a large amount of tokens; the user must request that scale, not have it inferred. Explicit opt-in means one of:
+-- The user directly asked you to run a workflow or use multi-agent orchestration in their own words ("use a workflow", "run a workflow", "fan out agents", "orchestrate this with subagents"). The ask must be in the user's words — a task that would merely benefit from a workflow does not count.
+-- The user invoked a skill or slash command whose instructions tell you to call SubagentWorkflow.
+-- The user asked you to run a specific named or saved workflow.
++Use this tool when the user's plain-language task needs multiple stages, work that depends on discoveries, or independent verification. The request for the work authorizes this orchestration; the user does not need to name workflows or subagents. Keep the fan-out proportional to the task and use the workflow progress display to show what is running.
+ 
+-For any other task — even one that would clearly benefit from parallelism — do NOT call this tool. Use the Agent tool for individual subagents, or briefly describe what a multi-agent workflow could do and how much it would roughly cost, and ask the user whether to run it. Mention they can ask for one with "use a workflow" in a future message to skip the ask.
+-
+-When you do call it, the right move is often **hybrid**: scout inline first (list the files, find the channels, scope the diff) to discover the work-list, then call SubagentWorkflow to pipeline over it. You don't need to know the shape before the *task* — only before the *orchestration step*.
++When you do call it, the right move is often **hybrid**: scout inline first (list the files, find the channels, scope the diff) to discover the work-list, then call ct_workflow to pipeline over it. You don't need to know the shape before the *task* — only before the *orchestration step*.
+ 
+ Common single-phase workflows you can chain across turns:
+ - **Understand** — parallel readers over relevant subsystems → structured map
+@@ -57,7 +52,7 @@ Common single-phase workflows you can chain across turns:
+ 
+ For larger work, run several in sequence — read each result before deciding the next phase. You stay in the loop; each workflow is one well-scoped fan-out.
+ 
+-Pass the script inline via \`script\` — do not Write it to a file first. Every invocation automatically persists its script to a file under the session directory and returns the path in the tool result. To iterate on a workflow, edit that file with Write/Edit and re-invoke SubagentWorkflow with \`{scriptPath: "<path>"}\` instead of resending the full script. A script you will run more than once belongs in \`.pi/workflows/<name>.js\` (or \`.agents/workflows/\`, or \`<agent dir>/workflows/\` for one that follows the user everywhere); call it with \`name: "<name>"\` instead of re-sending the source.
++Pass the script inline via \`script\` — do not Write it to a file first. Every invocation automatically persists its script to a file under the session directory and returns the path in the tool result. To iterate on a workflow, edit that file with Write/Edit and re-invoke ct_workflow with \`{scriptPath: "<path>"}\` instead of resending the full script. A script you will run more than once belongs in \`.pi/workflows/<name>.js\` (or \`.agents/workflows/\`, or \`<agent dir>/workflows/\` for one that follows the user everywhere); call it with \`name: "<name>"\` instead of re-sending the source.
+ 
+ Every script must begin with \`export const meta = {...}\`:
+   export const meta = {
+@@ -82,7 +77,7 @@ Script body hooks:
+ - parallel(thunks: Array<() => Promise<any>>): Promise<any[]> — run tasks concurrently. This is a BARRIER: awaits all thunks before returning. A thunk that throws (or whose agent errors) resolves to \`null\` in the result array, so \`.filter(Boolean)\` before using the results; only a fatal run error — a cap breach, or a nested workflow that could not load — propagates instead of being folded into a null. Use ONLY when you genuinely need all results together.
+ - log(message: string): void — emit a progress message to the user (shown as a narrator line above the progress tree)
+ - phase(title: string): void — start a new phase; subsequent agent() calls are grouped under this title in the progress display
+-- args: any — the value passed as SubagentWorkflow's \`args\` input, verbatim (undefined if not provided). Pass arrays/objects as actual JSON values in the tool call, NOT as a JSON-encoded string — \`args: ["a.ts", "b.ts"]\`, not \`args: "[\\"a.ts\\", ...]"\` (a stringified list reaches the script as one string, so \`args.filter\`/\`args.map\` throw). Use this to parameterize named workflows — e.g. pass a research question, target path, or config object directly instead of via a side-channel file.
++- args: any — the value passed as ct_workflow's \`args\` input, verbatim (undefined if not provided). Pass arrays/objects as actual JSON values in the tool call, NOT as a JSON-encoded string — \`args: ["a.ts", "b.ts"]\`, not \`args: "[\\"a.ts\\", ...]"\` (a stringified list reaches the script as one string, so \`args.filter\`/\`args.map\` throw). Use this to parameterize named workflows — e.g. pass a research question, target path, or config object directly instead of via a side-channel file.
+ - budget: {total: number|null, spent(): number, remaining(): number} — \`budget.total\` is always null here: it comes from a token-target directive pi does not have, so guards like \`while (budget.total && budget.remaining() > 50_000) { ... }\` correctly do not fire rather than throwing on a missing global. \`budget.spent()\` returns output tokens spent by this run's agents. \`budget.remaining()\` returns \`Infinity\` with no target.
+ - workflow(nameOrRef: string | {scriptPath: string}, args?: any): Promise<any> — run another workflow inline as a sub-step and return whatever it returns. Pass a name to invoke a saved workflow (same registry as {name: "..."}), or {scriptPath} to run a script file you Wrote earlier. The child shares this run's concurrency cap, agent counter, abort signal, and token budget — its agents appear under a "▸ name" group in /agents → Workflows and its tokens count toward budget.spent(). The args param becomes the child's \`args\` global. Nesting is one level only: workflow() inside a child throws. Throws on unknown name / unreadable scriptPath / child syntax error; catch to handle gracefully.
+ 
+@@ -110,7 +105,7 @@ Smell test: if you wrote
+   const c = await parallel(b.map(...))
+ that middle transform doesn't need the barrier. Rewrite as a pipeline with the transform inside a stage. When in doubt: pipeline.
+ 
+-Concurrent agent() calls are capped at min(16, available CPUs - 2) per workflow — excess calls queue and run as slots free up. You can still pass 100 items to parallel()/pipeline() and they all complete; only ~10 run at any moment. Total agent count across a workflow's lifetime is capped at 1000 — a runaway-loop backstop set far above any real workflow. A single parallel()/pipeline() call accepts at most 4096 items; passing more is an explicit error, not a silent truncation.
++Concurrent agent() calls are capped at the configured session limit; excess calls queue. Nested workflows share this limit.
+ 
+ The canonical multi-stage pattern — pipeline by default, each dimension verifies as soon as its review completes:
+   export const meta = {
+@@ -196,4 +191,4 @@ Use this tool for multi-step orchestration where control flow should be determin
+ 
+ ## Resume
+ 
+-The tool result includes a runId. To resume after a pause, kill, or script edit, relaunch with SubagentWorkflow({scriptPath, resumeFromRunId}) — the longest unchanged prefix of agent() calls returns cached results instantly; the first edited/new call and everything after it runs live. Same script + same args → 100% cache hit. It is a prefix and not a lookup: a later call that still matches is not reused once an earlier one has changed. A journaled failure ends the prefix, so resuming a run that died at agent 5 retries exactly agent 5. Same session only, and the run must have finished — stop it from /agents → Workflows first. Before diagnosing why a completed workflow returned an empty or unexpected result, Read the run's \`<run id>.workflow.jsonl\` beside its script — it records each agent's actual return value; do not assume cached results are non-empty. Date.now()/Math.random()/new Date() are unavailable in scripts (they would break this) — stamp results after the workflow returns, or pass timestamps via args.`;
++The tool result includes a runId. To resume after a pause, kill, or script edit, relaunch with ct_workflow({scriptPath, resumeFromRunId}) — the longest unchanged prefix of agent() calls returns cached results instantly; the first edited/new call and everything after it runs live. Same script + same args → 100% cache hit. It is a prefix and not a lookup: a later call that still matches is not reused once an earlier one has changed. A journaled failure ends the prefix, so resuming a run that died at agent 5 retries exactly agent 5. Same session only. A matching active run returns its existing task; completed runs can be resumed from their journal. Before diagnosing why a completed workflow returned an empty or unexpected result, Read the run's \`<run id>.workflow.jsonl\` beside its script — it records each agent's actual return value; do not assume cached results are non-empty. Date.now()/Math.random()/new Date() are unavailable in scripts (they would break this) — stamp results after the workflow returns, or pass timestamps via args.`;
 diff --git a/package.json b/package.json
 index 1688e534299805699fad79692340a62601039349..ff989f8431d8edc873e7b945b0ee58baaa09a636 100644
 --- a/package.json
@@ -263,7 +692,7 @@ index 1688e534299805699fad79692340a62601039349..ff989f8431d8edc873e7b945b0ee58ba
    "version": "0.19.0",
    "description": "A pi extension that brings Claude Code-like sub-agents and workflow orchestration to pi — parallel execution, live widget, fleet view, custom agent types, mid-run steering, dynamic workflows, Claude Code compatibility, look and feel.",
 diff --git a/src/agent-runner.ts b/src/agent-runner.ts
-index 6752eca0269ce30853a5cf5a3afd0d4bd463614c..28ba051b5203f28b14352ab833740e5aee3e2a23 100644
+index 6752eca0269ce30853a5cf5a3afd0d4bd463614c..47a74db5781fba1dbe63cbba3b1a29cfb498fac2 100644
 --- a/src/agent-runner.ts
 +++ b/src/agent-runner.ts
 @@ -1,3 +1,4 @@
@@ -271,6 +700,15 @@ index 6752eca0269ce30853a5cf5a3afd0d4bd463614c..28ba051b5203f28b14352ab833740e5a
  /**
   * agent-runner.ts — Core execution engine: creates sessions, runs agents, collects results.
   */
+@@ -39,7 +40,7 @@ import type { CompiledSchema } from "./workflow/json-schema.js";
+  */
+ export const SUBAGENT_TOOL_NAMES = {
+   AGENT: "Agent",
+-  WORKFLOW: "SubagentWorkflow",
++  WORKFLOW: "ct_workflow",
+   GET_RESULT: "get_subagent_result",
+   STEER: "steer_subagent",
+ } as const;
 @@ -55,6 +56,7 @@ const EXCLUDED_TOOL_NAMES: string[] = Object.values(SUBAGENT_TOOL_NAMES);
   * single-file extensions to the basename minus `.ts`/`.js`.
   */
@@ -346,7 +784,7 @@ index 0000000000000000000000000000000000000000..518c6504584b03489acebaed3bc68873
 +  return host?.createSession(options, ctx) ?? createAgentSession(options);
 +}
 diff --git a/src/index.ts b/src/index.ts
-index 4989968c98e186b3c94194ae8c05c7651374fcb6..ae15d5ab36bfb8e742c647dc2d17da9722112ce1 100644
+index 4989968c98e186b3c94194ae8c05c7651374fcb6..1c832e6183d59fad95f8568ae3b398577a7236d2 100644
 --- a/src/index.ts
 +++ b/src/index.ts
 @@ -1,3 +1,4 @@
@@ -354,7 +792,27 @@ index 4989968c98e186b3c94194ae8c05c7651374fcb6..ae15d5ab36bfb8e742c647dc2d17da97
  /**
   * pi-agents — A pi extension providing Claude Code-style autonomous sub-agents.
   *
-@@ -1835,7 +1836,7 @@ Terse command-style prompts produce shallow, generic work.
+@@ -10,8 +11,9 @@
+  *   /agents                 — Interactive agent management menu
+  */
+ 
+-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
++import { existsSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
+ import { isAbsolute, join } from "node:path";
++import { isDeepStrictEqual } from "node:util";
+ import { defineTool, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
+ import { Container, Key, matchesKey, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
+ import { Type } from "@sinclair/typebox";
+@@ -1181,7 +1183,7 @@ export default function (pi: ExtensionAPI) {
+   function setSchedulingEnabled(b: boolean) { schedulingEnabled = b; }
+ 
+   // Master switch for scripted workflows. Defaults to ON. Off means the
+-  // `SubagentWorkflow` tool is never registered: the model is not told the
++  // `ct_workflow` tool is never registered: the model is not told the
+   // feature exists (zero context cost) and has nothing to call. The
+   // `/agents → Workflows` view and `--subagents-workflow-file` are refused too, so
+   // there is no second door into the same machinery.
+@@ -1835,7 +1837,7 @@ Terse command-style prompts produce shallow, generic work.
  
        const thinking = resolvedConfig.thinking;
        const inheritContext = resolvedConfig.inheritContext;
@@ -363,18 +821,164 @@ index 4989968c98e186b3c94194ae8c05c7651374fcb6..ae15d5ab36bfb8e742c647dc2d17da97
        const isolated = resolvedConfig.isolated;
        const isolation = resolvedConfig.isolation;
        // Whether this spawn writes its .output transcript. Per-agent
-@@ -2557,6 +2558,10 @@ Terse command-style prompts produce shallow, generic work.
+@@ -2311,6 +2313,25 @@ Terse command-style prompts produce shallow, generic work.
+    */
+   const workflowTasks = new Map<string, WorkflowTask>();
+ 
++  async function existingWorkflowResult(task: WorkflowTask, ctx: ExtensionContext) {
++    if (getSubagentHost() && (ctx.mode === "print" || ctx.mode === "json")) {
++      await task.completion;
++      if (task.status !== "completed") throw new Error(workflowResultText(task));
++      return textResult(workflowResultText(task), { taskId: task.id } as any);
++    }
++    return {
++      content: [{
++        type: "text" as const,
++        text:
++          `Workflow "${task.workflowName ?? task.id}" is already running.\n` +
++          `Task ID: ${task.id}\n` +
++          (task.scriptPath ? `Script: ${task.scriptPath}\n` : "") +
++          "\nYou will be notified when it finishes — do NOT poll or sleep waiting for it.",
++      }],
++      details: { taskId: task.id },
++    };
++  }
++
+   /**
+    * Workflow runs as the fleet list wants them.
+    *
+@@ -2407,11 +2428,11 @@ Terse command-style prompts produce shallow, generic work.
+   // switch changes exactly one thing: whether pi is ever told about the tool.
+   const workflowTool = defineTool({
+     name: SUBAGENT_TOOL_NAMES.WORKFLOW,
+-    label: "SubagentWorkflow",
++    label: "ct_workflow",
+     description: renderToolDescriptionTemplate(fullWorkflowToolDescription),
+     promptSnippet: "Run a deterministic script that orchestrates many subagents",
+     promptGuidelines: [
+-      "Use SubagentWorkflow when the number of agents depends on something discovered at runtime, when work flows through stages, or when findings should be independently verified. Use Agent for one delegated task or a handful you can name up front.",
++      "Use ct_workflow when the number of agents depends on something discovered at runtime, when work flows through stages, or when findings should be independently verified. Use Agent for one delegated task or a handful you can name up front.",
+       "Prefer `pipeline` over `parallel` — a barrier costs wall-clock whenever the stages are unevenly sized.",
+       "A workflow runs in the background and notifies you when it finishes — do not poll or sleep waiting for it.",
+     ],
+@@ -2460,7 +2481,7 @@ Terse command-style prompts produce shallow, generic work.
+ 
+     renderCall(args, theme) {
+       return new Text(
+-        `${theme.fg("toolTitle", "▸ ")}${theme.bold(theme.fg("toolTitle", "SubagentWorkflow"))}  ${theme.fg("muted", workflowCallName(args))}`,
++        `${theme.fg("toolTitle", "▸ ")}${theme.bold(theme.fg("toolTitle", "ct_workflow"))}  ${theme.fg("muted", workflowCallName(args))}`,
+         0,
+         0,
+       );
+@@ -2492,7 +2513,19 @@ Terse command-style prompts produce shallow, generic work.
+     },
+ 
+     execute: async (toolCallId, params, _signal, _onUpdate, ctx) => {
+-      const resumeFrom = resolveResumeTarget(params.resumeFromRunId, workflowTasks);
++      const resumeId = params.resumeFromRunId?.trim();
++      const runningResume = resumeId ? workflowTasks.get(resumeId) : undefined;
++      if (runningResume?.status === "running") {
++        return existingWorkflowResult(runningResume, ctx);
++      }
++
++      let taskDir: string | undefined;
++      try {
++        taskDir = sessionTaskDir(ctx.cwd, ctx.sessionManager.getSessionId());
++      } catch {
++        taskDir = undefined;
++      }
++      const resumeFrom = resolveResumeTarget(params.resumeFromRunId, workflowTasks, taskDir);
+       if (resumeFrom !== undefined && !resumeFrom.ok) return textResult(resumeFrom.message);
+ 
+       // A resume with no source of its own re-runs what that run ran. The
+@@ -2507,6 +2540,15 @@ Terse command-style prompts produce shallow, generic work.
+       );
+       if (!resolved.ok) return textResult(resolved.message);
+ 
++      let sourcePath: string | undefined;
++      if (resolved.scriptPath !== undefined) {
++        try {
++          sourcePath = realpathSync(resolved.scriptPath);
++        } catch {
++          sourcePath = resolved.scriptPath;
++        }
++      }
++
+       // Parsed before anything is scheduled: a bad `meta` is an authoring error
+       // the model can fix immediately, and reporting it as a background run
+       // that failed a second later would just cost a turn.
+@@ -2517,6 +2559,19 @@ Terse command-style prompts produce shallow, generic work.
+         return textResult(err instanceof Error ? err.message : String(err));
+       }
+ 
++      const active = [...workflowTasks.values()].find((task) => {
++        if (task.status !== "running" || task.script !== resolved.script || !isDeepStrictEqual(task.args, params.args)) return false;
++        if (sourcePath === undefined) return task.sourcePath === undefined;
++        if (task.sourcePath === sourcePath) return true;
++        if (task.sourcePath !== undefined || task.scriptPath === undefined) return false;
++        try {
++          return realpathSync(task.scriptPath) === sourcePath;
++        } catch {
++          return task.scriptPath === resolved.scriptPath;
++        }
++      });
++      if (active !== undefined) return existingWorkflowResult(active, ctx);
++
+       const runId = workflowRunId();
+       // Every invocation lands on disk next to the agent transcripts, so
+       // iterating is edit-the-file-then-rerun-with-scriptPath rather than
+@@ -2541,6 +2596,7 @@ Terse command-style prompts produce shallow, generic work.
+         id: runId,
+         script: resolved.script,
+         scriptPath: resolved.scriptPath ?? savedPath,
++        sourcePath,
+         args: params.args,
+         meta,
+         toolCallId,
+@@ -2557,7 +2613,13 @@ Terse command-style prompts produce shallow, generic work.
  
        // Background, like Claude Code: the id comes back now and the run keeps
        // going without the tool call.
+-      void runWorkflowTask(ctx, task).then(() => notifyWorkflowFinished(task));
++      task.completion = runWorkflowTask(ctx, task);
 +      if (getSubagentHost() && (ctx.mode === "print" || ctx.mode === "json")) {
-+        await runWorkflowTask(ctx, task);
-+        return { ...textResult(workflowResultText(task)), isError: task.status !== "completed" };
++        await task.completion;
++        if (task.status !== "completed") throw new Error(workflowResultText(task));
++        return textResult(workflowResultText(task));
 +      }
-       void runWorkflowTask(ctx, task).then(() => notifyWorkflowFinished(task));
++      void task.completion.then(() => notifyWorkflowFinished(task));
  
        return {
-@@ -3289,8 +3294,7 @@ The file format is a markdown file with YAML frontmatter and a system prompt bod
+         content: [{
+@@ -2572,7 +2634,7 @@ Terse command-style prompts produce shallow, generic work.
+                 ? `Nothing to replay from ${params.resumeFromRunId} — every agent runs live.\n`
+                 : "") +
+             `\nYou will be notified when it finishes — do NOT poll or sleep waiting for it.\n` +
+-            `To iterate, edit the script file and call SubagentWorkflow again with scriptPath.`,
++            `To iterate, edit the script file and call ct_workflow again with scriptPath.`,
+         }],
+         details: { taskId: runId },
+       };
+@@ -2704,7 +2766,7 @@ Terse command-style prompts produce shallow, generic work.
+       return;
+     }
+ 
+-    const task = createWorkflowTask({ id: workflowRunId(), script, scriptPath: path, meta });
++    const task = createWorkflowTask({ id: workflowRunId(), script, scriptPath: path, sourcePath: realpathSync(path), meta });
+     workflowTasks.set(task.id, task);
+     widget.update();
+     fleet.update();
+@@ -2712,7 +2774,8 @@ Terse command-style prompts produce shallow, generic work.
+ 
+     // Detached: session_start is awaited by the host, and a workflow can run for
+     // minutes — blocking here would hold the whole session's startup.
+-    void runWorkflowTask(ctx, task).then(() => {
++    task.completion = runWorkflowTask(ctx, task);
++    void task.completion.then(() => {
+       // No tool call to attach a result card to, so the card becomes a session
+       // entry (same layout), and the outcome is handed to the model as context
+       // for its next turn rather than forcing one.
+@@ -3289,8 +3352,7 @@ The file format is a markdown file with YAML frontmatter and a system prompt bod
  description: <one-line description shown in UI>
  color: <optional agent name badge color: red, blue, green, yellow, purple, orange, pink, cyan, an Agency Agents alias, or quoted "#RRGGBB">
  tools: <comma-separated built-in tools: read, bash, edit, write, grep, find, ls. Use "none" for no tools. Omit for all tools>
@@ -384,7 +988,7 @@ index 4989968c98e186b3c94194ae8c05c7651374fcb6..ae15d5ab36bfb8e742c647dc2d17da97
  max_turns: <optional max agentic turns. 0 or omit for unlimited (default)>
  prompt_mode: <"replace" (body IS the full system prompt) or "append" (body is appended to default prompt). Default: replace>
  extensions: <true (inherit all MCP/extension tools), false (none), or comma-separated names. Default: true>
-@@ -3378,7 +3382,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
+@@ -3378,7 +3440,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
      }
  
      // 4. Model
@@ -393,7 +997,7 @@ index 4989968c98e186b3c94194ae8c05c7651374fcb6..ae15d5ab36bfb8e742c647dc2d17da97
        "inherit (parent model)",
        "haiku",
        "sonnet",
-@@ -3388,7 +3392,8 @@ Write the file using the write tool. Only write the file, nothing else.`;
+@@ -3388,7 +3450,8 @@ Write the file using the write tool. Only write the file, nothing else.`;
      if (!modelChoice) return;
  
      let model: string | undefined;
@@ -403,7 +1007,7 @@ index 4989968c98e186b3c94194ae8c05c7651374fcb6..ae15d5ab36bfb8e742c647dc2d17da97
      else if (modelChoice === "sonnet") model = "anthropic/claude-sonnet-4-6";
      else if (modelChoice === "opus") model = "anthropic/claude-opus-4-6";
      else if (modelChoice === "custom...") {
-@@ -3397,7 +3402,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
+@@ -3397,7 +3460,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
  
      // 5. Thinking
      // "inherit" is a UI-only pseudo-choice (omit the field); the rest mirror pi.
@@ -412,6 +1016,15 @@ index 4989968c98e186b3c94194ae8c05c7651374fcb6..ae15d5ab36bfb8e742c647dc2d17da97
      if (!thinkingChoice) return;
  
      // 6. System prompt
+@@ -3570,7 +3633,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
+           label: "Workflows",
+           description:
+             "Scripted workflows, on unless another extension provides a workflow tool "
+-            + "(off keeps the SubagentWorkflow tool out of the tool spec; applies on next pi session)",
++            + "(off keeps the ct_workflow tool out of the tool spec; applies on next pi session)",
+           currentValue: isWorkflowsEnabled() ? "on" : "off",
+           values: ["on", "off"],
+         },
 diff --git a/src/mention-clone.ts b/src/mention-clone.ts
 index 25ee2fbd31a77d2c800bdeaa949879c395abba77..430c7c5c79de8d9635ba4064165c99ac72f09db2 100644
 --- a/src/mention-clone.ts
@@ -465,6 +1078,19 @@ index fa7cd383e9085d1e44288c1f6873bfac0b513bfa..267474b31ed53141c8657b83618438a4
    // Available models (those with auth configured)
    const all = (registry.getAvailable?.() ?? registry.getAll()) as ModelEntry[];
    const availableSet = new Set(all.map(m => `${m.provider}/${m.id}`.toLowerCase()));
+diff --git a/src/settings.ts b/src/settings.ts
+index c52eee70d3352d232649150cfc403cd7828d2c7c..4678c6d26bf53a032637c3ad2c22907dc1a29d44 100644
+--- a/src/settings.ts
++++ b/src/settings.ts
+@@ -200,7 +200,7 @@ export interface SubagentsSettings {
+   /**
+    * Master switch for scripted workflows. Defaults to `true`.
+    *
+-   * Off is not a soft hide: the `SubagentWorkflow` tool is never registered, so
++   * Off is not a soft hide: the `ct_workflow` tool is never registered, so
+    * the model is not told it exists and cannot call it, the `/agents`
+    * Workflows entry is hidden, and `--subagents-workflow-file` is refused.
+    *
 diff --git a/src/ui/agent-widget.ts b/src/ui/agent-widget.ts
 index 4500d8fd43710c2daa4aa7ea27934f481c04da6a..0066b752fbbd01677567412aaf10391011034ea8 100644
 --- a/src/ui/agent-widget.ts
@@ -484,7 +1110,7 @@ index 4500d8fd43710c2daa4aa7ea27934f481c04da6a..0066b752fbbd01677567412aaf103910
    if (invocation.isolation === "worktree") tags.push("worktree");
    if (invocation.inheritContext) tags.push("inherit context");
 diff --git a/src/ui/workflow-card.ts b/src/ui/workflow-card.ts
-index 15164a26ecedab87c0e9cbd215b423051a75c21f..b88c296488859b9f2a965b34c9d97a991e340b3f 100644
+index 15164a26ecedab87c0e9cbd215b423051a75c21f..ff806295d94a12c78b289e8fce7957875ecc685f 100644
 --- a/src/ui/workflow-card.ts
 +++ b/src/ui/workflow-card.ts
 @@ -1,3 +1,4 @@
@@ -492,6 +1118,15 @@ index 15164a26ecedab87c0e9cbd215b423051a75c21f..b88c296488859b9f2a965b34c9d97a99
  /**
   * workflow-card.ts — the inline transcript card for a running workflow.
   *
+@@ -170,7 +171,7 @@ export interface WorkflowCardInput {
+   /** Swap in the ASCII glyph tier for terminals without unicode. */
+   ascii?: boolean;
+   /**
+-   * Lead with `▸ SubagentWorkflow`.
++   * Lead with `▸ ct_workflow`.
+    *
+    * True where the card stands alone — the session entry a flag-launched run
+    * writes, which has no tool call above it to say what it is. False as a tool
 @@ -223,6 +224,7 @@ export function formatModel(
   * pi clamped is worth saying so about even when the model is unremarkable.
   */
@@ -500,3 +1135,215 @@ index 15164a26ecedab87c0e9cbd215b423051a75c21f..b88c296488859b9f2a965b34c9d97a99
    const { thinking, requestedThinking } = entry;
    if (!thinking) return undefined;
    return requestedThinking !== undefined && requestedThinking !== thinking
+@@ -312,12 +314,12 @@ export function layoutWorkflowCard(input: WorkflowCardInput): WorkflowCardLine[]
+ 
+   // ---- Header: `<name>` with the stats flush right ----
+   // The tool name appears only when nothing above the card already carries it.
+-  // As a tool result there is a `▸ SubagentWorkflow …` call line directly above,
++  // As a tool result there is a `▸ ct_workflow …` call line directly above,
+   // and repeating it put two near-identical pointer lines back to back.
+   const left: WorkflowCardLine = input.showToolTitle
+     ? [
+         { text: `${glyphs.pointer} `, color: "toolTitle" },
+-        { text: "SubagentWorkflow", color: "toolTitle", bold: true },
++        { text: "ct_workflow", color: "toolTitle", bold: true },
+         { text: "  " },
+         { text: head.name, color: "muted" },
+       ]
+diff --git a/src/workflow/meta.ts b/src/workflow/meta.ts
+index 1e4e48fa425e911b6a214e5d054f21df7953e4c5..89e83b934ade8a81c940d99716c73df0168781ab 100644
+--- a/src/workflow/meta.ts
++++ b/src/workflow/meta.ts
+@@ -302,7 +302,7 @@ export function extractMeta(source: string): MetaExtraction {
+  */
+ const workflowNames = new Map<string, string>();
+ 
+-/** The label a `SubagentWorkflow` call renders under, from whichever field it carries. */
++/** The label a `ct_workflow` call renders under, from whichever field it carries. */
+ export function workflowCallName(args: { script?: string; scriptPath?: string; name?: string }): string {
+   const source = args.script;
+   if (source === undefined || source === "") {
+diff --git a/src/workflow/runtime.ts b/src/workflow/runtime.ts
+index 1666993cdc1e1727b3e97f35e88fc618f95877a2..0c62952dff57aa66128efcf751222aebff9335f4 100644
+--- a/src/workflow/runtime.ts
++++ b/src/workflow/runtime.ts
+@@ -38,15 +38,14 @@ const PREVIEW_LENGTH = 200;
+ 
+ export class WorkflowRuntimeError extends Error {}
+ 
+-/**
+- * Concurrent agents allowed, leaving two cores for the host and the TUI.
+- *
+- * `Math.max(1, …)` is not decoration: the raw `min(16, cpus - 2)` is 0 on a one-
+- * or two-core machine, and a semaphore with zero permits never hands out a slot,
+- * so the run would hang before its first agent rather than fail.
+- */
+-export function workflowConcurrency(cpuCount: number = cpus().length): number {
+-  return Math.max(1, Math.min(16, cpuCount - 2));
++export function workflowConcurrency(
++  cpuCount: number = cpus().length,
++  configured: string | undefined = process.env.CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY,
++): number {
++  if (configured !== undefined && !/^[1-8]$/.test(configured)) {
++    throw new Error("CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY must be an integer from 1 to 8.");
++  }
++  return Math.max(1, Math.min(configured === undefined ? 8 : Number(configured), cpuCount - 2));
+ }
+ 
+ /** One agent the script asked for. `agentId` is the handle for {@link WorkflowHost.abortAgent}. */
+diff --git a/src/workflow/saved.ts b/src/workflow/saved.ts
+index c4e5202f5f94dbe8ebf47f9248efb1b4816b978a..b34bec7b5c1d6ce2ff4d3e547e5af134ea4b27d4 100644
+--- a/src/workflow/saved.ts
++++ b/src/workflow/saved.ts
+@@ -1,5 +1,5 @@
+ /**
+- * saved.ts — resolve `SubagentWorkflow({ name })` to a script on disk.
++ * saved.ts — resolve `ct_workflow({ name })` to a script on disk.
+  *
+  * A saved workflow is a plain `.js` file whose contents are exactly what
+  * `script` would have carried. Nothing is parsed here: `extractMeta` still runs
+@@ -175,7 +175,7 @@ function isWorkflowFile(path: string): boolean {
+ }
+ 
+ /**
+- * Resolve which source a `SubagentWorkflow` call runs.
++ * Resolve which source a `ct_workflow` call runs.
+  *
+  * `scriptPath` wins over `script`, which wins over `name` — Claude Code's
+  * order — and at least one is required: a call with none is a mistake worth
+diff --git a/src/workflow/task.ts b/src/workflow/task.ts
+index 9df98647da9e3893f118369db09a20de46a5bf04..f41134bc18b01488b6d0f85c138942259e6924cc 100644
+--- a/src/workflow/task.ts
++++ b/src/workflow/task.ts
+@@ -1,7 +1,7 @@
+ /**
+  * task.ts — the background record one workflow run lives in.
+  *
+- * A `SubagentWorkflow` tool call returns a task id immediately and the run continues
++ * A `ct_workflow` tool call returns a task id immediately and the run continues
+  * without it, so the run's state cannot live in the tool call's closure: the
+  * inline card, the completion notification and (later) the `/agents → Workflows` dialog
+  * all read it after `execute` has returned. This is that record, shaped after
+@@ -15,6 +15,8 @@
+  */
+ 
+ import { randomUUID } from "node:crypto";
++import { statSync } from "node:fs";
++import { join } from "node:path";
+ import { escapeXml } from "../xml.js";
+ import type { WorkflowJournalEntry } from "./journal.js";
+ import type { WorkflowMeta } from "./meta.js";
+@@ -34,6 +36,8 @@ export interface WorkflowTask {
+   script: string;
+   /** Where the script can be edited and re-run from. */
+   scriptPath?: string;
++  sourcePath?: string;
++  completion?: Promise<void>;
+   args?: unknown;
+   meta?: WorkflowMeta;
+   workflowName?: string;
+@@ -92,6 +96,7 @@ export function createWorkflowTask(init: {
+   id: string;
+   script: string;
+   scriptPath?: string;
++  sourcePath?: string;
+   args?: unknown;
+   meta?: WorkflowMeta;
+   toolCallId?: string;
+@@ -106,6 +111,7 @@ export function createWorkflowTask(init: {
+     status: "running",
+     script: init.script,
+     scriptPath: init.scriptPath,
++    sourcePath: init.sourcePath,
+     args: init.args,
+     meta: init.meta,
+     workflowName: init.meta?.name,
+@@ -240,6 +246,7 @@ export function workflowResultText(task: WorkflowTask): string {
+ export function resolveResumeTarget(
+   runId: string | undefined,
+   tasks: ReadonlyMap<string, WorkflowTask>,
++  taskDir?: string,
+ ):
+   | undefined
+   | { ok: true; runId: string; journalPath: string; scriptPath: string }
+@@ -249,6 +256,19 @@ export function resolveResumeTarget(
+ 
+   const prior = tasks.get(id);
+   if (prior === undefined) {
++    if (taskDir !== undefined && /^wf_[a-z0-9-]{6,}$/.test(id)) {
++      const journalPath = join(taskDir, `${id}.workflow.jsonl`);
++      const scriptPath = join(taskDir, `${id}.workflow.js`);
++      let persistedFiles = false;
++      try {
++        persistedFiles = statSync(journalPath).isFile() && statSync(scriptPath).isFile();
++      } catch {
++        persistedFiles = false;
++      }
++      if (persistedFiles) {
++        return { ok: true, runId: id, journalPath, scriptPath };
++      }
++    }
+     const known = [...tasks.keys()];
+     return {
+       ok: false,
+diff --git a/src/workflow/tool-description.ts b/src/workflow/tool-description.ts
+index 632e9e491697bddc3439b2938e29288948ff356e..60e5ea962372757ca4a6cfa95b813e1ded635120 100644
+--- a/src/workflow/tool-description.ts
++++ b/src/workflow/tool-description.ts
+@@ -1,5 +1,5 @@
+ /**
+- * tool-description.ts — the model-facing description of the `SubagentWorkflow` tool.
++ * tool-description.ts — the model-facing description of the `ct_workflow` tool.
+  *
+  * This is a deliberate port of Claude Code's `Workflow` tool description, not a
+  * paraphrase of it. The rule the text is held to: **match Claude Code's wording
+@@ -40,14 +40,9 @@ export const fullWorkflowToolDescription = `Execute a workflow script that orche
+ 
+ A workflow structures work across many agents — to be comprehensive (decompose and cover in parallel), to be confident (independent perspectives and adversarial checks before committing), or to take on scale one context can't hold (migrations, audits, broad sweeps). The script is where you encode that structure: what fans out, what verifies, what synthesizes.
+ 
+-ONLY call this tool when the user has explicitly opted into multi-agent orchestration. Workflows can spawn dozens of agents and consume a large amount of tokens; the user must request that scale, not have it inferred. Explicit opt-in means one of:
+-- The user directly asked you to run a workflow or use multi-agent orchestration in their own words ("use a workflow", "run a workflow", "fan out agents", "orchestrate this with subagents"). The ask must be in the user's words — a task that would merely benefit from a workflow does not count.
+-- The user invoked a skill or slash command whose instructions tell you to call SubagentWorkflow.
+-- The user asked you to run a specific named or saved workflow.
++Use this tool when the user's plain-language task needs multiple stages, work that depends on discoveries, or independent verification. The request for the work authorizes this orchestration; the user does not need to name workflows or subagents. Keep the fan-out proportional to the task and use the workflow progress display to show what is running.
+ 
+-For any other task — even one that would clearly benefit from parallelism — do NOT call this tool. Use the Agent tool for individual subagents, or briefly describe what a multi-agent workflow could do and how much it would roughly cost, and ask the user whether to run it. Mention they can ask for one with "use a workflow" in a future message to skip the ask.
+-
+-When you do call it, the right move is often **hybrid**: scout inline first (list the files, find the channels, scope the diff) to discover the work-list, then call SubagentWorkflow to pipeline over it. You don't need to know the shape before the *task* — only before the *orchestration step*.
++When you do call it, the right move is often **hybrid**: scout inline first (list the files, find the channels, scope the diff) to discover the work-list, then call ct_workflow to pipeline over it. You don't need to know the shape before the *task* — only before the *orchestration step*.
+ 
+ Common single-phase workflows you can chain across turns:
+ - **Understand** — parallel readers over relevant subsystems → structured map
+@@ -58,7 +53,7 @@ Common single-phase workflows you can chain across turns:
+ 
+ For larger work, run several in sequence — read each result before deciding the next phase. You stay in the loop; each workflow is one well-scoped fan-out.
+ 
+-Pass the script inline via \`script\` — do not Write it to a file first. Every invocation automatically persists its script to a file under the session directory and returns the path in the tool result. To iterate on a workflow, edit that file with Write/Edit and re-invoke SubagentWorkflow with \`{scriptPath: "<path>"}\` instead of resending the full script. A script you will run more than once belongs in \`.pi/workflows/<name>.js\` (or \`.agents/workflows/\`, or \`<agent dir>/workflows/\` for one that follows the user everywhere); call it with \`name: "<name>"\` instead of re-sending the source.
++Pass the script inline via \`script\` — do not Write it to a file first. Every invocation automatically persists its script to a file under the session directory and returns the path in the tool result. To iterate on a workflow, edit that file with Write/Edit and re-invoke ct_workflow with \`{scriptPath: "<path>"}\` instead of resending the full script. A script you will run more than once belongs in \`.pi/workflows/<name>.js\` (or \`.agents/workflows/\`, or \`<agent dir>/workflows/\` for one that follows the user everywhere); call it with \`name: "<name>"\` instead of re-sending the source.
+ 
+ Every script must begin with \`export const meta = {...}\`:
+   export const meta = {
+@@ -83,7 +78,7 @@ Script body hooks:
+ - parallel(thunks: Array<() => Promise<any>>): Promise<any[]> — run tasks concurrently. This is a BARRIER: awaits all thunks before returning. A thunk that throws (or whose agent errors) resolves to \`null\` in the result array, so \`.filter(Boolean)\` before using the results; only a fatal run error — a cap breach, or a nested workflow that could not load — propagates instead of being folded into a null. Use ONLY when you genuinely need all results together.
+ - log(message: string): void — emit a progress message to the user (shown as a narrator line above the progress tree)
+ - phase(title: string): void — start a new phase; subsequent agent() calls are grouped under this title in the progress display
+-- args: any — the value passed as SubagentWorkflow's \`args\` input, verbatim (undefined if not provided). Pass arrays/objects as actual JSON values in the tool call, NOT as a JSON-encoded string — \`args: ["a.ts", "b.ts"]\`, not \`args: "[\\"a.ts\\", ...]"\` (a stringified list reaches the script as one string, so \`args.filter\`/\`args.map\` throw). Use this to parameterize named workflows — e.g. pass a research question, target path, or config object directly instead of via a side-channel file.
++- args: any — the value passed as ct_workflow's \`args\` input, verbatim (undefined if not provided). Pass arrays/objects as actual JSON values in the tool call, NOT as a JSON-encoded string — \`args: ["a.ts", "b.ts"]\`, not \`args: "[\\"a.ts\\", ...]"\` (a stringified list reaches the script as one string, so \`args.filter\`/\`args.map\` throw). Use this to parameterize named workflows — e.g. pass a research question, target path, or config object directly instead of via a side-channel file.
+ - budget: {total: number|null, spent(): number, remaining(): number} — \`budget.total\` is always null here: it comes from a token-target directive pi does not have, so guards like \`while (budget.total && budget.remaining() > 50_000) { ... }\` correctly do not fire rather than throwing on a missing global. \`budget.spent()\` returns output tokens spent by this run's agents. \`budget.remaining()\` returns \`Infinity\` with no target.
+ - workflow(nameOrRef: string | {scriptPath: string}, args?: any): Promise<any> — run another workflow inline as a sub-step and return whatever it returns. Pass a name to invoke a saved workflow (same registry as {name: "..."}), or {scriptPath} to run a script file you Wrote earlier. The child shares this run's concurrency cap, agent counter, abort signal, and token budget — its agents appear under a "▸ name" group in /agents → Workflows and its tokens count toward budget.spent(). The args param becomes the child's \`args\` global. Nesting is one level only: workflow() inside a child throws. Throws on unknown name / unreadable scriptPath / child syntax error; catch to handle gracefully.
+ 
+@@ -111,7 +106,7 @@ Smell test: if you wrote
+   const c = await parallel(b.map(...))
+ that middle transform doesn't need the barrier. Rewrite as a pipeline with the transform inside a stage. When in doubt: pipeline.
+ 
+-Concurrent agent() calls are capped at min(16, available CPUs - 2) per workflow — excess calls queue and run as slots free up. You can still pass 100 items to parallel()/pipeline() and they all complete; only ~10 run at any moment. Total agent count across a workflow's lifetime is capped at 1000 — a runaway-loop backstop set far above any real workflow. A single parallel()/pipeline() call accepts at most 4096 items; passing more is an explicit error, not a silent truncation.
++Concurrent agent() calls are capped at the configured session limit; excess calls queue. Nested workflows share this limit.
+ 
+ The canonical multi-stage pattern — pipeline by default, each dimension verifies as soon as its review completes:
+   export const meta = {
+@@ -197,4 +192,4 @@ Use this tool for multi-step orchestration where control flow should be determin
+ 
+ ## Resume
+ 
+-The tool result includes a runId. To resume after a pause, kill, or script edit, relaunch with SubagentWorkflow({scriptPath, resumeFromRunId}) — the longest unchanged prefix of agent() calls returns cached results instantly; the first edited/new call and everything after it runs live. Same script + same args → 100% cache hit. It is a prefix and not a lookup: a later call that still matches is not reused once an earlier one has changed. A journaled failure ends the prefix, so resuming a run that died at agent 5 retries exactly agent 5. Same session only, and the run must have finished — stop it from /agents → Workflows first. Before diagnosing why a completed workflow returned an empty or unexpected result, Read the run's \`<run id>.workflow.jsonl\` beside its script — it records each agent's actual return value; do not assume cached results are non-empty. Date.now()/Math.random()/new Date() are unavailable in scripts (they would break this) — stamp results after the workflow returns, or pass timestamps via args.`;
++The tool result includes a runId. To resume after a pause, kill, or script edit, relaunch with ct_workflow({scriptPath, resumeFromRunId}) — the longest unchanged prefix of agent() calls returns cached results instantly; the first edited/new call and everything after it runs live. Same script + same args → 100% cache hit. It is a prefix and not a lookup: a later call that still matches is not reused once an earlier one has changed. A journaled failure ends the prefix, so resuming a run that died at agent 5 retries exactly agent 5. Same session only. A matching active run returns its existing task; completed runs can be resumed from their journal. Before diagnosing why a completed workflow returned an empty or unexpected result, Read the run's \`<run id>.workflow.jsonl\` beside its script — it records each agent's actual return value; do not assume cached results are non-empty. Date.now()/Math.random()/new Date() are unavailable in scripts (they would break this) — stamp results after the workflow returns, or pass timestamps via args.`;

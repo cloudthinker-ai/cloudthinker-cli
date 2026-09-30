@@ -34,21 +34,26 @@ pub fn relative(path: &str) -> Result<&Path, &'static str> {
 }
 
 pub fn read(dir: &Dir, path: &str, limit: usize) -> Result<Vec<u8>, &'static str> {
+    let bytes = read_prefix(dir, path, limit.min(MAX_BYTES) + 1)?;
+    if bytes.len() > limit.min(MAX_BYTES) {
+        return Err("FILE_TOO_LARGE");
+    }
+    Ok(bytes)
+}
+
+fn read_prefix(dir: &Dir, path: &str, limit: usize) -> Result<Vec<u8>, &'static str> {
     let mut options = OpenOptions::new();
     options
         .read(true)
-        .custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32);
+        .custom_flags(rustix::fs::OFlags::NONBLOCK.bits().cast_signed());
     let file = dir.open_with(relative(path)?, &options).map_err(io_error)?;
     if !file.metadata().map_err(io_error)?.is_file() {
         return Err("FILE_NOT_REGULAR");
     }
     let mut bytes = Vec::new();
-    file.take(limit.min(MAX_BYTES) as u64 + 1)
+    file.take(limit as u64)
         .read_to_end(&mut bytes)
         .map_err(io_error)?;
-    if bytes.len() > limit.min(MAX_BYTES) {
-        return Err("FILE_TOO_LARGE");
-    }
     Ok(bytes)
 }
 
@@ -65,7 +70,7 @@ fn write(dir: &Dir, path: &str, content: &[u8]) -> Result<(), &'static str> {
         .write(true)
         .create(true)
         .truncate(true)
-        .custom_flags(rustix::fs::OFlags::NONBLOCK.bits() as i32);
+        .custom_flags(rustix::fs::OFlags::NONBLOCK.bits().cast_signed());
     let mut file = dir.open_with(path, &options).map_err(io_error)?;
     if !file.metadata().map_err(io_error)?.is_file() {
         return Err("FILE_NOT_REGULAR");
@@ -83,16 +88,16 @@ pub fn content(dir: &Dir, request: &api::FileContent) -> Result<Value, &'static 
             .and_then(|x| usize::try_from(x).ok())
             .unwrap_or(MAX_BYTES),
     )?;
-    let (content, binary) = match String::from_utf8(bytes.clone()) {
+    let (content, binary) = match String::from_utf8(bytes) {
         Ok(text) => (text, false),
-        Err(_) => (
-            base64::engine::general_purpose::STANDARD.encode(bytes),
+        Err(error) => (
+            base64::engine::general_purpose::STANDARD.encode(error.into_bytes()),
             true,
         ),
     };
-    Ok(
-        json!({"path": request.path, "name": Path::new(&request.path).file_name().and_then(|s| s.to_str()).unwrap_or("file"), "content": content, "is_binary": binary}),
-    )
+    let mut value = json!({"path": request.path, "name": Path::new(&request.path).file_name().and_then(|s| s.to_str()).unwrap_or("file"), "is_binary": binary});
+    value["content"] = Value::String(content);
+    Ok(value)
 }
 
 pub fn list(dir: &Dir, request: &api::FilesList) -> Result<Value, &'static str> {
@@ -169,11 +174,7 @@ pub fn deliverables(dir: &Dir) -> Result<Value, &'static str> {
     let mut files = children.remove(Path::new("output")).unwrap_or_default();
     files.reverse();
     let result = json!({"files":files,"current_path":"/","truncated":truncated});
-    if serde_json::to_vec(&result)
-        .map_err(|_| "FILE_OPERATION_FAILED")?
-        .len()
-        > MAX_BYTES
-    {
+    if encoded_len(&result)? > MAX_BYTES {
         return Err("FILE_SCAN_LIMIT_EXCEEDED");
     }
     Ok(result)
@@ -212,7 +213,9 @@ pub fn execute(dir: &Dir, operation: &api::FileOperation) -> Result<Value, &'sta
                 .join("\n");
             json!({"status":"success","path":path,"content":text,"ignore_patterns":[]})
         }
-        E::Glob | E::GlobRead | E::Grep => search(dir, operation, path)?,
+        E::Glob => glob(dir, r, path)?,
+        E::GlobRead => glob_read(dir, r, path)?,
+        E::Grep => grep(dir, r, path)?,
         E::Conventions | E::ConventionChains => {
             json!({"convention_files":conventions(dir,path,r)?})
         }
@@ -244,14 +247,13 @@ fn read_op(dir: &Dir, path: &str, r: &api::FileRequest) -> Result<Value, &'stati
         );
     }
     let text = String::from_utf8(bytes).map_err(|_| "FILE_BINARY")?;
-    let offset = number(&r.offset, 0).max(0) as usize;
-    let limit = number(&r.limit, 2000).max(1) as usize;
-    let lines: Vec<_> = text.lines().collect();
+    let offset = number(r.offset.as_ref(), 0).max(0) as usize;
+    let limit = number(r.limit.as_ref(), 2000).max(1) as usize;
+    let total_lines = text.lines().count();
     let body = if r.raw.unwrap_or(false) {
-        text.clone()
+        text
     } else {
-        lines
-            .iter()
+        text.lines()
             .enumerate()
             .skip(offset)
             .take(limit)
@@ -259,7 +261,9 @@ fn read_op(dir: &Dir, path: &str, r: &api::FileRequest) -> Result<Value, &'stati
             .collect::<Vec<_>>()
             .join("\n")
     };
-    Ok(json!({"status":"success","file_path":path,"content":body,"total_lines":lines.len()}))
+    let mut value = json!({"status":"success","file_path":path,"total_lines":total_lines});
+    value["content"] = Value::String(body);
+    Ok(value)
 }
 
 fn edit_op(dir: &Dir, path: &str, r: &api::FileRequest) -> Result<Value, &'static str> {
@@ -308,11 +312,12 @@ fn rename_op(dir: &Dir, r: &api::FileRequest) -> Result<Value, &'static str> {
 
 fn conventions(dir: &Dir, path: &str, r: &api::FileRequest) -> Result<Vec<Value>, &'static str> {
     let mut result = Vec::new();
+    let path = relative(path)?;
     for file in r.convention_filenames.iter().flatten().take(8) {
         if Path::new(file).components().count() != 1 {
             return Err("TRUSTED_ROOT_REJECTED");
         }
-        for parent in relative(path)?.ancestors().skip(1).take(32) {
+        for parent in path.ancestors().skip(1).take(32) {
             let candidate = parent.join(file);
             match read(dir, &candidate.to_string_lossy(), 20000) {
                 Ok(bytes) => {
@@ -329,48 +334,145 @@ fn conventions(dir: &Dir, path: &str, r: &api::FileRequest) -> Result<Vec<Value>
     Ok(result)
 }
 
-fn search(dir: &Dir, operation: &api::FileOperation, path: &str) -> Result<Value, &'static str> {
-    let r = &operation.request;
+struct SearchBudget {
+    output: usize,
+    read: usize,
+    truncated: bool,
+}
+
+impl SearchBudget {
+    fn new(entries: &[Entry]) -> Self {
+        Self {
+            output: MAX_BYTES,
+            read: MAX_SEARCH_BYTES,
+            truncated: entries.len() == MAX_ENTRIES,
+        }
+    }
+
+    fn read(&mut self, dir: &Dir, entry: &Entry) -> Result<Option<Vec<u8>>, &'static str> {
+        if entry.size > self.read as u64 {
+            self.truncated = true;
+            return Ok(None);
+        }
+        let bytes = read(dir, &entry.path.to_string_lossy(), MAX_BYTES)?;
+        self.read = self.read.saturating_sub(bytes.len());
+        Ok(Some(bytes))
+    }
+
+    fn read_head(&mut self, dir: &Dir, entry: &Entry) -> Result<Option<Vec<u8>>, &'static str> {
+        let bytes = read_prefix(dir, &entry.path.to_string_lossy(), MAX_BYTES.min(self.read))?;
+        if bytes.is_empty() && entry.size > 0 {
+            self.truncated = true;
+            return Ok(None);
+        }
+        self.read = self.read.saturating_sub(bytes.len());
+        Ok(Some(bytes))
+    }
+
+    fn push<T: serde::Serialize>(
+        &mut self,
+        rows: &mut Vec<T>,
+        row: T,
+    ) -> Result<bool, &'static str> {
+        let pushed = push_bounded(rows, row, &mut self.output)?;
+        self.truncated |= !pushed;
+        Ok(pushed)
+    }
+}
+
+struct GlobMatches<'r> {
+    pattern: &'r str,
+    files: Vec<Entry>,
+    budget: SearchBudget,
+}
+
+fn glob_matches<'r>(
+    dir: &Dir,
+    r: &'r api::FileRequest,
+    path: &str,
+) -> Result<GlobMatches<'r>, &'static str> {
     let pattern = r.pattern.as_deref().ok_or("INVALID_REQUEST")?;
     let entries = scan(dir, relative(path)?, true)?;
-    let files: Vec<_> = entries.iter().filter(|e| !e.directory).collect();
-    if operation.endpoint != api::FileEndpoint::Grep {
-        relative(pattern)?;
-        let matcher = globset::Glob::new(pattern)
-            .map_err(|_| "INVALID_PATTERN")?
-            .compile_matcher();
-        let matches: Vec<_> = files
-            .into_iter()
-            .filter(|e| {
-                matcher.is_match(e.path.strip_prefix(path).unwrap_or(&e.path))
-                    || matcher.is_match(&e.path)
-            })
-            .collect();
-        let mut values = Vec::new();
-        let mut budget = MAX_BYTES;
-        let mut read_budget = MAX_SEARCH_BYTES;
-        let mut truncated = entries.len() == MAX_ENTRIES;
-        for entry in &matches {
-            let value = if operation.endpoint == api::FileEndpoint::GlobRead {
-                if entry.size > read_budget as u64 {
-                    truncated = true;
-                    break;
-                }
-                let bytes = read(dir, &entry.path.to_string_lossy(), MAX_BYTES)?;
-                read_budget = read_budget.saturating_sub(bytes.len());
-                json!({"file_path": entry.path, "content": String::from_utf8_lossy(&bytes).lines().take(r.line_limit.unwrap_or(2000).clamp(1, 2000) as usize).collect::<Vec<_>>().join("\n")})
-            } else {
-                json!(entry.path)
-            };
-            if !push_bounded(&mut values, value, &mut budget)? {
-                truncated = true;
-                break;
-            }
+    let budget = SearchBudget::new(&entries);
+    relative(pattern)?;
+    let matcher = globset::Glob::new(pattern)
+        .map_err(|_| "INVALID_PATTERN")?
+        .compile_matcher();
+    let files = entries
+        .into_iter()
+        .filter(|e| {
+            !e.directory
+                && (matcher.is_match(e.path.strip_prefix(path).unwrap_or(&e.path))
+                    || matcher.is_match(&e.path))
+        })
+        .collect();
+    Ok(GlobMatches {
+        pattern,
+        files,
+        budget,
+    })
+}
+
+fn glob_result(matches: &GlobMatches<'_>, path: &str, values: &[Value]) -> Value {
+    json!({"status":"success","files":values,"pattern":matches.pattern,"search_path":path,"count":values.len(),"total_count":matches.files.len(),"backstop_hit":matches.budget.truncated})
+}
+
+fn glob(dir: &Dir, r: &api::FileRequest, path: &str) -> Result<Value, &'static str> {
+    let mut matches = glob_matches(dir, r, path)?;
+    let mut values = Vec::new();
+    for entry in &matches.files {
+        if !matches.budget.push(&mut values, json!(entry.path))? {
+            break;
         }
-        return Ok(
-            json!({"status":"success","files":values,"pattern":pattern,"search_path":path,"count":values.len(),"total_count":matches.len(),"backstop_hit":truncated}),
-        );
     }
+    Ok(glob_result(&matches, path, &values))
+}
+
+fn glob_read(dir: &Dir, r: &api::FileRequest, path: &str) -> Result<Value, &'static str> {
+    let mut matches = glob_matches(dir, r, path)?;
+    let line_limit = r.line_limit.unwrap_or(2000).clamp(1, 2000) as usize;
+    let mut values = Vec::new();
+    for entry in &matches.files {
+        let Some(bytes) = matches.budget.read_head(dir, entry)? else {
+            break;
+        };
+        let content = String::from_utf8_lossy(&bytes)
+            .lines()
+            .take(line_limit)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let value = json!({"file_path": entry.path, "content": content});
+        if !matches.budget.push(&mut values, value)? {
+            break;
+        }
+    }
+    Ok(glob_result(&matches, path, &values))
+}
+
+#[derive(Clone, Copy)]
+enum GrepMode {
+    FilesWithMatches,
+    Count,
+    Content,
+}
+
+impl GrepMode {
+    fn parse(mode: &str) -> Option<Self> {
+        match mode {
+            "files_with_matches" => Some(Self::FilesWithMatches),
+            "count" => Some(Self::Count),
+            "content" => Some(Self::Content),
+            _ => None,
+        }
+    }
+}
+
+fn grep(dir: &Dir, r: &api::FileRequest, path: &str) -> Result<Value, &'static str> {
+    let pattern = r.pattern.as_deref().ok_or("INVALID_REQUEST")?;
+    let mode_name = r.output_mode.as_deref().unwrap_or("files_with_matches");
+    let mode = GrepMode::parse(mode_name).ok_or("INVALID_REQUEST")?;
+    let entries = scan(dir, relative(path)?, true)?;
+    let mut budget = SearchBudget::new(&entries);
     let regex = regex::RegexBuilder::new(pattern)
         .case_insensitive(r.case_insensitive.unwrap_or(false))
         .size_limit(1_000_000)
@@ -383,76 +485,57 @@ fn search(dir: &Dir, operation: &api::FileOperation, path: &str) -> Result<Value
         .transpose()
         .map_err(|_| "INVALID_PATTERN")?
         .map(|g| g.compile_matcher());
-    let mode = r.output_mode.as_deref().unwrap_or("files_with_matches");
-    let limit = number(&r.head_limit, 1000).clamp(1, 10000) as usize;
+    let limit = number(r.head_limit.as_ref(), 1000).clamp(1, 10000) as usize;
+    let line_numbers = r.line_numbers.unwrap_or(false);
     let mut rows = Vec::new();
-    let mut budget = MAX_BYTES;
-    let mut read_budget = MAX_SEARCH_BYTES;
-    let mut truncated = entries.len() == MAX_ENTRIES;
-    for entry in files {
+    for entry in entries.iter().filter(|e| !e.directory) {
         if glob.as_ref().is_some_and(|g| !g.is_match(&entry.path)) {
             continue;
         }
-        if entry.size > read_budget as u64 {
-            truncated = true;
-            break;
-        }
-        let bytes = match read(dir, &entry.path.to_string_lossy(), MAX_BYTES) {
-            Ok(bytes) => bytes,
+        let bytes = match budget.read(dir, entry) {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => break,
             Err("FILE_TOO_LARGE") => continue,
             Err(error) => return Err(error),
         };
-        read_budget = read_budget.saturating_sub(bytes.len());
         let Ok(text) = String::from_utf8(bytes) else {
             continue;
         };
-        let matches: Vec<_> = text
+        let mut matches = text
             .lines()
             .enumerate()
             .filter(|(_, line)| regex.is_match(line))
-            .collect();
-        if matches.is_empty() {
+            .peekable();
+        if matches.peek().is_none() {
             continue;
         }
         match mode {
-            "files_with_matches" => {
-                truncated |= !push_bounded(
-                    &mut rows,
-                    entry.path.to_string_lossy().into_owned(),
-                    &mut budget,
-                )?;
+            GrepMode::FilesWithMatches => {
+                budget.push(&mut rows, entry.path.to_string_lossy().into_owned())?;
             }
-            "count" => {
-                truncated |= !push_bounded(
-                    &mut rows,
-                    format!("{}:{}", entry.path.display(), matches.len()),
-                    &mut budget,
-                )?;
+            GrepMode::Count => {
+                let row = format!("{}:{}", entry.path.display(), matches.count());
+                budget.push(&mut rows, row)?;
             }
-            "content" => {
+            GrepMode::Content => {
                 for (index, line) in matches {
-                    let row = if r.line_numbers.unwrap_or(false) {
+                    let row = if line_numbers {
                         format!("{}:{}:{line}", entry.path.display(), index + 1)
                     } else {
                         format!("{}:{line}", entry.path.display())
                     };
-                    if !push_bounded(&mut rows, row, &mut budget)? {
-                        truncated = true;
-                        break;
-                    }
-                    if rows.len() >= limit {
+                    if !budget.push(&mut rows, row)? || rows.len() >= limit {
                         break;
                     }
                 }
             }
-            _ => return Err("INVALID_REQUEST"),
         }
-        if rows.len() >= limit || truncated {
+        if rows.len() >= limit || budget.truncated {
             break;
         }
     }
     Ok(
-        json!({"status":"success","results":rows,"pattern":pattern,"search_path":path,"output_mode":mode,"count":rows.len(),"total_count":rows.len(),"backstop_hit":truncated || rows.len()==limit}),
+        json!({"status":"success","results":rows,"pattern":pattern,"search_path":path,"output_mode":mode_name,"count":rows.len(),"total_count":rows.len(),"backstop_hit":budget.truncated || rows.len()==limit}),
     )
 }
 
@@ -512,10 +595,7 @@ fn push_bounded<T: serde::Serialize>(
     row: T,
     budget: &mut usize,
 ) -> Result<bool, &'static str> {
-    let size = serde_json::to_vec(&row)
-        .map_err(|_| "FILE_OPERATION_FAILED")?
-        .len()
-        .saturating_add(1);
+    let size = encoded_len(&row)?.saturating_add(1);
     if size > *budget {
         return Ok(false);
     }
@@ -524,9 +604,27 @@ fn push_bounded<T: serde::Serialize>(
     Ok(true)
 }
 
-fn number<T: serde::Serialize>(value: &Option<T>, default: i64) -> i64 {
+struct EncodedLen(usize);
+
+impl Write for EncodedLen {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0 = self.0.saturating_add(buf.len());
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn encoded_len<T: serde::Serialize>(value: &T) -> Result<usize, &'static str> {
+    let mut length = EncodedLen(0);
+    serde_json::to_writer(&mut length, value).map_err(|_| "FILE_OPERATION_FAILED")?;
+    Ok(length.0)
+}
+
+fn number<T: serde::Serialize>(value: Option<&T>, default: i64) -> i64 {
     value
-        .as_ref()
         .and_then(|x| serde_json::to_value(x).ok())
         .and_then(|x| {
             x.as_i64()
@@ -607,6 +705,224 @@ mod tests {
         let result = execute(&dir, &request).unwrap();
         assert_eq!(result["backstop_hit"], true);
         assert!(serde_json::to_vec(&result).unwrap().len() < MAX_BYTES + 1024);
+    }
+
+    fn search_fixture() -> (tempfile::TempDir, Dir) {
+        let root = tempfile::tempdir().unwrap();
+        let dir = Dir::open_ambient_dir(root.path(), cap_std::ambient_authority()).unwrap();
+        write(
+            &dir,
+            "src/a.rs",
+            b"fn alpha() {}\nlet beta = 1;\nFN gamma() {}\n",
+        )
+        .unwrap();
+        write(&dir, "src/nested/b.rs", b"fn delta() {}\n").unwrap();
+        write(&dir, "docs/readme.md", b"Alpha docs\nfn in docs\nlast\n").unwrap();
+        write(&dir, "bin.dat", &[0xff, 0xfe, b'f', b'n']).unwrap();
+        dir.create_dir("empty").unwrap();
+        (root, dir)
+    }
+
+    const SEARCH_CASES: &[(&str, &str, &str)] = &[
+        (
+            "glob",
+            r#"{"path":".","pattern":"*.rs"}"#,
+            r#"{"backstop_hit":false,"convention_files":[],"count":2,"files":["./src/a.rs","./src/nested/b.rs"],"pattern":"*.rs","search_path":".","status":"success","total_count":2}"#,
+        ),
+        (
+            "glob",
+            r#"{"path":"src","pattern":"*.rs"}"#,
+            r#"{"backstop_hit":false,"convention_files":[],"count":2,"files":["src/a.rs","src/nested/b.rs"],"pattern":"*.rs","search_path":"src","status":"success","total_count":2}"#,
+        ),
+        (
+            "glob",
+            r#"{"path":".","pattern":"docs/*"}"#,
+            r#"{"backstop_hit":false,"convention_files":[],"count":1,"files":["./docs/readme.md"],"pattern":"docs/*","search_path":".","status":"success","total_count":1}"#,
+        ),
+        (
+            "glob",
+            r#"{"path":".","pattern":"*.none"}"#,
+            r#"{"backstop_hit":false,"convention_files":[],"count":0,"files":[],"pattern":"*.none","search_path":".","status":"success","total_count":0}"#,
+        ),
+        (
+            "glob",
+            r#"{"path":".","pattern":"../escape"}"#,
+            r#"!TRUSTED_ROOT_REJECTED"#,
+        ),
+        (
+            "glob",
+            r#"{"path":".","pattern":"["}"#,
+            r#"!INVALID_PATTERN"#,
+        ),
+        ("glob", r#"{"path":"."}"#, r#"!INVALID_REQUEST"#),
+        (
+            "glob",
+            r#"{"path":"missing","pattern":"*"}"#,
+            r#"!FILE_NOT_FOUND"#,
+        ),
+        (
+            "glob_read",
+            r#"{"path":".","pattern":"src/*.rs","line_limit":1}"#,
+            r#"{"backstop_hit":false,"convention_files":[],"count":2,"files":[{"content":"fn alpha() {}","file_path":"./src/a.rs"},{"content":"fn delta() {}","file_path":"./src/nested/b.rs"}],"pattern":"src/*.rs","search_path":".","status":"success","total_count":2}"#,
+        ),
+        (
+            "glob_read",
+            r#"{"path":".","pattern":"*.dat"}"#,
+            r#"{"backstop_hit":false,"convention_files":[],"count":1,"files":[{"content":"\ufffd\ufffdfn","file_path":"./bin.dat"}],"pattern":"*.dat","search_path":".","status":"success","total_count":1}"#,
+        ),
+        (
+            "glob_read",
+            r#"{"path":"docs","pattern":"*.md"}"#,
+            r#"{"backstop_hit":false,"convention_files":[],"count":1,"files":[{"content":"Alpha docs\nfn in docs\nlast","file_path":"docs/readme.md"}],"pattern":"*.md","search_path":"docs","status":"success","total_count":1}"#,
+        ),
+        (
+            "grep",
+            r#"{"path":".","pattern":"fn"}"#,
+            r#"{"backstop_hit":false,"convention_files":[],"count":3,"output_mode":"files_with_matches","pattern":"fn","results":["./docs/readme.md","./src/a.rs","./src/nested/b.rs"],"search_path":".","status":"success","total_count":3}"#,
+        ),
+        (
+            "grep",
+            r#"{"path":".","pattern":"fn","glob":"**/*.rs"}"#,
+            r#"{"backstop_hit":false,"convention_files":[],"count":2,"output_mode":"files_with_matches","pattern":"fn","results":["./src/a.rs","./src/nested/b.rs"],"search_path":".","status":"success","total_count":2}"#,
+        ),
+        (
+            "grep",
+            r#"{"path":".","pattern":"fn","case_insensitive":true,"output_mode":"count"}"#,
+            r#"{"backstop_hit":false,"convention_files":[],"count":3,"output_mode":"count","pattern":"fn","results":["./docs/readme.md:1","./src/a.rs:2","./src/nested/b.rs:1"],"search_path":".","status":"success","total_count":3}"#,
+        ),
+        (
+            "grep",
+            r#"{"path":".","pattern":"fn","output_mode":"content","line_numbers":true}"#,
+            r#"{"backstop_hit":false,"convention_files":[],"count":3,"output_mode":"content","pattern":"fn","results":["./docs/readme.md:2:fn in docs","./src/a.rs:1:fn alpha() {}","./src/nested/b.rs:1:fn delta() {}"],"search_path":".","status":"success","total_count":3}"#,
+        ),
+        (
+            "grep",
+            r#"{"path":".","pattern":"fn","output_mode":"content","head_limit":2}"#,
+            r#"{"backstop_hit":true,"convention_files":[],"count":2,"output_mode":"content","pattern":"fn","results":["./docs/readme.md:fn in docs","./src/a.rs:fn alpha() {}"],"search_path":".","status":"success","total_count":2}"#,
+        ),
+        (
+            "grep",
+            r#"{"path":".","pattern":"fn","output_mode":"files_with_matches","head_limit":1}"#,
+            r#"{"backstop_hit":true,"convention_files":[],"count":1,"output_mode":"files_with_matches","pattern":"fn","results":["./docs/readme.md"],"search_path":".","status":"success","total_count":1}"#,
+        ),
+        (
+            "grep",
+            r#"{"path":"src","pattern":"^let","output_mode":"content"}"#,
+            r#"{"backstop_hit":false,"convention_files":[],"count":1,"output_mode":"content","pattern":"^let","results":["src/a.rs:let beta = 1;"],"search_path":"src","status":"success","total_count":1}"#,
+        ),
+        (
+            "grep",
+            r#"{"path":".","pattern":"fn","output_mode":"bogus"}"#,
+            r#"!INVALID_REQUEST"#,
+        ),
+        (
+            "grep",
+            r#"{"path":".","pattern":"zzz","output_mode":"bogus"}"#,
+            r#"!INVALID_REQUEST"#,
+        ),
+        (
+            "grep",
+            r#"{"path":".","pattern":"("}"#,
+            r#"!INVALID_PATTERN"#,
+        ),
+        (
+            "grep",
+            r#"{"path":".","pattern":"fn","glob":"["}"#,
+            r#"!INVALID_PATTERN"#,
+        ),
+    ];
+
+    #[test]
+    fn search_endpoints_match_their_golden_output() {
+        let (_root, dir) = search_fixture();
+        for (endpoint, request, expected) in SEARCH_CASES {
+            let request: Value = serde_json::from_str(request).unwrap();
+            let operation: api::FileOperation = serde_json::from_value(
+                json!({"kind":"file_operation","endpoint":endpoint,"request":request}),
+            )
+            .unwrap();
+            let expected = match expected.strip_prefix('!') {
+                Some(code) => Err(code),
+                None => Ok(serde_json::from_str::<Value>(expected).unwrap()),
+            };
+            assert_eq!(execute(&dir, &operation), expected, "{endpoint} {request}");
+        }
+    }
+
+    #[test]
+    fn content_and_read_return_text_or_base64_for_invalid_utf8() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = Dir::open_ambient_dir(root.path(), cap_std::ambient_authority()).unwrap();
+        write(&dir, "notes/text.txt", "é\nsecond\nthird".as_bytes()).unwrap();
+        write(&dir, "blob.bin", &[0x66, 0xff, 0xfe, 0x00]).unwrap();
+        let content_of = |path: &str| {
+            let request: api::FileContent =
+                serde_json::from_value(json!({"kind":"file_content","path":path})).unwrap();
+            content(&dir, &request).unwrap()
+        };
+        assert_eq!(
+            content_of("notes/text.txt"),
+            json!({"path":"notes/text.txt","name":"text.txt","content":"é\nsecond\nthird","is_binary":false})
+        );
+        assert_eq!(
+            content_of("blob.bin"),
+            json!({"path":"blob.bin","name":"blob.bin","content":"Zv/+AA==","is_binary":true})
+        );
+        let read_with = |request: Value| {
+            let operation: api::FileOperation = serde_json::from_value(
+                json!({"kind":"file_operation","endpoint":"read","request":request}),
+            )
+            .unwrap();
+            let mut result = execute(&dir, &operation);
+            if let Ok(value) = &mut result {
+                value.as_object_mut().unwrap().remove("convention_files");
+            }
+            result
+        };
+        assert_eq!(
+            read_with(json!({"file_path":"notes/text.txt","offset":1,"limit":1})).unwrap(),
+            json!({"status":"success","file_path":"notes/text.txt","content":"2\tsecond","total_lines":3})
+        );
+        assert_eq!(
+            read_with(json!({"file_path":"notes/text.txt","raw":true})).unwrap(),
+            json!({"status":"success","file_path":"notes/text.txt","content":"é\nsecond\nthird","total_lines":3})
+        );
+        assert_eq!(
+            read_with(json!({"file_path":"blob.bin"})).unwrap_err(),
+            "FILE_BINARY"
+        );
+    }
+
+    #[test]
+    fn glob_read_returns_skill_heads_for_the_backend_skill_scan() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = Dir::open_ambient_dir(root.path(), cap_std::ambient_authority()).unwrap();
+        let body = "---\ndescription: Deploy\n---\n".to_string() + &"line\n".repeat(MAX_BYTES / 4);
+        std::fs::create_dir_all(root.path().join(".agents/skills/deploy")).unwrap();
+        std::fs::write(root.path().join(".agents/skills/deploy/SKILL.md"), &body).unwrap();
+        write(
+            &dir,
+            ".agents/skills/team/review/SKILL.md",
+            b"---\ndescription: Review\n---\n",
+        )
+        .unwrap();
+        write(&dir, ".agents/skills/deploy/notes.md", b"skip").unwrap();
+        let request: api::FileOperation = serde_json::from_value(json!({"kind":"file_operation","endpoint":"glob_read","request":{"path":".agents/skills","pattern":"**/SKILL.md","line_limit":80}})).unwrap();
+        let result = execute(&dir, &request).unwrap();
+        let files = result["files"].as_array().unwrap();
+        assert_eq!(
+            files
+                .iter()
+                .map(|f| f["file_path"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            [
+                ".agents/skills/deploy/SKILL.md",
+                ".agents/skills/team/review/SKILL.md"
+            ]
+        );
+        assert_eq!(files[0]["content"].as_str().unwrap().lines().count(), 80);
+        let missing: api::FileOperation = serde_json::from_value(json!({"kind":"file_operation","endpoint":"glob_read","request":{"path":".missing/skills","pattern":"**/SKILL.md"}})).unwrap();
+        assert_eq!(execute(&dir, &missing).unwrap_err(), "FILE_NOT_FOUND");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 import type { ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 
-import { type GatewayModel, TOKEN_COMMAND } from "./client.ts";
+import { type GatewayModel, tokenCommand } from "./client.ts";
 import { type CloudThinkerRuntime, describeError } from "./runtime.ts";
 import { isUuid } from "./uuid.ts";
 
@@ -31,7 +31,8 @@ export function apiKeySpec(
 ): string {
 	if (env.CLOUDTHINKER_TOKEN?.trim()) return "$CLOUDTHINKER_TOKEN";
 	const pinned = workspaceId ?? env.CLOUDTHINKER_WORKSPACE?.trim();
-	return pinned && isUuid(pinned) ? `!${TOKEN_COMMAND} --workspace ${pinned}` : `!${TOKEN_COMMAND}`;
+	const command = tokenCommand(env);
+	return pinned && isUuid(pinned) ? `!${command} --workspace ${pinned}` : `!${command}`;
 }
 
 export const NO_PRICE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } as const;

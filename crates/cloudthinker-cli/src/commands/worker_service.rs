@@ -7,7 +7,7 @@ use std::process::{Command, Output};
 use std::sync::{Mutex, OnceLock};
 
 use clap::{Args, Subcommand};
-use cloudthinker_client::auth::worker_store::WorkerStore;
+use cloudthinker_client::auth::worker_store::{WorkerStore, private_directory};
 use cloudthinker_client::{CtError, CtResult, origin_of};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -17,8 +17,9 @@ use uuid::Uuid;
 mod worker_service_descriptor;
 
 use worker_service_descriptor::{
-    descriptor_path, path_text, render_descriptor, require_descriptor, sync_directory,
-    validate_descriptor_metadata, validate_label, validate_service_text, write_descriptor,
+    descriptor_path, path_text, render_descriptor, render_previous_descriptor, require_descriptor,
+    sync_directory, validate_descriptor_metadata, validate_label, validate_service_text,
+    write_descriptor,
 };
 
 const SERVICE_NAMESPACE: &str = "io.cloudthinker.worker";
@@ -106,6 +107,7 @@ struct ServiceTarget {
     workdir: PathBuf,
     service_name: String,
     descriptor_path: PathBuf,
+    log_path: PathBuf,
 }
 
 struct ServiceSpec {
@@ -119,13 +121,12 @@ struct ServiceOutput {
     service: String,
     path: String,
     state: &'static str,
+    logs: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_exit_code: Option<i32>,
 }
 
-pub async fn execute(
-    base_url: &str,
-    workspace: Option<&str>,
-    command: ServiceCommand,
-) -> CtResult<()> {
+pub fn execute(base_url: &str, workspace: Option<&str>, command: ServiceCommand) -> CtResult<()> {
     match command {
         ServiceCommand::Install(args) => install(base_url, workspace, args),
         ServiceCommand::Uninstall(args) => uninstall(base_url, args),
@@ -170,41 +171,28 @@ fn install(base_url: &str, workspace: Option<&str>, args: ServiceInstallArgs) ->
     if let Some(label) = args.label {
         argv.extend(["--label".into(), label]);
     }
+    if target.platform == ServicePlatform::Launchd
+        && let Some(logs) = target.log_path.parent()
+    {
+        private_directory(logs)?;
+    }
     let descriptor = render_descriptor(
+        target.platform,
+        &target.service_name,
+        &argv,
+        &target.workdir,
+        &target.log_path,
+    )?;
+    let previous = render_previous_descriptor(
         target.platform,
         &target.service_name,
         &argv,
         &target.workdir,
     )?;
     let spec = ServiceSpec { target, descriptor };
-    let existed = match fs::symlink_metadata(&spec.target.descriptor_path) {
-        Ok(metadata) => {
-            validate_descriptor_metadata(&metadata)?;
-            let existing = fs::read(&spec.target.descriptor_path).map_err(|_| {
-                CtError::Store("worker service descriptor could not be read".into())
-            })?;
-            if existing != spec.descriptor.as_bytes() {
-                return Err(CtError::Usage(
-                    "a worker service already exists with different settings; uninstall it first"
-                        .into(),
-                ));
-            }
-            true
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
-        Err(_) => {
-            return Err(CtError::Store(
-                "worker service descriptor unavailable".into(),
-            ));
-        }
-    };
-    if !existed {
-        write_descriptor(&spec.target.descriptor_path, spec.descriptor.as_bytes())?;
-    }
-    manager_install(&spec.target)?;
-    let state = if existed { "unchanged" } else { "installed" };
+    let state = apply_descriptor(&spec, &previous)?;
     emit(
-        spec.target.output(state),
+        &spec.target.output(state),
         &format!(
             "Worker service {state}; start it with cloudthinker worker service start --outpost {} --workdir {}",
             spec.target.target_id,
@@ -212,6 +200,57 @@ fn install(base_url: &str, workspace: Option<&str>, args: ServiceInstallArgs) ->
         ),
         args.json,
     )
+}
+
+fn apply_descriptor(spec: &ServiceSpec, previous: &str) -> CtResult<&'static str> {
+    let existing = match fs::symlink_metadata(&spec.target.descriptor_path) {
+        Ok(metadata) => {
+            validate_descriptor_metadata(&metadata)?;
+            Some(fs::read(&spec.target.descriptor_path).map_err(|_| {
+                CtError::Store("worker service descriptor could not be read".into())
+            })?)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => {
+            return Err(CtError::Store(
+                "worker service descriptor unavailable".into(),
+            ));
+        }
+    };
+    let state = match existing.as_deref() {
+        None => "installed",
+        Some(existing) if existing == spec.descriptor.as_bytes() => "unchanged",
+        Some(existing) if existing == previous.as_bytes() => "updated",
+        Some(_) => {
+            return Err(CtError::Usage(
+                "a worker service already exists with different settings; uninstall it first"
+                    .into(),
+            ));
+        }
+    };
+    if state != "unchanged" {
+        write_descriptor(&spec.target.descriptor_path, spec.descriptor.as_bytes())?;
+    }
+    if state == "updated" {
+        manager_reload(&spec.target)?;
+    }
+    manager_install(&spec.target)?;
+    Ok(state)
+}
+
+fn manager_reload(target: &ServiceTarget) -> CtResult<()> {
+    match target.platform {
+        ServicePlatform::Systemd => Ok(()),
+        ServicePlatform::Launchd => {
+            if !launchd_loaded(target)? {
+                return Ok(());
+            }
+            launchd_bootout(target)?;
+            let domain = launchd_domain()?;
+            let path = target.descriptor_path.display().to_string();
+            run_manager("launchctl", &["bootstrap", &domain, &path])
+        }
+    }
 }
 
 fn uninstall(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
@@ -227,7 +266,7 @@ fn uninstall(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
             .ok_or_else(|| CtError::Store("worker service directory unavailable".into()))?,
     )?;
     emit(
-        target.output("removed"),
+        &target.output("removed"),
         "Worker service removed",
         args.json,
     )
@@ -239,7 +278,7 @@ fn status(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
         Ok(metadata) => validate_descriptor_metadata(&metadata)?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return emit(
-                target.output("absent"),
+                &target.output("absent"),
                 "Worker service is not installed",
                 args.json,
             );
@@ -251,11 +290,16 @@ fn status(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
         }
     }
     let state = manager_status(&target)?;
-    emit(
-        target.output(state),
-        &format!("Worker service is {state}"),
-        args.json,
-    )
+    let mut output = target.output(state);
+    if state != "active" {
+        output.last_exit_code = manager_last_exit(&target);
+    }
+    let exit = output
+        .last_exit_code
+        .map(|code| format!(" (last exit code {code})"))
+        .unwrap_or_default();
+    let human = format!("Worker service is {state}{exit}. Logs: {}", output.logs);
+    emit(&output, &human, args.json)
 }
 
 fn start(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
@@ -264,7 +308,7 @@ fn start(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
     require_stored_credential(base_url, target.target_id)?;
     manager_start(&target)?;
     emit(
-        target.output("started"),
+        &target.output("started"),
         "Worker service started",
         args.json,
     )
@@ -275,7 +319,7 @@ fn stop(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
     require_descriptor(&target)?;
     manager_stop(&target)?;
     emit(
-        target.output("stopped"),
+        &target.output("stopped"),
         "Worker service stopped gracefully",
         args.json,
     )
@@ -308,19 +352,24 @@ fn target(base_url: &str, selector: &str, workdir: &Path) -> CtResult<ServiceTar
     let service_id = service_id(&origin, target_id, &workdir)?;
     let service_name = format!("{SERVICE_NAMESPACE}.{service_id}");
     let descriptor_path = descriptor_path(platform, &service_name)?;
+    let log_path = WorkerStore::open_default(&origin)?
+        .state_root()
+        .join("logs")
+        .join(format!("{service_name}.log"));
     Ok(ServiceTarget {
         platform,
         target_id,
         workdir,
         service_name,
         descriptor_path,
+        log_path,
     })
 }
 
 fn service_id(origin: &str, target_id: Uuid, workdir: &Path) -> CtResult<String> {
     let workdir = path_text(workdir, "workdir")?;
     let digest = Sha256::digest(format!("{origin}\n{target_id}\n{workdir}").as_bytes());
-    Ok(format!("{:x}", digest)[..24].to_string())
+    Ok(format!("{digest:x}")[..24].to_string())
 }
 
 fn manager_install(target: &ServiceTarget) -> CtResult<()> {
@@ -374,6 +423,45 @@ fn manager_status(target: &ServiceTarget) -> CtResult<&'static str> {
             } else {
                 Ok("loaded")
             }
+        }
+    }
+}
+
+fn manager_last_exit(target: &ServiceTarget) -> Option<i32> {
+    match target.platform {
+        ServicePlatform::Systemd => {
+            let unit = target.unit_name();
+            let output = manager_output(
+                "systemctl",
+                &[
+                    "--user",
+                    "show",
+                    &unit,
+                    "--property=ExecMainStatus",
+                    "--property=Result",
+                ],
+            )
+            .ok()?;
+            let text = String::from_utf8_lossy(&output.stdout);
+            let status = text
+                .lines()
+                .find_map(|line| line.strip_prefix("ExecMainStatus="))?
+                .trim()
+                .parse::<i32>()
+                .ok()?;
+            let succeeded = text.lines().any(|line| line.trim() == "Result=success");
+            (status != 0 || !succeeded).then_some(status)
+        }
+        ServicePlatform::Launchd => {
+            let output =
+                manager_output("launchctl", &["print", &launchd_service(target).ok()?]).ok()?;
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .find_map(|line| {
+                    line.trim()
+                        .strip_prefix("last exit code = ")
+                        .and_then(|code| code.trim().parse::<i32>().ok())
+                })
         }
     }
 }
@@ -487,12 +575,21 @@ fn test_manager_path(program: &str) -> Option<PathBuf> {
 fn run_manager(program: &str, args: &[&str]) -> CtResult<()> {
     let output = manager_output(program, args)?;
     if output.status.success() {
-        Ok(())
-    } else {
-        Err(CtError::Store(format!(
-            "{program} could not manage the worker service"
-        )))
+        return Ok(());
     }
+    let detail: String = String::from_utf8_lossy(&output.stderr)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(300)
+        .collect();
+    Err(CtError::Store(if detail.is_empty() {
+        format!("{program} could not manage the worker service")
+    } else {
+        format!("{program} could not manage the worker service: {detail}")
+    }))
 }
 
 fn launchd_domain() -> CtResult<String> {
@@ -561,12 +658,21 @@ impl ServiceTarget {
             service: self.service_name.clone(),
             path: self.descriptor_path.display().to_string(),
             state,
+            logs: self.logs(),
+            last_exit_code: None,
+        }
+    }
+
+    fn logs(&self) -> String {
+        match self.platform {
+            ServicePlatform::Systemd => format!("journalctl --user -u {}", self.unit_name()),
+            ServicePlatform::Launchd => self.log_path.display().to_string(),
         }
     }
 }
 
-fn emit(value: ServiceOutput, human: &str, json: bool) -> CtResult<()> {
-    crate::engine::output::emit_worker(&value, human, json).map_err(CtError::Store)
+fn emit(value: &ServiceOutput, human: &str, json: bool) -> CtResult<()> {
+    crate::engine::output::emit_worker(value, human, json).map_err(CtError::Store)
 }
 
 #[cfg(test)]

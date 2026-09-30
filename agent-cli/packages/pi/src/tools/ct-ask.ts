@@ -23,49 +23,49 @@ import { pollUntil, text } from "./shared.ts";
 
 export const POLL_INTERVAL_MS = 3_000;
 export const MAX_WAIT_MS = 10 * 60 * 1000;
-export const ASK_WORKING_MESSAGE = "Asking Anna…";
+export const ASK_WORKING_MESSAGE = "Asking CloudThinker agent…";
 
 export function askSummary(state: RunState, theme: Theme): string {
-	if (state.status === "succeeded") return "Anna answered";
+	if (state.status === "succeeded") return "CloudThinker agent answered";
 	if (state.status === "failed") return "failed";
 	if (state.status === "required_approval") {
 		const url = state.web_url;
 		return `waiting for approval in browser${url ? ` → ${link(theme, url)}` : ""}`;
 	}
-	return `Anna is ${state.status}`;
+	return `CloudThinker agent is ${state.status}`;
 }
 
 const parameters = Type.Object({
 	prompt: Type.String({
 		description:
-			"The question or instruction for Anna. Say what you already know and " +
-			"what you need back, the way you would brief a teammate.",
+			"The question or instruction for the CloudThinker agent. Include the " +
+			"context, requested result, constraints, and evidence needed.",
 	}),
 });
 
 const description = [
-	"Ask Anna, CloudThinker's SuperAgent, to do cloud work this session cannot do itself.",
-	"She runs in the workspace with every Core tool, the workspace memory, and the incident history.",
+	"Delegate cloud work that needs judgment or several steps to the CloudThinker agent.",
+	"It runs on the workspace machine with workspace tools, memory, and incident history.",
 	"",
-	"Send her:",
+	"Use it for:",
 	"- open-ended investigations that are not one command: why a latency or cost jumped, what changed at a time, which service owns a symptom.",
-	"- multi-step cloud changes that need her judgment between steps. A human approves each write in the browser before it runs.",
+	"- multi-step cloud changes that need judgment between steps. A human approves each write in the browser before it runs.",
 	"",
-	`A single read-only lookup is faster and cheaper through ${CT_SANDBOX_READ}, and a single state-changing command through ${CT_SANDBOX_WRITE}; use ${CT_ASK} when a command is not the shape of the answer.`,
-	`If she pauses for approval this returns immediately with a link for the user; call ${CT_RUN_STATUS} later with the run_id to pick the answer up.`,
+	`A single read-only lookup uses ${CT_SANDBOX_READ}; a single state-changing command uses ${CT_SANDBOX_WRITE}.`,
+	`If approval is required, this returns a link; call ${CT_RUN_STATUS} later with the run_id to read the answer.`,
 ].join("\n");
 
 export function renderRun(state: RunState): string {
 	const lines = [`run_id: ${state.run_id}`, `status: ${state.status}`];
 	if (state.web_url) lines.push(`web_url: ${state.web_url}`);
 	if (state.status === "succeeded") {
-		lines.push("", state.answer ?? "(Anna returned no answer text.)");
+		lines.push("", state.answer ?? "(No answer text returned.)");
 		return lines.join("\n");
 	}
 	if (state.status === "required_approval") {
 		lines.push(
 			"",
-			`Anna is waiting for a human to approve this in the browser at ${state.web_url ?? "the link above"}. Nobody has been told yet; ${NOTIFY_HINT}.`,
+			`A human must approve this in the browser at ${state.web_url ?? "the link above"}. Nobody has been notified yet; ${NOTIFY_HINT}.`,
 			`Tell the user, then call ${CT_RUN_STATUS} with this run_id to read the answer.`,
 		);
 		return lines.join("\n");
@@ -129,10 +129,9 @@ export function submitBody(
 export function registerAsk(runtime: CloudThinkerRuntime): void {
 	runtime.pi.registerTool<typeof parameters, RunState & Elapsed>({
 		name: CT_ASK,
-		label: "Ask Anna",
+		label: "Ask CloudThinker agent",
 		description,
-		promptSnippet:
-			"Ask CloudThinker's SuperAgent Anna for a cloud write or an open-ended investigation",
+		promptSnippet: "Delegate cloud work that needs judgment or several steps",
 		promptGuidelines: [
 			`Never run a state-changing cloud operation through ${CT_SANDBOX_READ} and never ask the user to run it themselves; one command goes to ${CT_SANDBOX_WRITE}, multi-step work to ${CT_ASK}.`,
 		],
@@ -167,7 +166,7 @@ export function registerAsk(runtime: CloudThinkerRuntime): void {
 					onTick: (current, elapsedMs) => {
 						onUpdate?.(
 							text(
-								`Anna is ${current.status} (${Math.round(elapsedMs / 1000)}s).`,
+								`CloudThinker agent is ${current.status} (${Math.round(elapsedMs / 1000)}s).`,
 								{ ...current, elapsed_ms: elapsedMs },
 							),
 						);

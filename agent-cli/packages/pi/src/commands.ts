@@ -7,7 +7,6 @@ import { sanitizeTerminalText, setMachineState } from "./awareness.ts";
 import { type AutoMode, type CloudThinkerRuntime, describeError } from "./runtime.ts";
 import { newSessionEvent, refreshIdentity, startSession } from "./session.ts";
 import { sessionPanelLines, sessionTotals } from "./usage.ts";
-import { runTour } from "./tour.ts";
 import { attributionLine, type HostVersions } from "./versions.ts";
 
 export const SUBCOMMANDS = ["about", "session", "notify", "auto"] as const;
@@ -50,15 +49,15 @@ export function whereLines(state: WhereState): string[] {
 	const workspaceName = state.workspaceName === undefined ? "workspace" : sanitizeTerminalText(state.workspaceName);
 	let cloud: string;
 	if (!state.linked) {
-		cloud = "cloud · not linked — Anna and the workspace machine are unavailable here";
+		cloud = "cloud · not linked — workspace tools and delegation are unavailable";
 	} else if (!state.cloudEnabled) {
-		cloud = `cloud · ${workspaceName} — cloud tools are off; /cloud on reaches Anna and the workspace machine`;
+		cloud = `cloud · ${workspaceName} — workspace tools are off; /cloud on enables them`;
 	} else {
 		const connections =
 			state.connectedPrefixes.length > 0
 				? state.connectedPrefixes.map(sanitizeTerminalText).join(", ")
 				: "no connections yet";
-		cloud = `cloud · ${workspaceName} — Anna, the workspace machine, ${connections}`;
+		cloud = `cloud · ${workspaceName} — workspace machine, ${connections}`;
 	}
 	return ["I work in two places:", local, cloud, WHERE_SIDE_LINE];
 }
@@ -161,7 +160,7 @@ export function registerCommands(runtime: CloudThinkerRuntime): void {
 	});
 
 	runtime.pi.registerCommand("cloud", {
-		description: "Show Cloud status or turn cloud tools (workspace machine and Anna) on/off",
+		description: "Show Cloud status or turn workspace tools on/off",
 		getArgumentCompletions: (prefix) =>
 			["on", "off"].filter((name) => name.startsWith(prefix)).map((name) => ({ value: name, label: name })),
 		handler: async (args, ctx) => {
@@ -194,7 +193,7 @@ export function registerCommands(runtime: CloudThinkerRuntime): void {
 				}
 			}
 
-			const lines: string[] = [`Cloud: ${runtime.cloudEnabled ? "On" : "Off"}`, "Change with /cloud on|off. Off disables the cloud tools: workspace-machine commands and Anna delegation. Existing remote work continues."];
+			const lines: string[] = [`Cloud: ${runtime.cloudEnabled ? "On" : "Off"}`, "Change with /cloud on|off. Off disables workspace tools and delegation; existing remote work continues."];
 			lines.push(
 				runtime.identity
 					? `Workspace: ${sanitizeTerminalText(runtime.identity.workspace_name)} (${sanitizeTerminalText(runtime.identity.user_email)})`
@@ -208,15 +207,8 @@ export function registerCommands(runtime: CloudThinkerRuntime): void {
 					? `Mirror: ${sanitizeTerminalText(runtime.session.web_url)}`
 					: "Mirror: not linked, cloud tools are unavailable",
 			);
-			if (runtime.askThread) lines.push(`Anna thread: ${sanitizeTerminalText(runtime.askThread.web_url)}`);
+			if (runtime.askThread) lines.push(`Delegation thread: ${sanitizeTerminalText(runtime.askThread.web_url)}`);
 			ctx.ui.notify(lines.join("\n"), "info");
-		},
-	});
-
-	runtime.pi.registerCommand("tour", {
-		description: "Show one local read and one sandbox read, side by side, with no cloud write",
-		handler: async (_args, ctx) => {
-			await runTour(runtime, ctx);
 		},
 	});
 

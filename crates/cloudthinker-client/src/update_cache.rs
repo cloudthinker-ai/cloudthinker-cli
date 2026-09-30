@@ -17,9 +17,13 @@ pub struct UpdateCache {
 }
 
 pub fn update_cache_path() -> CtResult<PathBuf> {
+    Ok(cloudthinker_home()?.join(CACHE_FILE_NAME))
+}
+
+pub(crate) fn cloudthinker_home() -> CtResult<PathBuf> {
     let home = dirs::home_dir()
         .ok_or_else(|| CtError::Store("could not resolve the home directory".to_string()))?;
-    Ok(home.join(".cloudthinker").join(CACHE_FILE_NAME))
+    Ok(home.join(".cloudthinker"))
 }
 
 impl UpdateCache {
@@ -31,20 +35,7 @@ impl UpdateCache {
     }
 
     pub fn save(&self, path: &Path) -> CtResult<()> {
-        let parent = path
-            .parent()
-            .ok_or_else(|| CtError::Store(format!("no parent for {}", path.display())))?;
-        std::fs::create_dir_all(parent).map_err(|e| store_error("create", parent, &e))?;
-        let body = serde_json::to_vec_pretty(self).map_err(|e| CtError::Store(e.to_string()))?;
-        let tmp = parent.join(format!(
-            ".{CACHE_FILE_NAME}.tmp-{:08x}",
-            rand::random::<u32>()
-        ));
-        std::fs::write(&tmp, body).map_err(|e| store_error("write", &tmp, &e))?;
-        std::fs::rename(&tmp, path).map_err(|e| {
-            let _ = std::fs::remove_file(&tmp);
-            store_error("replace", path, &e)
-        })
+        write_json_file(path, self)
     }
 
     pub fn latest_for(&self, channel: &str) -> Option<&str> {
@@ -92,6 +83,24 @@ fn younger_than(stamp_unix: u64, now_unix: u64, max_age_secs: u64) -> bool {
         && now_unix
             .checked_sub(stamp_unix)
             .is_some_and(|age| age < max_age_secs)
+}
+
+pub(crate) fn write_json_file<T: Serialize>(path: &Path, value: &T) -> CtResult<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| CtError::Store(format!("no parent for {}", path.display())))?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(CACHE_FILE_NAME);
+    std::fs::create_dir_all(parent).map_err(|e| store_error("create", parent, &e))?;
+    let body = serde_json::to_vec_pretty(value).map_err(|e| CtError::Store(e.to_string()))?;
+    let tmp = parent.join(format!(".{name}.tmp-{:08x}", rand::random::<u32>()));
+    std::fs::write(&tmp, body).map_err(|e| store_error("write", &tmp, &e))?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        store_error("replace", path, &e)
+    })
 }
 
 fn store_error(action: &str, path: &Path, error: &std::io::Error) -> CtError {

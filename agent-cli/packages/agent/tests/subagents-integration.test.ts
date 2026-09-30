@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,6 +17,20 @@ test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real upstream runtime", {
 	const old = { url: process.env.CLOUDTHINKER_URL, token: process.env.CLOUDTHINKER_TOKEN, dir: process.env.PI_CODING_AGENT_DIR };
 	const sessions = new Map<string, { source?: string; entries: unknown[] }>();
 	const calls: { model: string; conversation: string; tools: { name: string }[] }[] = [];
+	let holdModelResponses = false;
+	let heldModelRequestCount = 0;
+	const heldModelReleases: (() => void)[] = [];
+	const heldModelWaiters: { count: number; resolve: () => void }[] = [];
+	let workflowNotificationCount = 0;
+	const workflowNotificationWaiters: { count: number; resolve: () => void }[] = [];
+	const waitForHeldModelRequests = (count: number) => {
+		if (heldModelRequestCount >= count) return Promise.resolve();
+		return new Promise<void>((resolve) => heldModelWaiters.push({ count, resolve }));
+	};
+	const waitForWorkflowNotifications = (count: number) => {
+		if (workflowNotificationCount >= count) return Promise.resolve();
+		return new Promise<void>((resolve) => workflowNotificationWaiters.push({ count, resolve }));
+	};
 	const workspace = randomUUID();
 	const server = createServer(async (request, response) => {
 		const chunks = [];
@@ -42,6 +56,14 @@ test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real upstream runtime", {
 			const conversation = String(request.headers["x-cloudthinker-conversation"] ?? "");
 			calls.push({ model: body.model, conversation, tools: body.tools ?? [] });
 			if (!sessions.has(conversation)) { response.writeHead(400); response.end("missing conversation"); return; }
+			if (holdModelResponses) {
+				heldModelRequestCount++;
+				for (const waiter of heldModelWaiters.splice(0)) {
+					if (heldModelRequestCount >= waiter.count) waiter.resolve();
+					else heldModelWaiters.push(waiter);
+				}
+				await new Promise<void>((resolve) => heldModelReleases.push(resolve));
+			}
 			response.writeHead(200, { "Content-Type": "text/event-stream" });
 			for (const event of [
 				{ type: "message_start", message: { id: randomUUID(), type: "message", role: "assistant", model: body.model, content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } },
@@ -72,22 +94,45 @@ test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real upstream runtime", {
 		const loader = new DefaultResourceLoader({ cwd: root, agentDir: root, settingsManager, noExtensions: true, noSkills: true, noThemes: true, extensionFactories: [
 			{ name: "cloudthinker", factory: (api) => cloudthinker(api) },
 			{ name: "subagents", factory: bundledSubagents },
-			{ name: "capture", factory: (api) => { pi = api; api.on("session_start", (_event, context) => { ctx = context; }); } },
+			{ name: "capture", factory: (api) => {
+				pi = api;
+				api.on("session_start", (_event, context) => { ctx = context; });
+				api.on("message_end", (event) => {
+					if (event.message.role !== "custom" || event.message.customType !== "subagent-notification") return;
+					workflowNotificationCount++;
+					for (const waiter of workflowNotificationWaiters.splice(0)) {
+						if (workflowNotificationCount >= waiter.count) waiter.resolve();
+						else workflowNotificationWaiters.push(waiter);
+					}
+				});
+			} },
 		] });
 		await loader.reload();
 		assert.deepEqual(loader.getExtensions().errors, []);
 		const tools = loader.getExtensions().extensions.flatMap((extension) => [...extension.tools.values()].map((tool) => tool.definition));
-		for (const name of ["Agent", "SubagentWorkflow"]) {
+		for (const name of ["Agent", "ct_workflow"]) {
 			const tool = tools.find((definition) => definition.name === name)!;
 			assert.ok(tool);
 			assert.equal(cloudDelegationTool(tool), tool);
 			assert.doesNotMatch(JSON.stringify(tool.parameters), /"thinking"/);
 			assert.doesNotMatch(tool.description, /haiku|sonnet|opts\.effort|Use thinking/);
+			if (name === "ct_workflow") {
+				assert.equal(tool.label, "ct_workflow");
+				assert.match(tool.description, /plain-language task/);
+				assert.match(tool.description, /Use \/agents → Workflows to watch live progress/);
+				assert.doesNotMatch(tool.description, /SubagentWorkflow/);
+				assert.doesNotMatch(tool.description, /Cyber|pentest/);
+				const schema = tool.parameters as { properties?: Record<string, { type?: string; description?: string; additionalProperties?: boolean }>; required?: string[] };
+				assert.equal(schema.properties?.args?.type, "object");
+				assert.equal(schema.properties?.args?.additionalProperties, true);
+				assert.match(schema.properties?.args?.description ?? "", /not JSON-encoded strings/);
+				assert.ok(!schema.required?.includes("args"));
+			}
 		}
 		parent = (await createAgentSession({ cwd: root, agentDir: root, settingsManager, resourceLoader: loader, sessionManager: SessionManager.create(root) })).session;
 		await parent.bindExtensions({});
 		assert.ok(parent.getAllTools().some((tool) => tool.name === "Agent"));
-		assert.ok(pi.getActiveTools().includes("SubagentWorkflow"));
+		assert.ok(pi.getActiveTools().includes("ct_workflow"));
 		await parent.setModel(ctx.modelRegistry.find("cloudthinker", "pro")!);
 		ctx = { ...ctx, model: parent.model };
 		assert.equal(ctx.model?.provider, "cloudthinker");
@@ -143,15 +188,105 @@ test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real upstream runtime", {
 			subagent_type: "general-purpose", description: "Headless child", prompt: "Reply child verified", run_in_background: true,
 		}, undefined, undefined, { ...ctx, mode: "json" });
 		assert.match(JSON.stringify(direct.content), /child verified/);
-		const workflowTool = tools.find((tool) => tool.name === "SubagentWorkflow")!;
+		const workflowTool = tools.find((tool) => tool.name === "ct_workflow")!;
+		const callsBeforeInvalidWorkflow = calls.length;
+		await assert.rejects(workflowTool.execute("headless-invalid-workflow", {
+			args: JSON.stringify({ run: "fixture" }),
+			script: 'export const meta = {name:"invalid args",description:"Must reject before dispatch"}; return await agent("This agent must not be dispatched");',
+		}, undefined, undefined, { ...ctx, mode: "json" }), /ct_workflow args must be an object.*do not pass a JSON-encoded string/);
+		assert.equal(calls.length, callsBeforeInvalidWorkflow);
+		for (const [id, args] of [["string", "literal"], ["number", 5], ["array", ["fixture"]], ["null", null]] as const) {
+			await assert.rejects(workflowTool.execute(`headless-invalid-${id}-workflow`, {
+				args,
+				script: `export const meta = {name:"invalid ${id} args",description:"Must reject non-object args"}; return "unreachable";`,
+			}, undefined, undefined, { ...ctx, mode: "json" }), /ct_workflow args must be an object/);
+		}
+		assert.equal(calls.length, callsBeforeInvalidWorkflow);
+		const argsWorkflow = await workflowTool.execute("headless-object-args-workflow", {
+			args: { run: "object-args-round-trip" },
+			script: 'export const meta = {name:"object args",description:"Preserve object args"}; return args.run;',
+		}, undefined, undefined, { ...ctx, mode: "json" });
+		assert.match(JSON.stringify(argsWorkflow.content), /object-args-round-trip/);
 		const workflow = await workflowTool.execute("headless-workflow", {
 			script: 'export const meta = {name:"headless",description:"Wait for children"}; return await agent("Reply child verified", {model:"cloudthinker/light"});',
 		}, undefined, undefined, { ...ctx, mode: "json" });
 		assert.match(JSON.stringify(workflow.content), /child verified/);
 		assert.doesNotMatch(JSON.stringify(workflow.content), /started in the background/);
+		await assert.rejects(workflowTool.execute("headless-failed-workflow", {
+			script: 'export const meta = {name:"headless failure",description:"Fail while running"}; throw new Error("workflow runtime failed");',
+		}, undefined, undefined, { ...ctx, mode: "json" }), /workflow runtime failed/);
+		const originalScript = 'export const meta = {name:"active identity",description:"Active identity fixture"}; return await agent("Hold this workflow until released");';
+		const changedScript = 'export const meta = {name:"active identity",description:"Active identity fixture"}; return await agent("Changed source starts distinct work");';
+		const workflowContext = { ...ctx, mode: "tui" as const };
+		const childCallsBeforeActiveStarts = calls.filter((call) => call.conversation !== parentId).length;
+		const notificationsBeforeActiveStarts = workflowNotificationCount;
+		holdModelResponses = true;
+		const firstHeldRequest = waitForHeldModelRequests(1);
+		const firstActiveWorkflow = await workflowTool.execute("active-workflow-first", {
+			script: originalScript,
+			args: { run: "same", options: { alpha: 1, beta: 2 } },
+		}, undefined, undefined, workflowContext);
+		const firstActiveId = (firstActiveWorkflow.details as { taskId: string }).taskId;
+		await firstHeldRequest;
+		const firstActiveScriptPath = String(firstActiveWorkflow.content[0]?.type === "text" && firstActiveWorkflow.content[0].text.match(/^Script: (.+)$/m)?.[1]);
+		assert.notEqual(firstActiveScriptPath, "undefined");
+		const duplicateActiveWorkflow = await workflowTool.execute("active-workflow-duplicate", {
+			scriptPath: firstActiveScriptPath,
+			args: { options: { beta: 2, alpha: 1 }, run: "same" },
+		}, undefined, undefined, workflowContext);
+		assert.equal((duplicateActiveWorkflow.details as { taskId?: string } | undefined)?.taskId, firstActiveId);
+		assert.equal(calls.filter((call) => call.conversation !== parentId).length, childCallsBeforeActiveStarts + 1);
+		const activeResume = await workflowTool.execute("active-workflow-resume", {
+			resumeFromRunId: firstActiveId,
+		}, undefined, undefined, workflowContext);
+		assert.equal((activeResume.details as { taskId?: string } | undefined)?.taskId, firstActiveId);
+		assert.equal(calls.filter((call) => call.conversation !== parentId).length, childCallsBeforeActiveStarts + 1);
+		let headlessDuplicateFinished = false;
+		const headlessDuplicatePromise = workflowTool.execute("active-workflow-headless-duplicate", {
+			scriptPath: firstActiveScriptPath,
+			args: { options: { alpha: 1, beta: 2 }, run: "same" },
+		}, undefined, undefined, { ...ctx, mode: "json" }).then((result) => {
+			headlessDuplicateFinished = true;
+			return result;
+		});
+		await Promise.resolve();
+		assert.equal(headlessDuplicateFinished, false);
+		writeFileSync(firstActiveScriptPath, changedScript);
+		const secondHeldRequest = waitForHeldModelRequests(2);
+		const changedActiveWorkflow = await workflowTool.execute("active-workflow-changed-source", {
+			scriptPath: firstActiveScriptPath,
+			args: { run: "same" },
+		}, undefined, undefined, workflowContext);
+		const changedActiveId = (changedActiveWorkflow.details as { taskId: string }).taskId;
+		assert.notEqual(changedActiveId, firstActiveId);
+		await secondHeldRequest;
+		const thirdHeldRequest = waitForHeldModelRequests(3);
+		const changedArgsWorkflow = await workflowTool.execute("active-workflow-changed-args", {
+			scriptPath: firstActiveScriptPath,
+			args: { run: "different" },
+		}, undefined, undefined, workflowContext);
+		const changedArgsId = (changedArgsWorkflow.details as { taskId: string }).taskId;
+		assert.notEqual(changedArgsId, changedActiveId);
+		await thirdHeldRequest;
+		holdModelResponses = false;
+		for (const release of heldModelReleases.splice(0)) release();
+		const headlessDuplicate = await headlessDuplicatePromise;
+		assert.match(JSON.stringify(headlessDuplicate.content), /child verified/);
+		await waitForWorkflowNotifications(notificationsBeforeActiveStarts + 3);
+		writeFileSync(firstActiveScriptPath, originalScript);
+		const completedRerunRequest = waitForWorkflowNotifications(notificationsBeforeActiveStarts + 4);
+		const completedRerun = await workflowTool.execute("completed-workflow-rerun", {
+			scriptPath: firstActiveScriptPath,
+			args: { options: { alpha: 1, beta: 2 }, run: "same" },
+		}, undefined, undefined, workflowContext);
+		assert.notEqual((completedRerun.details as { taskId: string }).taskId, firstActiveId);
+		await completedRerunRequest;
+		assert.equal(calls.filter((call) => call.conversation !== parentId).length, childCallsBeforeActiveStarts + 4);
 		clone.session.sessionManager.appendModelChange("anthropic", "claude-opus");
 		await assert.rejects(createCloudChild({ cwd: root, model: ctx.model, sessionManager: clone.session.sessionManager }, ctx), /CloudThinker agent mode/);
 	} finally {
+		holdModelResponses = false;
+		for (const release of heldModelReleases.splice(0)) release();
 		for (const child of children) {
 			await child.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
 			child.dispose();

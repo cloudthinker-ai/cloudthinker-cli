@@ -22,6 +22,8 @@ pub enum ExitCode {
     Timeout = 4,
     /// The run paused for human approval in the browser.
     ApprovalRequired = 5,
+    ReviewFindings = 6,
+    Interrupted = 130,
 }
 
 impl ExitCode {
@@ -33,7 +35,7 @@ impl ExitCode {
 /// Map a client error to its exit code — pure, so it is table-testable.
 pub fn code_for(err: &CtError) -> ExitCode {
     match err {
-        CtError::Auth(_) | CtError::ObsoleteCredentials => ExitCode::Auth,
+        CtError::Auth(_) | CtError::ObsoleteCredentials { .. } => ExitCode::Auth,
         CtError::Usage(_) => ExitCode::Usage,
         CtError::Timeout(_) => ExitCode::Timeout,
         CtError::LoginDenied => ExitCode::JobFailed,
@@ -47,6 +49,7 @@ pub fn code_for(err: &CtError) -> ExitCode {
         | CtError::Login(_)
         | CtError::Logout(_)
         | CtError::AgentInstall(_)
+        | CtError::ToolInstall(_)
         | CtError::Protocol(_) => ExitCode::JobFailed,
     }
 }
@@ -71,13 +74,20 @@ mod tests {
         assert_eq!(ExitCode::Auth as u8, 3);
         assert_eq!(ExitCode::Timeout as u8, 4);
         assert_eq!(ExitCode::ApprovalRequired as u8, 5);
+        assert_eq!(ExitCode::ReviewFindings as u8, 6);
+        assert_eq!(ExitCode::Interrupted as u8, 130);
     }
 
     #[test]
     fn error_to_code_mapping_table() {
         let cases = [
             (CtError::Auth("x".into()), ExitCode::Auth),
-            (CtError::ObsoleteCredentials, ExitCode::Auth),
+            (
+                CtError::ObsoleteCredentials {
+                    login: "cloudthinker login".into(),
+                },
+                ExitCode::Auth,
+            ),
             (CtError::Usage("x".into()), ExitCode::Usage),
             (CtError::Timeout("x".into()), ExitCode::Timeout),
             (CtError::LoginDenied, ExitCode::JobFailed),
@@ -86,6 +96,7 @@ mod tests {
             (CtError::Protocol("x".into()), ExitCode::JobFailed),
             (CtError::Logout("x".into()), ExitCode::JobFailed),
             (CtError::AgentInstall("x".into()), ExitCode::JobFailed),
+            (CtError::ToolInstall("x".into()), ExitCode::JobFailed),
             (
                 CtError::Api {
                     status: 401,

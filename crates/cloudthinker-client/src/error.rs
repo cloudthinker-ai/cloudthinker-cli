@@ -16,10 +16,10 @@ pub enum CtError {
     #[error("not authenticated: {0}")]
     Auth(String),
 
-    /// Persisted credentials predate workspace-keyed storage. They are never
-    /// migrated or used; a new login replaces them.
-    #[error("stored credentials use an obsolete format; run `cloudthinker login`")]
-    ObsoleteCredentials,
+    /// Persisted credentials predate workspace-keyed storage or cannot be
+    /// read. They are never migrated or used; a new login replaces them.
+    #[error("stored credentials are unreadable or use an obsolete format; run `{login}`")]
+    ObsoleteCredentials { login: String },
 
     /// A structured API error carrying the HTTP status and safe backend
     /// message. The exit-code mapping keys off `status`.
@@ -63,6 +63,13 @@ pub enum CtError {
     #[error("agent install failed: {0}")]
     AgentInstall(String),
 
+    /// A pinned probe tool could not be downloaded, verified, or unpacked.
+    /// Kept distinct from `AgentInstall` because the source is a third-party
+    /// release host, not the CloudThinker release channel, so the message must
+    /// name the tool, not the agent.
+    #[error("tool install failed: {0}")]
+    ToolInstall(String),
+
     /// A response body that failed to parse into either the documented success
     /// or error shape — the server sent something we don't understand rather
     /// than the user giving bad input. Kept distinct from `Api` so scripts
@@ -77,6 +84,18 @@ impl CtError {
     pub fn is_transport(&self) -> bool {
         matches!(self, CtError::Transport(_))
     }
+
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            CtError::Transport(_) => true,
+            CtError::Api { status, .. } => is_retryable_status(*status),
+            _ => false,
+        }
+    }
+}
+
+pub fn is_retryable_status(status: u16) -> bool {
+    matches!(status, 408 | 429 | 500..=599)
 }
 
 /// Parse safe human text from a current or legacy API error body.

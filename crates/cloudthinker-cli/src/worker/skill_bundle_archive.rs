@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
+use std::ops::Bound;
 use std::path::{Component, Path};
 
 use cap_std::fs::Dir;
@@ -268,6 +269,13 @@ pub(super) fn verify_bundle(path: &Path, expected_digest: &str) -> Result<(), &'
     Ok(())
 }
 
+pub(super) fn any_with_prefix(expected: &BTreeSet<String>, prefix: &str) -> bool {
+    expected
+        .range::<str, _>((Bound::Included(prefix), Bound::Unbounded))
+        .next()
+        .is_some_and(|file| file.starts_with(prefix))
+}
+
 fn verify_tree_shape(
     root: &Path,
     path: &Path,
@@ -305,7 +313,7 @@ fn verify_tree_shape(
             } else {
                 format!("{}/", relative.to_str().ok_or("BUNDLE_CACHE_CORRUPT")?)
             };
-            if !expected.iter().any(|file| file.starts_with(&prefix)) {
+            if !any_with_prefix(expected, &prefix) {
                 return Err("BUNDLE_CACHE_TAMPERED");
             }
             verify_tree_shape(root, &entry.path(), expected)?;

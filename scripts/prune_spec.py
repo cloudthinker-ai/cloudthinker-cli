@@ -75,11 +75,50 @@ _REVIEW_PATHS = frozenset(
     }
 )
 
+_CYBER_PATHS = frozenset(
+    {
+        "/api/v1/appsec/apps/",
+        "/api/v1/appsec/apps/{app_id}",
+        "/api/v1/appsec/apps/{app_id}/domain-verification",
+        "/api/v1/appsec/domains",
+        "/api/v1/appsec/domains/{domain_id}/check",
+        "/api/v1/appsec/apps/{app_id}/runs",
+        "/api/v1/appsec/runs/{run_id}",
+        "/api/v1/appsec/runs/{run_id}/cancel",
+        "/api/v1/appsec/runs/{run_id}/bind",
+        "/api/v1/appsec/runs/{run_id}/evidence",
+        "/api/v1/appsec/runs/{run_id}/settle",
+        "/api/v1/appsec/runs/{run_id}/plan",
+        "/api/v1/appsec/runs/{run_id}/plan/{plan_id}/observations",
+        "/api/v1/appsec/runs/{run_id}/coverage",
+        "/api/v1/appsec/runs/{run_id}/surface",
+        "/api/v1/appsec/runs/{run_id}/partition",
+        "/api/v1/agent-cli/sessions/{conversation_id}/entries",
+        "/api/v1/appsec/apps/{app_id}/findings",
+        "/api/v1/appsec/apps/{app_id}/surface",
+        "/api/v1/appsec/apps/{app_id}/context",
+        "/api/v1/appsec/apps/{app_id}/context/{source_id}/content-url",
+        "/api/v1/appsec/findings/{finding_id}",
+        "/api/v1/appsec/findings/{finding_id}/download-pdf",
+        "/api/v1/appsec/apps/{app_id}/findings/export-pdf",
+    }
+)
+
 ALLOWED_PATHS = (
-    _OUTPOST_PATHS | _WORKER_PATHS | _LOGIN_PATHS | _CHAT_PATHS | _REVIEW_PATHS
+    _OUTPOST_PATHS
+    | _WORKER_PATHS
+    | _LOGIN_PATHS
+    | _CHAT_PATHS
+    | _REVIEW_PATHS
+    | _CYBER_PATHS
 )
 
 _HTTP_METHODS = frozenset({"get", "put", "post", "delete", "patch", "options", "head"})
+_GET_ONLY_PATHS = frozenset(
+    {
+        "/api/v1/appsec/apps/{app_id}/context",
+    }
+)
 
 
 def _collect_refs(node: object, out: set[str]) -> None:
@@ -132,6 +171,12 @@ def prune(spec: dict) -> dict:
     kept_paths: dict[str, dict] = {}
     for path in ALLOWED_PATHS:
         item = dict(spec["paths"][path])
+        if path in _GET_ONLY_PATHS:
+            item = {
+                method: operation
+                for method, operation in item.items()
+                if method.lower() == "get"
+            }
         for method in list(item):
             if method.lower() in _HTTP_METHODS:
                 op = dict(item[method])

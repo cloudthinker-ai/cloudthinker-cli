@@ -23,6 +23,8 @@ const MAX_CHUNKS: u64 = MAX_ARCHIVE_BYTES.div_ceil(CHUNK_BYTES as u64);
 const MAX_STAGING_BUNDLES: usize = 8;
 const MAX_CACHED_BUNDLES: usize = 64;
 const STAGING_IDLE_TTL: Duration = Duration::from_secs(60 * 60);
+const BUNDLE_EVICTION_IDLE: Duration = Duration::from_secs(25 * 60 * 60);
+const EVICTING_PREFIX: &str = ".evicting-";
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -94,6 +96,7 @@ impl SkillBundleStore {
                 skill_bundle_archive::set_readonly_directory(final_dir)?;
                 skill_bundle_archive::fsync_dir(final_dir)?;
                 skill_bundle_archive::verify_bundle(final_dir, digest)?;
+                mark_used(final_dir, SystemTime::now())?;
                 Ok(true)
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -105,23 +108,58 @@ impl SkillBundleStore {
         if stage_exists(staging)? {
             return Ok(());
         }
-        cleanup_stale_stages_at(&self.root, staging_root, SystemTime::now())?;
+        let now = SystemTime::now();
+        cleanup_stale_stages_at(&self.root, staging_root, now)?;
+        remove_evicted(&self.root)?;
         let staging_count = staging_digests(staging_root)?.len();
-        let cached_count = fs::read_dir(&self.root)
-            .map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?
-            .try_fold(0usize, |count, entry| {
-                let entry = entry.map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
-                Ok::<usize, &'static str>(
-                    count + usize::from(entry.file_name().to_str().is_some_and(is_digest)),
-                )
-            })?;
-        if cached_count + staging_count >= MAX_CACHED_BUNDLES {
-            return Err("BUNDLE_CACHE_FULL");
+        let mut cached = cached_bundles(&self.root)?;
+        if cached.len() + staging_count >= MAX_CACHED_BUNDLES {
+            cached.sort_by_key(|(_, used)| *used);
+            let excess = cached.len() + staging_count + 1 - MAX_CACHED_BUNDLES;
+            let mut evicted = 0;
+            for (digest, used) in cached {
+                if evicted == excess {
+                    break;
+                }
+                if now
+                    .duration_since(used)
+                    .map_or(true, |idle| idle < BUNDLE_EVICTION_IDLE)
+                {
+                    break;
+                }
+                if self.evict(&digest, now)? {
+                    evicted += 1;
+                }
+            }
+            if evicted < excess {
+                return Err("BUNDLE_CACHE_FULL");
+            }
         }
         if staging_count >= MAX_STAGING_BUNDLES {
             return Err("BUNDLE_CACHE_BUSY");
         }
         Ok(())
+    }
+
+    fn evict(&self, digest: &str, now: SystemTime) -> Result<bool, &'static str> {
+        let Some(_lock) = try_lock_file(&self.root, digest)? else {
+            return Ok(false);
+        };
+        let bundle = self.root.join(digest);
+        let used = fs::symlink_metadata(&bundle)
+            .and_then(|metadata| metadata.modified())
+            .map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
+        if now
+            .duration_since(used)
+            .map_or(true, |idle| idle < BUNDLE_EVICTION_IDLE)
+        {
+            return Ok(false);
+        }
+        let evicting = self.root.join(format!("{EVICTING_PREFIX}{digest}"));
+        fs::rename(&bundle, &evicting).map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
+        skill_bundle_archive::fsync_dir(&self.root)?;
+        skill_bundle_archive::remove_staging_tree(&evicting)?;
+        Ok(true)
     }
 
     fn stage(
@@ -227,7 +265,7 @@ impl SkillBundleStore {
             let Some(digest) = name.to_str() else {
                 return Err("BUNDLE_CACHE_CORRUPT");
             };
-            if digest == ".staging" || is_lock_name(digest) {
+            if digest == ".staging" || is_lock_name(digest) || digest.starts_with(EVICTING_PREFIX) {
                 continue;
             }
             if !is_digest(digest) {
@@ -237,6 +275,46 @@ impl SkillBundleStore {
         }
         Ok(())
     }
+}
+
+fn mark_used(bundle: &Path, now: SystemTime) -> Result<(), &'static str> {
+    File::open(bundle)
+        .and_then(|directory| directory.set_modified(now))
+        .map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")
+}
+
+fn cached_bundles(root: &Path) -> Result<Vec<(String, SystemTime)>, &'static str> {
+    let mut bundles = Vec::new();
+    for entry in fs::read_dir(root).map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")? {
+        let entry = entry.map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
+        let Some(digest) = entry
+            .file_name()
+            .to_str()
+            .filter(|name| is_digest(name))
+            .map(str::to_owned)
+        else {
+            continue;
+        };
+        let used = fs::symlink_metadata(entry.path())
+            .and_then(|metadata| metadata.modified())
+            .map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
+        bundles.push((digest, used));
+    }
+    Ok(bundles)
+}
+
+fn remove_evicted(root: &Path) -> Result<(), &'static str> {
+    for entry in fs::read_dir(root).map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")? {
+        let entry = entry.map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
+        if entry
+            .file_name()
+            .to_str()
+            .is_some_and(|name| name.strip_prefix(EVICTING_PREFIX).is_some_and(is_digest))
+        {
+            skill_bundle_archive::remove_staging_tree(&entry.path())?;
+        }
+    }
+    Ok(())
 }
 
 fn installed(digest: &str, installed: bool) -> Value {
@@ -486,13 +564,7 @@ fn open_lock(root: &Path, name: &str) -> Result<File, &'static str> {
     {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
-        #[cfg(target_os = "linux")]
-        const O_NOFOLLOW: i32 = 0o400000;
-        #[cfg(target_vendor = "apple")]
-        const O_NOFOLLOW: i32 = 0x100;
-        #[cfg(not(any(target_os = "linux", target_vendor = "apple")))]
-        const O_NOFOLLOW: i32 = 0;
-        options.custom_flags(O_NOFOLLOW);
+        options.custom_flags(rustix::fs::OFlags::NOFOLLOW.bits().cast_signed());
     }
     let file = options
         .open(&path)

@@ -14,10 +14,14 @@ use std::sync::Arc;
 use chrono::Duration as ChronoDuration;
 
 use crate::auth::store::{StoredToken, TokenStore, acquire_credential_lock};
-use crate::error::{CtError, CtResult, to_ct_error};
+use crate::client::login_command;
+use crate::error::{CtError, CtResult};
+use crate::retry::with_retries;
 
 /// Proactively refresh when the access token is within this window of expiry.
 pub const PROACTIVE_REFRESH_SKEW_SECS: i64 = 60;
+
+const REFRESH_ATTEMPTS: u32 = 3;
 
 pub struct RefreshCoordinator {
     base_url: String,
@@ -48,9 +52,11 @@ impl RefreshCoordinator {
         let _guard = self.lock.lock().await;
         let store_lock = acquire_credential_lock(self.store.clone()).await?;
 
-        let current = self.store.load_locked(&store_lock)?.ok_or_else(|| {
-            CtError::Auth("no stored credentials; run `cloudthinker login`".into())
-        })?;
+        let login = login_command(&self.base_url);
+        let current = self
+            .store
+            .load_locked(&store_lock)?
+            .ok_or_else(|| CtError::Auth(format!("no stored credentials; run `{login}`")))?;
 
         // Guarded disk reload: someone else already rotated — adopt, skip network.
         if current.access_token != stale_access {
@@ -58,36 +64,35 @@ impl RefreshCoordinator {
         }
 
         if !self.store.refresh_enabled() {
-            return Err(CtError::Auth(
-                "credential is read-only; run `cloudthinker login`".into(),
-            ));
+            return Err(CtError::Auth(format!(
+                "credential is read-only; run `{login}`"
+            )));
         }
 
         let refresh_token = current
             .refresh_token
             .clone()
-            .ok_or_else(|| CtError::Auth("no refresh token; run `cloudthinker login`".into()))?;
+            .ok_or_else(|| CtError::Auth(format!("no refresh token; run `{login}`")))?;
 
         let body = cloudthinker_api::types::RefreshTokenRequest {
             refresh_token: Some(refresh_token),
             workspace_id: current.workspace_id,
         };
         let api = cloudthinker_api::Client::new_with_client(&self.base_url, self.http.clone());
-        let token = match api.login_refresh_token(&body).await {
-            Ok(rv) => rv.into_inner(),
-            Err(e) => {
-                // A transport blip stays transport; any HTTP rejection means the
-                // family is gone and the user must log in again.
-                return Err(match to_ct_error(e).await {
-                    CtError::Transport(m) => CtError::Transport(m),
-                    _ => CtError::Auth("session expired; run `cloudthinker login`".into()),
-                });
-            }
-        };
+        let token = with_retries(REFRESH_ATTEMPTS, || api.login_refresh_token(&body))
+            .await
+            .map_err(|error| match error {
+                CtError::Api {
+                    status: 400 | 401, ..
+                } => CtError::Auth(format!("session expired; run `{login}`")),
+                other => other,
+            })?
+            .into_inner();
 
         let mut rotated = StoredToken::from_token(&token);
+        rotated.workspace_id = rotated.workspace_id.or(current.workspace_id);
         rotated.workspace_name = current.workspace_name;
-        self.store.save_locked(&store_lock, &rotated)?;
+        self.store.replace_locked(&store_lock, &rotated)?;
         Ok(rotated)
     }
 
@@ -192,5 +197,92 @@ mod tests {
 
         let err = coord.refresh("stale-access").await.unwrap_err();
         assert!(matches!(err, CtError::Auth(_)), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn a_server_error_is_retried_and_never_reads_as_an_expired_session() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/login/refresh"))
+            .respond_with(ResponseTemplate::new(503).insert_header("retry-after", "0"))
+            .up_to_n_times(1)
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/login/refresh"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(token_json("new-access", "new-refresh")),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let store = Arc::new(MockTokenStore::new(Some(stored("stale-access", "r"))));
+        let coord = RefreshCoordinator::new(server.uri(), store, reqwest::Client::new());
+
+        let rotated = coord.refresh("stale-access").await.unwrap();
+
+        assert_eq!(rotated.access_token, "new-access");
+    }
+
+    #[tokio::test]
+    async fn a_lasting_outage_reports_the_server_error_after_bounded_attempts() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/login/refresh"))
+            .respond_with(ResponseTemplate::new(502).insert_header("retry-after", "0"))
+            .expect(u64::from(REFRESH_ATTEMPTS))
+            .mount(&server)
+            .await;
+        let store = Arc::new(MockTokenStore::new(Some(stored("stale-access", "r"))));
+        let coord = RefreshCoordinator::new(server.uri(), store.clone(), reqwest::Client::new());
+
+        let err = coord.refresh("stale-access").await.unwrap_err();
+
+        assert!(
+            matches!(err, CtError::Api { status: 502, .. }),
+            "got {err:?}"
+        );
+        assert_eq!(store.save_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_refresh_under_another_workspace_keeps_the_active_one_and_its_workspace() {
+        let server = MockServer::start().await;
+        let mut rotated = token_json("rotated-dev", "rotated-refresh");
+        rotated["workspace_id"] = serde_json::Value::Null;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/login/refresh"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(rotated))
+            .mount(&server)
+            .await;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("credentials.json");
+        let workspace = |id: u128, name: &str, access: &str| StoredToken {
+            access_token: access.into(),
+            refresh_token: Some(format!("refresh-{access}")),
+            expires_at: None,
+            workspace_id: Some(uuid::Uuid::from_u128(id)),
+            workspace_name: Some(name.into()),
+        };
+        let active = FileStore::new(path.clone(), "origin");
+        active.save(&workspace(1, "Development", "dev")).unwrap();
+        active.save(&workspace(2, "Production", "prod")).unwrap();
+        let development = Arc::new(FileStore::with_selector(
+            path,
+            "origin",
+            crate::WorkspaceSelector::IdOrName("Development".into()),
+        ));
+        let coord =
+            RefreshCoordinator::new(server.uri(), development.clone(), reqwest::Client::new());
+
+        let refreshed = coord.refresh("dev").await.unwrap();
+
+        assert_eq!(refreshed.workspace_id, Some(uuid::Uuid::from_u128(1)));
+        assert_eq!(
+            development.load().unwrap().unwrap().access_token,
+            "rotated-dev"
+        );
+        assert_eq!(active.load().unwrap().unwrap().access_token, "prod");
     }
 }

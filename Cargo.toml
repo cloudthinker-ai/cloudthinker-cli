@@ -35,6 +35,7 @@ rand = "0.8"
 url = "2"
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
+zip = { version = "2", default-features = false, features = ["deflate"] }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 
 # Copied verbatim from tools/ct-cli/Cargo.toml: hand-written crates opt in with
@@ -45,12 +46,18 @@ unsafe_code = "forbid"
 unused_crate_dependencies = "deny"
 
 [workspace.lints.clippy]
+allow_attributes_without_reason = "deny"
+dbg_macro = "deny"
 expect_used = "deny"
+mem_forget = "deny"
 panic = "deny"
 todo = "deny"
 undocumented_unsafe_blocks = "deny"
 unimplemented = "deny"
 unwrap_used = "deny"
+
+[profile.dev]
+opt-level = 0
 
 [profile.release]
 opt-level = 3

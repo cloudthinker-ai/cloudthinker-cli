@@ -1,0 +1,75 @@
+diff --git a/dist/core/resolve-config-value.js b/dist/core/resolve-config-value.js
+index 9075eb6efe1072526a922e9a83ce20e7c9d2ebbe..3bd1bd6bb205b19069b4a1b1b6d6ed2ded40151b 100644
+--- a/dist/core/resolve-config-value.js
++++ b/dist/core/resolve-config-value.js
+@@ -183,7 +183,9 @@ function executeCommand(commandConfig) {
+         return commandResultCache.get(commandConfig);
+     }
+     const result = executeCommandUncached(commandConfig);
+-    commandResultCache.set(commandConfig, result);
++    if (result !== undefined) {
++        commandResultCache.set(commandConfig, result);
++    }
+     return result;
+ }
+ /**
+diff --git a/dist/core/tools/bash.d.ts b/dist/core/tools/bash.d.ts
+index c3d9348029445772f711a923b1f1b01aa20f8acc..f9e09ef14c7be225e231abc4749e02c8ff90b43d 100644
+--- a/dist/core/tools/bash.d.ts
++++ b/dist/core/tools/bash.d.ts
+@@ -47,6 +47,7 @@ export declare function createLocalShellOperations(shellName: string, resolveShe
+  */
+ export declare function createLocalBashOperations(options?: {
+     shellPath?: string;
++    cleanupOnExit?: boolean;
+ }): BashOperations;
+ export interface BashSpawnContext {
+     command: string;
+diff --git a/dist/core/tools/bash.js b/dist/core/tools/bash.js
+index b71057ddcf98b8500371f7b91f8ca10f52e7a78d..7c735275b816917b661ab898419c83b9a1bffe9e 100644
+--- a/dist/core/tools/bash.js
++++ b/dist/core/tools/bash.js
+@@ -33,6 +33,9 @@ export const bashToolSystemPromptContribution = {
+ };
+ /** Shared process execution used by the built-in shell tools. */
+ export function createLocalShellOperations(shellName, resolveShellConfig) {
++	return createLocalShellOperationsWithOptions(shellName, resolveShellConfig, false);
++}
++function createLocalShellOperationsWithOptions(shellName, resolveShellConfig, cleanupOnExit) {
+     return {
+         exec: async (command, cwd, { onData, signal, timeout, env }) => {
+             const timeoutMs = resolveTimeoutMs(timeout);
+@@ -97,6 +100,8 @@ export function createLocalShellOperations(shellName, resolveShellConfig) {
+                 return { exitCode };
+             }
+             finally {
++                if (cleanupOnExit && child.pid)
++                    killProcessTree(child.pid);
+                 if (child.pid)
+                     untrackDetachedChildPid(child.pid);
+                 if (timeoutHandle)
+@@ -114,7 +119,7 @@ export function createLocalShellOperations(shellName, resolveShellConfig) {
+  * standard local shell behavior while wrapping or rewriting commands.
+  */
+ export function createLocalBashOperations(options) {
+-    return createLocalShellOperations("bash", () => getShellConfig(options?.shellPath));
++	return createLocalShellOperationsWithOptions("bash", () => getShellConfig(options?.shellPath), options?.cleanupOnExit ?? false);
+ }
+ function resolveSpawnContext(command, cwd, spawnHook, exposeSessionEnvironment, ctx) {
+     const env = { ...getShellEnv() };
+diff --git a/dist/modes/print-mode.js b/dist/modes/print-mode.js
+index beea0e8287b6c403ba7b1855c3f0dd6161afdd72..eeb9607c587d0349df0d2200bec3ca99ff451125 100644
+--- a/dist/modes/print-mode.js
++++ b/dist/modes/print-mode.js
+@@ -103,9 +103,11 @@ export async function runPrintMode(runtimeHost, options) {
+         await rebindSession();
+         if (initialMessage) {
+             await session.prompt(initialMessage, { images: initialImages });
++            await session.waitForIdle();
+         }
+         for (const message of messages) {
+             await session.prompt(message);
++            await session.waitForIdle();
+         }
+         if (mode === "text") {
+             const state = session.state;

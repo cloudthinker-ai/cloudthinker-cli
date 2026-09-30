@@ -15,7 +15,7 @@ BUILD := $(CLI_DIR)/.gen
 # Nightly rustfmt: progenitor emits unstable fmt options that stable rustfmt panics on.
 NIGHTLY_RUSTFMT := $(shell rustup which rustfmt --toolchain nightly)
 
-.PHONY: gen check fmt clippy test clean-gen release-sync check-release changelog
+.PHONY: gen check fmt clippy test clean-gen release-sync check-release changelog discovery-runtime discovery-runtime-check
 
 gen:
 	@mkdir -p $(BUILD) $(CLI_DIR)/openapi
@@ -38,7 +38,7 @@ gen:
 	python3 $(CLI_DIR)/scripts/inject_lint_header.py $(API_CRATE)/src/lib.rs
 	@echo ">> gen complete: $(SNAPSHOT) + $(API_CRATE)"
 
-check: fmt clippy test
+check: fmt clippy discovery-runtime-check test
 
 # The generated `cloudthinker-api` crate is formatted by progenitor's nightly
 # rustfmt (which stable `cargo fmt` disagrees with), so the fmt gate covers only
@@ -51,9 +51,12 @@ clippy:
 
 test:
 	cd $(CLI_DIR) && cargo test
+	python3 $(CLI_DIR)/scripts/test_build_discovery_runtime.py
 	python3 $(CLI_DIR)/scripts/test_check_release.py
 	python3 $(CLI_DIR)/scripts/test_changelog.py
 	python3 $(CLI_DIR)/scripts/test_fixup_spec.py
+	python3 $(CLI_DIR)/scripts/test_prune_spec.py
+	python3 $(CLI_DIR)/scripts/test_cloudthinker_local.py
 
 changelog:
 	python3 $(CLI_DIR)/scripts/changelog.py fold --version $(VERSION)
@@ -65,8 +68,14 @@ clean-gen:
 # (cloudthinker-ai/cloudthinker-cli), whose workflow releases on the same repo.
 # One-directional mirror; the monorepo is the source of truth. Needs a gh
 # account with push access. See scripts/release-sync.sh.
-release-sync:
+release-sync: discovery-runtime-check
 	bash $(CLI_DIR)/scripts/release-sync.sh
+
+discovery-runtime:
+	python3 $(CLI_DIR)/scripts/build_discovery_runtime.py
+
+discovery-runtime-check:
+	python3 $(CLI_DIR)/scripts/build_discovery_runtime.py --check
 
 # Prove the latest public release is complete and downloadable without a token.
 # TAG=vX.Y.Z checks that tag instead of latest. See scripts/check-release.sh.

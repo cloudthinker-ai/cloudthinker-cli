@@ -793,7 +793,7 @@ mod tests {
         for invalid in [
             Vec::new(),
             b"malformed".to_vec(),
-            [valid.clone(), valid.clone()].concat(),
+            [valid.clone(), valid].concat(),
             sidecar(b"other archive", &asset),
             sidecar(&archive, "other.tar.gz"),
         ] {

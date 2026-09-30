@@ -1,13 +1,21 @@
 use std::num::NonZeroU64;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 
+use chrono::{DateTime, Utc};
+use reqwest::header::{DATE, HeaderMap, RETRY_AFTER};
 use uuid::Uuid;
 
 use crate::{CtError, CtResult, origin_of, worker_types as api};
 
+const MIN_CLOCK_SKEW_MS: i64 = 2_000;
+const MAX_RETRY_AFTER: Duration = Duration::from_secs(30);
+
 #[derive(Clone)]
 pub struct WorkerClient {
     client: cloudthinker_api::Client,
+    skew_ms: Arc<AtomicI64>,
 }
 
 impl WorkerClient {
@@ -19,12 +27,15 @@ impl WorkerClient {
         headers.insert(reqwest::header::AUTHORIZATION, bearer);
         Ok(Self {
             client: client(base_url, headers)?,
+            skew_ms: Arc::new(AtomicI64::new(0)),
         })
     }
 
     pub async fn exchange(base_url: &str, reference: &str) -> CtResult<api::WorkerBootstrap> {
         let client = client(base_url, reqwest::header::HeaderMap::new())?;
+        let skew = AtomicI64::new(0);
         response(
+            &skew,
             client
                 .executor_targets_exchange_registration(&api::ExchangeWorkerRegistrationRequest {
                     reference: reference.into(),
@@ -34,15 +45,31 @@ impl WorkerClient {
         .await
     }
 
+    pub fn server_skew(&self) -> chrono::Duration {
+        chrono::Duration::milliseconds(self.skew_ms.load(Ordering::Relaxed))
+    }
+
+    fn local_time(&self, server: DateTime<Utc>) -> DateTime<Utc> {
+        server - self.server_skew()
+    }
+
+    async fn call<T>(
+        &self,
+        result: Result<cloudthinker_api::ResponseValue<T>, cloudthinker_api::Error<()>>,
+    ) -> CtResult<T> {
+        response(&self.skew_ms, result).await
+    }
+
     pub async fn register(
         &self,
         request: &api::RegisterWorkerRequest,
     ) -> CtResult<api::WorkerPublic> {
-        response(self.client.executor_targets_register_worker(request).await).await
+        self.call(self.client.executor_targets_register_worker(request).await)
+            .await
     }
 
     pub async fn conformance(&self, worker_id: Uuid) -> CtResult<api::WorkerConformancePublic> {
-        response(
+        self.call(
             self.client
                 .executor_targets_worker_conformance(&api::StartWorkerConformanceRequest {
                     worker_id,
@@ -62,7 +89,7 @@ impl WorkerClient {
         } else {
             api::WorkerHeartbeatRequestState::Online
         };
-        response(
+        self.call(
             self.client
                 .executor_targets_worker_heartbeat(&api::WorkerHeartbeatRequest {
                     worker_id: worker,
@@ -74,7 +101,7 @@ impl WorkerClient {
     }
 
     pub async fn pending(&self, worker: Uuid) -> CtResult<Vec<api::PendingAssignmentPublic>> {
-        response(
+        self.call(
             self.client
                 .executor_targets_pending_assignments(Some(15.0), &worker)
                 .await,
@@ -83,7 +110,7 @@ impl WorkerClient {
     }
 
     pub async fn claim(&self, worker: Uuid, assignment: Uuid) -> CtResult<api::AssignmentLease> {
-        response(
+        self.call(
             self.client
                 .executor_targets_claim_assignment(
                     &assignment,
@@ -92,6 +119,12 @@ impl WorkerClient {
                 .await,
         )
         .await
+        .map(|lease| self.local_lease(lease))
+    }
+
+    fn local_lease(&self, mut lease: api::AssignmentLease) -> api::AssignmentLease {
+        lease.lease_expires_at = self.local_time(lease.lease_expires_at);
+        lease
     }
 
     pub async fn heartbeat(
@@ -105,12 +138,13 @@ impl WorkerClient {
             lease_token: lease.lease_token.clone(),
             state,
         };
-        response(
+        self.call(
             self.client
                 .executor_targets_heartbeat_assignment(&lease.assignment_id, &body)
                 .await,
         )
         .await
+        .map(|lease| self.local_lease(lease))
     }
 
     pub async fn operations(
@@ -119,7 +153,7 @@ impl WorkerClient {
         after: u64,
         batch_size: u64,
     ) -> CtResult<Vec<api::OperationEnvelope>> {
-        response(
+        self.call(
             self.client
                 .executor_targets_assignment_operations(
                     &lease.assignment_id,
@@ -133,6 +167,15 @@ impl WorkerClient {
                 .await,
         )
         .await
+        .map(|envelopes| {
+            envelopes
+                .into_iter()
+                .map(|mut envelope| {
+                    envelope.deadline_at = self.local_time(envelope.deadline_at);
+                    envelope
+                })
+                .collect()
+        })
     }
 
     pub async fn artifact_grant(
@@ -140,7 +183,7 @@ impl WorkerClient {
         assignment: Uuid,
         request: &api::IssueArtifactGrantRequest,
     ) -> CtResult<api::ArtifactGrantPublic> {
-        response(
+        self.call(
             self.client
                 .executor_targets_issue_artifact_grant(&assignment, request)
                 .await,
@@ -154,7 +197,7 @@ impl WorkerClient {
         grant: Uuid,
         request: &api::UploadWorkerArtifactRequest,
     ) -> CtResult<api::WorkerArtifactPublic> {
-        response(
+        self.call(
             self.client
                 .executor_targets_upload_worker_artifact(&assignment, &grant, request)
                 .await,
@@ -174,7 +217,7 @@ impl WorkerClient {
                 .parse()
                 .map_err(|_| invalid_envelope())?,
         };
-        response(
+        self.call(
             self.client
                 .executor_targets_start_operation(
                     &envelope.assignment_id,
@@ -205,7 +248,7 @@ impl WorkerClient {
             session_id: envelope.session_id,
             result,
         };
-        response(
+        self.call(
             self.client
                 .executor_targets_complete_operation(
                     &envelope.assignment_id,
@@ -223,7 +266,7 @@ impl WorkerClient {
         assignment: Uuid,
         operation: Uuid,
     ) -> CtResult<api::OperationReceiptPublic> {
-        response(
+        self.call(
             self.client
                 .executor_targets_read_receipt(&assignment, &operation, &worker)
                 .await,
@@ -237,7 +280,7 @@ impl WorkerClient {
             fence_token: positive(lease.fence_token)?,
             lease_token: lease.lease_token.clone(),
         };
-        response(
+        self.call(
             self.client
                 .executor_targets_release_assignment(&lease.assignment_id, &body)
                 .await,
@@ -272,22 +315,120 @@ fn client(
 }
 
 async fn response<T>(
+    skew_ms: &AtomicI64,
     result: Result<cloudthinker_api::ResponseValue<T>, cloudthinker_api::Error<()>>,
 ) -> CtResult<T> {
     match result {
-        Ok(response) => Ok(response.into_inner()),
-        Err(cloudthinker_api::Error::InvalidResponsePayload(_, _)) => Err(CtError::Protocol(
-            "worker response does not match the protocol".into(),
-        )),
-        Err(error) => match error.status().map(|s| s.as_u16()) {
-            Some(401 | 403) => Err(CtError::Auth("worker credential expired or revoked".into())),
-            Some(status) => Err(CtError::Api {
-                status,
-                detail: Some("worker request rejected".into()),
-            }),
-            None => Err(CtError::Transport("worker request failed".into())),
+        Ok(value) => {
+            observe_clock(skew_ms, value.headers());
+            Ok(value.into_inner())
+        }
+        Err(error) => Err(worker_error(skew_ms, error).await),
+    }
+}
+
+fn observe_clock(skew_ms: &AtomicI64, headers: &HeaderMap) {
+    let Some(server) = headers
+        .get(DATE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| DateTime::parse_from_rfc2822(value).ok())
+    else {
+        return;
+    };
+    let skew = server
+        .with_timezone(&Utc)
+        .signed_duration_since(Utc::now())
+        .num_milliseconds();
+    let skew = if skew.abs() < MIN_CLOCK_SKEW_MS {
+        0
+    } else {
+        skew
+    };
+    skew_ms.store(skew, Ordering::Relaxed);
+}
+
+fn retry_after(headers: &HeaderMap) -> Option<Duration> {
+    let value = headers.get(RETRY_AFTER)?.to_str().ok()?.trim();
+    let wait = match value.parse::<u64>() {
+        Ok(seconds) => Duration::from_secs(seconds),
+        Err(_) => DateTime::parse_from_rfc2822(value)
+            .ok()?
+            .with_timezone(&Utc)
+            .signed_duration_since(Utc::now())
+            .to_std()
+            .ok()?,
+    };
+    Some(wait.min(MAX_RETRY_AFTER))
+}
+
+fn is_retryable(status: u16) -> bool {
+    matches!(status, 408 | 429) || (500..=599).contains(&status)
+}
+
+async fn worker_error(skew_ms: &AtomicI64, error: cloudthinker_api::Error<()>) -> CtError {
+    match error {
+        cloudthinker_api::Error::InvalidResponsePayload(_, _) => {
+            CtError::Protocol("worker response does not match the protocol".into())
+        }
+        cloudthinker_api::Error::ErrorResponse(value) => {
+            observe_clock(skew_ms, value.headers());
+            let wait = retry_after(value.headers());
+            status_error(value.status().as_u16(), None, wait).await
+        }
+        cloudthinker_api::Error::UnexpectedResponse(response) => {
+            observe_clock(skew_ms, response.headers());
+            let status = response.status().as_u16();
+            let wait = retry_after(response.headers());
+            let body = response.text().await.ok();
+            status_error(status, body.as_deref().and_then(rejection), wait).await
+        }
+        other => match other.status().map(|status| status.as_u16()) {
+            Some(status) => status_error(status, None, None).await,
+            None => CtError::Transport("worker request failed".into()),
         },
     }
+}
+
+async fn status_error(status: u16, rejection: Option<String>, wait: Option<Duration>) -> CtError {
+    let detail = rejection.unwrap_or_else(|| "worker request rejected".into());
+    if matches!(status, 401 | 403) {
+        return CtError::Auth(format!("worker credential expired or revoked ({detail})"));
+    }
+    if is_retryable(status) {
+        if let Some(wait) = wait {
+            tokio::time::sleep(wait).await;
+        }
+        return CtError::Transport(format!(
+            "worker request failed with HTTP {status}: {detail}"
+        ));
+    }
+    CtError::Api {
+        status,
+        detail: Some(detail),
+    }
+}
+
+fn rejection(body: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    let code = value
+        .pointer("/error/code")
+        .and_then(serde_json::Value::as_str)
+        .filter(|code| !code.trim().is_empty());
+    let message = crate::error::parse_error_message(body);
+    let request = value
+        .get("request_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|id| !id.trim().is_empty());
+    let text = match (code, message) {
+        (Some(code), Some(message)) if code != message => format!("{code}: {message}"),
+        (Some(code), _) => code.to_owned(),
+        (None, Some(message)) => message,
+        (None, None) => return None,
+    };
+    Some(match request {
+        Some(request) => format!("{text} (request {request})"),
+        None => text,
+    })
 }
 
 fn positive(value: i64) -> CtResult<NonZeroU64> {
@@ -375,6 +516,92 @@ mod tests {
         assert!(
             matches!(error, CtError::Api { status: 409, .. }),
             "got {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_server_failure_is_retryable_and_keeps_the_server_code() {
+        for status in [408, 429, 500, 502, 503, 504] {
+            let error = register_error(
+                status,
+                r#"{"error":{"code":"dependency_unavailable","message":"Try again."},"request_id":"req-7"}"#,
+            )
+            .await;
+            assert!(
+                matches!(&error, CtError::Transport(message) if message.contains(&format!("HTTP {status}")) && message.contains("dependency_unavailable: Try again. (request req-7)")),
+                "got {error:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_rejection_names_the_server_code() {
+        let error = register_error(
+            409,
+            r#"{"error":{"code":"EXECUTOR_FILESYSTEM_UNAVAILABLE","message":"The folder is unavailable."},"request_id":"req-9"}"#,
+        )
+        .await;
+        assert!(
+            matches!(&error, CtError::Api { status: 409, detail: Some(detail) } if detail == "EXECUTOR_FILESYSTEM_UNAVAILABLE: The folder is unavailable. (request req-9)"),
+            "got {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_rate_limited_request_waits_for_retry_after() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/executor-workers/register"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "1"))
+            .mount(&server)
+            .await;
+        let started = std::time::Instant::now();
+
+        let error = worker(&server.uri())
+            .register(&registration())
+            .await
+            .expect_err("rate limited");
+
+        assert!(matches!(error, CtError::Transport(_)), "got {error:?}");
+        assert!(started.elapsed() >= Duration::from_secs(1));
+    }
+
+    #[tokio::test]
+    async fn a_lease_deadline_uses_this_machine_clock() {
+        let server = MockServer::start().await;
+        let assignment = Uuid::from_u128(7);
+        let server_now = Utc::now() + chrono::Duration::hours(1);
+        let expires = server_now + chrono::Duration::seconds(60);
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/api/v1/executor-workers/assignments/{assignment}/claim"
+            )))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("Date", server_now.to_rfc2822().replace("+0000", "GMT"))
+                    .set_body_json(serde_json::json!({
+                        "assignment_id": assignment,
+                        "fence_token": 1,
+                        "lease_expires_at": expires,
+                        "lease_token": "lease",
+                        "session_id": Uuid::from_u128(8),
+                        "state": "active",
+                        "target_id": Uuid::from_u128(9),
+                        "worker_id": Uuid::from_u128(10),
+                    })),
+            )
+            .mount(&server)
+            .await;
+
+        let lease = worker(&server.uri())
+            .claim(Uuid::from_u128(10), assignment)
+            .await
+            .expect("lease");
+
+        let remaining = lease.lease_expires_at - Utc::now();
+        assert!(
+            remaining > chrono::Duration::seconds(55) && remaining <= chrono::Duration::seconds(61),
+            "remaining {remaining}"
         );
     }
 

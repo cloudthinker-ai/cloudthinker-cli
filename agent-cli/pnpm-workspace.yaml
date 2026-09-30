@@ -2,5 +2,6 @@ packages:
   - packages/*
 
 patchedDependencies:
+  '@earendil-works/pi-coding-agent@0.85.1': patches/@earendil-works__pi-coding-agent@0.85.1.patch
   '@earendil-works/pi-tui@0.85.1': patches/@earendil-works__pi-tui@0.85.1.patch
   '@tintinweb/pi-subagents@0.19.0': patches/@tintinweb__pi-subagents@0.19.0.patch

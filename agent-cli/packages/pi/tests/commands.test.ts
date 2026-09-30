@@ -196,7 +196,7 @@ test("where names both places, the connections, and the credential rule", () => 
 		[
 			"I work in two places:",
 			"local · /home/dev/infra — your files, your shell, your git state",
-			"cloud · acme-prod — Anna, the workspace machine, aws, github",
+			"cloud · acme-prod — workspace machine, aws, github",
 			WHERE_SIDE_LINE,
 		],
 	);
@@ -210,7 +210,7 @@ test("where says so when no connection is attached yet", () => {
 		cloudEnabled: true,
 		linked: true,
 	});
-	assert.equal(lines[2], "cloud · acme-prod — Anna, the workspace machine, no connections yet");
+	assert.equal(lines[2], "cloud · acme-prod — workspace machine, no connections yet");
 });
 
 test("where points at /cloud on when cloud tools are off, and at linking when unlinked", () => {
@@ -221,7 +221,7 @@ test("where points at /cloud on when cloud tools are off, and at linking when un
 		cloudEnabled: false,
 		linked: true,
 	});
-	assert.equal(off[2], "cloud · acme-prod — cloud tools are off; /cloud on reaches Anna and the workspace machine");
+	assert.equal(off[2], "cloud · acme-prod — workspace tools are off; /cloud on enables them");
 
 	const unlinked = whereLines({
 		cwd: "/home/dev/infra",
@@ -229,7 +229,7 @@ test("where points at /cloud on when cloud tools are off, and at linking when un
 		cloudEnabled: true,
 		linked: false,
 	});
-	assert.equal(unlinked[2], "cloud · not linked — Anna and the workspace machine are unavailable here");
+	assert.equal(unlinked[2], "cloud · not linked — workspace tools and delegation are unavailable");
 });
 
 test("CA-AWARE-13: /where strips control sequences and line breaks from untrusted values", () => {

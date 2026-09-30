@@ -42,8 +42,7 @@ const RETRY_INTERVAL_SECS: u64 = 60 * 60;
 const RESTART_HINT: &str = "restart cloudthinker to pick up the new version";
 
 /// Manual reinstall command, printed when self-update is not possible.
-const REINSTALL_HINT: &str = "reinstall with: curl --proto '=https' --tlsv1.2 -LsSf \
-    https://github.com/cloudthinker-ai/cloudthinker-cli/releases/latest/download/cloudthinker-cli-installer.sh | sh";
+const REINSTALL_HINT: &str = "reinstall with: curl -fsSL https://cloudthinker.io/install.sh | sh";
 
 /// The `--json` envelope for `update`.
 #[derive(Debug, Serialize)]
@@ -186,6 +185,9 @@ fn render(outcome: &Outcome, json: bool) -> ExitCode {
         Outcome::Refused(reason) => return refuse(reason),
         Outcome::Failed(err) => {
             output::eprintln_error(&format!("update failed: {err}"));
+            output::eprintln_error(&format!(
+                "run `cloudthinker update` again, or {REINSTALL_HINT}"
+            ));
             return ExitCode::JobFailed;
         }
     };
@@ -280,6 +282,55 @@ pub async fn offer_on_start(base_url: &str) -> PendingCheck {
     output::done(&updated_line(RUNNING_VERSION, new));
     restart_into_installed_binary();
     pending
+}
+
+pub struct UpdateNotice {
+    cache_path: PathBuf,
+    channel: Channel,
+    pending: PendingCheck,
+}
+
+pub fn start_notice(base_url: &str) -> Option<UpdateNotice> {
+    if std::env::var_os(UPDATE_CHECK_OPT_OUT).is_some() || !std::io::stderr().is_terminal() {
+        return None;
+    }
+    let cache_path = cloudthinker_client::update_cache_path().ok()?;
+    let channel = channel_of(base_url);
+    let cache = UpdateCache::load(&cache_path);
+    let pending = if cache.is_fresh(
+        channel.name(),
+        now_unix(),
+        CHECK_INTERVAL_SECS,
+        RETRY_INTERVAL_SECS,
+    ) {
+        PendingCheck(None)
+    } else {
+        PendingCheck(Some((
+            tokio::spawn(refresh_cache(cache_path.clone(), channel)),
+            Instant::now(),
+        )))
+    };
+    Some(UpdateNotice {
+        cache_path,
+        channel,
+        pending,
+    })
+}
+
+impl UpdateNotice {
+    pub async fn finish(self) {
+        self.pending.settle().await;
+        if let Some(version) = offerable(&UpdateCache::load(&self.cache_path), self.channel) {
+            output::progress(&notice_line(self.channel, &version));
+        }
+    }
+}
+
+fn notice_line(channel: Channel, version: &str) -> String {
+    format!(
+        "{}. Run `cloudthinker update` to install it.",
+        offer_line(channel, version)
+    )
 }
 
 pub struct PendingCheck(Option<(tokio::task::JoinHandle<()>, Instant)>);

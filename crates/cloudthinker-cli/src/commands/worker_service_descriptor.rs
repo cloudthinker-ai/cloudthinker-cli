@@ -33,11 +33,53 @@ pub(super) fn render_descriptor(
     service_name: &str,
     argv: &[String],
     workdir: &Path,
+    log_path: &Path,
 ) -> CtResult<String> {
     match platform {
         ServicePlatform::Systemd => render_systemd(service_name, argv, workdir),
-        ServicePlatform::Launchd => render_launchd(service_name, argv),
+        ServicePlatform::Launchd => render_launchd(service_name, argv, log_path),
     }
+}
+
+pub(super) fn render_previous_descriptor(
+    platform: ServicePlatform,
+    service_name: &str,
+    argv: &[String],
+    workdir: &Path,
+) -> CtResult<String> {
+    match platform {
+        ServicePlatform::Systemd => Ok(render_systemd(service_name, argv, workdir)?.replacen(
+            "\n\n[Service]",
+            "\nAfter=network-online.target\nWants=network-online.target\n\n[Service]",
+            1,
+        )),
+        ServicePlatform::Launchd => {
+            let mut output = String::from(LAUNCHD_HEADER);
+            push_launchd_arguments(&mut output, service_name, argv)?;
+            output.push_str(LAUNCHD_POLICY);
+            Ok(output)
+        }
+    }
+}
+
+const LAUNCHD_HEADER: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n";
+
+const LAUNCHD_POLICY: &str = "<key>RunAtLoad</key>\n<true/>\n<key>KeepAlive</key>\n<dict>\n<key>SuccessfulExit</key>\n<false/>\n</dict>\n<key>ExitTimeOut</key>\n<integer>300</integer>\n<key>ProcessType</key>\n<string>Background</string>\n<key>LowPriorityIO</key>\n<true/>\n<key>ThrottleInterval</key>\n<integer>10</integer>\n</dict>\n</plist>\n";
+
+fn push_launchd_arguments(
+    output: &mut String,
+    service_name: &str,
+    argv: &[String],
+) -> CtResult<()> {
+    xml_key_value(output, "Label", service_name)?;
+    output.push_str("<key>ProgramArguments</key>\n<array>\n");
+    for value in argv {
+        output.push_str("<string>");
+        output.push_str(&xml_escape(value)?);
+        output.push_str("</string>\n");
+    }
+    output.push_str("</array>\n");
+    Ok(())
 }
 
 pub(super) fn render_systemd(
@@ -52,24 +94,21 @@ pub(super) fn render_systemd(
         .join(" ");
     let workdir = systemd_path(&path_text(workdir, "workdir")?)?;
     Ok(format!(
-        "[Unit]\nDescription=CloudThinker worker {service_name}\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=exec\nExecStart={command}\nWorkingDirectory={workdir}\nRestart=on-failure\nRestartPreventExitStatus=2 3\nRestartSec=5\nKillMode=mixed\nKillSignal=SIGTERM\nTimeoutStopSec=300\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=default.target\n"
+        "[Unit]\nDescription=CloudThinker worker {service_name}\n\n[Service]\nType=exec\nExecStart={command}\nWorkingDirectory={workdir}\nRestart=on-failure\nRestartPreventExitStatus=2 3\nRestartSec=5\nKillMode=mixed\nKillSignal=SIGTERM\nTimeoutStopSec=300\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=default.target\n"
     ))
 }
 
-pub(super) fn render_launchd(service_name: &str, argv: &[String]) -> CtResult<String> {
-    let mut output = String::from(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n",
-    );
-    xml_key_value(&mut output, "Label", service_name)?;
-    output.push_str("<key>ProgramArguments</key>\n<array>\n");
-    for value in argv {
-        output.push_str("<string>");
-        output.push_str(&xml_escape(value)?);
-        output.push_str("</string>\n");
-    }
-    output.push_str(
-        "</array>\n<key>RunAtLoad</key>\n<true/>\n<key>KeepAlive</key>\n<dict>\n<key>SuccessfulExit</key>\n<false/>\n</dict>\n<key>ExitTimeOut</key>\n<integer>300</integer>\n<key>ProcessType</key>\n<string>Background</string>\n<key>LowPriorityIO</key>\n<true/>\n<key>ThrottleInterval</key>\n<integer>10</integer>\n</dict>\n</plist>\n",
-    );
+pub(super) fn render_launchd(
+    service_name: &str,
+    argv: &[String],
+    log_path: &Path,
+) -> CtResult<String> {
+    let log_path = path_text(log_path, "worker service log")?;
+    let mut output = String::from(LAUNCHD_HEADER);
+    push_launchd_arguments(&mut output, service_name, argv)?;
+    xml_key_value(&mut output, "StandardOutPath", &log_path)?;
+    xml_key_value(&mut output, "StandardErrorPath", &log_path)?;
+    output.push_str(LAUNCHD_POLICY);
     Ok(output)
 }
 
@@ -268,6 +307,7 @@ mod tests {
         assert!(!rendered.contains("PrivateTmp=true"));
         assert!(rendered.contains("--stored-credential"));
         assert!(!rendered.contains("CLOUDTHINKER_WORKER_TOKEN"));
+        assert!(!rendered.contains("network-online.target"));
     }
 
     #[test]
@@ -325,7 +365,18 @@ mod tests {
             "a & b".into(),
             "--stored-credential".into(),
         ];
-        let rendered = render_launchd("io.cloudthinker.worker.demo", &argv).unwrap();
+        let rendered = render_launchd(
+            "io.cloudthinker.worker.demo",
+            &argv,
+            Path::new("/Users/me/worker-state/logs/demo & co.log"),
+        )
+        .unwrap();
+        assert!(rendered.contains(
+            "<key>StandardOutPath</key>\n<string>/Users/me/worker-state/logs/demo &amp; co.log</string>"
+        ));
+        assert!(rendered.contains(
+            "<key>StandardErrorPath</key>\n<string>/Users/me/worker-state/logs/demo &amp; co.log</string>"
+        ));
         assert!(rendered.contains("<key>ProgramArguments</key>"));
         assert!(rendered.contains("<string>a &amp; b</string>"));
         assert!(rendered.contains("<key>RunAtLoad</key>\n<true/>"));

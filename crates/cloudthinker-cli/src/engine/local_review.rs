@@ -121,10 +121,10 @@ pub fn parse_agent_answer(answer: &str) -> Result<Vec<ReviewAgentFinding>, Strin
         .map_err(|error| format!("CloudThinker returned an invalid review response: {error}"))
 }
 
-pub fn collect_snapshot(cwd: &Path, scope: ReviewScope) -> Result<ReviewSnapshot, ReviewError> {
-    let root = git_text(cwd, ["rev-parse", "--show-toplevel"])?;
+pub fn collect_snapshot(cwd: &Path, scope: &ReviewScope) -> Result<ReviewSnapshot, ReviewError> {
+    let root = git_text(cwd, &["rev-parse", "--show-toplevel"])?;
     let repository = PathBuf::from(root.trim());
-    let head_sha = git_text(&repository, ["rev-parse", "HEAD"])?
+    let head_sha = git_text(&repository, &["rev-parse", "HEAD"])?
         .trim()
         .to_string();
     let base_sha = resolve_base_sha(&repository, &head_sha, scope.base_ref.as_deref())?;
@@ -165,7 +165,7 @@ fn resolve_base_sha(
     };
     let resolved = git_text(
         repository,
-        [
+        &[
             "rev-parse",
             "--verify",
             "--end-of-options",
@@ -173,7 +173,7 @@ fn resolve_base_sha(
         ],
     )
     .map_err(|_| ReviewError::InvalidScope(format!("base ref {reference:?} is invalid")))?;
-    git_text(repository, ["merge-base", head_sha, resolved.trim()])
+    git_text(repository, &["merge-base", head_sha, resolved.trim()])
         .map(|sha| sha.trim().to_string())
         .map_err(|_| {
             ReviewError::InvalidScope(format!(
@@ -185,7 +185,7 @@ fn resolve_base_sha(
 fn tracked_paths(repository: &Path, base_sha: &str) -> Result<BTreeSet<String>, ReviewError> {
     let paths = git_bytes_limited(
         repository,
-        [
+        &[
             "diff",
             "--no-ext-diff",
             "--no-textconv",
@@ -204,7 +204,7 @@ fn tracked_paths(repository: &Path, base_sha: &str) -> Result<BTreeSet<String>, 
 fn untracked_paths(repository: &Path) -> Result<BTreeSet<String>, ReviewError> {
     let paths = git_bytes_limited(
         repository,
-        ["ls-files", "--others", "--exclude-standard", "-z"],
+        &["ls-files", "--others", "--exclude-standard", "-z"],
         MAX_PATH_LIST_BYTES,
         "review file list",
     )?;
@@ -251,7 +251,7 @@ fn validate_changed_files(
 fn tracked_diff(repository: &Path, base_sha: &str) -> Result<String, ReviewError> {
     let bytes = git_bytes_limited(
         repository,
-        [
+        &[
             "-c",
             "core.quotePath=false",
             "diff",
@@ -274,7 +274,7 @@ fn tracked_diff(repository: &Path, base_sha: &str) -> Result<String, ReviewError
 fn untracked_diff(repository: &Path, path: &str, limit: usize) -> Result<String, ReviewError> {
     let output = git_output_limited(
         repository,
-        [
+        &[
             "-c",
             "core.quotePath=false",
             "diff",
@@ -465,18 +465,18 @@ fn validate_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn git_text<const N: usize>(cwd: &Path, args: [&str; N]) -> Result<String, ReviewError> {
+fn git_text(cwd: &Path, args: &[&str]) -> Result<String, ReviewError> {
     String::from_utf8(git_bytes(cwd, args)?)
         .map_err(|_| ReviewError::Git("git returned non-UTF-8 output".into()))
 }
 
-fn git_bytes<const N: usize>(cwd: &Path, args: [&str; N]) -> Result<Vec<u8>, ReviewError> {
+fn git_bytes(cwd: &Path, args: &[&str]) -> Result<Vec<u8>, ReviewError> {
     git_bytes_limited(cwd, args, 4 * 1024, "git metadata")
 }
 
-fn git_bytes_limited<const N: usize>(
+fn git_bytes_limited(
     cwd: &Path,
-    args: [&str; N],
+    args: &[&str],
     limit: usize,
     label: &str,
 ) -> Result<Vec<u8>, ReviewError> {
@@ -487,9 +487,9 @@ fn git_bytes_limited<const N: usize>(
     Ok(output.stdout)
 }
 
-fn git_output_limited<const N: usize>(
+fn git_output_limited(
     cwd: &Path,
-    args: [&str; N],
+    args: &[&str],
     limit: usize,
     label: &str,
 ) -> Result<Output, ReviewError> {
@@ -522,7 +522,7 @@ fn git_output_limited<const N: usize>(
     Ok(output)
 }
 
-fn git_command<const N: usize>(cwd: &Path, args: [&str; N]) -> Command {
+fn git_command(cwd: &Path, args: &[&str]) -> Command {
     let mut command = Command::new("git");
     let inherited = ["PATH", "SYSTEMROOT", "WINDIR"]
         .into_iter()
@@ -612,7 +612,7 @@ mod tests {
         fs::write(temp.path().join("new.rs"), "fn added() { 4 }\n").expect("new source");
         let index_before = fs::read(temp.path().join(".git/index")).expect("index");
         let snapshot =
-            collect_snapshot(temp.path(), ReviewScope { base_ref: None }).expect("snapshot");
+            collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).expect("snapshot");
         assert!(snapshot.diff.contains("fn value() { 3 }"));
         assert!(snapshot.diff.contains("fn added() { 4 }"));
         assert_eq!(
@@ -645,7 +645,7 @@ mod tests {
         fs::write(temp.path().join("src.rs"), "fn value() { 4 }\n").expect("dirty source");
         let snapshot = collect_snapshot(
             temp.path(),
-            ReviewScope {
+            &ReviewScope {
                 base_ref: Some("base".into()),
             },
         )
@@ -659,7 +659,7 @@ mod tests {
         let temp = repository();
         fs::write(temp.path().join("src.rs"), "fn value() { 2 }\n").expect("source");
         let snapshot =
-            collect_snapshot(temp.path(), ReviewScope { base_ref: None }).expect("snapshot");
+            collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).expect("snapshot");
         assert!(validate_result(&snapshot, vec![inference_finding("high", 1)]).is_ok());
         assert!(validate_result(&snapshot, vec![inference_finding("high", 2)]).is_err());
     }
@@ -667,18 +667,18 @@ mod tests {
     #[test]
     fn collect_snapshot_rejects_non_git_directory() {
         let temp = TempDir::new().expect("tempdir");
-        let error = collect_snapshot(temp.path(), ReviewScope { base_ref: None }).unwrap_err();
+        let error = collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).unwrap_err();
         assert!(error.to_string().contains("git"));
     }
 
     #[test]
     fn collect_snapshot_rejects_empty_scope_and_invalid_base() {
         let temp = repository();
-        let empty = collect_snapshot(temp.path(), ReviewScope { base_ref: None }).unwrap_err();
+        let empty = collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).unwrap_err();
         assert!(empty.to_string().contains("no changes"));
         let invalid = collect_snapshot(
             temp.path(),
-            ReviewScope {
+            &ReviewScope {
                 base_ref: Some("missing-base".into()),
             },
         )
@@ -706,7 +706,7 @@ mod tests {
         git(temp.path(), &["checkout", "-q", current.trim()]);
         let error = collect_snapshot(
             temp.path(),
-            ReviewScope {
+            &ReviewScope {
                 base_ref: Some("unrelated".into()),
             },
         )
@@ -723,7 +723,7 @@ mod tests {
         fs::write(temp.path().join("ignored.rs"), "fn ignored() {}\n").expect("ignored file");
         fs::write(temp.path().join("src.rs"), "fn value() { 2 }\n").expect("changed file");
         let snapshot =
-            collect_snapshot(temp.path(), ReviewScope { base_ref: None }).expect("snapshot");
+            collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).expect("snapshot");
         assert!(!snapshot.diff.contains("ignored.rs"));
         assert_eq!(snapshot.changed_file_count, 1);
     }
@@ -732,7 +732,7 @@ mod tests {
     fn collect_snapshot_rejects_binary_and_oversized_untracked_files() {
         let temp = repository();
         fs::write(temp.path().join("binary.bin"), [0, 1, 2]).expect("binary file");
-        let binary = collect_snapshot(temp.path(), ReviewScope { base_ref: None }).unwrap_err();
+        let binary = collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).unwrap_err();
         assert!(binary.to_string().contains("binary"));
 
         fs::remove_file(temp.path().join("binary.bin")).expect("remove binary");
@@ -741,7 +741,7 @@ mod tests {
             vec![b'a'; MAX_FILE_BYTES as usize + 1],
         )
         .expect("large file");
-        let large = collect_snapshot(temp.path(), ReviewScope { base_ref: None }).unwrap_err();
+        let large = collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).unwrap_err();
         assert!(large.to_string().contains("128 KiB"));
     }
 
@@ -753,7 +753,7 @@ mod tests {
             vec![b'a'; MAX_FILE_BYTES as usize + 1],
         )
         .expect("large tracked file");
-        let error = collect_snapshot(temp.path(), ReviewScope { base_ref: None }).unwrap_err();
+        let error = collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).unwrap_err();
         assert!(error.to_string().contains("128 KiB"));
     }
 
@@ -765,7 +765,7 @@ mod tests {
             format!("{}\n", "x".repeat(MAX_DIFF_BYTES + 1024)),
         )
         .expect("large changed source");
-        let error = collect_snapshot(temp.path(), ReviewScope { base_ref: None }).unwrap_err();
+        let error = collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).unwrap_err();
         assert!(error.to_string().contains("review diff exceeds"));
     }
 
@@ -773,7 +773,7 @@ mod tests {
     fn collect_snapshot_rejects_unusual_paths() {
         let temp = repository();
         fs::write(temp.path().join("bad\npath.rs"), "fn value() {}\n").expect("odd path");
-        let error = collect_snapshot(temp.path(), ReviewScope { base_ref: None }).unwrap_err();
+        let error = collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).unwrap_err();
         assert!(error.to_string().contains("unsupported path"));
     }
 
@@ -784,7 +784,7 @@ mod tests {
 
         let temp = repository();
         symlink("src.rs", temp.path().join("linked.rs")).expect("symlink");
-        let error = collect_snapshot(temp.path(), ReviewScope { base_ref: None }).unwrap_err();
+        let error = collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).unwrap_err();
         assert!(error.to_string().contains("non-regular"));
     }
 
@@ -811,7 +811,7 @@ mod tests {
             .status()
             .expect("submodule add");
         assert!(output.success());
-        let error = collect_snapshot(temp.path(), ReviewScope { base_ref: None }).unwrap_err();
+        let error = collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).unwrap_err();
         assert!(error.to_string().contains("non-regular"));
     }
 
@@ -825,7 +825,7 @@ mod tests {
             )
             .expect("untracked file");
         }
-        let error = collect_snapshot(temp.path(), ReviewScope { base_ref: None }).unwrap_err();
+        let error = collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).unwrap_err();
         assert!(error.to_string().contains("more than 200 files"));
     }
 
@@ -836,7 +836,7 @@ mod tests {
         let sentinel = temp.path().join("fsmonitor-ran");
         let hook = format!("!touch {}", sentinel.display());
         git(temp.path(), &["config", "core.fsmonitor", &hook]);
-        let configured = git_command(temp.path(), ["config", "--get", "core.fsmonitor"])
+        let configured = git_command(temp.path(), &["config", "--get", "core.fsmonitor"])
             .output()
             .expect("inspect protected fsmonitor setting");
         assert!(configured.status.success());
@@ -845,7 +845,7 @@ mod tests {
             "false"
         );
         fs::write(temp.path().join("src.rs"), "fn value() { 2 }\n").expect("source");
-        collect_snapshot(temp.path(), ReviewScope { base_ref: None }).expect("snapshot");
+        collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).expect("snapshot");
         assert!(!sentinel.exists());
     }
 
@@ -854,7 +854,7 @@ mod tests {
         let temp = repository();
         fs::write(temp.path().join("src.rs"), "fn value() { 2 }\n").expect("source");
         let snapshot =
-            collect_snapshot(temp.path(), ReviewScope { base_ref: None }).expect("snapshot");
+            collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).expect("snapshot");
         let mut invalid_path = inference_finding("high", 1);
         invalid_path.file = "../secret".into();
         assert!(validate_result(&snapshot, vec![invalid_path]).is_err());
@@ -889,7 +889,7 @@ mod tests {
         let temp = repository();
         fs::write(temp.path().join("src.rs"), "fn value() { 2 }\n").expect("source");
         let snapshot =
-            collect_snapshot(temp.path(), ReviewScope { base_ref: None }).expect("snapshot");
+            collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).expect("snapshot");
         let findings = ["low", "critical", "medium", "high"]
             .map(|severity| inference_finding(severity, 1))
             .to_vec();

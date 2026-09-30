@@ -96,7 +96,7 @@ test("CA-CLOUD-4 all five tools refuse execution while Off before calling the ba
 	for (const tool of h.tools.values()) {
 		await assert.rejects(
 			() => tool.execute("call", {}, undefined, undefined, h.ctx),
-			/(?=.*Cloud is off)(?=.*CloudThinker Sandbox)(?=.*local tools keep running on your machine)(?=.*\/cloud on)/,
+			/(?=.*Cloud is off)(?=.*Local tools remain available)(?=.*\/cloud on)/,
 		);
 	}
 	assert.equal(h.tools.size, 5);

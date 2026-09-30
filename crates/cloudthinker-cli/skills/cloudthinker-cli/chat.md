@@ -1,6 +1,6 @@
 # Delegate and follow conversations
 
-Read this module for work sent to Anna and for recovering or continuing a conversation. Establish the intended identity using the auth module before the first authenticated command.
+Read this module to delegate cloud work or recover and continue a conversation. Establish the intended identity using the auth module before the first authenticated command.
 
 ## Submit one bounded task
 
@@ -8,9 +8,9 @@ Read this module for work sent to Anna and for recovering or continuing a conver
 cloudthinker chat -p 'Inspect production health. Report evidence; make no changes.' --no-wait --json
 ```
 
-State the target, desired outcome, constraints, and what evidence would demonstrate completion. Shell-quote the prompt safely. Do not embed secrets. Add the selected global `--workspace` and `--url` before `chat` when applicable.
+State the target, desired outcome, constraints, and what evidence would demonstrate completion. Shell-quote the prompt safely, or pass `-p -` and pipe the prompt on stdin. Piped stdin with a text prompt joins the prompt inside `<stdin>` tags; the total limit is 50,000 characters. When stdin stays open with no data, the CLI waits 3 seconds and then sends the prompt alone, so redirect stdin from `/dev/null` when nothing is piped. Do not embed secrets. Add the selected global `--workspace` and `--url` before `chat` when applicable.
 
-Save the returned `run_id`, `conversation_id`, `status`, and `web_url`. `--no-wait` acknowledges submission, not completion. For a short task, omit `--no-wait` to wait for Anna's answer; `--json` preserves the structured output. Without `--json`, stdout carries only the final answer while progress and continuation hints go to stderr.
+Save the returned `run_id`, `conversation_id`, `status`, and `web_url`. `--no-wait` acknowledges submission, not completion. For a short task, omit `--no-wait` to wait for the answer; `--json` preserves the structured output. Without `--json`, stdout carries only the final answer while progress and continuation hints go to stderr.
 
 ## Follow the existing run
 
@@ -20,7 +20,7 @@ cloudthinker chat status '<run-id>' --wait --timeout 60 --json
 
 Choose a wait budget that fits the calling environment. Exit 4 means the client stopped waiting; the server run continues. Follow the same `run_id`, without submitting the prompt again. Without `--wait`, status reads a single snapshot, which may still be running.
 
-Inspect `status`, `answer`, and `web_url` as well as the exit code. A successful snapshot request does not prove the task finished. A submitted run can later fail. Do not blindly retry a submission whose transport outcome is uncertain; recover the run first to avoid duplicate actions.
+Inspect `status`, `answer`, `web_url`, `message`, and `failure_kind` as well as the exit code. A successful snapshot request does not prove the task finished. A submitted run can later fail. Do not blindly retry a submission whose transport outcome is uncertain; recover the run first to avoid duplicate actions.
 
 ## Recover or continue
 
@@ -44,7 +44,8 @@ Only one turn runs in a conversation at a time. Wait for its active run to finis
 | 3 | Authentication failure | Read the auth module. |
 | 4 | Client wait expired | Follow the same run ID. |
 | 5 | Browser approval required | Give the user the returned link and explain what is waiting. |
+| 130 | Ctrl-C stopped the wait | Follow the same run ID with `chat status <run-id> --wait`. |
 
 Do not approve actions on the user's behalf or create a replacement run to bypass approval. Once the user has acted, inspect the original run again.
 
-Report Anna's answer with the run or conversation ID and available evidence link. Distinguish an unsupported conclusion from an outcome the answer actually demonstrates.
+Report the answer with the run or conversation ID and available evidence link. Distinguish an unsupported conclusion from an outcome the answer actually demonstrates.

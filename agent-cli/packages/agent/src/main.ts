@@ -10,6 +10,7 @@ import {
 import cloudthinker from "@cloudthinker/pi/src/index.ts";
 import { markStartup } from "@cloudthinker/pi/src/timing.ts";
 
+import { registerBackgroundCommands } from "./background/index.ts";
 import { NO_SESSION_REFUSAL, applyGuard, hasNoSessionFlag } from "./guard.ts";
 import { isLocalReview, withoutLocalReviewFlag } from "./local-review-mode.ts";
 import { modelScopeArgs } from "./models.ts";
@@ -43,6 +44,7 @@ markStartup("agent.settings");
 await main([...themes, ...modelScopeArgs(argv), ...argv], {
 	extensionFactories: [
 		{ name: "cloudthinker", factory: (pi) => cloudthinker(pi, { localReview }) },
+		{ name: "background", factory: (pi) => { registerBackgroundCommands(pi); } },
 		...(localReview ? [] : [{ name: "subagents", factory: bundledSubagents }]),
 	],
 });

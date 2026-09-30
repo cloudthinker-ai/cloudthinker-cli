@@ -11,6 +11,7 @@ import {
 import subagents from "@tintinweb/pi-subagents/dist/index.js";
 import { setSubagentHost, type SubagentHost } from "@tintinweb/pi-subagents/dist/host.js";
 import { DEFAULT_AGENTS } from "@tintinweb/pi-subagents/dist/default-agents.js";
+import { workflowConcurrency } from "@tintinweb/pi-subagents/dist/workflow/runtime.js";
 
 import cloudthinker from "@cloudthinker/pi/src/index.ts";
 import { PROVIDER_ID } from "@cloudthinker/pi/src/provider.ts";
@@ -18,6 +19,7 @@ import { CLOUD_ENTRY_TYPE } from "@cloudthinker/pi/src/runtime.ts";
 import { cloudDefaultEnabled } from "@cloudthinker/pi/src/settings.ts";
 import { findLinkedSession } from "@cloudthinker/pi/src/session.ts";
 import { CLOUD_TOOLS } from "@cloudthinker/pi/src/tools/names.ts";
+import { adaptiveSubagentModeGuidance } from "./subagent-modes.ts";
 
 type DefaultResourceLoaderOptions = ConstructorParameters<typeof DefaultResourceLoader>[0];
 
@@ -39,6 +41,10 @@ export function cloudEnabled(ctx: ExtensionContext): boolean {
 	const entry = ctx.sessionManager.getEntries().findLast((item) => item.type === "custom" && item.customType === CLOUD_ENTRY_TYPE);
 	if (entry?.type !== "custom") return cloudDefaultEnabled(ctx.cwd, ctx.isProjectTrusted());
 	return (entry.data as { enabled?: unknown } | undefined)?.enabled !== false;
+}
+
+export function subagentGuidance(modes: readonly { provider: string; id: string }[]): string {
+	return `${adaptiveSubagentModeGuidance(modes)} For staged work or a requested workflow, call ct_workflow directly; do not run a pilot Agent first. Use Agent for substantive independent work. Background tasks continue after your turn and resume you on completion; monitoring needs no worker or sleep.`;
 }
 
 export function childLoaderOptions(
@@ -109,10 +115,27 @@ export async function createCloudChild(options: CreateAgentSessionOptions, ctx: 
 const adaptedTools = new WeakSet<ToolDefinition>();
 
 export function cloudDelegationTool(tool: ToolDefinition): ToolDefinition {
-	if (adaptedTools.has(tool) || !["Agent", "SubagentWorkflow"].includes(tool.name)) return tool;
-	const schema = tool.parameters as typeof tool.parameters & { properties?: Record<string, { description?: string }> };
+	if (adaptedTools.has(tool) || !["Agent", "ct_workflow"].includes(tool.name)) return tool;
+	const schema = tool.parameters as typeof tool.parameters & { properties?: Record<string, { description?: string; [key: string]: unknown }> };
+	const upstreamName = tool.name;
 	const properties = { ...schema.properties };
 	delete properties.thinking;
+	if (upstreamName === "ct_workflow" && properties.args) {
+		properties.args = {
+			...properties.args,
+			type: "object",
+			additionalProperties: true,
+			description: "Optional object passed to the workflow as global args. Pass JSON values directly, not JSON-encoded strings.",
+		};
+		const execute = tool.execute.bind(tool);
+		tool.execute = async (toolCallId, params, signal, onUpdate, ctx) => {
+			const args = (params as { args?: unknown }).args;
+			if (args !== undefined && (args === null || typeof args !== "object" || Array.isArray(args))) {
+				throw new Error("ct_workflow args must be an object when provided. Pass JSON object fields directly; do not pass a JSON-encoded string.");
+			}
+			return execute(toolCallId, params, signal, onUpdate, ctx);
+		};
+	}
 	if (properties.model) {
 		properties.model = { ...properties.model, description: "CloudThinker agent mode ID, such as cloudthinker/pro. Omit to inherit the parent mode." };
 	}
@@ -120,13 +143,17 @@ export function cloudDelegationTool(tool: ToolDefinition): ToolDefinition {
 		properties.run_in_background = { ...properties.run_in_background, description: "Run in the background in interactive sessions. Print and JSON runs always wait for completion." };
 	}
 	tool.parameters = { ...tool.parameters, properties };
-	const replacements: [string | RegExp, string][] = tool.name === "Agent" ? [
+	const replacements: [string | RegExp, string][] = upstreamName === "Agent" ? [
 		['- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").', '- Use model only to select an advertised CloudThinker agent mode. Omit it to inherit the parent mode.'],
 		['- Use thinking to control extended thinking level.\n', ''],
 	] : [
 		['effort?: string, ', ''],
 		[/opts\.effort overrides .*?opts\.isolation:/s, 'opts.isolation:'],
 		['agentType, model, effort, isolation', 'agentType, model, isolation'],
+		[
+			"Concurrent agent() calls are capped at the configured session limit; excess calls queue. Nested workflows share this limit.",
+			`Concurrent agent() calls are capped at ${workflowConcurrency()}; excess calls queue. Nested workflows share this limit.`,
+		],
 	];
 	let description = tool.description;
 	for (const [pattern, replacement] of replacements) {
@@ -151,7 +178,7 @@ export default function bundledSubagents(pi: ExtensionAPI): ReturnType<typeof su
 		delete agent.thinking;
 	}
 	pi.on("before_agent_start", (event, ctx) => ({
-		systemPrompt: `${event.systemPrompt}\n\nSubagents use CloudThinker agent modes only. Available modes: ${ctx.modelRegistry.getAll().filter((model) => model.provider === PROVIDER_ID).map((model) => `${PROVIDER_ID}/${model.id}`).join(", ")}. Omit model to inherit the parent mode. The gateway manages reasoning effort.`,
+		systemPrompt: `${event.systemPrompt}\n\n${subagentGuidance(ctx.modelRegistry.getAll().filter((model) => model.provider === PROVIDER_ID))}`,
 	}));
 	return subagents(new Proxy(pi, {
 		get(target, key, receiver) {

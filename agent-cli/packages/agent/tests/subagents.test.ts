@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { Extension, ExtensionContext, LoadExtensionsResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { resolveResumeTarget } from "@tintinweb/pi-subagents/dist/workflow/task.js";
+import { fullWorkflowToolDescription } from "@tintinweb/pi-subagents/dist/workflow/tool-description.js";
 
 import { CLOUD_ENTRY_TYPE } from "@cloudthinker/pi/src/runtime.ts";
 import { childLoaderOptions, cloudDelegationTool, cloudEnabled, resolveCloudMode } from "../src/subagents.ts";
@@ -36,6 +38,54 @@ test("CA-SUB-5: empty catalog does not select a vendor model", () => {
 
 test("CA-SUB-DESCRIPTION: upstream description drift fails closed", () => {
 	assert.throws(() => cloudDelegationTool({ name: "Agent", description: "Unrecognized upstream schema", parameters: { type: "object", properties: {} } } as unknown as ToolDefinition), /Unsupported upstream Agent description/);
+});
+
+test("workflow tool description renders the effective session concurrency limit", () => {
+	const previous = process.env.CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY;
+	process.env.CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY = "4";
+	const tool = {
+		name: "ct_workflow",
+		description: "Concurrent agent() calls are capped at the configured session limit; excess calls queue. Nested workflows share this limit. effort?: string, opts.effort overrides these settings up to opts.isolation: agentType, model, effort, isolation",
+		parameters: { type: "object", properties: { args: { type: "object" } } },
+		execute: async () => ({ content: [] }),
+	} as unknown as ToolDefinition;
+	try {
+		cloudDelegationTool(tool);
+		assert.match(tool.description, /calls are capped at 4; excess calls queue/);
+		assert.match(tool.description, /Nested workflows share this limit/);
+	} finally {
+		if (previous === undefined) delete process.env.CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY;
+		else process.env.CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY = previous;
+	}
+});
+
+test("workflow description does not advertise stale runtime limits or resume constraints", () => {
+	assert.doesNotMatch(fullWorkflowToolDescription, /min\(4, available CPUs - 2\)|only up to 4 run at any moment/);
+	assert.doesNotMatch(fullWorkflowToolDescription, /the run must have finished/);
+});
+
+test("workflow resume recovers a persisted run after the in-memory task map is lost", () => {
+	const root = mkdtempSync(join(tmpdir(), "ct-workflow-restart-"));
+	const runId = "wf_123456789abc";
+	const journalPath = join(root, `${runId}.workflow.jsonl`);
+	const scriptPath = join(root, `${runId}.workflow.js`);
+	writeFileSync(journalPath, '{"index":0,"key":"key","ok":true,"text":"done"}\n');
+	writeFileSync(scriptPath, "export const meta = { name: 'saved', description: 'saved' }; return 'done';");
+	try {
+		assert.deepEqual(resolveResumeTarget(runId, new Map(), root), { ok: true, runId, journalPath, scriptPath });
+		const missing = resolveResumeTarget("wf_123456789abd", new Map(), root);
+		assert.equal(missing?.ok, false);
+		if (missing?.ok === false) assert.match(missing.message, /No workflow run/);
+		const traversal = resolveResumeTarget("wf_../../outside", new Map(), root);
+		assert.equal(traversal?.ok, false);
+		const directoryRunId = "wf_987654321abc";
+		writeFileSync(join(root, `${directoryRunId}.workflow.jsonl`), "");
+		mkdirSync(join(root, `${directoryRunId}.workflow.js`));
+		const directory = resolveResumeTarget(directoryRunId, new Map(), root);
+		assert.equal(directory?.ok, false);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });
 
 test("CA-SUB-8: a child of a setting-off parent gets no cloud tools, and an entry still wins", () => {

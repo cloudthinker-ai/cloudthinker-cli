@@ -24,14 +24,14 @@ pub struct WorkdirIdentity {
     pub path: PathBuf,
     pub state: PathBuf,
     pub background_bytes: std::sync::atomic::AtomicU64,
-    _lock: std::fs::File,
-    _served_lock: std::fs::File,
+    process_lock: std::fs::File,
+    served_lock: std::fs::File,
 }
 
 impl Drop for WorkdirIdentity {
     fn drop(&mut self) {
-        let _ = FileExt::unlock(&self._lock);
-        let _ = FileExt::unlock(&self._served_lock);
+        let _ = FileExt::unlock(&self.process_lock);
+        let _ = FileExt::unlock(&self.served_lock);
     }
 }
 
@@ -70,9 +70,24 @@ impl WorkdirIdentity {
             path,
             state,
             background_bytes: std::sync::atomic::AtomicU64::new(0),
-            _lock: process_lock,
-            _served_lock: served_lock,
+            process_lock,
+            served_lock,
         })
+    }
+
+    pub fn forget(workdir: &Path, state_root: &Path) -> CtResult<()> {
+        let path = workdir.canonicalize().map_err(|_| invalid_directory())?;
+        let state_root = state_root.canonicalize().map_err(|_| state_error())?;
+        let state_dir = private_directory(&state_root)?;
+        let lock = create_lock(&state_dir, "identity.lock")?;
+        lock.lock_exclusive().map_err(|_| state_error())?;
+        let removed = match state_dir.remove_file(identity_key(&path)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(_) => Err(state_error()),
+        };
+        FileExt::unlock(&lock).map_err(|_| state_error())?;
+        removed
     }
 
     pub fn revalidate(&self) -> CtResult<()> {
@@ -105,19 +120,14 @@ fn installation_id(state_dir: &Dir) -> CtResult<Uuid> {
 }
 
 fn directory_identity(state_dir: &Dir, root: &Dir, path: &Path) -> CtResult<DirectoryIdentity> {
-    let key = format!(
-        "directory-{:x}.json",
-        Sha256::digest(path.as_os_str().as_encoded_bytes())
-    );
+    let key = identity_key(path);
     let metadata = root.dir_metadata().map_err(|_| invalid_directory())?;
     if state_dir.try_exists(&key).map_err(|_| state_error())? {
         let saved: DirectoryIdentity =
             serde_json::from_slice(&read_private(state_dir, &key, 1024)?)
                 .map_err(|_| state_error())?;
         if saved.device != metadata.dev() || saved.inode != metadata.ino() {
-            return Err(CtError::Usage(
-                "WORKDIR_IDENTITY_CHANGED: register a new directory association".into(),
-            ));
+            return Err(replaced_directory());
         }
         return Ok(saved);
     }
@@ -132,6 +142,13 @@ fn directory_identity(state_dir: &Dir, root: &Dir, path: &Path) -> CtResult<Dire
         &serde_json::to_vec(&saved).map_err(|_| state_error())?,
     )?;
     Ok(saved)
+}
+
+fn identity_key(path: &Path) -> String {
+    format!(
+        "directory-{:x}.json",
+        Sha256::digest(path.as_os_str().as_encoded_bytes())
+    )
 }
 
 fn served_directory_lock(
@@ -174,7 +191,7 @@ fn create_lock(dir: &Dir, name: &str) -> CtResult<std::fs::File> {
         .write(true)
         .create(true)
         .mode(0o600)
-        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits() as i32);
+        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits().cast_signed());
     let file = dir.open_with(name, &options).map_err(|_| state_error())?;
     let metadata = file.metadata().map_err(|_| state_error())?;
     if !metadata.is_file()
@@ -188,8 +205,18 @@ fn create_lock(dir: &Dir, name: &str) -> CtResult<std::fs::File> {
 }
 
 fn invalid_directory() -> CtError {
-    CtError::Usage("WORKDIR_IDENTITY_CHANGED: worker directory unavailable or replaced".into())
+    CtError::Usage(format!(
+        "WORKDIR_IDENTITY_CHANGED: the served folder is unavailable or was replaced. {RESET_HINT}"
+    ))
 }
+
+fn replaced_directory() -> CtError {
+    CtError::Usage(format!(
+        "WORKDIR_IDENTITY_CHANGED: the served folder was replaced since this outpost last served it. {RESET_HINT}"
+    ))
+}
+
+const RESET_HINT: &str = "To serve the new folder, run `cloudthinker worker start` once more with the same --outpost and --workdir plus --reset-folder, then restart the worker service if you use one.";
 
 fn state_error() -> CtError {
     CtError::Store("worker identity could not be persisted securely".into())
@@ -217,7 +244,14 @@ mod tests {
         std::fs::create_dir(&work).unwrap();
         assert!(second.revalidate().is_err());
         drop(second);
-        assert!(WorkdirIdentity::open(&work, &state, target).is_err());
+        assert!(matches!(
+            WorkdirIdentity::open(&work, &state, target),
+            Err(CtError::Usage(message)) if message.contains("--reset-folder")
+        ));
+        WorkdirIdentity::forget(&work, &state).unwrap();
+        let reset = WorkdirIdentity::open(&work, &state, target).unwrap();
+        assert_eq!(reset.installation_id, expected.0);
+        assert_ne!(reset.workdir_id, expected.1);
     }
 
     #[test]

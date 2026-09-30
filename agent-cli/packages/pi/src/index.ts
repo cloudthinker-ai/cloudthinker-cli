@@ -24,7 +24,7 @@ import { cloudDefaultEnabled, resolveCloudEnabled } from "./settings.ts";
 import { linkLazily, refreshConnections, refreshIdentity, startLocalReviewSession, startSession } from "./session.ts";
 import { discoverSkillPaths, hasSkillIndex, refreshSkills } from "./skills.ts";
 import { markStartup } from "./timing.ts";
-import { TOUR_OFFER } from "./tour.ts";
+import { TOUR_OFFER, bundledTourPath } from "./onboarding.ts";
 import { registerAsk } from "./tools/ct-ask.ts";
 import { registerSandboxRead } from "./tools/ct-sandbox-read.ts";
 import { registerSandboxWrite } from "./tools/ct-sandbox-write.ts";
@@ -154,7 +154,7 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 			connectionCount: runtime.connectedPrefixes.length,
 			cloudEnabled: runtime.cloudEnabled,
 		});
-		if (root && (event.reason === "startup" || event.reason === "new") && ctx.mode === "tui") {
+		if (root && !localReview && (event.reason === "startup" || event.reason === "new") && ctx.mode === "tui") {
 			const hasUserMessage = ctx.sessionManager.getEntries().some(
 				(entry) => entry.type === "message" && entry.message.role === "user",
 			);
@@ -170,7 +170,7 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 	});
 
 	pi.on("resources_discover", async () => ({
-		skillPaths: localReview ? [] : await discoverSkillPaths(workspaceId()),
+		skillPaths: localReview ? [] : [bundledTourPath(), ...await discoverSkillPaths(workspaceId())],
 	}));
 
 	pi.on("tool_result", (event) => {

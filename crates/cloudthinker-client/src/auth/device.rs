@@ -6,7 +6,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::StoredToken;
-use crate::client::{CtClient, DeviceAuthorization, DeviceTokenPoll};
+use crate::client::{CtClient, DeviceAuthorization, DeviceTokenPoll, device_code_expired};
 use crate::error::{CtError, CtResult};
 
 const TRANSPORT_BACKOFF: Duration = Duration::from_secs(5);
@@ -17,14 +17,17 @@ pub async fn wait_for_device_token(
     client: &CtClient,
     authorization: &DeviceAuthorization,
 ) -> CtResult<StoredToken> {
-    wait_for_device_token_with(authorization, || {
-        client.poll_device_token(&authorization.device_code)
-    })
+    wait_for_device_token_with(
+        authorization,
+        device_code_expired(client.base_url()),
+        || client.poll_device_token(&authorization.device_code),
+    )
     .await
 }
 
 async fn wait_for_device_token_with<F, Fut>(
     authorization: &DeviceAuthorization,
+    expired: CtError,
     mut poll: F,
 ) -> CtResult<StoredToken>
 where
@@ -39,12 +42,12 @@ where
             .await
             .is_err()
         {
-            return Err(expired());
+            return Err(expired);
         }
 
-        let poll_result = tokio::time::timeout_at(deadline, poll())
-            .await
-            .map_err(|_| expired())?;
+        let Ok(poll_result) = tokio::time::timeout_at(deadline, poll()).await else {
+            return Err(expired);
+        };
 
         match poll_result {
             Ok(DeviceTokenPoll::Token(token)) => return Ok(token),
@@ -54,7 +57,13 @@ where
                     interval = server_interval;
                 }
             }
-            Err(error) if error.is_transport() => {
+            Ok(DeviceTokenPoll::Unavailable(retry_after)) => {
+                interval = interval
+                    .saturating_add(TRANSPORT_BACKOFF)
+                    .max(retry_after)
+                    .min(MAX_POLL_INTERVAL);
+            }
+            Err(error) if error.is_retryable() => {
                 interval = interval
                     .saturating_add(TRANSPORT_BACKOFF)
                     .min(MAX_POLL_INTERVAL);
@@ -63,13 +72,9 @@ where
         }
 
         if Instant::now() >= deadline {
-            return Err(expired());
+            return Err(expired);
         }
     }
-}
-
-fn expired() -> CtError {
-    CtError::Timeout("device code expired; run `cloudthinker login --device-auth` again".into())
 }
 
 #[cfg(test)]
@@ -99,6 +104,10 @@ mod tests {
         }
     }
 
+    fn expired() -> CtError {
+        device_code_expired("https://app.cloudthinker.io")
+    }
+
     fn record_call(calls: &Mutex<Vec<Instant>>) {
         calls.lock().expect("calls lock").push(Instant::now());
     }
@@ -110,7 +119,7 @@ mod tests {
         let attempts = Arc::new(AtomicUsize::new(0));
         let calls = Arc::new(Mutex::new(Vec::new()));
 
-        let result = wait_for_device_token_with(&authorization, || {
+        let result = wait_for_device_token_with(&authorization, expired(), || {
             let attempts = Arc::clone(&attempts);
             let calls = Arc::clone(&calls);
             async move {
@@ -140,7 +149,7 @@ mod tests {
         let attempts = Arc::new(AtomicUsize::new(0));
         let calls = Arc::new(Mutex::new(Vec::new()));
 
-        wait_for_device_token_with(&authorization, || {
+        wait_for_device_token_with(&authorization, expired(), || {
             let attempts = Arc::clone(&attempts);
             let calls = Arc::clone(&calls);
             async move {
@@ -163,11 +172,43 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn server_errors_back_off_by_their_retry_after() {
+        let authorization = authorization(200, 5);
+        let started = Instant::now();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let calls = Arc::new(Mutex::new(Vec::new()));
+
+        wait_for_device_token_with(&authorization, expired(), || {
+            let attempts = Arc::clone(&attempts);
+            let calls = Arc::clone(&calls);
+            async move {
+                record_call(&calls);
+                match attempts.fetch_add(1, Ordering::SeqCst) {
+                    0 => Ok(DeviceTokenPoll::Unavailable(Duration::from_secs(20))),
+                    1 => Err(CtError::Api {
+                        status: 502,
+                        detail: None,
+                    }),
+                    _ => Ok(DeviceTokenPoll::Token(token())),
+                }
+            }
+        })
+        .await
+        .expect("poll survives server errors");
+
+        let calls = calls.lock().expect("calls lock");
+        let actual = std::iter::once(calls[0] - started)
+            .chain(calls.windows(2).map(|pair| pair[1] - pair[0]))
+            .collect::<Vec<_>>();
+        assert_eq!(actual, [5, 20, 25].map(Duration::from_secs));
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn terminal_error_stops_polling() {
         let authorization = authorization(60, 5);
         let attempts = Arc::new(AtomicUsize::new(0));
 
-        let error = wait_for_device_token_with(&authorization, || {
+        let error = wait_for_device_token_with(&authorization, expired(), || {
             let attempts = Arc::clone(&attempts);
             async move {
                 attempts.fetch_add(1, Ordering::SeqCst);
@@ -187,7 +228,7 @@ mod tests {
         let started = Instant::now();
         let attempts = Arc::new(AtomicUsize::new(0));
 
-        let error = wait_for_device_token_with(&authorization, || {
+        let error = wait_for_device_token_with(&authorization, expired(), || {
             let attempts = Arc::clone(&attempts);
             async move {
                 attempts.fetch_add(1, Ordering::SeqCst);
@@ -209,7 +250,7 @@ mod tests {
         let task_attempts = Arc::clone(&attempts);
 
         let task = tokio::spawn(async move {
-            wait_for_device_token_with(&authorization, || {
+            wait_for_device_token_with(&authorization, expired(), || {
                 let attempts = Arc::clone(&task_attempts);
                 async move {
                     attempts.fetch_add(1, Ordering::SeqCst);

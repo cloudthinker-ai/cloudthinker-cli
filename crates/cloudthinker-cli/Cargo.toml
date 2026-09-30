@@ -1,6 +1,6 @@
 [package]
 name = "cloudthinker-cli"
-version = "0.7.4"
+version = "0.7.6"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -31,7 +31,9 @@ indicatif = "0.18"
 # network lives inside axoupdater (GitHub releases API + installer download),
 # so the "no reqwest in commands" rule stays intact for hand-written code.
 axoupdater = "0.10"
+base64.workspace = true
 tempfile = "3"
+clap_complete = "4"
 
 [target.'cfg(unix)'.dependencies]
 chrono.workspace = true

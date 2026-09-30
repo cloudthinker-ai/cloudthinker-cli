@@ -12,17 +12,16 @@ const parameters = Type.Object({
 });
 
 const description = [
-	`Read an Anna run started by ${CT_ASK}.`,
-	`Use it after a run paused for approval, or after ${CT_ASK} returned before the run finished.`,
+	`Read a run started by ${CT_ASK}, including one paused for approval.`,
 	"Returns the answer once the run has succeeded.",
 ].join("\n");
 
 export function registerRunStatus(runtime: CloudThinkerRuntime): void {
 	runtime.pi.registerTool<typeof parameters, RunState>({
 		name: CT_RUN_STATUS,
-		label: "Anna run status",
+		label: "Delegated run status",
 		description,
-		promptSnippet: `Read an Anna run started by ${CT_ASK}`,
+		promptSnippet: `Read a delegated run started by ${CT_ASK}`,
 		parameters,
 		execute: async (
 			_toolCallId: string,

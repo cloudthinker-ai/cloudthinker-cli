@@ -4,7 +4,12 @@
 //! login is involved, and the mock server returns terminal runs immediately so
 //! the watch loop finishes in one poll.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "integration-test helpers live outside #[test] fns, where allow-*-in-tests does not reach"
+)]
 
 // This integration target links the whole crate's dependency set but only needs
 // a few; silence `unused_crate_dependencies` for the bin-only deps.
@@ -24,6 +29,7 @@ use tokio_util as _;
 
 use axoupdater as _;
 use clap as _;
+use clap_complete as _;
 use cloudthinker_client as _;
 use indicatif as _;
 use open as _;
@@ -501,6 +507,39 @@ fn cli(base_url: &str) -> Command {
     cmd
 }
 
+#[test]
+fn cyber_probe_ingest_reports_missing_reason_before_authentication() {
+    let config_home = tempfile::tempdir().unwrap();
+    let output = Command::cargo_bin("cloudthinker")
+        .unwrap()
+        .env("HOME", config_home.path())
+        .env("XDG_CONFIG_HOME", config_home.path())
+        .env_remove("CLOUDTHINKER_TOKEN")
+        .env_remove("CLOUDTHINKER_WORKSPACE")
+        .args([
+            "--url",
+            "http://127.0.0.1:1",
+            "cyber",
+            "probe",
+            "ingest",
+            RUN_ID,
+            "wp-plan",
+            "--row",
+            "row-a",
+            "--status",
+            "candidate",
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("--reason is required when --status candidate")
+    );
+}
+
 const WHOAMI_BODY: &str = r#"{"user_id":"22222222-2222-4222-8222-222222222222","user_email":"duc@example.com","workspace_id":"11111111-1111-4111-8111-111111111111","workspace_name":"Production","organization_id":null}"#;
 
 #[test]
@@ -532,7 +571,9 @@ fn whoami_json_prints_the_desktop_identity_contract() {
         serde_json::json!({
             "host": api.base_url,
             "user_id": "22222222-2222-4222-8222-222222222222",
+            "user_email": "duc@example.com",
             "workspace_id": "11111111-1111-4111-8111-111111111111",
+            "workspace_name": "Production",
         })
     );
 }
@@ -580,6 +621,298 @@ fn auth_token_prints_only_the_token_on_stdout() {
         .success()
         .stdout("test-access-token\n")
         .stderr("");
+}
+
+#[test]
+fn a_403_shows_the_server_reason_and_does_not_ask_for_a_login() {
+    let api = MockApi::start_with_status(
+        "403 Forbidden",
+        r#"{"detail":"Unauthorized workspace access"}"#.into(),
+    );
+
+    let output = cli(&api.base_url).arg("whoami").output().unwrap();
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("API error 403: Unauthorized workspace access; ask a workspace admin"));
+    assert!(!stderr.contains("not authenticated"));
+}
+
+#[test]
+fn a_rejected_credential_names_the_host_in_the_login_hint() {
+    let api = MockApi::start_with_status("401 Unauthorized", "{}".into());
+
+    cli(&api.base_url)
+        .arg("whoami")
+        .assert()
+        .code(3)
+        .stderr(predicates::str::contains(format!(
+            "run `cloudthinker login --url {}`",
+            api.base_url
+        )));
+}
+
+fn credentials_path(home: &std::path::Path) -> std::path::PathBuf {
+    #[cfg(target_os = "macos")]
+    let home = home.join("Library/Application Support");
+    home.join("cloudthinker/credentials.json")
+}
+
+fn seed_credentials(
+    home: &std::path::Path,
+    base_url: &str,
+    active: Option<&str>,
+    workspaces: &[(&str, &str, &str)],
+) {
+    let origin = base_url;
+    let stored: serde_json::Map<String, serde_json::Value> = workspaces
+        .iter()
+        .map(|(id, name, expires_at)| {
+            (
+                (*id).to_string(),
+                serde_json::json!({
+                    "access_token": format!("access-{name}"),
+                    "refresh_token": format!("refresh-{name}"),
+                    "expires_at": expires_at,
+                    "workspace_id": id,
+                    "workspace_name": name,
+                }),
+            )
+        })
+        .collect();
+    let path = credentials_path(home);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(
+        &path,
+        serde_json::json!({
+            "version": 2,
+            "origins": {origin: {"active_workspace_id": active, "workspaces": stored}},
+        })
+        .to_string(),
+    )
+    .unwrap();
+}
+
+fn stored_login_cli(base_url: &str, home: &std::path::Path) -> Command {
+    let mut command = cli(base_url);
+    command
+        .env_remove("CLOUDTHINKER_TOKEN")
+        .env("HOME", home)
+        .env("XDG_CONFIG_HOME", home)
+        .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent")
+        .timeout(Duration::from_secs(60));
+    command
+}
+
+const DEV_WORKSPACE: &str = "33333333-3333-4333-8333-333333333333";
+const PROD_WORKSPACE: &str = "44444444-4444-4444-8444-444444444444";
+const FAR_FUTURE: &str = "2099-01-01T00:00:00Z";
+
+#[test]
+fn auth_status_lists_the_stored_logins_and_switch_moves_the_active_one() {
+    let home = tempfile::tempdir().unwrap();
+    let base_url = "http://127.0.0.1:9";
+    seed_credentials(
+        home.path(),
+        base_url,
+        Some(PROD_WORKSPACE),
+        &[
+            (DEV_WORKSPACE, "Development", FAR_FUTURE),
+            (PROD_WORKSPACE, "Production", FAR_FUTURE),
+        ],
+    );
+
+    let status = stored_login_cli(base_url, home.path())
+        .args(["auth", "status", "--json"])
+        .output()
+        .unwrap();
+    assert!(
+        status.status.success(),
+        "{}",
+        String::from_utf8_lossy(&status.stderr)
+    );
+    let listed: serde_json::Value = serde_json::from_slice(&status.stdout).unwrap();
+    assert_eq!(listed["host"], base_url);
+    assert_eq!(listed["workspaces"].as_array().unwrap().len(), 2);
+    assert!(!listed.to_string().contains("access-"));
+
+    stored_login_cli(base_url, home.path())
+        .args(["auth", "switch", "Development"])
+        .assert()
+        .success()
+        .stderr(predicates::str::contains(format!(
+            "Switched to Development ({DEV_WORKSPACE})."
+        )));
+    stored_login_cli(base_url, home.path())
+        .args(["auth", "status"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(format!(
+            "* Development ({DEV_WORKSPACE})"
+        )))
+        .stdout(predicates::str::contains(format!(
+            "  Production ({PROD_WORKSPACE})"
+        )));
+    stored_login_cli(base_url, home.path())
+        .args(["auth", "token"])
+        .assert()
+        .success()
+        .stdout("access-Development\n");
+}
+
+#[test]
+fn logout_without_an_active_workspace_names_the_stored_ones() {
+    let home = tempfile::tempdir().unwrap();
+    let base_url = "http://127.0.0.1:9";
+    seed_credentials(
+        home.path(),
+        base_url,
+        None,
+        &[(DEV_WORKSPACE, "Development", FAR_FUTURE)],
+    );
+
+    stored_login_cli(base_url, home.path())
+        .arg("logout")
+        .assert()
+        .success()
+        .stderr(predicates::str::contains("No active workspace to log out"))
+        .stderr(predicates::str::contains(format!(
+            "Development ({DEV_WORKSPACE})"
+        )));
+    stored_login_cli(base_url, home.path())
+        .arg("whoami")
+        .assert()
+        .code(3)
+        .stderr(predicates::str::contains("auth switch"));
+}
+
+#[test]
+fn logout_with_nothing_stored_says_so_and_warns_about_the_token_variable() {
+    let home = tempfile::tempdir().unwrap();
+    let base_url = "http://127.0.0.1:9";
+    seed_credentials(home.path(), base_url, None, &[]);
+
+    stored_login_cli(base_url, home.path())
+        .env("CLOUDTHINKER_TOKEN", "still-here")
+        .arg("logout")
+        .assert()
+        .success()
+        .stderr(predicates::str::contains("nothing to log out"))
+        .stderr(predicates::str::contains("CLOUDTHINKER_TOKEN is still set"));
+}
+
+#[test]
+fn a_newer_credentials_file_is_left_untouched_by_logout() {
+    let home = tempfile::tempdir().unwrap();
+    let path = credentials_path(home.path());
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let newer = r#"{"version":9,"origins":{}}"#;
+    std::fs::write(&path, newer).unwrap();
+
+    stored_login_cli("http://127.0.0.1:9", home.path())
+        .arg("logout")
+        .assert()
+        .code(1)
+        .stderr(predicates::str::contains("cloudthinker update"));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), newer);
+}
+
+#[cfg(unix)]
+struct SlowRefreshApi {
+    base_url: String,
+    refresh_arrived: std::sync::mpsc::Receiver<()>,
+    handle: Option<JoinHandle<()>>,
+}
+
+#[cfg(unix)]
+impl SlowRefreshApi {
+    fn start(delay: Duration) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let (arrived, refresh_arrived) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let request = String::from_utf8_lossy(&read_request(&mut socket)).into_owned();
+            assert!(
+                request.starts_with("POST /api/v1/login/refresh"),
+                "{request}"
+            );
+            let _ = arrived.send(());
+            std::thread::sleep(delay);
+            let body = format!(
+                r#"{{"access_token":"rotated-access","refresh_token":"rotated-refresh","token_type":"bearer","workspace_id":"{DEV_WORKSPACE}"}}"#
+            );
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = socket.write_all(response.as_bytes());
+            let _ = socket.flush();
+        });
+        Self {
+            base_url,
+            refresh_arrived,
+            handle: Some(handle),
+        }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for SlowRefreshApi {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take()
+            && handle.is_finished()
+        {
+            let _ = handle.join();
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn auth_token_finishes_a_refresh_it_started_when_it_is_asked_to_stop() {
+    let home = tempfile::tempdir().unwrap();
+    let api = SlowRefreshApi::start(Duration::from_millis(1500));
+    seed_credentials(
+        home.path(),
+        &api.base_url,
+        Some(DEV_WORKSPACE),
+        &[(DEV_WORKSPACE, "Development", "2000-01-01T00:00:00Z")],
+    );
+    let child = std::process::Command::new(assert_cmd::cargo::cargo_bin("cloudthinker"))
+        .env_remove("CLOUDTHINKER_TOKEN")
+        .env_remove("CLOUDTHINKER_WORKSPACE")
+        .env("CLOUDTHINKER_URL", &api.base_url)
+        .env("HOME", home.path())
+        .env("XDG_CONFIG_HOME", home.path())
+        .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent")
+        .args(["auth", "token"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    api.refresh_arrived
+        .recv_timeout(Duration::from_secs(30))
+        .expect("auth token never sent its refresh request");
+    let pid = rustix::process::Pid::from_raw(i32::try_from(child.id()).unwrap()).unwrap();
+    rustix::process::kill_process(pid, rustix::process::Signal::TERM).unwrap();
+    rustix::process::kill_process(pid, rustix::process::Signal::INT).unwrap();
+
+    let output = child.wait_with_output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "rotated-access\n"
+    );
+    let stored = std::fs::read_to_string(credentials_path(home.path())).unwrap();
+    assert!(stored.contains("rotated-refresh"));
+    assert!(!stored.contains("refresh-Development"));
 }
 
 const MR_URL: &str = "https://gitlab.example.com/group/my-repo/-/merge_requests/42";
@@ -934,7 +1267,10 @@ fn chat_ls_json_and_empty_list_exit_zero() {
         .args(["chat", "ls"])
         .assert()
         .success()
-        .stdout("");
+        .stdout("")
+        .stderr(predicates::str::contains(
+            "No headless runs yet. Start one with: cloudthinker chat -p",
+        ));
 }
 
 // ---------------------------------------------------------------------------
@@ -1012,10 +1348,6 @@ struct MockReleases {
     listener: Option<TcpListener>,
 }
 
-/// What one canned request answers: status line, body, content type. The
-/// argument is the request's first line.
-type Route = Box<dyn Fn(&str) -> (String, String, &'static str) + Send>;
-
 impl MockReleases {
     /// One stable release, no prerelease: the release list and
     /// `releases/latest` both resolve to it, so either update strategy sees
@@ -1024,7 +1356,7 @@ impl MockReleases {
         let mock = MockReleases::bind();
         let release_body = release_body(&mock.base_url, tag);
         let list_body = releases_list_body(&mock.base_url, &[(tag, false)]);
-        mock.serve(Box::new(move |path| {
+        mock.serve(move |path| {
             if path.contains("/releases/latest") {
                 (
                     "200 OK".to_string(),
@@ -1038,7 +1370,7 @@ impl MockReleases {
             } else {
                 ("404 Not Found".to_string(), String::new(), "text/plain")
             }
-        }))
+        })
     }
 
     /// Both release tracks on one server: `releases/latest` serves the stable
@@ -1051,7 +1383,7 @@ impl MockReleases {
             &mock.base_url,
             &[(stable_tag, false), (prerelease_tag, true)],
         );
-        mock.serve(Box::new(move |path| {
+        mock.serve(move |path| {
             if path.contains("/releases/latest") {
                 (
                     "200 OK".to_string(),
@@ -1065,7 +1397,7 @@ impl MockReleases {
             } else {
                 ("404 Not Found".to_string(), String::new(), "text/plain")
             }
-        }))
+        })
     }
 
     fn bind() -> Self {
@@ -1082,7 +1414,10 @@ impl MockReleases {
 
     /// `installer_script` is served as the release's installer; give it a
     /// side effect (e.g. touch a marker) to prove it actually executed.
-    fn serve(mut self, route: Route) -> Self {
+    fn serve(
+        mut self,
+        route: impl Fn(&str) -> (String, String, &'static str) + Send + 'static,
+    ) -> Self {
         let listener = self.listener.take().unwrap();
         let stop_thread = self.stop.clone();
         self.handle = Some(std::thread::spawn(move || {
@@ -1231,9 +1566,11 @@ fn ca_up_3_missing_receipt_refuses_without_stdout() {
         .assert()
         .code(1)
         .stdout("")
-        .stderr(predicates::str::contains("cannot self-update this installation"))
         .stderr(predicates::str::contains(
-            "https://github.com/cloudthinker-ai/cloudthinker-cli/releases/latest/download/cloudthinker-cli-installer.sh",
+            "cannot self-update this installation",
+        ))
+        .stderr(predicates::str::contains(
+            "curl -fsSL https://cloudthinker.io/install.sh | sh",
         ));
     assert!(!std::path::Path::new(&marker).exists());
     let _ = std::fs::remove_file(&marker);
@@ -1361,7 +1698,9 @@ fn write_agent_stub(name: &str) -> std::path::PathBuf {
         "#!/bin/sh\n\
          echo \"argv: $*\"\n\
          echo \"url: $CLOUDTHINKER_URL\"\n\
-         if [ -n \"$CLOUDTHINKER_WORKSPACE\" ]; then echo 'workspace: present'; else echo 'workspace: absent'; fi\n",
+         echo \"bin: $CLOUDTHINKER_BIN\"\n\
+         if [ -n \"$CLOUDTHINKER_WORKSPACE\" ]; then echo 'workspace: present'; else echo 'workspace: absent'; fi\n\
+         if [ -n \"$CLOUDTHINKER_TOKEN\" ]; then echo 'token: present'; else echo 'token: absent'; fi\n",
     )
     .unwrap();
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
@@ -1381,9 +1720,10 @@ fn agent_with_revoked_credential_is_auth_error_without_stdout() {
         .code(3)
         .stdout("")
         .stderr(predicates::str::contains("not authenticated"))
-        .stderr(predicates::str::contains(
-            "The credential in CLOUDTHINKER_TOKEN is rejected. Replace it, or unset it and run `cloudthinker login`.",
-        ));
+        .stderr(predicates::str::contains(format!(
+            "The credential in CLOUDTHINKER_TOKEN is rejected. Replace it, or unset it and run `cloudthinker login --url {}`.",
+            api.base_url
+        )));
 }
 
 #[cfg(unix)]
@@ -1392,20 +1732,27 @@ fn agent_execs_the_override_binary_with_the_argument_and_env_contract() {
     let api = MockApi::start(WHOAMI_BODY.into());
     let stub = write_agent_stub("exec");
 
-    cli(&api.base_url)
+    let output = cli(&api.base_url)
         .env("CLOUDTHINKER_AGENT_BIN", &stub)
+        .env("CLOUDTHINKER_BIN", "/elsewhere/cloudthinker")
         .args(["agent", "-p", "hello", "--model", "cloudthinker/pro"])
-        .assert()
-        .success()
-        .stdout(predicates::str::contains(
-            "argv: -p hello --model cloudthinker/pro",
-        ))
-        .stdout(predicates::str::contains(format!(
-            "url: {}\n",
-            api.base_url
-        )))
-        .stdout(predicates::str::contains("workspace: absent"))
-        .stderr(predicates::str::contains("CLOUDTHINKER_AGENT_BIN"));
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("argv: -p hello --model cloudthinker/pro"));
+    assert!(stdout.contains(&format!("url: {}\n", api.base_url)));
+    assert!(stdout.contains("workspace: present"));
+    assert!(stdout.contains("token: absent"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("CLOUDTHINKER_AGENT_BIN"));
+    let child_bin = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("bin: "))
+        .unwrap();
+    assert_eq!(
+        std::fs::canonicalize(child_bin).unwrap(),
+        std::fs::canonicalize(assert_cmd::cargo::cargo_bin("cloudthinker")).unwrap()
+    );
 
     let _ = std::fs::remove_dir_all(stub.parent().unwrap());
 }
@@ -1584,6 +1931,7 @@ fn binary_on_a_tty(
         .unwrap();
 
     let mut cmd = CommandBuilder::new(binary);
+    cmd.env("TERM", "xterm-256color");
     cmd.args(args);
     cmd.env("CLOUDTHINKER_TOKEN", "test-access-token");
     cmd.env("CLOUDTHINKER_URL", &api.base_url);
@@ -1893,7 +2241,7 @@ fn ca_up_18_a_skipped_version_stays_quiet_until_a_newer_one_ships() {
     let newer = format!("{}.0.0", major + 1);
     seed_cache(&home, &newer, now_unix());
     let mut cache = read_cache(&home);
-    cache["dismissed_version"] = serde_json::Value::String(skipped.clone());
+    cache["dismissed_version"] = serde_json::Value::String(skipped);
     std::fs::write(cache_file(&home), cache.to_string()).unwrap();
 
     let offered = agent_on_a_tty(&api, &releases, &receipt_dir, &home);
@@ -1969,6 +2317,10 @@ fn ca_cli_skill_exports_bundled_modules_offline() {
         ("auth", "auth.md"),
         ("chat", "chat.md"),
         ("review", "review.md"),
+        ("cyber", "cyber.md"),
+        ("cyber-scan", "cyber-scan.md"),
+        ("cyber-verify", "cyber-verify.md"),
+        ("cyber-report", "cyber-report.md"),
         ("worker", "worker.md"),
     ] {
         let expected = std::fs::read(
@@ -2374,4 +2726,290 @@ fn ca_bg_07_the_shim_escalates_to_sigkill_when_the_child_ignores_term() {
         !std::path::Path::new(&format!("/proc/{}", child.id())).exists(),
         "the supervisor process group survived the escalation"
     );
+}
+
+fn submit_body() -> String {
+    format!(
+        r#"{{"run_id":"{RUN_ID}","conversation_id":"{CONV_ID}","status":"running","web_url":"https://app.example.com/c/{CONV_ID}"}}"#
+    )
+}
+
+#[test]
+fn chat_json_names_why_a_run_failed() {
+    let api = MockApi::start(status_body("failed", "", "provider_error"));
+    let output = cli(&api.base_url)
+        .args(["chat", "-p", "hello", "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["status"], "failed");
+    assert_eq!(value["message"], "the run failed");
+    assert_eq!(value["failure_kind"], "provider_error");
+}
+
+#[test]
+fn chat_adds_piped_stdin_to_the_prompt() {
+    let api = RecordingApi::start(vec![
+        ("202 Accepted", submit_body()),
+        (
+            "200 OK",
+            status_body("succeeded", "it ran out of memory", ""),
+        ),
+    ]);
+    cli(&api.base_url)
+        .args(["chat", "-p", "why did it crash?"])
+        .write_stdin("pod api-1: OOMKilled\n")
+        .assert()
+        .success()
+        .stdout("it ran out of memory\n");
+    let requests = api.requests();
+    assert!(
+        requests[0]
+            .contains(r#""prompt":"why did it crash?\n\n<stdin>\npod api-1: OOMKilled\n</stdin>""#),
+        "{}",
+        requests[0]
+    );
+}
+
+#[test]
+fn chat_reads_the_whole_prompt_from_stdin_with_a_dash() {
+    let api = RecordingApi::start(vec![
+        ("202 Accepted", submit_body()),
+        ("200 OK", status_body("succeeded", "done", "")),
+    ]);
+    cli(&api.base_url)
+        .args(["chat", "-p", "-"])
+        .write_stdin("  summarize the incident  \n")
+        .assert()
+        .success();
+    assert!(api.requests()[0].contains(r#""prompt":"summarize the incident""#));
+}
+
+#[test]
+fn chat_refuses_piped_input_over_the_prompt_limit_before_submitting() {
+    let api = RecordingApi::start(vec![]);
+    cli(&api.base_url)
+        .args(["chat", "-p", "why?"])
+        .write_stdin("x".repeat(50_001))
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicates::str::contains("the limit is 50000"));
+    assert!(api.requests().is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn ctrl_c_stops_the_chat_wait_and_prints_the_resume_command() {
+    use std::io::BufRead;
+    use std::process::Stdio;
+
+    let api = MockApi::start(status_body("running", "", ""));
+    let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin("cloudthinker"))
+        .env("CLOUDTHINKER_TOKEN", "test-access-token")
+        .env("CLOUDTHINKER_URL", &api.base_url)
+        .env_remove("CLOUDTHINKER_WORKSPACE")
+        .args(["chat", "-p", "hello"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stderr = std::io::BufReader::new(child.stderr.take().unwrap());
+    let mut line = String::new();
+    while !line.contains("Submitted run") {
+        line.clear();
+        assert!(
+            stderr.read_line(&mut line).unwrap() > 0,
+            "no submission line"
+        );
+    }
+    rustix::process::kill_process(
+        rustix::process::Pid::from_child(&child),
+        rustix::process::Signal::INT,
+    )
+    .unwrap();
+    let mut rest = String::new();
+    stderr.read_to_string(&mut rest).unwrap();
+    let status = child.wait().unwrap();
+    let mut stdout = String::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_string(&mut stdout)
+        .unwrap();
+
+    assert_eq!(status.code(), Some(130), "{rest}");
+    assert!(stdout.is_empty());
+    assert!(
+        rest.contains(&format!("cloudthinker chat status {RUN_ID} --wait")),
+        "{rest}"
+    );
+}
+
+#[test]
+fn completion_prints_a_shell_script() {
+    Command::cargo_bin("cloudthinker")
+        .unwrap()
+        .args(["completion", "bash"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("_cloudthinker()"));
+}
+
+#[cfg(unix)]
+#[test]
+fn review_fail_on_exits_6_only_when_a_finding_reaches_the_threshold() {
+    let root = tempfile::tempdir().unwrap();
+    initialize_review_repo(root.path());
+    std::fs::write(root.path().join("src.rs"), "fn value() { 2 }\n").unwrap();
+    let answer = r#"{"findings":[{"severity":"high","file":"src.rs","line":1,"title":"Bad value","explanation":"The value violates the invariant.","suggested_fix":"Use the validated value."}]}"#;
+    for (threshold, expected) in [("high", Some(6)), ("critical", Some(0))] {
+        let api = RecordingApi::start(vec![("200 OK", WHOAMI_BODY.into())]);
+        let (stub, _) = write_local_review_stub("fail-on", answer, "0");
+        let output = run_local_review(
+            root.path(),
+            &api,
+            &stub,
+            &["review", "--json", "--fail-on", threshold],
+        );
+        assert_eq!(output.status.code(), expected, "--fail-on {threshold}");
+        let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(result["findings"][0]["severity"], "high");
+        let _ = std::fs::remove_dir_all(stub.parent().unwrap());
+    }
+}
+
+#[test]
+fn review_watch_fail_on_exits_6_for_a_finished_review_with_a_worse_finding() {
+    let api = MockApi::start(review_body("review_complete", "changes_requested", 1));
+    cli(&api.base_url)
+        .args(["review", "watch", MR_URL, "--fail-on", "high"])
+        .assert()
+        .code(6)
+        .stderr(predicates::str::contains(
+            "1 finding(s) at high severity or worse",
+        ));
+
+    let failed = MockApi::start(review_body("failed", "failed", 1));
+    cli(&failed.base_url)
+        .args(["review", "watch", MR_URL, "--fail-on", "low"])
+        .assert()
+        .code(1);
+}
+
+#[test]
+fn a_saved_address_is_used_until_a_url_is_passed() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+    let home = fresh_home("saved-url");
+    let config = home.join(".cloudthinker").join("config.json");
+    std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+    std::fs::write(
+        &config,
+        serde_json::json!({ "default_url": api.base_url }).to_string(),
+    )
+    .unwrap();
+    let saved = || {
+        let mut command = Command::cargo_bin("cloudthinker").unwrap();
+        command
+            .env("CLOUDTHINKER_TOKEN", "test-access-token")
+            .env("HOME", &home)
+            .env_remove("CLOUDTHINKER_URL")
+            .env_remove("CLOUDTHINKER_WORKSPACE");
+        command
+    };
+
+    saved()
+        .arg("whoami")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(format!("host={}", api.base_url)));
+    saved()
+        .args(["--url", "http://127.0.0.1:1", "whoami"])
+        .assert()
+        .code(1);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_command_on_a_terminal_names_a_newer_release_after_its_output() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+    let releases = MockReleases::start(&format!("v{RUNNING_VERSION}"), marker_installer_script());
+    let receipt_dir = write_receipt("notice", RUNNING_VERSION, &real_install_prefix());
+    let home = fresh_home("notice");
+    let newer = newer_tag().trim_start_matches('v').to_string();
+    seed_cache(&home, &newer, now_unix() - 60);
+
+    let output = binary_on_a_tty(
+        &assert_cmd::cargo::cargo_bin("cloudthinker"),
+        &["whoami"],
+        b"",
+        &api,
+        &releases,
+        &receipt_dir,
+        &home,
+    );
+
+    let identity = output.find("email=duc@example.com").expect(&output);
+    let notice = output
+        .find(&format!(
+            "cloudthinker {newer} is available on the dev channel (you have {RUNNING_VERSION}). Run `cloudthinker update` to install it."
+        ))
+        .expect(&output);
+    assert!(identity < notice, "{output}");
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn login_hints_and_logout_follow_the_remembered_address() {
+    let rejected = r#"{"error":{"code":"unauthorized","message":"expired","retryable":false},"detail":"expired"}"#;
+    let api = RecordingApi::start(vec![
+        ("401 Unauthorized", rejected.into()),
+        ("401 Unauthorized", rejected.into()),
+        ("200 OK", r#"{"message":"logged out"}"#.into()),
+    ]);
+    let home = tempfile::tempdir().unwrap();
+    seed_credentials(
+        home.path(),
+        &api.base_url,
+        Some(PROD_WORKSPACE),
+        &[(PROD_WORKSPACE, "Production", FAR_FUTURE)],
+    );
+    let config = home.path().join(".cloudthinker").join("config.json");
+    std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+    std::fs::write(
+        &config,
+        serde_json::json!({ "default_url": api.base_url }).to_string(),
+    )
+    .unwrap();
+    let remembered = || {
+        let mut command = stored_login_cli(&api.base_url, home.path());
+        command.env_remove("CLOUDTHINKER_URL");
+        command
+    };
+
+    let whoami = remembered().arg("whoami").output().unwrap();
+    assert_eq!(
+        whoami.status.code(),
+        Some(3),
+        "{}",
+        String::from_utf8_lossy(&whoami.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&whoami.stderr);
+    assert!(stderr.contains("cloudthinker login"), "{stderr}");
+    assert!(!stderr.contains("--url"), "{stderr}");
+
+    remembered()
+        .args(["logout", "--all"])
+        .assert()
+        .success()
+        .stderr(predicates::str::contains(
+            "Commands now use https://app.cloudthinker.io by default.",
+        ));
+    let saved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&config).unwrap()).unwrap();
+    assert_eq!(saved["default_url"], serde_json::Value::Null);
 }

@@ -106,6 +106,7 @@ esac
         workdir,
         service_name: service_name.clone(),
         descriptor_path,
+        log_path: root.path().join("worker.log"),
     };
 
     let result = (|| {
@@ -229,8 +230,9 @@ esac
         platform: ServicePlatform::Launchd,
         target_id,
         workdir,
-        service_name: service_name.clone(),
+        service_name,
         descriptor_path: descriptor_path.clone(),
+        log_path: root.path().join("worker.log"),
     };
 
     manager_install(&target).unwrap();
@@ -249,6 +251,161 @@ esac
     assert!(log.contains(&format!("bootstrap {domain} ")));
     assert!(log.contains(&format!("kickstart {service}")));
     assert!(log.contains(&format!("bootout {service}")));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failed_systemd_service_reports_its_exit_code_logs_and_manager_error() {
+    let _lock = SERVICE_MANAGER_TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap();
+    let root = tempfile::tempdir().unwrap();
+    fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    let manager = root.path().join("systemctl");
+    fs::write(
+        &manager,
+        r#"#!/bin/sh
+case "$2" in
+  show) printf '%s\n' 'ExecMainStatus=2' 'Result=exit-code'; exit 0 ;;
+  start) printf '%s\n' 'Job for worker.service failed because the control process exited with error code.' >&2; exit 1 ;;
+  *) exit 64 ;;
+esac
+"#,
+    )
+    .unwrap();
+    fs::set_permissions(&manager, fs::Permissions::from_mode(0o700)).unwrap();
+    set_test_systemd_manager(&manager);
+    let _manager_override = ManagerOverride;
+    let target = ServiceTarget {
+        platform: ServicePlatform::Systemd,
+        target_id: Uuid::from_u128(44),
+        workdir: root.path().to_path_buf(),
+        service_name: format!("{SERVICE_NAMESPACE}.demo"),
+        descriptor_path: root.path().join("demo.service"),
+        log_path: root.path().join("worker.log"),
+    };
+
+    assert_eq!(manager_last_exit(&target), Some(2));
+    assert_eq!(
+        target.output("failed").logs,
+        format!("journalctl --user -u {SERVICE_NAMESPACE}.demo.service")
+    );
+    assert!(matches!(
+        manager_start(&target),
+        Err(CtError::Store(message)) if message.contains("control process exited with error code")
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn install_updates_a_unit_the_previous_release_wrote_for_the_same_settings() {
+    let _lock = SERVICE_MANAGER_TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap();
+    let root = tempfile::tempdir().unwrap();
+    fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
+    let log = root.path().join("manager.log");
+    let manager = root.path().join("systemctl");
+    fs::write(
+        &manager,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\nexit 0\n",
+            log.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&manager, fs::Permissions::from_mode(0o700)).unwrap();
+    set_test_systemd_manager(&manager);
+    let _manager_override = ManagerOverride;
+    let workdir = root.path().to_path_buf();
+    let service_name = format!("{SERVICE_NAMESPACE}.demo");
+    let argv = |concurrency: &str| -> Vec<String> {
+        [
+            "/usr/local/bin/cloudthinker",
+            "--url",
+            "https://app.example:443",
+            "worker",
+            "start",
+            "--outpost",
+            "00000000-0000-0000-0000-00000000002d",
+            "--workdir",
+            &workdir.to_string_lossy(),
+            "--concurrency",
+            concurrency,
+            "--stored-credential",
+        ]
+        .map(str::to_owned)
+        .to_vec()
+    };
+    let previous_release_unit = |argv: &[String]| {
+        let command = argv
+            .iter()
+            .map(|value| format!("\"{value}\""))
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!(
+            "[Unit]\nDescription=CloudThinker worker {service_name}\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=exec\nExecStart={command}\nWorkingDirectory={}\nRestart=on-failure\nRestartPreventExitStatus=2 3\nRestartSec=5\nKillMode=mixed\nKillSignal=SIGTERM\nTimeoutStopSec=300\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=default.target\n",
+            workdir.display()
+        )
+    };
+    let descriptor_path = root.path().join(format!("{service_name}.service"));
+    let spec = |argv: &[String]| ServiceSpec {
+        target: ServiceTarget {
+            platform: ServicePlatform::Systemd,
+            target_id: Uuid::from_u128(45),
+            workdir: workdir.clone(),
+            service_name: service_name.clone(),
+            descriptor_path: descriptor_path.clone(),
+            log_path: root.path().join("worker.log"),
+        },
+        descriptor: render_descriptor(
+            ServicePlatform::Systemd,
+            &service_name,
+            argv,
+            &workdir,
+            &root.path().join("worker.log"),
+        )
+        .unwrap(),
+    };
+    let previous = |argv: &[String]| {
+        render_previous_descriptor(ServicePlatform::Systemd, &service_name, argv, &workdir).unwrap()
+    };
+    let current = spec(&argv("4"));
+
+    write_descriptor(
+        &descriptor_path,
+        previous_release_unit(&argv("4")).as_bytes(),
+    )
+    .unwrap();
+    assert_eq!(
+        apply_descriptor(&current, &previous(&argv("4"))).unwrap(),
+        "updated"
+    );
+    assert_eq!(
+        fs::read_to_string(&descriptor_path).unwrap(),
+        current.descriptor
+    );
+    assert!(
+        fs::read_to_string(&log)
+            .unwrap()
+            .contains("--user daemon-reload")
+    );
+    assert_eq!(
+        apply_descriptor(&current, &previous(&argv("4"))).unwrap(),
+        "unchanged"
+    );
+
+    write_descriptor(
+        &descriptor_path,
+        previous_release_unit(&argv("8")).as_bytes(),
+    )
+    .unwrap();
+    assert!(matches!(
+        apply_descriptor(&current, &previous(&argv("4"))),
+        Err(CtError::Usage(message)) if message.contains("different settings")
+    ));
 }
 
 #[cfg(unix)]

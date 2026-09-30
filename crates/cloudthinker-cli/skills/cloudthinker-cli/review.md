@@ -18,6 +18,8 @@ When the scope is empty, the base cannot resolve, authentication fails, CloudThi
 or the model response is invalid, report the error as a failed review. Do not turn an incomplete
 review into a clean result. A timeout stops the local agent; rerun the review to try again.
 
+`--fail-on <low|medium|high|critical>` exits 6 when a finding has that severity or a worse one. Use it when the task gates on the review; the findings still print first.
+
 ## Inspect a tracked review
 
 Read this module when checking review progress or findings for a merge request or pull request. Establish the intended identity using the auth module before the first authenticated command.
@@ -39,6 +41,6 @@ Read the returned status, verdict, severity counts, and findings. Exit 0 means t
 cloudthinker review watch '<mr-or-pr-url>' --timeout 60 --json
 ```
 
-A client timeout stops waiting without stopping the review. Recheck the same URL. If the review is unknown, verify the URL and workspace; do not invent a trigger command or claim there are zero findings.
+A client timeout stops waiting without stopping the review. Recheck the same URL. `watch --fail-on <severity>` exits 6 when the finished review has a finding at that severity or worse; a failed review exits 1. If the review is unknown, verify the URL and workspace; do not invent a trigger command or claim there are zero findings.
 
 For authentication errors, read the auth module. For unsupported operations, state the limitation and use another authorized workflow only when the task calls for it.

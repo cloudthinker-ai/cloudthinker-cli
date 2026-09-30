@@ -109,6 +109,10 @@ pub struct StartArgs {
     #[arg(long)]
     inherit_env: bool,
 
+    /// Serve a replaced folder at --workdir as a new folder for this outpost.
+    #[arg(long)]
+    reset_folder: bool,
+
     #[arg(long, hide = true)]
     stored_credential: bool,
 }
@@ -139,9 +143,7 @@ async fn execute(base_url: &str, workspace: Option<&str>, args: WorkerArgs) -> C
     match args.command {
         WorkerCommand::Start(args) => start(base_url, args).await,
         WorkerCommand::BgShim(args) => bg_shim(args).await,
-        WorkerCommand::Service { command } => {
-            worker_service::execute(base_url, workspace, command).await
-        }
+        WorkerCommand::Service { command } => worker_service::execute(base_url, workspace, command),
         WorkerCommand::Outpost {
             command: OutpostCommand::Create { name, shared, json },
         } => {
@@ -371,6 +373,9 @@ async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
     }
     let store = WorkerStore::open_default(base_url)?;
     let credential = resolve_credential(base_url, &store, &args).await?;
+    if args.reset_folder {
+        WorkdirIdentity::forget(&args.workdir, store.state_root())?;
+    }
     let identity = Arc::new(WorkdirIdentity::open(
         &args.workdir,
         store.state_root(),
@@ -396,20 +401,27 @@ async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
         vec![credential.token],
         shim,
     ));
-    let shutdown = tokio_util::sync::CancellationToken::new();
-    let signal = shutdown.clone();
-    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        .map_err(|_| CtError::Protocol("worker signal handler unavailable".into()))?;
+    let signals = runtime::Signals::default();
+    let handler = signals.clone();
+    let listen = |kind| {
+        tokio::signal::unix::signal(kind)
+            .map_err(|_| CtError::Protocol("worker signal handler unavailable".into()))
+    };
+    let mut term = listen(tokio::signal::unix::SignalKind::terminate())?;
+    let mut interrupt = listen(tokio::signal::unix::SignalKind::interrupt())?;
     tokio::spawn(async move {
-        tokio::select! {_=tokio::signal::ctrl_c()=>{},_=term.recv()=>{}}
-        signal.cancel();
+        tokio::select! {_=interrupt.recv()=>{},_=term.recv()=>{}}
+        handler.drain.cancel();
+        tokio::select! {_=interrupt.recv()=>{},_=term.recv()=>{}}
+        output::worker_event("Cancelling running operations.");
+        handler.abort.cancel();
     });
     output::progress(&output::worker_serving_line(&credential.name, label));
     runtime::run(
         client,
         executor,
         registration,
-        shutdown,
+        signals,
         credential.target_id,
     )
     .await

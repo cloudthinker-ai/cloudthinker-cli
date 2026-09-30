@@ -1,3 +1,59 @@
+## Additional changes for 0.7.6
+
+- Replace the fixed tour command with a bundled /skill:tour that explains Local and Cloud and helps users choose a first task.
+- Limit automatic agent skill metadata to 8 KiB and preserve discovery through a private local index. Include the missing canonical AppSec request helpers in the Discovery runtime bundle.
+
+## [0.7.6]
+
+- Worker `glob_read` reads the head of a large file instead of failing the whole scan, so a big `SKILL.md` no longer hides the Worker folder's Skills.
+- On 64-bit Arm Linux, the credential lock and the worker skill bundle cache lock now refuse a symlink instead of following it, as they already did on x86_64 Linux and macOS.
+- Reduce worker memory use: file reads, operation dispatch, receipt journaling, and artifact uploads no longer copy operation payloads or file contents; journal bytes and JSON output are unchanged.
+- Worker file search, grep, and skill bundle verification do less repeated work on large folders; their results are unchanged.
+- A server error or rate limit during a token refresh is retried, honouring `Retry-After`, instead of logging you out; device-code login keeps polling through a server error.
+- A refresh keeps your active workspace; it no longer switches to the workspace you last used with `--workspace`.
+- An older `cloudthinker` never overwrites a credentials file written by a newer one, and an unreadable credentials file is moved aside before a login replaces it.
+- A 403 shows the server's reason and asks for a workspace admin instead of sending you to `cloudthinker login`.
+- Every login hint names the host you used, so `cloudthinker --url https://dev.cloudthinker.io ...` tells you to run `cloudthinker login --url https://dev.cloudthinker.io`.
+- New `cloudthinker auth status` lists your stored workspace logins, and `cloudthinker auth switch <workspace>` makes one active.
+- `logout` says why a server revoke failed, says when nothing was stored, names the stored workspaces when none is active, and warns while `CLOUDTHINKER_TOKEN` is still set.
+- `cloudthinker auth token` finishes a token refresh it started before it stops on Ctrl-C, and the agent uses the same `cloudthinker` binary for its token.
+- Commands no longer read the OS keyring once the credentials file holds the host's login.
+- Worker credential errors say which check failed, and a missing outpost credential asks you to register the outpost again.
+- `worker start` keeps running through short CloudThinker outages: it retries server errors and rate limits, reconnects after a laptop sleep or network change, and no longer cancels running work on one bad gateway.
+- A finished operation result is retried until its lease ends, so it is no longer marked unknown after five seconds of network trouble.
+- A machine clock that runs ahead or behind no longer fails outpost work.
+- The worker log names each assignment and operation with its duration and error code, and server errors show their code and request ID.
+- The first Ctrl-C drains running operations and says how many are left; a second Ctrl-C cancels them.
+- Shell output that was printed before a detached background process kept the output open is now returned instead of lost.
+- The skill bundle cache frees bundles unused for 25 hours, so new skills keep installing after 64 versions.
+- `worker service status` shows the last exit code and where the logs are, the macOS service now writes a log file, and service manager errors show their reason.
+- A replaced served folder stops the worker with a clear message; `worker start --reset-folder` serves the new folder.
+- `worker service install` updates a service that an earlier release installed with the same settings and reports `updated`, instead of asking you to uninstall it first.
+- `login` over SSH or on Linux without a display now shows a short code to enter in any browser, instead of waiting 5 minutes for a browser callback that cannot arrive. Set `CLOUDTHINKER_LOGIN=browser` to keep the browser callback.
+- `login --url <address>` now remembers that address, so later commands and login hints reach the same CloudThinker without `--url`. Logging out of that address returns the default to production.
+- `chat -p` now adds piped input to the prompt, for example `kubectl logs pod | cloudthinker chat -p "why does this crash?"`, and `chat -p -` reads the whole prompt from stdin.
+- `chat -p` now shows a spinner with the run status and elapsed time on a terminal. Ctrl-C stops the wait and prints the command that resumes it.
+- `chat --json` now includes `message` and `failure_kind`, so a script can see why a run failed.
+- `review --fail-on <severity>` and `review watch --fail-on <severity>` exit 6 when a finding reaches that severity, so a CI job can gate on a review.
+- New `cloudthinker completion <shell>` prints a completion script for bash, zsh, fish, PowerShell, or elvish.
+- `chat`, `review`, `login`, `logout`, and `whoami` now end with one line when a newer release exists.
+- `whoami --json` now includes the account email and the workspace name, and `chat ls` says so when there are no runs.
+- `--help` now opens with a short get-started list, and a failed `update` names the reinstall command.
+- Run local Cyber discovery through the shared background command engine; reserve workflows for agent investigation and verification. Discovery cancellation also stops collectors created during cleanup.
+- Start local pentests from the interactive agent with automatic setup checks, configuration repair, visible progress, and readable results.
+- Add internal Cyber commands for targets, runs, scoped probes, coverage, identities, findings, and evidence. The backend owns the plan and final result.
+- Keep coverage readable after a run finishes while preventing further plan or observation changes.
+- Add the local development launcher, separating backend and target credentials and keeping token refresh within the agent deadline.
+- Omit cloud-only memory paths from local run briefs and report missing coverage reasons before authentication or network calls.
+- Keep a private per-run local workspace for resumable evidence drafts and workflow journals; repeated binds reuse it, while canonical App memory remains the cross-run source.
+- Match saved target paths using backend trailing-slash normalization without changing query values.
+- `cyber memory pull <app-id> --output <dir>` saves the App's canonical findings and surface to a local directory. `--include-context` downloads non-credential App documents with explicit opt-in; context files are bounded and their signed URLs are never written to the snapshot.
+- Identify the local CLI build as 0.7.6-dev.1, including background command execution and corrected Cyber workflow guidance.
+- Local Cyber workflows run the shared discovery collectors on your machine, preserve discovery limitations, and require a valid report before successful completion.
+- Local source-agent runs can use the launcher-selected auth binary for token resolution while the production agent keeps the wrapper's own native binary.
+- Keep the CLI API client aligned with password authentication and review job commit counts after the develop merge.
+- `cloudthinker-local` defaults workflow concurrency to 4; set `CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY=8` to use the shipped default. Values must be from 1 to 8.
+
 ## [0.7.4]
 
 - Ship the bundled agent with fflate 0.8.3, which fixes an infinite loop on malformed ZIP64 skill archives.

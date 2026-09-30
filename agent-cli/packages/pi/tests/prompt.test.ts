@@ -63,6 +63,8 @@ test("the block names the two environments and refuses a third", () => {
 	assert.ok(block.includes("exactly two environments"));
 	assert.ok(block.includes("1. This machine"));
 	assert.ok(block.includes("2. The workspace machine"));
+	assert.ok(block.includes("Local tools use this machine's filesystem; workspace tools use the cloud filesystem"));
+	assert.ok(block.includes("Paths returned by an API are not necessarily local files or mounts"));
 	assert.ok(block.includes("not a third environment"));
 	assert.ok(!block.includes("Executor"));
 });
@@ -87,11 +89,11 @@ test("the Connection detail follows the prefix line verbatim, and an empty xml a
 
 test("the approval mode line follows the write sentence and names Auto or Manual", () => {
 	const manual = buildPromptBlock(withPrefixes(["aws"]));
-	assert.ok(manual.includes(`do not ask for one in chat first.\n${MANUAL_MODE_LINE}\nDo bounded`));
+	assert.ok(manual.includes(`do not ask for one in chat first.\n${MANUAL_MODE_LINE}\nUse ${CT_SANDBOX_READ} for bounded`));
 	assert.ok(!manual.includes(AUTO_MODE_LINE));
 
 	const block = buildPromptBlock(runtime({ autoMode: { enabled: true, canEdit: false } }));
-	assert.ok(block.includes(`do not ask for one in chat first.\n${AUTO_MODE_LINE}\nDo bounded`));
+	assert.ok(block.includes(`do not ask for one in chat first.\n${AUTO_MODE_LINE}\nUse ${CT_SANDBOX_READ} for bounded`));
 	assert.ok(!block.includes(MANUAL_MODE_LINE));
 	assert.equal(block.split("Workspace approval mode:").length, 2);
 });
@@ -106,6 +108,35 @@ test("the sandbox line names this session's own directory and the tree above it"
 test("scratch files go under the session's own tmp directory, never the sandbox home", () => {
 	const block = buildPromptBlock(runtime());
 	assert.ok(block.includes("Put every scratch file under /home/user/c-1/tmp, never in /home/user itself."));
+});
+
+test("the prompt identifies the local CloudThinker agent", () => {
+	assert.ok(buildPromptBlock(withPrefixes(["aws"])).includes("You are the `cloudthinker agent` running in the developer's terminal"));
+	const offline = runtime({ cloudEnabled: false });
+	assert.ok(buildPromptBlock(offline).includes("You are the `cloudthinker agent` running in the developer's terminal"));
+});
+
+for (const cloudEnabled of [true, false]) {
+	test(`local shell searches prefer rg and fd with Cloud ${cloudEnabled ? "on" : "off"}`, () => {
+		for (const session of [runtime().session, undefined]) {
+			const block = buildPromptBlock(runtime({ cloudEnabled, session }));
+			assert.ok(block.includes("For local shell searches, use `rg` for file contents and `fd` for file and directory names."));
+			assert.ok(block.includes("Scope searches to the relevant paths and keep ignore rules enabled."));
+			assert.ok(block.includes("Use `grep` or `find` for these searches only if the corresponding preferred command is unavailable."));
+			assert.ok(block.includes("Before falling back, confirm unavailability with `command -v rg` or `command -v fd`; an empty search result is not unavailability."));
+		}
+	});
+}
+
+test("the block routes Cyber work to its skill and provides the session binding", () => {
+	const block = buildPromptBlock(withPrefixes(["aws"]));
+	assert.ok(block.includes("conversation id is c-1"));
+	assert.ok(block.includes("read `cloudthinker --skill cyber`"));
+	assert.ok(block.includes("use `ct_workflow` for staged execution"));
+	assert.ok(block.includes("bind each run to this session's conversation id"));
+	assert.ok(!block.includes("cyber_fanout"));
+	assert.ok(!block.includes("Cyber run record is bookkeeping"));
+	assert.ok(!block.includes("Never probe with curl"));
 });
 
 test("a Connection's skill line comes with the workspace-machine path to read the guide from", () => {

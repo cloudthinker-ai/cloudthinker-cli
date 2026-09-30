@@ -13,25 +13,148 @@ use uuid::Uuid;
 
 use super::background;
 use super::executor::WorkdirExecutor;
-use super::journal::{Journal, JournalState};
+use super::journal::{self, Delivery, Journal, JournalState};
+use crate::engine::output;
 use crate::engine::watch::{Poll, WatchConfig, watch};
 
 const WORKER_TRANSPORT_RETRY_TIMEOUT: Duration = Duration::from_secs(60);
 const WORKER_HEARTBEAT_RETRY_TIMEOUT: Duration = Duration::from_secs(30);
 const WORKER_LEASE_SAFETY_MARGIN: Duration = Duration::from_secs(5);
 const GC_EVERY_HEARTBEATS: u32 = 4;
+const RECONNECT_MIN_DELAY: Duration = Duration::from_secs(1);
+const RECONNECT_MAX_DELAY: Duration = Duration::from_secs(60);
+const RECONNECT_STABLE_AFTER: Duration = Duration::from_secs(300);
+const ABANDONED_JOURNAL_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+
+#[derive(Clone, Default)]
+pub struct Signals {
+    pub drain: CancellationToken,
+    pub abort: CancellationToken,
+}
 
 pub async fn run(
     client: WorkerClient,
     executor: Arc<WorkdirExecutor>,
     registration: api::RegisterWorkerRequest,
-    shutdown: CancellationToken,
+    signals: Signals,
     expected_target_id: Uuid,
 ) -> CtResult<()> {
-    maintain(&executor).await;
-    let worker = client.register(&registration).await?;
+    let verified = std::sync::atomic::AtomicBool::new(false);
+    reconnect(&signals.drain, || {
+        session(
+            &client,
+            &executor,
+            &registration,
+            &signals,
+            expected_target_id,
+            &verified,
+        )
+    })
+    .await
+}
+
+async fn reconnect<F, Fut>(drain: &CancellationToken, mut connect: F) -> CtResult<()>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = CtResult<()>>,
+{
+    let mut delay = RECONNECT_MIN_DELAY;
+    loop {
+        let started = Instant::now();
+        let error = match connect().await {
+            Ok(()) => return Ok(()),
+            Err(error) => error,
+        };
+        if is_fatal(&error) {
+            return Err(error);
+        }
+        if drain.is_cancelled() {
+            return Ok(());
+        }
+        if started.elapsed() >= RECONNECT_STABLE_AFTER {
+            delay = RECONNECT_MIN_DELAY;
+        }
+        output::worker_event(&format!(
+            "Lost the connection to CloudThinker ({error}); reconnecting in {}s.",
+            delay.as_secs()
+        ));
+        tokio::select! {
+            _=drain.cancelled()=>return Ok(()),
+            _=tokio::time::sleep(delay)=>{},
+        }
+        delay = (delay * 2).min(RECONNECT_MAX_DELAY);
+    }
+}
+
+fn is_fatal(error: &CtError) -> bool {
+    match error {
+        CtError::Api { status, .. } => (400..500).contains(status) && *status != 409,
+        error => stops_worker(error),
+    }
+}
+
+fn stops_worker(error: &CtError) -> bool {
+    matches!(
+        error,
+        CtError::Auth(_)
+            | CtError::ObsoleteCredentials { .. }
+            | CtError::Usage(_)
+            | CtError::Store(_)
+    )
+}
+
+async fn session(
+    client: &WorkerClient,
+    executor: &Arc<WorkdirExecutor>,
+    registration: &api::RegisterWorkerRequest,
+    signals: &Signals,
+    expected_target_id: Uuid,
+    verified: &std::sync::atomic::AtomicBool,
+) -> CtResult<()> {
+    let shutdown = signals.drain.clone();
+    maintain(executor).await;
+    let Some(worker) = until_drained(
+        &shutdown,
+        retry_transport({
+            let client = client.clone();
+            let registration = registration.clone();
+            move || {
+                let client = client.clone();
+                let registration = registration.clone();
+                async move { client.register(&registration).await }
+            }
+        }),
+    )
+    .await?
+    else {
+        return Ok(());
+    };
     validate_registration_target(expected_target_id, worker.target_id)?;
-    client.conformance(worker.worker_id).await?;
+    if !verified.load(std::sync::atomic::Ordering::SeqCst) {
+        if until_drained(&shutdown, client.conformance(worker.worker_id))
+            .await?
+            .is_none()
+        {
+            return Ok(());
+        }
+        verified.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+    if until_drained(
+        &shutdown,
+        retry_heartbeat({
+            let client = client.clone();
+            move || {
+                let client = client.clone();
+                async move { client.worker_heartbeat(worker.worker_id, false).await }
+            }
+        }),
+    )
+    .await?
+    .is_none()
+    {
+        return Ok(());
+    }
+    output::worker_event(&format!("Worker {} is online.", worker.worker_id));
     let mut tasks = JoinSet::new();
     let permits = Arc::new(Semaphore::new(16));
     let heartbeat_client = client.clone();
@@ -58,15 +181,16 @@ pub async fn run(
             }
         }
     }));
+    let stop = CancellationToken::new();
     let mut seen = HashSet::new();
-    let mut outcome = async { loop {
+    let outcome = async { 'serve: loop {
         if shutdown.is_cancelled() {break Ok(());}
         tokio::select! {
             _=shutdown.cancelled()=>break Ok(()),
             completed=tasks.join_next(), if !tasks.is_empty()=>{
                 match completed {
-                    Some(Ok((id,Ok(()))))=>{seen.remove(&id);},
-                    Some(Ok((id,Err(error))))=>{seen.remove(&id); if matches!(error, CtError::Auth(_) | CtError::Store(_)) {break Err(error);} crate::engine::output::warn("An assignment stopped; check its status in CloudThinker.");},
+                    Some(Ok((id,Ok(()))))=>{seen.remove(&id);output::worker_event(&format!("Assignment {id} finished."));},
+                    Some(Ok((id,Err(error))))=>{seen.remove(&id); if stops_worker(&error) {break Err(error);} output::warn(&format!("Assignment {id} stopped: {error}. Check its status in CloudThinker."));},
                     _=>break Err(CtError::Protocol("worker assignment task stopped".into())),
                 }
             }
@@ -87,21 +211,30 @@ pub async fn run(
                     match client.claim(worker.worker_id,assignment.assignment_id).await {
                         Ok(lease)=>{
                             seen.insert(lease.assignment_id);
-                            let client=client.clone();let executor=executor.clone();let shutdown=shutdown.child_token();let permits=permits.clone();
-                            tasks.spawn(async move {(lease.assignment_id,serve(client,executor,lease,shutdown,permits).await)});
+                            output::worker_event(&format!("Assignment {} claimed for session {}.", lease.assignment_id, lease.session_id));
+                            let client=client.clone();let executor=executor.clone();let tokens=(stop.child_token(),signals.abort.clone());let permits=permits.clone();
+                            tasks.spawn(async move {(lease.assignment_id,serve(client,executor,lease,tokens,permits).await)});
                         }
-                        Err(CtError::Api {status:409,..})=>{},
-                        Err(error) if error.is_transport()=>crate::engine::output::warn("Could not claim an assignment; it will be retried."),
-                        Err(error)=>{shutdown.cancel();return Err(error);}
+                        Err(CtError::Api {status:409,detail})=>output::worker_debug(&format!("Assignment {} was not claimed: {}.", assignment.assignment_id, detail.unwrap_or_default())),
+                        Err(error) if error.is_transport()=>output::warn(&format!("Could not claim assignment {} ({error}); it will be retried.", assignment.assignment_id)),
+                        Err(error)=>break 'serve Err(error),
                     }
                 }
             }
             result=&mut heartbeat=>break if shutdown.is_cancelled() {Ok(())} else {result.unwrap_or_else(|_|Err(CtError::Protocol("worker heartbeat task stopped".into())))},
         }
     } }.await;
-    let _ = client.worker_heartbeat(worker.worker_id, true).await;
-    shutdown.cancel();
+    let draining = shutdown.is_cancelled();
+    if draining {
+        output::worker_event(&format!(
+            "Draining {} running operations; press Ctrl-C again to cancel them.",
+            executor.running()
+        ));
+        let _ = client.worker_heartbeat(worker.worker_id, true).await;
+    }
+    stop.cancel();
     heartbeat.abort();
+    let mut outcome = outcome;
     while let Some(result) = tasks.join_next().await {
         if outcome.is_ok() {
             outcome = result
@@ -112,10 +245,22 @@ pub async fn run(
     outcome
 }
 
+async fn until_drained<T>(
+    drain: &CancellationToken,
+    work: impl Future<Output = CtResult<T>>,
+) -> CtResult<Option<T>> {
+    tokio::select! {
+        _=drain.cancelled()=>Ok(None),
+        result=work=>result.map(Some),
+    }
+}
+
 async fn maintain(executor: &Arc<WorkdirExecutor>) {
     let executor = executor.clone();
     let _ = tokio::task::spawn_blocking(move || {
-        background::gc(&executor.identity, SystemTime::now());
+        let now = SystemTime::now();
+        background::gc(&executor.identity, now);
+        journal::remove_abandoned(&executor.identity.state, now, ABANDONED_JOURNAL_AGE);
     })
     .await;
 }
@@ -132,9 +277,10 @@ async fn serve(
     client: WorkerClient,
     executor: Arc<WorkdirExecutor>,
     lease: api::AssignmentLease,
-    drain: CancellationToken,
+    tokens: (CancellationToken, CancellationToken),
     permits: Arc<Semaphore>,
 ) -> CtResult<()> {
+    let (drain, abort) = tokens;
     let Some(lease) = announce(
         &client,
         lease,
@@ -155,7 +301,7 @@ async fn serve(
     else {
         return Ok(());
     };
-    let cancel = CancellationToken::new();
+    let cancel = abort.child_token();
     let _cancel_on_drop = cancel.clone().drop_guard();
     let journal = Journal::open(
         executor
@@ -214,12 +360,12 @@ async fn serve(
     let mut after = 0;
     let mut last_operation = std::time::Instant::now();
     let mut outcome=async { loop {
-        if cancel.is_cancelled() {break Err(CtError::Protocol("assignment lease lost; effects stopped".into()));}
+        if cancel.is_cancelled() {break stopped(&abort);}
         if drain.is_cancelled() && operations.is_empty() {break Ok(());}
         if operations.is_empty() && last_operation.elapsed()>Duration::from_secs(30) {break Ok(());}
         let available = 4 - operations.len();
         tokio::select! {
-            _=cancel.cancelled()=>break Err(CtError::Protocol("assignment lease lost; effects stopped".into())),
+            _=cancel.cancelled()=>break stopped(&abort),
             completed=operations.join_next(), if !operations.is_empty()=>{
                 match completed {
                     Some(Ok((id,Ok(()))))=>{active.remove(&id);},
@@ -247,8 +393,8 @@ async fn serve(
                 for envelope in batch {
                     validate(&lease,&envelope)?;
                     if active.contains(&envelope.operation_id) {continue;}
-                    let received = envelope.clone();
-                    let state=journal.apply(move |j| j.received(&received)).await?;
+                    let delivery = Delivery::of(&envelope);
+                    let state=journal.apply(move |j| j.received(delivery)).await?;
                     after=after.max(envelope.operation_sequence as u64);
                     if state==JournalState::Acknowledged {continue;}
                     last_operation=std::time::Instant::now();
@@ -283,17 +429,38 @@ async fn serve(
     cancel.cancel();
     heartbeat.abort();
     let release = client.release(&lease).await;
-    if outcome.is_ok() && release.is_ok() {
-        journal
-            .retire(
-                executor
-                    .identity
-                    .state
-                    .join(lease.assignment_id.to_string()),
-            )
-            .await?;
+    settle(
+        outcome,
+        release,
+        &journal,
+        executor
+            .identity
+            .state
+            .join(lease.assignment_id.to_string()),
+    )
+    .await
+}
+
+async fn settle(
+    outcome: CtResult<()>,
+    release: CtResult<()>,
+    journal: &Journal,
+    path: std::path::PathBuf,
+) -> CtResult<()> {
+    if outcome.is_err() || release.is_err() {
+        return outcome.and(release);
     }
-    outcome.and(release)
+    journal.retire(path).await
+}
+
+fn stopped(abort: &CancellationToken) -> CtResult<()> {
+    if abort.is_cancelled() {
+        Ok(())
+    } else {
+        Err(CtError::Protocol(
+            "assignment lease lost; effects stopped".into(),
+        ))
+    }
 }
 
 async fn announce(
@@ -345,6 +512,7 @@ async fn reconcile(
             api::OperationReceiptState::Succeeded
                 | api::OperationReceiptState::Failed
                 | api::OperationReceiptState::Cancelled
+                | api::OperationReceiptState::Unknown
         ) {
             journal
                 .apply(move |j| j.acknowledge(record.operation_id))
@@ -364,6 +532,7 @@ async fn execute(
     state: JournalState,
 ) -> CtResult<()> {
     let (cancel, drain) = tokens;
+    let envelope = Arc::new(envelope);
     let operation_id = envelope.operation_id;
     let result = if state == JournalState::Terminal {
         let record = journal
@@ -386,43 +555,41 @@ async fn execute(
                 "operation may already have executed; reconciliation required".into(),
             ));
         }
+        executor.identity.revalidate()?;
         journal.apply(move |j| j.started(operation_id)).await?;
         client.start(worker, &envelope).await?;
-        if cancel.is_cancelled() {
-            return Err(CtError::Protocol(
-                "assignment cancelled before dispatch".into(),
-            ));
-        }
-        let result = executor.execute(&envelope, cancel, worker, &client).await?;
+        let result = if cancel.is_cancelled() {
+            super::executor::cancelled()?
+        } else {
+            executor.execute(&envelope, cancel, worker, &client).await?
+        };
         let durable_result = result.clone();
         journal
             .apply(move |j| j.terminal(operation_id, &durable_result))
             .await?;
         result
     };
-    for attempt in 0..5 {
-        match client.complete(worker, &envelope, result.clone()).await {
-            Ok(receipt) => {
-                if receipt.operation_id != envelope.operation_id
-                    || receipt.request_digest != envelope.request_digest
-                {
-                    return Err(CtError::Protocol("receipt identity mismatch".into()));
-                }
-                journal.apply(move |j| j.acknowledge(operation_id)).await?;
-                if receipt.assignment_complete {
-                    drain.cancel();
-                }
-                return Ok(());
-            }
-            Err(error) if error.is_transport() && attempt < 4 => {
-                tokio::time::sleep(Duration::from_secs(1)).await
-            }
-            Err(error) => return Err(error),
+    let receipt = retry_transport({
+        let client = client.clone();
+        let envelope = envelope.clone();
+        move || {
+            let client = client.clone();
+            let envelope = envelope.clone();
+            let result = result.clone();
+            async move { client.complete(worker, &envelope, result).await }
         }
+    })
+    .await?;
+    if receipt.operation_id != envelope.operation_id
+        || receipt.request_digest != envelope.request_digest
+    {
+        return Err(CtError::Protocol("receipt identity mismatch".into()));
     }
-    Err(CtError::Transport(
-        "worker result acknowledgement unavailable".into(),
-    ))
+    journal.apply(move |j| j.acknowledge(operation_id)).await?;
+    if receipt.assignment_complete {
+        drain.cancel();
+    }
+    Ok(())
 }
 
 fn validate(lease: &api::AssignmentLease, envelope: &api::OperationEnvelope) -> CtResult<()> {
@@ -433,7 +600,6 @@ fn validate(lease: &api::AssignmentLease, envelope: &api::OperationEnvelope) -> 
         || envelope.fence_token != lease.fence_token
         || envelope.lease_token != lease.lease_token
         || envelope.operation_sequence < 1
-        || envelope.deadline_at <= Utc::now()
     {
         return Err(CtError::Protocol(
             "worker envelope failed lease validation".into(),
@@ -448,10 +614,9 @@ where
     Fut: Future<Output = CtResult<T>> + Send + 'static,
     T: Send + 'static,
 {
-    let config = WatchConfig::for_run(WORKER_TRANSPORT_RETRY_TIMEOUT);
     retry_within(
         fetch,
-        &config,
+        &worker_retry_config(),
         WORKER_HEARTBEAT_RETRY_TIMEOUT,
         "worker heartbeat retry deadline exceeded",
     )
@@ -479,10 +644,9 @@ where
     T: Send + 'static,
 {
     let remaining = deadline.saturating_duration_since(Instant::now());
-    let config = WatchConfig::for_run(WORKER_TRANSPORT_RETRY_TIMEOUT);
     retry_within(
         fetch,
-        &config,
+        &worker_retry_config(),
         remaining,
         "worker lease retry deadline exceeded",
     )
@@ -495,14 +659,20 @@ where
     Fut: Future<Output = CtResult<T>> + Send + 'static,
     T: Send + 'static,
 {
-    let config = WatchConfig::for_run(WORKER_TRANSPORT_RETRY_TIMEOUT);
     retry_within(
         fetch,
-        &config,
+        &worker_retry_config(),
         WORKER_TRANSPORT_RETRY_TIMEOUT,
         "worker transport retry deadline exceeded",
     )
     .await
+}
+
+fn worker_retry_config() -> WatchConfig {
+    WatchConfig {
+        max_transport_errors: u32::MAX,
+        ..WatchConfig::for_run(WORKER_TRANSPORT_RETRY_TIMEOUT)
+    }
 }
 
 async fn retry_within<T, F, Fut>(
@@ -545,6 +715,181 @@ mod tests {
     use tokio::sync::oneshot;
 
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn a_lost_connection_reconnects_until_the_session_ends_cleanly() {
+        let attempts = AtomicUsize::new(0);
+        let drain = CancellationToken::new();
+
+        let result = reconnect(&drain, || async {
+            match attempts.fetch_add(1, Ordering::SeqCst) {
+                0 => Err(CtError::Transport("connection reset".into())),
+                1 => Err(CtError::Api {
+                    status: 503,
+                    detail: None,
+                }),
+                2 => Err(CtError::Protocol("worker heartbeat task stopped".into())),
+                _ => Ok(()),
+            }
+        })
+        .await;
+
+        assert!(result.is_ok());
+        assert_eq!(attempts.load(Ordering::SeqCst), 4);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_revoked_credential_or_replaced_folder_stops_the_worker() {
+        for fatal in [
+            CtError::Auth("worker credential expired or revoked".into()),
+            CtError::Usage("WORKDIR_IDENTITY_CHANGED".into()),
+            CtError::Api {
+                status: 404,
+                detail: None,
+            },
+        ] {
+            let attempts = AtomicUsize::new(0);
+            let mut error = Some(fatal);
+            let result = reconnect(&CancellationToken::new(), || {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                let error = error.take();
+                async move { Err(error.unwrap_or(CtError::Transport("again".into()))) }
+            })
+            .await;
+            assert!(result.is_err());
+            assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_drain_request_ends_the_reconnect_wait() {
+        let drain = CancellationToken::new();
+        let stopping = drain.clone();
+        let result = reconnect(&drain, || {
+            stopping.cancel();
+            async { Err(CtError::Transport("offline".into())) }
+        })
+        .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_failed_release_keeps_the_receipt_journal() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("state").join("assignment");
+        let journal = Journal::open(path.clone()).await.unwrap();
+
+        let result = settle(
+            Ok(()),
+            Err(CtError::Transport("release unavailable".into())),
+            &journal,
+            path.clone(),
+        )
+        .await;
+        assert!(matches!(result, Err(CtError::Transport(_))));
+        assert!(path.exists());
+
+        let result = settle(
+            Err(CtError::Protocol("operation failed".into())),
+            Ok(()),
+            &journal,
+            path.clone(),
+        )
+        .await;
+        assert!(matches!(result, Err(CtError::Protocol(_))));
+        assert!(path.exists());
+
+        settle(Ok(()), Ok(()), &journal, path.clone())
+            .await
+            .unwrap();
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn a_second_interrupt_ends_the_assignment_without_a_lease_error() {
+        let abort = CancellationToken::new();
+        assert!(matches!(stopped(&abort), Err(CtError::Protocol(_))));
+        abort.cancel();
+        assert!(stopped(&abort).is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_bad_gateway_on_lease_renewal_is_retried_within_the_lease() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let lease = api::AssignmentLease {
+            assignment_id: Uuid::new_v4(),
+            fence_token: 1,
+            lease_expires_at: Utc::now() + chrono::Duration::seconds(60),
+            lease_token: "lease".into(),
+            session_id: Uuid::new_v4(),
+            state: api::AssignmentState::Active,
+            target_id: Uuid::new_v4(),
+            worker_id: Uuid::new_v4(),
+        };
+        let body = serde_json::to_string(&lease).unwrap();
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let server_attempts = attempts.clone();
+        let server = tokio::spawn(async move {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = [0_u8; 8192];
+                let _ = stream.read(&mut request).await.unwrap();
+                let response = if server_attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                        .to_owned()
+                } else {
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                };
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let client = WorkerClient::new(&format!("http://{address}"), "test-token").unwrap();
+
+        let renewed = retry_transport_until(lease_retry_deadline(&lease), {
+            let lease = lease.clone();
+            move || {
+                let client = client.clone();
+                let lease = lease.clone();
+                async move {
+                    client
+                        .heartbeat(&lease, api::HeartbeatAssignmentRequestState::Active)
+                        .await
+                }
+            }
+        })
+        .await
+        .expect("the lease survives one bad gateway");
+
+        assert_eq!(renewed.assignment_id, lease.assignment_id);
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+        server.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn worker_retries_are_bounded_by_time_not_by_error_count() {
+        let attempts = std::sync::Arc::new(AtomicUsize::new(0));
+        let result = retry_transport({
+            let attempts = attempts.clone();
+            move || {
+                let attempts = attempts.clone();
+                async move {
+                    if attempts.fetch_add(1, Ordering::SeqCst) < 8 {
+                        Err(CtError::Transport("offline".into()))
+                    } else {
+                        Ok(7)
+                    }
+                }
+            }
+        })
+        .await;
+
+        assert_eq!(result.unwrap(), 7);
+        assert_eq!(attempts.load(Ordering::SeqCst), 9);
+    }
 
     #[test]
     fn registration_target_must_match_the_saved_credential() {

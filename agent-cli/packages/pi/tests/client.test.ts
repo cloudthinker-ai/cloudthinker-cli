@@ -7,6 +7,7 @@ import {
 	DEFAULT_BASE_URL,
 	TokenSource,
 	resolveBaseUrl,
+	tokenBinary,
 	tokenCommandArgs,
 } from "../src/client.ts";
 import { startFakeServer } from "./helpers.ts";
@@ -25,32 +26,43 @@ test("the api url appends /api/v1 to the bare origin", () => {
 	assert.equal(client.apiUrl, "http://localhost:9900/api/v1");
 });
 
-test("an env token wins and the token command never runs", () => {
+test("an env token wins and the token command never runs", async () => {
 	let calls = 0;
-	const tokens = new TokenSource({ CLOUDTHINKER_TOKEN: "env-value" }, () => {
+	const tokens = new TokenSource({ CLOUDTHINKER_TOKEN: "env-value" }, async () => {
 		calls += 1;
 		return { status: 0, stdout: "command-value" };
 	});
-	assert.equal(tokens.resolve(), "env-value");
+	assert.equal(await tokens.resolve(), "env-value");
 	assert.equal(tokens.fromEnvironment, true);
 	assert.equal(calls, 0);
 });
 
-test("without an env token the command runs once and is cached until invalidated", () => {
+test("without an env token the command runs once and is cached until invalidated", async () => {
 	let calls = 0;
 	const tokens = new TokenSource({}, () => {
 		calls += 1;
-		return { status: 0, stdout: `command-value-${calls}\n` };
+		return Promise.resolve({ status: 0, stdout: `command-value-${calls}\n` });
 	});
-	assert.equal(tokens.resolve(), "command-value-1");
-	assert.equal(tokens.resolve(), "command-value-1");
+	assert.equal(await tokens.resolve(), "command-value-1");
+	assert.equal(await tokens.resolve(), "command-value-1");
 	assert.equal(calls, 1);
-	tokens.invalidate();
-	assert.equal(tokens.resolve(), "command-value-2");
+	tokens.invalidate("command-value-1");
+	assert.equal(await tokens.resolve(), "command-value-2");
 	assert.equal(calls, 2);
 });
 
-test("the token command carries the workspace the wrapper pinned", () => {
+test("concurrent token requests share one asynchronous command", async () => {
+	let calls = 0;
+	const tokens = new TokenSource({}, async () => {
+		calls += 1;
+		await new Promise((resolve) => setTimeout(resolve, 1));
+		return { status: 0, stdout: "shared-token" };
+	});
+	assert.deepEqual(await Promise.all([tokens.resolve(), tokens.resolve()]), ["shared-token", "shared-token"]);
+	assert.equal(calls, 1);
+});
+
+test("the token command carries the workspace the wrapper pinned", async () => {
 	assert.deepEqual(tokenCommandArgs({}), ["auth", "token"]);
 	assert.deepEqual(tokenCommandArgs({ CLOUDTHINKER_WORKSPACE: "  " }), ["auth", "token"]);
 	assert.deepEqual(tokenCommandArgs({ CLOUDTHINKER_WORKSPACE: "ws-1" }), [
@@ -63,17 +75,31 @@ test("the token command carries the workspace the wrapper pinned", () => {
 	let seen: string[] = [];
 	const tokens = new TokenSource({ CLOUDTHINKER_WORKSPACE: "ws-1" }, (_command, args) => {
 		seen = args;
-		return { status: 0, stdout: "value" };
+		return Promise.resolve({ status: 0, stdout: "value" });
 	});
-	tokens.resolve();
+	await tokens.resolve();
 	assert.deepEqual(seen, ["auth", "token", "--workspace", "ws-1"]);
 });
 
-test("a failing token command raises 401 and quotes no command output", () => {
-	const tokens = new TokenSource({}, () => ({ status: 3, stdout: "leaky-value" }));
+test("the token command runs the wrapper's own binary when it names a safe path", async () => {
+	let binary = "";
+	const tokens = new TokenSource({ CLOUDTHINKER_BIN: "/opt/cloudthinker/bin/cloudthinker" }, (command) => {
+		binary = command;
+		return Promise.resolve({ status: 0, stdout: "value" });
+	});
+	await tokens.resolve();
+	assert.equal(binary, "/opt/cloudthinker/bin/cloudthinker");
+	assert.equal(tokenBinary({}), "cloudthinker");
+	assert.equal(tokenBinary({ CLOUDTHINKER_BIN: "relative/cloudthinker" }), "cloudthinker");
+	assert.equal(tokenBinary({ CLOUDTHINKER_BIN: "/tmp/x; touch /tmp/pwned" }), "cloudthinker");
+	assert.equal(tokenBinary({ CLOUDTHINKER_BIN: "/tmp/$(id)" }), "cloudthinker");
+});
+
+test("a failing token command raises 401 and quotes no command output", async () => {
+	const tokens = new TokenSource({}, async () => ({ status: 3, stdout: "leaky-value" }));
 	let raised: unknown;
 	try {
-		tokens.resolve();
+		await tokens.resolve();
 	} catch (error) {
 		raised = error;
 	}
@@ -84,7 +110,7 @@ test("a failing token command raises 401 and quotes no command output", () => {
 
 test("the bearer reaches the server and a 401 retries once on a fresh token", async () => {
 	let calls = 0;
-	const tokens = new TokenSource({}, () => {
+	const tokens = new TokenSource({}, async () => {
 		calls += 1;
 		return { status: 0, stdout: `token-${calls}` };
 	});
@@ -104,6 +130,30 @@ test("the bearer reaches the server and a 401 retries once on a fresh token", as
 		assert.equal(created.conversation_id, "c-1");
 		assert.equal(server.requests.length, 2);
 		assert.equal(server.requests[1]?.headers.authorization, "Bearer token-2");
+	} finally {
+		await server.close();
+	}
+});
+
+test("concurrent 401 responses share one refreshed token", async () => {
+	let calls = 0;
+	const tokens = new TokenSource({}, async () => {
+		calls += 1;
+		return { status: 0, stdout: `token-${calls}` };
+	});
+	const server = await startFakeServer((request) => {
+		if (request.headers.authorization === "Bearer token-1") return { status: 401 };
+		return { body: { models: [] } };
+	});
+	try {
+		const client = new CloudThinkerClient({ baseUrl: server.origin, tokens });
+		await Promise.all([client.listModels(), client.listModels()]);
+		assert.equal(calls, 2);
+		assert.equal(server.requests.length, 4);
+		assert.deepEqual(
+			server.requests.map((request) => request.headers.authorization),
+			["Bearer token-1", "Bearer token-1", "Bearer token-2", "Bearer token-2"],
+		);
 	} finally {
 		await server.close();
 	}

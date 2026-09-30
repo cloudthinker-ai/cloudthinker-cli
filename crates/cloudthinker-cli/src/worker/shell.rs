@@ -114,8 +114,9 @@ pub async fn execute(
     let group = ProcessGroup(pid);
     let stdout = child.stdout.take().ok_or("SHELL_UNAVAILABLE")?;
     let stderr = child.stderr.take().ok_or("SHELL_UNAVAILABLE")?;
-    let mut stdout_task = AbortOnDropHandle::new(tokio::spawn(tail(stdout)));
-    let mut stderr_task = AbortOnDropHandle::new(tokio::spawn(tail(stderr)));
+    let buffers = [TailBuffer::default(), TailBuffer::default()];
+    let mut stdout_task = AbortOnDropHandle::new(tokio::spawn(tail(stdout, buffers[0].clone())));
+    let mut stderr_task = AbortOnDropHandle::new(tokio::spawn(tail(stderr, buffers[1].clone())));
     let (status, reason) = tokio::select! {
         status = child.wait() => (status.ok(),None),
         _ = cancel.cancelled() => (None,Some("CANCELLED")),
@@ -138,38 +139,60 @@ pub async fn execute(
     };
     drop(group);
     let mut text = Vec::new();
-    for handle in [&mut stdout_task, &mut stderr_task] {
-        match tokio::time::timeout(Duration::from_secs(5), &mut *handle).await {
-            Ok(Ok(Ok(output))) => text.push(output),
-            _ => {
-                handle.abort();
-                incomplete = true;
-                text.push(String::new());
-            }
+    for (handle, buffer) in [&mut stdout_task, &mut stderr_task]
+        .into_iter()
+        .zip(&buffers)
+    {
+        if !matches!(
+            tokio::time::timeout(Duration::from_secs(5), &mut *handle).await,
+            Ok(Ok(Ok(())))
+        ) {
+            handle.abort();
+            incomplete = true;
         }
+        text.push(buffer.text());
     }
     Ok(
         json!({"result":{"return_code":status.and_then(|s|s.code()).unwrap_or(-1),"stdout":text[0],"stderr":text[1],"duration":started.elapsed().as_secs_f64(),"error_code":reason,"cancel_incomplete":incomplete}}),
     )
 }
 
-async fn tail(mut reader: impl AsyncRead + Unpin) -> Result<String, std::io::Error> {
-    let mut tail = Vec::with_capacity(TAIL_BYTES * 2);
-    let mut buffer = [0; 8192];
-    loop {
-        let count = reader.read(&mut buffer).await?;
-        if count == 0 {
-            break;
-        }
-        tail.extend_from_slice(&buffer[..count]);
+#[derive(Clone, Default)]
+struct TailBuffer(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl TailBuffer {
+    fn push(&self, bytes: &[u8]) {
+        let Ok(mut tail) = self.0.lock() else {
+            return;
+        };
+        tail.extend_from_slice(bytes);
         if tail.len() > TAIL_BYTES * 2 {
-            tail.drain(..tail.len() - TAIL_BYTES);
+            let excess = tail.len() - TAIL_BYTES;
+            tail.drain(..excess);
         }
     }
-    if tail.len() > TAIL_BYTES {
-        tail.drain(..tail.len() - TAIL_BYTES);
+
+    fn text(&self) -> String {
+        let Ok(tail) = self.0.lock() else {
+            return String::new();
+        };
+        let start = tail.len().saturating_sub(TAIL_BYTES);
+        String::from_utf8_lossy(&tail[start..]).into_owned()
     }
-    Ok(String::from_utf8_lossy(&tail).into_owned())
+}
+
+async fn tail(
+    mut reader: impl AsyncRead + Unpin,
+    buffer: TailBuffer,
+) -> Result<(), std::io::Error> {
+    let mut chunk = [0; 8192];
+    loop {
+        let count = reader.read(&mut chunk).await?;
+        if count == 0 {
+            return Ok(());
+        }
+        buffer.push(&chunk[..count]);
+    }
 }
 
 #[cfg(test)]
@@ -244,6 +267,28 @@ mod tests {
         assert_eq!(result["result"]["cancel_incomplete"], false);
         assert_eq!(result["result"]["return_code"], -1);
         assert!(root.path().join("marker").is_file());
+    }
+
+    #[tokio::test]
+    async fn output_survives_a_child_that_escapes_the_process_group() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = Dir::open_ambient_dir(root.path(), cap_std::ambient_authority()).unwrap();
+        let script: api::ScriptRun = serde_json::from_value(
+            json!({"kind":"script","script":"printf visible; printf warned >&2; set -m; sleep 8 &"}),
+        )
+        .unwrap();
+        let result = execute(
+            &dir,
+            &script,
+            &BTreeMap::new(),
+            Utc::now() + chrono::Duration::seconds(60),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["result"]["stdout"], "visible");
+        assert_eq!(result["result"]["stderr"], "warned");
+        assert_eq!(result["result"]["cancel_incomplete"], true);
     }
 
     #[tokio::test]

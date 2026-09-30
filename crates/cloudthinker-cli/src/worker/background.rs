@@ -689,7 +689,7 @@ mod tests {
     use uuid::Uuid;
 
     struct Fixture {
-        _temporary: tempfile::TempDir,
+        temporary: tempfile::TempDir,
         work: PathBuf,
         state: PathBuf,
         outpost: Uuid,
@@ -723,7 +723,7 @@ mod tests {
                 .unwrap(),
         );
         Fixture {
-            _temporary: temporary,
+            temporary,
             work,
             state,
             outpost,
@@ -866,7 +866,7 @@ mod tests {
 
         async fn restart_worker(self) -> Self {
             let Fixture {
-                _temporary,
+                temporary,
                 work,
                 state,
                 outpost,
@@ -883,7 +883,7 @@ mod tests {
                     .unwrap(),
             );
             Fixture {
-                _temporary,
+                temporary,
                 work,
                 state,
                 outpost,
@@ -1074,7 +1074,7 @@ mod tests {
     #[tokio::test]
     async fn ca_bg_20_unspawnable_shim_removes_the_task_dir() {
         let mut fixture = fixture().await;
-        let empty = fixture._temporary.path().join("empty");
+        let empty = fixture.temporary.path().join("empty");
         std::fs::write(&empty, "").unwrap();
         fixture.shim = Arc::new(ShimImage::open(empty, &BTreeMap::new()).await.unwrap());
         assert_eq!(
@@ -1090,14 +1090,14 @@ mod tests {
     #[tokio::test]
     async fn shim_image_survives_replacing_the_binary_on_disk() {
         let mut fixture = fixture().await;
-        let copy = fixture._temporary.path().join("cloudthinker-copy");
+        let copy = fixture.temporary.path().join("cloudthinker-copy");
         std::fs::copy(shim_binary(), &copy).unwrap();
         fixture.shim = Arc::new(
             ShimImage::open(copy.clone(), &BTreeMap::new())
                 .await
                 .unwrap(),
         );
-        let replacement = fixture._temporary.path().join("cloudthinker-new");
+        let replacement = fixture.temporary.path().join("cloudthinker-new");
         std::fs::write(&replacement, "").unwrap();
         std::fs::rename(&replacement, &copy).unwrap();
         assert_eq!(

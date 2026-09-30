@@ -83,7 +83,7 @@ test("a rendered run always names the run id, the status, and the pickup tool", 
 	assert.ok(succeeded.includes("eu-west-1"));
 
 	const approval = renderRun(state("required_approval"));
-	assert.ok(approval.includes("waiting for a human to approve this in the browser at http://web/runs/r-1"));
+	assert.ok(approval.includes("A human must approve this in the browser at http://web/runs/r-1"));
 	assert.ok(approval.includes(NOTIFY_HINT));
 	assert.ok(!approval.includes("notification was sent"));
 	assert.ok(approval.includes(CT_RUN_STATUS));
