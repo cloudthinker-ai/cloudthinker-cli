@@ -1,3 +1,7 @@
+## Release build fix for 0.7.6
+
+- Restore Windows CLI builds by declaring the shared timestamp and file-lock dependencies for every platform.
+
 ## Additional changes for 0.7.6
 
 - Replace the fixed tour command with a bundled /skill:tour that explains Local and Cloud and helps users choose a first task.

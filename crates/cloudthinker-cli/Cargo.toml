@@ -34,14 +34,14 @@ axoupdater = "0.10"
 base64.workspace = true
 tempfile = "3"
 clap_complete = "4"
+chrono.workspace = true
+fs2 = "0.4"
 
 [target.'cfg(unix)'.dependencies]
-chrono.workspace = true
 base64.workspace = true
 flate2.workspace = true
 tar.workspace = true
 cap-std = "4"
-fs2 = "0.4"
 tokio-util = { version = "0.7", features = ["rt"] }
 globset = "0.4"
 regex = "1"
