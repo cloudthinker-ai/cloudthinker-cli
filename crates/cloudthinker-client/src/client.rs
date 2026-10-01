@@ -2019,7 +2019,7 @@ impl CtClient {
             .await
     }
 
-    pub(crate) async fn authed_with_timeout<T, F>(&self, timeout: Duration, call: F) -> CtResult<T>
+    async fn authed_with_timeout<T, F>(&self, timeout: Duration, call: F) -> CtResult<T>
     where
         F: AsyncFn(
             cloudthinker_api::Client,

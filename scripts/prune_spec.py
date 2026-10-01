@@ -104,21 +104,7 @@ _CYBER_PATHS = frozenset(
     }
 )
 
-_CLOUD_PATHS = frozenset({
-    "/api/v1/agent-cli/sessions",
-    "/api/v1/agent-cli/connections",
-    "/api/v1/agent-cli/skills/load",
-    "/api/v1/agent-cli/tools/load",
-    "/api/v1/agent-cli/executions",
-    "/api/v1/agent-cli/executions/{task_id}",
-    "/api/v1/agent-cli/writes",
-    "/api/v1/agent-cli/writes/{write_id}",
-    "/api/v1/agent-cli/writes/{write_id}/run",
-    "/api/v1/agent-cli/sessions/{conversation_id}/writes",
-})
-
 ALLOWED_PATHS = (
-    _CLOUD_PATHS |
     _OUTPOST_PATHS
     | _WORKER_PATHS
     | _LOGIN_PATHS

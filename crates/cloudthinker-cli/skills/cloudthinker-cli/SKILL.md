@@ -27,7 +27,6 @@ Use `cloudthinker --help` and `cloudthinker <command> --help` for exact syntax w
 Read every module whose signal matches the task:
 
 - `cloudthinker --skill auth` ([auth.md](auth.md)): login, identity, host selection, workspace selection, authentication errors.
-- `cloudthinker --skill cloud` ([cloud.md](cloud.md)): use Connections and MCP directly from your own agent, load guides and schemas, execute in cloud and follow approval.
 - `cloudthinker --skill chat` ([chat.md](chat.md)): delegate cloud work, recover a run, continue a conversation, timeout or approval handling.
 - `cloudthinker --skill review` ([review.md](review.md)): inspect the status or findings of a tracked merge request or pull request.
 - `cloudthinker --skill cyber` ([cyber.md](cyber.md)): the agent's internal procedure for running a Cyber pentest on this machine.

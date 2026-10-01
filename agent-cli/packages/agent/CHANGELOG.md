@@ -1,4 +1,4 @@
-## [0.8.0]
+## [0.7.7]
 
 - Render completed Mermaid flowcharts as themed terminal diagrams with authored node border colors; keep interiors and text in terminal theme colors. Preserve source while streaming and when a preview cannot fit or uses unsupported syntax.
 - Make authored Mermaid border colors configurable through `markdown.mermaidBorderColors` in settings.json, defaulting to false. Suppress colored fallback notices when color is disabled.

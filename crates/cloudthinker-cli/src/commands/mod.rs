@@ -5,7 +5,6 @@ pub mod auth;
 #[cfg(unix)]
 pub mod bg_shim;
 pub mod chat;
-pub mod cloud;
 pub mod completion;
 pub mod cyber;
 pub mod cyber_config;
