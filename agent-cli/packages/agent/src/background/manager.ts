@@ -232,6 +232,14 @@ export class BackgroundCommandManager {
 		};
 	}
 
+	outputTail(taskId: string, maxBytes = 1024): string {
+		const task = this.tasks.get(taskId);
+		if (!task) return "";
+		const chars = Math.ceil(maxBytes / 3) * 4;
+		const bytes = Buffer.from(task.output.slice(-chars), "base64");
+		return bytes.subarray(utf8Boundary(bytes, 0)).toString("utf8");
+	}
+
 	async cancel(taskId: string): Promise<BackgroundTaskSummary> {
 		this.ensureReady();
 		if (this.compromised) throw new Error("Background command session ownership was lost");

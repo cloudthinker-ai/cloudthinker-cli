@@ -1,0 +1,181 @@
+diff --git a/dist/index.ts b/dist/index.ts
+index 08700dd6f3ab70f612ee5e84756c00a95c17c189..6ec9c7e98021bd6199a9c9500b0c661e974ff821 100644
+--- a/dist/index.ts
++++ b/dist/index.ts
+@@ -3,6 +3,7 @@
+ 
+ // src/btw.ts
+ import { clampThinkingLevel, getSupportedThinkingLevels as getSupportedThinkingLevels2 } from "@earendil-works/pi-ai";
++import { completeSimple as completeSimpleWithPiAi } from "@earendil-works/pi-ai/compat";
+ 
+ // src/bring-to-main.ts
+ import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+@@ -441,12 +442,19 @@ function escapeTerminalControls(text) {
+ }
+ 
+ // src/conversation-context.ts
+-var MAX_CONTEXT_CHARS = 4e4;
++var MAX_CONTEXT_CHARS = 1e5;
++var MAX_TOOL_RESULT_CHARS = 4e3;
+ function buildConversationContext(entries) {
+   const sections = [];
+   for (const entry of entries) {
+     if (entry.type !== "message" || !entry.message?.role) continue;
+     const role = entry.message.role;
++    if (role === "toolResult") {
++      const output = truncateMiddle(extractContentLines(entry.message.content).join("\n"), MAX_TOOL_RESULT_CHARS);
++      const failed = entry.message.isError ? " (error)" : "";
++      sections.push(`Tool result from ${entry.message.toolName ?? "tool"}${failed}: ${output || "(no output)"}`);
++      continue;
++    }
+     if (role !== "user" && role !== "assistant") continue;
+     const contentLines = extractContentLines(entry.message.content);
+     if (contentLines.length === 0) continue;
+@@ -481,6 +489,13 @@ function formatJson(value) {
+     return String(value);
+   }
+ }
++function truncateMiddle(text, maxChars) {
++  if (text.length <= maxChars) return text;
++  const half = Math.floor(maxChars / 2);
++  return `${text.slice(0, half)}
++[${text.length - maxChars} characters omitted]
++${text.slice(-half)}`;
++}
+ function truncateFromStart(text, maxChars) {
+   if (text.length <= maxChars) return text;
+   return `[Earlier context omitted; showing the last ${maxChars} characters.]
+@@ -877,6 +892,8 @@ function formatError(error) {
+ }
+ var SYSTEM_PROMPT = `You answer quick side questions for a coding-agent user.
+ 
++The conversation context is the main agent's transcript. Every tool call and tool result in it was made by the main agent, not by you, and the main agent may still be working; a tool call without a result is still running.
++
+ Use the provided conversation context only as background. Answer the user's side question directly and concisely. Do not claim to have changed files, run tools, or affected the main task. If the context is insufficient, say what is unknown and give the best next step.`;
+ 
+ // src/settings.ts
+@@ -2600,8 +2617,6 @@ async function showBtwCommandMenu(ctx, options) {
+         kind: "actions",
+         title: "Pi BTW",
+         lines: [
+-          `Model: ${displayModelValue(state.settings)}`,
+-          `Thinking: ${displayThinkingSummary(state.settings)} \xB7 Remember changes: ${displayRememberSummary(state.settings)}`,
+           `Layout: ${BTW_LAYOUT_LABELS[effectiveBtwLayout(state.settings)]} \xB7 Copy on select: ${effectiveFullscreenCopyOnSelect(state.settings) ? "On" : "Off"}`
+         ],
+         items: [
+@@ -2628,7 +2643,7 @@ async function showBtwCommandMenu(ctx, options) {
+           {
+             id: "settings",
+             label: "Settings",
+-            description: "Choose model, thinking, layout, keybindings, and selection copying",
++            description: "Choose layout, keybindings, and selection copying",
+             to: state.kind === "invalid" ? "invalid" : "settings"
+           }
+         ],
+@@ -2652,29 +2667,6 @@ async function showBtwCommandMenu(ctx, options) {
+         title: "Pi BTW Settings",
+         lines: [`User settings \xB7 ${displaySettingsPath}`],
+         items: [
+-          {
+-            id: "model",
+-            label: "Model",
+-            description: "Choose the model for future pi-btw side threads without changing the main session.",
+-            currentValue: displayModelValue(state.settings),
+-            action: "open-model"
+-          },
+-          {
+-            id: "thinkingLevel",
+-            label: "Thinking level",
+-            description: `Set the starting level for future pi-btw side threads. Currently ${currentMainThinkingLevel(state.settings)}.`,
+-            currentValue: displayThinkingLevel(state.settings),
+-            values: [SAME_AS_MAIN_THREAD, ...thinkingLevels(state.settings)],
+-            action: "set-thinking"
+-          },
+-          {
+-            id: "rememberThinkingLevelChanges",
+-            label: "Remember thinking level changes",
+-            description: "Save shortcut changes for fixed thinking levels to pi-btw.json.",
+-            currentValue: effectiveRememberThinkingLevelChanges(state.settings) ? "On" : "Off",
+-            values: ["On", "Off"],
+-            action: "set-remember"
+-          },
+           {
+             id: "fullscreenCopyOnSelect",
+             label: "Copy selection automatically",
+@@ -2691,7 +2683,7 @@ async function showBtwCommandMenu(ctx, options) {
+             values: BTW_LAYOUT_VALUES,
+             action: "set-layout"
+           },
+-          ...BTW_SHORTCUT_ACTIONS.map((action) => ({
++          ...BTW_SHORTCUT_ACTIONS.filter((action) => action !== "cycleThinkingLevel").map((action) => ({
+             id: action,
+             label: shortcutLabels[action],
+             description: "Edit a BTW-only key combination or restore its default. Ctrl+C always hard-cancels.",
+@@ -3804,8 +3796,8 @@ function buildTranscriptComponents(turns, theme, pendingQuestion, markdownTransf
+ function renderTranscriptLines(components, width) {
+   return components.flatMap((component) => component.render(width)).map(stripShellIntegrationMarkers);
+ }
+-function renderSideThreadHeader(width, theme, thinkingLevel) {
+-  const thinking = thinkingLevel ? ` \xB7 thinking ${thinkingLevel}` : "";
++function renderSideThreadHeader(width, theme, _thinkingLevel) {
++  const thinking = "";
+   const title = truncateToWidth4(`\u2500 btw \xB7 side thread${thinking} `, width);
+   const ruleWidth = Math.max(0, width - visibleWidth3(title));
+   return theme.fg("muted", `${title}${"\u2500".repeat(ruleWidth)}`);
+@@ -3860,8 +3852,19 @@ function escapeTerminalControls2(text) {
+ }
+ 
+ // src/btw.ts
+-function createModelRegistryCompleteSimple(modelRegistry) {
+-  const completeSimple = async (model, context, options) => modelRegistry.streamSimple(model, context, options).result();
++var btwRequestHeaders;
++function createModelRegistryCompleteSimple(modelRegistry, ctx) {
++  const withHeaders = (model, headers) => ({ ...headers, ...btwRequestHeaders?.(model, ctx) });
++  const completeSimple = typeof modelRegistry.streamSimple === "function" ? async (model, context, options) => modelRegistry.streamSimple(model, context, { ...options, headers: withHeaders(model, options?.headers) }).result() : async (model, context, options) => {
++    const auth = await modelRegistry.getApiKeyAndHeaders(model);
++    if (!auth.ok) throw new Error(auth.error);
++    return completeSimpleWithPiAi(auth.baseUrl ? { ...model, baseUrl: auth.baseUrl } : model, context, {
++      ...options,
++      apiKey: auth.apiKey,
++      env: auth.env,
++      headers: withHeaders(model, { ...auth.headers, ...options?.headers })
++    });
++  };
+   completeSimple.appliesRequestHeaderTransforms = true;
+   return completeSimple;
+ }
+@@ -3915,6 +3918,7 @@ function btw(pi, dependencies = {}) {
+   const pickEntry = dependencies.pickMainEntry ?? pickMainEntry;
+   const loadSettings = dependencies.loadSettings ?? loadSettingsForCommand;
+   const resolveModel = dependencies.resolveModel ?? resolveBtwModelForCommand;
++  btwRequestHeaders = dependencies.requestHeaders;
+   const runThread = dependencies.runThread ?? runBtwThread;
+   const runFullscreen = dependencies.runFullscreen ?? runBtwFullscreen;
+   const subscribeMainThreadUpdates = registerBtwMainThreadUpdates(pi);
+@@ -3961,7 +3965,7 @@ function btw(pi, dependencies = {}) {
+           }
+         }
+       }
+-      const settings = await loadSettings(ctx);
++      const settings = { ...await loadSettings(ctx), model: void 0, thinkingLevel: void 0 };
+       const sameAsMainThinkingLevel = settings.thinkingLevel === void 0;
+       const resolution = await resolveModel(settings, ctx);
+       if (resolution.kind === "cancelled") {
+@@ -4064,7 +4068,7 @@ async function runBtwThread({
+   const persistThinkingLevel = dependencies.persistThinkingLevel ?? ((level) => updateBtwSettings({ thinkingLevel: level }, { settingsPath }));
+   const now = dependencies.now ?? Date.now;
+   const thread = state?.thread ?? createSideThread(buildConversationContext(ctx.sessionManager.getBranch()));
+-  const thinkingLevels = getSupportedThinkingLevels2(selected.model);
++  const thinkingLevels = [];
+   const pendingWrites = /* @__PURE__ */ new Set();
+   const steeringQuestions = [];
+   let activeThinkingLevel = clampThinkingLevel(selected.model, state?.thinkingLevel ?? thinkingLevel);
+@@ -4396,7 +4400,7 @@ async function askThreadQuestion(thread, question, selected, thinkingLevel, ctx,
+       model: selected.model,
+       thinkingLevel,
+       signal: view.signal,
+-      completeSimple: createModelRegistryCompleteSimple(ctx.modelRegistry),
++      completeSimple: createModelRegistryCompleteSimple(ctx.modelRegistry, ctx),
+       sessionId: readBtwSessionId(ctx)
+     }).then((result) => {
+       if (settled) return;

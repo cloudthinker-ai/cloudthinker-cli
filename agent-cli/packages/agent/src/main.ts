@@ -11,11 +11,13 @@ import cloudthinker from "@cloudthinker/pi/src/index.ts";
 import { markStartup } from "@cloudthinker/pi/src/timing.ts";
 
 import { registerBackgroundCommands } from "./background/index.ts";
+import bundledBtw from "./btw.ts";
 import { NO_SESSION_REFUSAL, applyGuard, hasNoSessionFlag } from "./guard.ts";
 import { isLocalReview, withoutLocalReviewFlag } from "./local-review-mode.ts";
 import { modelScopeArgs } from "./models.ts";
 import bundledSubagents from "./subagents.ts";
 import { bundledThemePaths, themeArgs } from "./theme.ts";
+import { registerVerbosity } from "./verbosity.ts";
 
 markStartup("agent.modules");
 process.title = "cloudthinker";
@@ -45,6 +47,10 @@ await main([...themes, ...modelScopeArgs(argv), ...argv], {
 	extensionFactories: [
 		{ name: "cloudthinker", factory: (pi) => cloudthinker(pi, { localReview }) },
 		{ name: "background", factory: (pi) => { registerBackgroundCommands(pi); } },
-		...(localReview ? [] : [{ name: "subagents", factory: bundledSubagents }]),
+		{ name: "verbosity", factory: (pi) => { registerVerbosity(pi); } },
+		...(localReview ? [] : [
+			{ name: "subagents", factory: bundledSubagents },
+			{ name: "btw", factory: bundledBtw },
+		]),
 	],
 });

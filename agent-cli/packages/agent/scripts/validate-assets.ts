@@ -56,8 +56,12 @@ export function validateAssets(bundle: string, piRoot: string): void {
 	if (manifest.piVersion !== "0.85.1" || manifest.piConfig?.name !== "cloudthinker") {
 		throw new Error("Incompatible bundle manifest");
 	}
-	if (!readFileSync(join(bundle, "NOTICE"), "utf8").includes("Copyright (c) 2026 tintinweb")) {
+	const notice = readFileSync(join(bundle, "NOTICE"), "utf8");
+	if (!notice.includes("Copyright (c) 2026 tintinweb")) {
 		throw new Error("Missing pi-subagents license notice");
+	}
+	if (!notice.includes("Copyright (c) 2026 narumiruna")) {
+		throw new Error("Missing pi-btw license notice");
 	}
 }
 

@@ -9,7 +9,15 @@ import { BackgroundCommandManager } from "../src/background/manager.ts";
 
 interface TestUI {
 	status: Map<string, string | undefined>;
-	widgets: Map<string, string[] | undefined>;
+	widgets: Map<string, unknown>;
+}
+
+const plainTheme = { fg: (_color: string, value: string) => value, bold: (value: string) => value } as never;
+
+function renderTasks(ui: TestUI): string {
+	const factory = ui.widgets.get("ct-tasks") as ((tui: unknown, theme: unknown) => { render(): string[] }) | undefined;
+	if (!factory) return "";
+	return factory({ terminal: { columns: 200 }, requestRender() {} }, plainTheme).render().join("\n");
 }
 
 function createContext(id: string, mode: ExtensionContext["mode"], cwd: string, ui: TestUI): ExtensionContext {
@@ -20,7 +28,7 @@ function createContext(id: string, mode: ExtensionContext["mode"], cwd: string, 
 		sessionManager: { getSessionId: () => id },
 		ui: {
 			setStatus: (key: string, value: string | undefined) => { ui.status.set(key, value); },
-			setWidget: (key: string, value: unknown) => { ui.widgets.set(key, value as string[] | undefined); },
+			setWidget: (key: string, value: unknown) => { ui.widgets.set(key, value); },
 		} as unknown as ExtensionContext["ui"],
 	} as ExtensionContext;
 }
@@ -58,32 +66,40 @@ test("registration exposes start/status/output/cancel and TUI progress", async (
 	try {
 		assert.equal(api.tool.label, "Background command");
 		const unsafeCommand = "echo ready \u001b[2J \u001b]52;c;secret\u0007 \u202eRTL\u2066";
-		const call = api.tool.renderCall?.({ action: "start", command: unsafeCommand }, {} as never, {} as never);
-		assert.match(call?.render(80).join("\n") ?? "", /Background command · start: echo ready/);
+		assert.equal(api.tool.renderShell, "self");
+		const call = api.tool.renderCall?.({ action: "start", command: unsafeCommand }, plainTheme, {} as never);
+		assert.match(call?.render(80).join("\n") ?? "", /● Background echo ready/);
 		assertSafeDisplay(call?.render(80).join("\n") ?? "");
-		const result = api.tool.renderResult?.({ content: [{ type: "text", text: "running\n" + "x".repeat(500) }], details: undefined }, { expanded: false, isPartial: false } as never, {} as never, {} as never);
+		const result = api.tool.renderResult?.({ content: [{ type: "text", text: "running\n" + "x".repeat(500) }], details: undefined }, { expanded: false, isPartial: false } as never, plainTheme, {} as never);
 		const renderedResult = result?.render(1000) ?? [];
 		assert.match(renderedResult.join("\n"), /x{100}/);
 		assert.doesNotMatch(renderedResult.join("\n"), /x{321}/);
-		const expanded = api.tool.renderResult?.({ content: [{ type: "text", text: "running\n" + "x".repeat(500) }], details: undefined }, { expanded: true, isPartial: false } as never, {} as never, {} as never);
+		const expanded = api.tool.renderResult?.({ content: [{ type: "text", text: "running\n" + "x".repeat(500) }], details: undefined }, { expanded: true, isPartial: false } as never, plainTheme, {} as never);
 		assert.match(expanded?.render(1000).join("\n") ?? "", /x{500}/);
 		const unsafeOutput = "plain\nline\t\u001b[2JCSI\u001b]52;c;secret\u0007OSC\u001b]8;;url\u001b\\link\u0000\u0007\u007f\u0085\u009bC1\u202eRTL\u2066ISO";
 		const unsafeResult = { content: [{ type: "text" as const, text: unsafeOutput }], details: { raw: unsafeOutput } };
-		const collapsedUnsafe = api.tool.renderResult?.(unsafeResult, { expanded: false, isPartial: false } as never, {} as never, {} as never);
-		const expandedUnsafe = api.tool.renderResult?.(unsafeResult, { expanded: true, isPartial: false } as never, {} as never, {} as never);
+		const collapsedUnsafe = api.tool.renderResult?.(unsafeResult, { expanded: false, isPartial: false } as never, plainTheme, {} as never);
+		const expandedUnsafe = api.tool.renderResult?.(unsafeResult, { expanded: true, isPartial: false } as never, plainTheme, {} as never);
 		assertSafeDisplay(collapsedUnsafe?.render(200).join("\n") ?? "");
 		const expandedText = expandedUnsafe?.render(200).join("\n") ?? "";
 		assertSafeDisplay(expandedText);
 		assert.match(expandedText, /plain/);
 		assert.match(expandedText, /line/);
 		assert.equal(unsafeResult.details.raw, unsafeOutput);
+		const lines = Array.from({ length: 8 }, (_, index) => `line ${index + 1}`).join("\n");
+		const outputContext = { args: { action: "output" } } as never;
+		const preview = api.tool.renderResult?.({ content: [{ type: "text", text: lines }], details: { text: lines } }, { expanded: false, isPartial: false } as never, plainTheme, outputContext)?.render(200).map((line) => line.trim()) ?? [];
+		assert.deepEqual(preview, ["… (3 earlier lines)", "line 4", "line 5", "line 6", "line 7", "line 8"]);
+		const startResult = api.tool.renderResult?.({ content: [{ type: "text", text: "Started background command abc." }], details: {} }, { expanded: false, isPartial: false } as never, plainTheme, { args: { action: "start" } } as never);
+		assert.deepEqual(startResult?.render(200), []);
 		await api.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 		const widgetUnsafeCommand = "printf 'ready'; sleep 30 # \u001b[2J \u001b]52;c;secret\u0007 \u202eRTL\u2066";
 		const started = await execute(api.tool, ctx, { action: "start", command: widgetUnsafeCommand }) as { details: { task: { id: string } } };
 		const id = started.details.task.id;
-		assert.ok(ui.status.get("ct-background")?.includes("1 background command"));
-		const widget = ui.widgets.get("ct-background")?.join("\n") ?? "";
-		assert.match(widget, /running.*printf 'ready'; sleep 30/);
+		assert.equal(ui.status.get("ct-background"), "1 running command");
+		const widget = renderTasks(ui);
+		assert.match(widget, /^● Tasks\n▾ Commands 1\n└─ \S printf 'ready'; sleep 30/);
+		assert.match(widget, /⎿ {2}(ready|waiting for output…)/);
 		assertSafeDisplay(widget);
 		let output = await execute(api.tool, ctx, { action: "output", taskId: id }) as { details: { text: string } };
 		for (let attempt = 0; attempt < 50 && output.details.text.length === 0; attempt++) {
@@ -119,10 +135,10 @@ test("completed background commands leave the TUI widget while status and output
 			status = await execute(api.tool, ctx, { action: "status", taskId: finished.details.task.id }) as typeof status;
 		}
 		assert.equal(status.details.tasks.state, "succeeded");
-		const widget = ui.widgets.get("ct-background")?.join("\n") ?? "";
-		assert.match(widget, /running.*sleep 30/);
-		assert.ok(!widget.includes(finished.details.task.id));
-		assert.equal(ui.status.get("ct-background"), "1 background command");
+		const widget = renderTasks(ui);
+		assert.match(widget, /sleep 30/);
+		assert.ok(!widget.includes("printf ready"));
+		assert.equal(ui.status.get("ct-background"), "1 running command");
 		const output = await execute(api.tool, ctx, { action: "output", taskId: finished.details.task.id }) as { details: { text: string } };
 		assert.equal(output.details.text, "ready");
 		for (let attempt = 0; attempt < 200 && api.messages.length === 0; attempt++) {
@@ -130,11 +146,11 @@ test("completed background commands leave the TUI widget while status and output
 		}
 		assert.equal(api.messages.length, 1);
 		await execute(api.tool, ctx, { action: "cancel", taskId: active.details.task.id });
-		assert.equal(ui.widgets.get("ct-background"), undefined);
+		assert.equal(ui.widgets.get("ct-tasks"), undefined);
 		assert.equal(ui.status.get("ct-background"), undefined);
 		await api.handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, ctx);
 		await api.handlers.get("session_start")?.({ type: "session_start", reason: "resume" }, ctx);
-		assert.equal(ui.widgets.get("ct-background"), undefined);
+		assert.equal(ui.widgets.get("ct-tasks"), undefined);
 		const recovered = await execute(api.tool, ctx, { action: "output", taskId: finished.details.task.id }) as { details: { text: string } };
 		assert.equal(recovered.details.text, "ready");
 	} finally {

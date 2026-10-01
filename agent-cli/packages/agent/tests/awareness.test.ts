@@ -60,3 +60,35 @@ test("CA-AWARE-12: a renderer that reuses pi's lastComponent keeps its text acro
 		/\$ git status --short$/,
 	);
 });
+
+test("compact tool output folds a successful local result to one line and keeps errors and expand", async () => {
+	const { setToolOutputMode } = await import("../src/verbosity.ts");
+	const seen: unknown[] = [];
+	const upstream = {
+		name: "bash",
+		renderCall: () => new Text("$ rg -n class", 0, 0),
+		renderResult: (_result: any, _options: any, _theme: any, context: any) => {
+			seen.push(context.lastComponent);
+			return new Text("line 1\nline 2\nline 3", 0, 0);
+		},
+	} as unknown as ToolDefinition;
+	const wrapped = tagLocalToolDefinition("bash", upstream, createLegend())!;
+	const result = { content: [{ type: "text", text: "a\nb\nc\n" }] };
+	const state = { startedAt: 1_000, endedAt: 1_100 };
+	const render = (options: object, context: object = {}) =>
+		wrapped.renderResult!(result as never, { expanded: false, isPartial: false, ...options } as never, theme, { state, ...context } as never)
+			.render(80).map(stripVTControlCharacters).map((line) => line.trim());
+	try {
+		setToolOutputMode("compact");
+		assert.deepEqual(render({}), ["✓ 3 lines · 0.1s"]);
+		assert.deepEqual(render({ expanded: true }), ["line 1", "line 2", "line 3"]);
+		assert.deepEqual(render({}, { isError: true }), ["line 1", "line 2", "line 3"]);
+		assert.deepEqual(render({ isPartial: true }), ["line 1", "line 2", "line 3"]);
+		assert.ok(seen.slice(1).every((component) => component instanceof Text && component.render(80).join("\n").includes("line 1")));
+		setToolOutputMode("preview");
+		assert.deepEqual(render({}), ["line 1", "line 2", "line 3"]);
+		assert.equal(tagLocalToolDefinition("edit", { ...upstream, name: "edit" } as ToolDefinition, createLegend())!.renderResult, upstream.renderResult);
+	} finally {
+		setToolOutputMode("compact");
+	}
+});

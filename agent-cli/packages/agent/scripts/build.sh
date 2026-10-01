@@ -193,6 +193,11 @@ NOTICE
 	cat "$PKG_DIR/node_modules/beautiful-mermaid/LICENSE" >> "$dir/NOTICE"
 	cat "$(dirname "$(realpath "$PKG_DIR/node_modules/beautiful-mermaid")")/entities/LICENSE" >> "$dir/NOTICE"
 	cat "$(dirname "$(realpath "$PKG_DIR/node_modules/beautiful-mermaid")")/elkjs/LICENSE.md" >> "$dir/NOTICE"
+	cat "$PKG_DIR/node_modules/@narumitw/pi-btw/LICENSE" >> "$dir/NOTICE"
+	btw_deps="$(dirname "$(dirname "$(realpath "$(dirname "$(realpath "$PKG_DIR/node_modules/@narumitw/pi-btw")")/pi-tui-kit")")")"
+	for license in @narumitw/pi-tui-kit/LICENSE diff/LICENSE grok-mermaid/LICENSE highlight.js/LICENSE; do
+		cat "$btw_deps/$license" >> "$dir/NOTICE"
+	done
 
   node "$PKG_DIR/scripts/validate-assets.ts" "$dir" "$PI_ROOT"
   asset="cloudthinker-agent-$triple.tar.gz"

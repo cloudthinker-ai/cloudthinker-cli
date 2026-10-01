@@ -2,6 +2,12 @@
 
 - Render completed Mermaid flowcharts as themed terminal diagrams with authored node border colors; keep interiors and text in terminal theme colors. Preserve source while streaming and when a preview cannot fit or uses unsupported syntax.
 - Make authored Mermaid border colors configurable through `markdown.mermaidBorderColors` in settings.json, defaulting to false. Suppress colored fallback notices when color is disabled.
+- Resolve the workflow source from the installed patched package so the parity test works across pnpm layouts.
+- Show running agents and running background commands together in one Tasks pane, each with a spinner, elapsed time, and its latest activity.
+- Render a background start as one line, show command output as a 5-line preview, and list completions with a status mark and duration.
+- Fold successful local tool output to a one-line summary by default; `/verbosity` or the `toolOutput` setting switches to the 5-line preview.
+- Draw Markdown code blocks with a language label and a bar instead of fence lines.
+- Ask a side question with `/btw` while the agent works. The side thread answers from the conversation so far, including finished tool output, and the main turn keeps running.
 
 ## Additional changes for 0.7.6
 

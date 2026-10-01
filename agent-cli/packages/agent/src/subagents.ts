@@ -20,6 +20,7 @@ import { cloudDefaultEnabled } from "@cloudthinker/pi/src/settings.ts";
 import { findLinkedSession } from "@cloudthinker/pi/src/session.ts";
 import { CLOUD_TOOLS } from "@cloudthinker/pi/src/tools/names.ts";
 import { adaptiveSubagentModeGuidance } from "./subagent-modes.ts";
+import { tasksPane } from "./tasks-pane.ts";
 
 type DefaultResourceLoaderOptions = ConstructorParameters<typeof DefaultResourceLoader>[0];
 
@@ -166,13 +167,16 @@ export function cloudDelegationTool(tool: ToolDefinition): ToolDefinition {
 	return tool;
 }
 
+export const subagentHost: SubagentHost = {
+	resolveModel: resolveCloudMode,
+	loaderOptions: childLoaderOptions,
+	createSession: createCloudChild,
+	modelChoices: (ctx) => ctx.modelRegistry.getAll().filter((model) => model.provider === PROVIDER_ID).map((model) => `${PROVIDER_ID}/${model.id}`),
+	taskRows: (rows, active) => tasksPane.setGroup("Agents", rows, active),
+};
+
 export default function bundledSubagents(pi: ExtensionAPI): ReturnType<typeof subagents> {
-	setSubagentHost({
-		resolveModel: resolveCloudMode,
-		loaderOptions: childLoaderOptions,
-		createSession: createCloudChild,
-		modelChoices: (ctx) => ctx.modelRegistry.getAll().filter((model) => model.provider === PROVIDER_ID).map((model) => `${PROVIDER_ID}/${model.id}`),
-	});
+	setSubagentHost(subagentHost);
 	for (const agent of DEFAULT_AGENTS.values()) {
 		delete agent.model;
 		delete agent.thinking;

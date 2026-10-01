@@ -80,10 +80,10 @@ index f2dd0e6e0e88c064aac1bdd04ff4ebf55cbcd60e..c097e4be4e2e8a93c9ee3076738cf76c
      // Bind extensions so that session_start fires and extensions can initialize
 diff --git a/dist/host.d.ts b/dist/host.d.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..3ef223a7bb9f4c4bd2174d84c5dc916945b7b160
+index 0000000000000000000000000000000000000000..be135347e7470fe682cdeee78b959b2d0ebc0abf
 --- /dev/null
 +++ b/dist/host.d.ts
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,15 @@
 +import type { CreateAgentSessionOptions, CreateAgentSessionResult, DefaultResourceLoader, ExtensionContext } from "@earendil-works/pi-coding-agent";
 +import type { ModelRegistry } from "./model-resolver.js";
 +
@@ -94,6 +94,7 @@ index 0000000000000000000000000000000000000000..3ef223a7bb9f4c4bd2174d84c5dc9169
 +  resolveModel(input: string, registry: Pick<ModelRegistry, "find" | "getAvailable"> & Partial<Pick<ModelRegistry, "getAll">>): NonNullable<CreateAgentSessionOptions["model"]> | string;
 +  loaderOptions(options: DefaultResourceLoaderOptions, ctx: ExtensionContext, includeCloudTools: boolean): DefaultResourceLoaderOptions;
 +  createSession(options: CreateAgentSessionOptions, ctx: ExtensionContext): Promise<CreateAgentSessionResult>;
++  taskRows?(rows: ((tui: any, theme: any) => string[]) | undefined, active: number): void;
 +}
 +export declare function setSubagentHost(value: SubagentHost): void;
 +export declare function getSubagentHost(): SubagentHost | undefined;
@@ -415,7 +416,7 @@ index 0accb11f7366dfbf3622637b4479bb14ed46ec4e..3f9f41e4a6bbeda634ad00febb902fe8
      const all = (registry.getAvailable?.() ?? registry.getAll());
      const availableSet = new Set(all.map(m => `${m.provider}/${m.id}`.toLowerCase()));
 diff --git a/dist/ui/agent-widget.js b/dist/ui/agent-widget.js
-index 604bc2517d2bc358111d2ba7cc6d4bfa103c42d9..8a03620caa0808565d40141d9e07d6d9018fa1db 100644
+index 604bc2517d2bc358111d2ba7cc6d4bfa103c42d9..061721fef8073ef9186494954a23c92490b11a5b 100644
 --- a/dist/ui/agent-widget.js
 +++ b/dist/ui/agent-widget.js
 @@ -1,3 +1,4 @@
@@ -433,6 +434,36 @@ index 604bc2517d2bc358111d2ba7cc6d4bfa103c42d9..8a03620caa0808565d40141d9e07d6d9
      if (invocation.isolated)
          tags.push("isolated");
      if (invocation.isolation === "worktree")
+@@ -510,8 +510,10 @@ export class AgentWidget {
+             }
+         }
+         const hasActive = runningCount > 0 || queuedCount > 0;
++        const taskRows = getSubagentHost()?.taskRows;
+         // Nothing to show — clear widget
+         if (!hasActive && !hasFinished) {
++            taskRows?.(undefined, 0);
+             if (this.widgetRegistered) {
+                 this.uiCtx.setWidget("agents", undefined);
+                 this.widgetRegistered = false;
+@@ -548,6 +550,10 @@ export class AgentWidget {
+             this.lastStatusText = newStatusText;
+         }
+         this.widgetFrame++;
++        if (taskRows) {
++            taskRows((tui, theme) => this.renderWidget(tui, theme).slice(1), runningCount + queuedCount);
++            return;
++        }
+         // Register widget callback once; subsequent updates use requestRender()
+         // which re-invokes render() without replacing the component (avoids layout thrashing).
+         if (!this.widgetRegistered) {
+@@ -574,6 +580,7 @@ export class AgentWidget {
+             clearInterval(this.widgetInterval);
+             this.widgetInterval = undefined;
+         }
++        getSubagentHost()?.taskRows?.(undefined, 0);
+         if (this.uiCtx) {
+             this.uiCtx.setWidget("agents", undefined);
+             this.uiCtx.setStatus("subagents", undefined);
 diff --git a/dist/ui/workflow-card.js b/dist/ui/workflow-card.js
 index 75aa6e974afaf20d7c99f7b5c19efaf1e9619c5c..69edb38a091b6d13a06b4fd6028a26b25ff9e2ed 100644
 --- a/dist/ui/workflow-card.js
@@ -760,10 +791,10 @@ index 6752eca0269ce30853a5cf5a3afd0d4bd463614c..47a74db5781fba1dbe63cbba3b1a29cf
    session.setSessionName(
 diff --git a/src/host.ts b/src/host.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..518c6504584b03489acebaed3bc68873c94d0325
+index 0000000000000000000000000000000000000000..f4a9d512f530124582d5e4fdb7f82b764d2f2583
 --- /dev/null
 +++ b/src/host.ts
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,20 @@
 +import { createAgentSession } from "@earendil-works/pi-coding-agent";
 +import type { CreateAgentSessionOptions, CreateAgentSessionResult, DefaultResourceLoader, ExtensionContext } from "@earendil-works/pi-coding-agent";
 +import type { ModelRegistry } from "./model-resolver.js";
@@ -775,6 +806,7 @@ index 0000000000000000000000000000000000000000..518c6504584b03489acebaed3bc68873
 +  resolveModel(input: string, registry: Pick<ModelRegistry, "find" | "getAvailable"> & Partial<Pick<ModelRegistry, "getAll">>): NonNullable<CreateAgentSessionOptions["model"]> | string;
 +  loaderOptions(options: DefaultResourceLoaderOptions, ctx: ExtensionContext, includeCloudTools: boolean): DefaultResourceLoaderOptions;
 +  createSession(options: CreateAgentSessionOptions, ctx: ExtensionContext): Promise<CreateAgentSessionResult>;
++  taskRows?(rows: ((tui: any, theme: any) => string[]) | undefined, active: number): void;
 +}
 +let host: SubagentHost | undefined;
 +export function setSubagentHost(value: SubagentHost): void { host = value; }
@@ -1092,7 +1124,7 @@ index c52eee70d3352d232649150cfc403cd7828d2c7c..4678c6d26bf53a032637c3ad2c22907d
     * Workflows entry is hidden, and `--subagents-workflow-file` is refused.
     *
 diff --git a/src/ui/agent-widget.ts b/src/ui/agent-widget.ts
-index 4500d8fd43710c2daa4aa7ea27934f481c04da6a..0066b752fbbd01677567412aaf10391011034ea8 100644
+index 4500d8fd43710c2daa4aa7ea27934f481c04da6a..e07b7c6c072900f7d46e2babdf2f64113c9289f6 100644
 --- a/src/ui/agent-widget.ts
 +++ b/src/ui/agent-widget.ts
 @@ -1,3 +1,4 @@
@@ -1109,6 +1141,38 @@ index 4500d8fd43710c2daa4aa7ea27934f481c04da6a..0066b752fbbd01677567412aaf103910
    if (invocation.isolated) tags.push("isolated");
    if (invocation.isolation === "worktree") tags.push("worktree");
    if (invocation.inheritContext) tags.push("inherit context");
+@@ -587,8 +588,11 @@ export class AgentWidget {
+     }
+     const hasActive = runningCount > 0 || queuedCount > 0;
+ 
++    const taskRows = getSubagentHost()?.taskRows;
++
+     // Nothing to show — clear widget
+     if (!hasActive && !hasFinished) {
++      taskRows?.(undefined, 0);
+       if (this.widgetRegistered) {
+         this.uiCtx.setWidget("agents", undefined);
+         this.widgetRegistered = false;
+@@ -622,6 +626,11 @@ export class AgentWidget {
+ 
+     this.widgetFrame++;
+ 
++    if (taskRows) {
++      taskRows((tui, theme) => this.renderWidget(tui, theme).slice(1), runningCount + queuedCount);
++      return;
++    }
++
+     // Register widget callback once; subsequent updates use requestRender()
+     // which re-invokes render() without replacing the component (avoids layout thrashing).
+     if (!this.widgetRegistered) {
+@@ -648,6 +657,7 @@ export class AgentWidget {
+       clearInterval(this.widgetInterval);
+       this.widgetInterval = undefined;
+     }
++    getSubagentHost()?.taskRows?.(undefined, 0);
+     if (this.uiCtx) {
+       this.uiCtx.setWidget("agents", undefined);
+       this.uiCtx.setStatus("subagents", undefined);
 diff --git a/src/ui/workflow-card.ts b/src/ui/workflow-card.ts
 index 15164a26ecedab87c0e9cbd215b423051a75c21f..ff806295d94a12c78b289e8fce7957875ecc685f 100644
 --- a/src/ui/workflow-card.ts

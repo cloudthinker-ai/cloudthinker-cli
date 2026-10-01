@@ -119,3 +119,38 @@ test("CA-SUB-8: a child of a setting-off parent gets no cloud tools, and an entr
 		rmSync(root, { recursive: true, force: true });
 	}
 });
+
+test("running agents and commands share one Tasks pane, agents first", async () => {
+	const { AgentWidget } = await import("@tintinweb/pi-subagents/dist/ui/agent-widget.js");
+	const { setSubagentHost } = await import("@tintinweb/pi-subagents/dist/host.js");
+	const { subagentHost } = await import("../src/subagents.ts");
+	const { tasksPane } = await import("../src/tasks-pane.ts");
+	const widgets = new Map<string, unknown>();
+	const ui = {
+		setWidget: (key: string, value: unknown) => { value === undefined ? widgets.delete(key) : widgets.set(key, value); },
+		setStatus() {},
+	};
+	const theme = { fg: (_color: string, value: string) => value, bold: (value: string) => value };
+	const render = () => {
+		const factory = widgets.get("ct-tasks") as ((tui: unknown, theme: unknown) => { render(): string[] }) | undefined;
+		return factory?.({ terminal: { columns: 160 }, requestRender() {} }, theme).render() ?? [];
+	};
+	const agents = [{ id: "agent-1", type: "Explore", status: "running", description: "find render path", toolUses: 0, startedAt: Date.now() }];
+	setSubagentHost(subagentHost);
+	tasksPane.bind(ui as never);
+	const widget = new AgentWidget({ listAgents: () => agents } as never, new Map());
+	widget.setUICtx(ui as never);
+	widget.update();
+	tasksPane.setGroup("Commands", () => ["└─ ⠋ sleep 30 · 1s"], 1);
+	const lines = render();
+	assert.equal(lines[0], "● Tasks");
+	assert.equal(lines[1], "▾ Agents 1");
+	assert.match(lines[2]!, /^└─ \S .+  find render path · /);
+	assert.ok(lines.indexOf("▾ Commands 1") > 2);
+	assert.equal(widgets.has("agents"), false);
+	agents.length = 0;
+	widget.update();
+	tasksPane.setGroup("Commands", undefined);
+	assert.equal(widgets.has("ct-tasks"), false);
+	widget.dispose();
+});

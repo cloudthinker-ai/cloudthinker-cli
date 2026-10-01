@@ -9,10 +9,13 @@ patchedDependencies:
     hash: 328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51
     path: patches/@earendil-works__pi-coding-agent@0.85.1.patch
   '@earendil-works/pi-tui@0.85.1':
-    hash: 11c591dbff491b0523bb8ae2b94fcea587245c04f6b100acbfbc3be658036d00
+    hash: bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8
     path: patches/@earendil-works__pi-tui@0.85.1.patch
+  '@narumitw/pi-btw@0.61.1':
+    hash: f18bd3e70c9d50d7e842c155e2dd0059e481d259f4731302f4d9e9f026b84655
+    path: patches/@narumitw__pi-btw@0.61.1.patch
   '@tintinweb/pi-subagents@0.19.0':
-    hash: e7ac780ec566138c872e35359b7900164d4c164401ca667513925835fc2d3c63
+    hash: 24258556a2ff7d4980bb83a9c8487fc5c2b78cbd9e56e8bef152e08b8fce907c
     path: patches/@tintinweb__pi-subagents@0.19.0.patch
   beautiful-mermaid@1.1.3:
     hash: db596bdd83b5afb8262cc0c0034412f63cfeb0786cec06281685d8d39487153e
@@ -27,12 +30,18 @@ importers:
       '@cloudthinker/pi':
         specifier: workspace:*
         version: link:../pi
+      '@earendil-works/pi-ai':
+        specifier: 0.85.1
+        version: 0.85.1(ws@8.21.3)
       '@earendil-works/pi-coding-agent':
         specifier: 0.85.1
         version: 0.85.1(patch_hash=328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51)(ws@8.21.3)
+      '@narumitw/pi-btw':
+        specifier: 0.61.1
+        version: 0.61.1(patch_hash=f18bd3e70c9d50d7e842c155e2dd0059e481d259f4731302f4d9e9f026b84655)(@earendil-works/pi-ai@0.85.1(ws@8.21.3))(@earendil-works/pi-coding-agent@0.85.1(patch_hash=328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51)(ws@8.21.3))(@earendil-works/pi-tui@0.85.1(patch_hash=bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8))
       '@tintinweb/pi-subagents':
         specifier: 0.19.0
-        version: 0.19.0(patch_hash=e7ac780ec566138c872e35359b7900164d4c164401ca667513925835fc2d3c63)(@earendil-works/pi-ai@0.85.1(ws@8.21.3))(@earendil-works/pi-coding-agent@0.85.1(patch_hash=328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51)(ws@8.21.3))(@earendil-works/pi-tui@0.85.1(patch_hash=11c591dbff491b0523bb8ae2b94fcea587245c04f6b100acbfbc3be658036d00))
+        version: 0.19.0(patch_hash=24258556a2ff7d4980bb83a9c8487fc5c2b78cbd9e56e8bef152e08b8fce907c)(@earendil-works/pi-ai@0.85.1(ws@8.21.3))(@earendil-works/pi-coding-agent@0.85.1(patch_hash=328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51)(ws@8.21.3))(@earendil-works/pi-tui@0.85.1(patch_hash=bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8))
       beautiful-mermaid:
         specifier: 1.1.3
         version: 1.1.3(patch_hash=db596bdd83b5afb8262cc0c0034412f63cfeb0786cec06281685d8d39487153e)
@@ -45,7 +54,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-tui':
         specifier: 0.85.1
-        version: 0.85.1(patch_hash=11c591dbff491b0523bb8ae2b94fcea587245c04f6b100acbfbc3be658036d00)
+        version: 0.85.1(patch_hash=bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8)
       '@types/node':
         specifier: 24.10.1
         version: 24.10.1
@@ -67,7 +76,7 @@ importers:
         version: 0.85.1(patch_hash=328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51)(ws@8.21.3)
       '@earendil-works/pi-tui':
         specifier: 0.85.1
-        version: 0.85.1(patch_hash=11c591dbff491b0523bb8ae2b94fcea587245c04f6b100acbfbc3be658036d00)
+        version: 0.85.1(patch_hash=bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8)
       '@types/node':
         specifier: 24.10.1
         version: 24.10.1
@@ -444,6 +453,19 @@ packages:
     resolution: {integrity: sha512-ABnA53mdfkGZwOFUdZNv2S0CWGO/EIuPj8Vv9xmBFmSYg/qFc7ihO6q5FcQjvoE67kZpWkEc4AhD6B/os04yuA==}
     engines: {node: '>= 10'}
 
+  '@narumitw/pi-btw@0.61.1':
+    resolution: {integrity: sha512-s1AsDNnF4eEeQGByoI+m0Y7gewTkR3KlsnhToLvVJTQqlZWHtIBUlkrODtSan2rBKcYH2GdxlNx9G7WC6N0LvA==}
+    peerDependencies:
+      '@earendil-works/pi-ai': '*'
+      '@earendil-works/pi-coding-agent': '*'
+      '@earendil-works/pi-tui': '*'
+
+  '@narumitw/pi-tui-kit@0.64.0':
+    resolution: {integrity: sha512-VdFK3DyNzanfabeNP9DFX8Jj2LMKi6RV0q3Mf+xVwosG0bMWIIUwe6S9KDBYq5KfzEMzr4iFMSBweT95McwedQ==}
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '*'
+      '@earendil-works/pi-tui': '*'
+
   '@protobufjs/aspromise@1.1.2':
     resolution: {integrity: sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ==}
 
@@ -592,6 +614,10 @@ packages:
     resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
     engines: {node: '>=0.3.1'}
 
+  diff@9.0.0:
+    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
+    engines: {node: '>=0.3.1'}
+
   ecdsa-sig-formatter@1.0.11:
     resolution: {integrity: sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ==}
 
@@ -651,8 +677,16 @@ packages:
     resolution: {integrity: sha512-XcJEP5dDC8liHBh52mlLjU18fNvu1ckFsu0QpIG3+APZ270fsj9wxpiA6cOURmbUEuoMVgjbC2+UYgTdCqqgzA==}
     engines: {node: '>=18'}
 
+  grok-mermaid@0.2.3:
+    resolution: {integrity: sha512-/4KopAbsjvuRP9MdPtlDjOHUmUVEohOX73JNcsWpzAtFxh+bq5+Dhb6gzvRieLDwIPQIR3/vy8V1NNTuz4Zsmg==}
+    engines: {node: '>=18'}
+
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
+
+  highlight.js@11.12.0:
+    resolution: {integrity: sha512-nbfWpyRMcMrPMmDwJB+dhX/eiaPKtc2RB+0QZskqJ3WjRA/FDS0e9hZrx8EC/lbEv8gXy98FcDbNa/dspAaJMg==}
+    engines: {node: '>=12.0.0'}
 
   hosted-git-info@9.0.3:
     resolution: {integrity: sha512-Hc+ghLoSt6QaYZUv0WBiIvmMDZuZZ7oaDvdH8MbfOO4lOsxdXLEvuC6ePoGs9H1X9oCLyq6+NVN0MKqD+ydxyg==}
@@ -1098,7 +1132,7 @@ snapshots:
       '@earendil-works/chord': 0.85.1
       '@earendil-works/pi-agent-core': 0.85.1(ws@8.21.3)
       '@earendil-works/pi-ai': 0.85.1(ws@8.21.3)
-      '@earendil-works/pi-tui': 0.85.1(patch_hash=11c591dbff491b0523bb8ae2b94fcea587245c04f6b100acbfbc3be658036d00)
+      '@earendil-works/pi-tui': 0.85.1(patch_hash=bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8)
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 5.6.2
       cross-spawn: 7.0.6
@@ -1126,7 +1160,7 @@ snapshots:
 
   '@earendil-works/pi-telemetry@0.85.1': {}
 
-  '@earendil-works/pi-tui@0.85.1(patch_hash=11c591dbff491b0523bb8ae2b94fcea587245c04f6b100acbfbc3be658036d00)':
+  '@earendil-works/pi-tui@0.85.1(patch_hash=bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8)':
     dependencies:
       get-east-asian-width: 1.6.0
       marked: 18.0.5
@@ -1264,6 +1298,21 @@ snapshots:
       '@mariozechner/clipboard-win32-x64-msvc': 0.3.9
     optional: true
 
+  '@narumitw/pi-btw@0.61.1(patch_hash=f18bd3e70c9d50d7e842c155e2dd0059e481d259f4731302f4d9e9f026b84655)(@earendil-works/pi-ai@0.85.1(ws@8.21.3))(@earendil-works/pi-coding-agent@0.85.1(patch_hash=328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51)(ws@8.21.3))(@earendil-works/pi-tui@0.85.1(patch_hash=bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8))':
+    dependencies:
+      '@earendil-works/pi-ai': 0.85.1(ws@8.21.3)
+      '@earendil-works/pi-coding-agent': 0.85.1(patch_hash=328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51)(ws@8.21.3)
+      '@earendil-works/pi-tui': 0.85.1(patch_hash=bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8)
+      '@narumitw/pi-tui-kit': 0.64.0(@earendil-works/pi-coding-agent@0.85.1(patch_hash=328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51)(ws@8.21.3))(@earendil-works/pi-tui@0.85.1(patch_hash=bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8))
+
+  '@narumitw/pi-tui-kit@0.64.0(@earendil-works/pi-coding-agent@0.85.1(patch_hash=328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51)(ws@8.21.3))(@earendil-works/pi-tui@0.85.1(patch_hash=bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8))':
+    dependencies:
+      '@earendil-works/pi-coding-agent': 0.85.1(patch_hash=328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51)(ws@8.21.3)
+      '@earendil-works/pi-tui': 0.85.1(patch_hash=bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8)
+      diff: 9.0.0
+      grok-mermaid: 0.2.3
+      highlight.js: 11.12.0
+
   '@protobufjs/aspromise@1.1.2': {}
 
   '@protobufjs/base64@1.1.2': {}
@@ -1343,11 +1392,11 @@ snapshots:
 
   '@stablelib/base64@1.0.1': {}
 
-  '@tintinweb/pi-subagents@0.19.0(patch_hash=e7ac780ec566138c872e35359b7900164d4c164401ca667513925835fc2d3c63)(@earendil-works/pi-ai@0.85.1(ws@8.21.3))(@earendil-works/pi-coding-agent@0.85.1(patch_hash=328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51)(ws@8.21.3))(@earendil-works/pi-tui@0.85.1(patch_hash=11c591dbff491b0523bb8ae2b94fcea587245c04f6b100acbfbc3be658036d00))':
+  '@tintinweb/pi-subagents@0.19.0(patch_hash=24258556a2ff7d4980bb83a9c8487fc5c2b78cbd9e56e8bef152e08b8fce907c)(@earendil-works/pi-ai@0.85.1(ws@8.21.3))(@earendil-works/pi-coding-agent@0.85.1(patch_hash=328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51)(ws@8.21.3))(@earendil-works/pi-tui@0.85.1(patch_hash=bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8))':
     dependencies:
       '@earendil-works/pi-ai': 0.85.1(ws@8.21.3)
       '@earendil-works/pi-coding-agent': 0.85.1(patch_hash=328b3df91cbfd8aa118587381430683f68c85e9a0b5451c66aba47e09933de51)(ws@8.21.3)
-      '@earendil-works/pi-tui': 0.85.1(patch_hash=11c591dbff491b0523bb8ae2b94fcea587245c04f6b100acbfbc3be658036d00)
+      '@earendil-works/pi-tui': 0.85.1(patch_hash=bc4f3aff2bcfe2d9e8f930a6ba0c4ff0161efc7b5c9ad6b5f33babd11a3f7fd8)
       '@sinclair/typebox': 0.34.52
       croner: 10.0.1
       nanoid: 5.1.16
@@ -1401,6 +1450,8 @@ snapshots:
       ms: 2.1.3
 
   diff@8.0.4: {}
+
+  diff@9.0.0: {}
 
   ecdsa-sig-formatter@1.0.11:
     dependencies:
@@ -1489,7 +1540,11 @@ snapshots:
 
   grok-mermaid@0.2.2: {}
 
+  grok-mermaid@0.2.3: {}
+
   highlight.js@10.7.3: {}
+
+  highlight.js@11.12.0: {}
 
   hosted-git-info@9.0.3:
     dependencies:

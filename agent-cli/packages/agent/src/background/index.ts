@@ -8,14 +8,18 @@ import {
 	SettingsManager,
 	type ExtensionAPI,
 	type ExtensionContext,
+	type Theme,
 } from "@earendil-works/pi-coding-agent";
 import {
 	BACKGROUND_DEFAULT_TIMEOUT_SECONDS,
 	BackgroundCommandManager,
 	type BackgroundTaskSummary,
 } from "./manager.ts";
+import { spinnerFrame, tasksPane } from "../tasks-pane.ts";
 
 const TOOL_NAME = "ct_background";
+const MAX_COMMAND_ROWS = 4;
+const OUTPUT_PREVIEW_LINES = 5;
 const TOOL_PROMPT = "Start and manage local shell commands by task id. Inspect status/output or cancel; terminal results resume automatically. Print and JSON runs drain started commands before exit.";
 const backgroundSchema = Type.Object({
 	action: Type.Union([Type.Literal("start"), Type.Literal("status"), Type.Literal("output"), Type.Literal("cancel")]),
@@ -41,20 +45,18 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 	const managers = new Map<string, Promise<BackgroundCommandManager>>();
 	const contexts = new Map<string, ExtensionContext>();
 	const statusTimers = new Map<string, NodeJS.Timeout>();
+	const commands = new Map<string, string>();
 	const sessionKey = (ctx: ExtensionContext) => ctx.sessionManager.getSessionId();
 	const renderStatus = (ctx: ExtensionContext, manager: BackgroundCommandManager) => {
+		const tasks = manager.list();
+		for (const task of tasks) commands.set(task.id, task.command);
 		if (!ctx.hasUI) return;
-		const tasks = manager.list().filter((task) => task.state === "running");
-		const visible = tasks.slice(-5);
-		const lines = visible.map((task) => {
-			const duration = Math.max(0, Math.floor(((task.finishedAt ?? Date.now()) - task.createdAt) / 1000));
-			return `${task.state.padEnd(10)} ${duration}s  ${task.id}  ${oneLine(task.command, 84)}`;
-		});
-		const active = tasks.length;
-		ctx.ui.setStatus("ct-background", active > 0 ? `${active} background command${active === 1 ? "" : "s"}` : undefined);
-		ctx.ui.setWidget("ct-background", tasks.length > 0 ? ["Background commands", ...lines] : undefined);
+		tasksPane.bind(ctx.ui);
+		const active = tasks.filter((task) => task.state === "running").length;
+		ctx.ui.setStatus("ct-background", active > 0 ? `${active} running command${active === 1 ? "" : "s"}` : undefined);
+		tasksPane.setGroup("Commands", active > 0 ? (_tui, theme) => commandRows(manager, theme) : undefined, active);
 		if (active > 0 && !statusTimers.has(sessionKey(ctx))) {
-			statusTimers.set(sessionKey(ctx), setInterval(() => renderStatus(ctx, manager), 1000).unref());
+			statusTimers.set(sessionKey(ctx), setInterval(() => renderStatus(ctx, manager), 80).unref());
 		} else if (active === 0) {
 			const timer = statusTimers.get(sessionKey(ctx));
 			if (timer) clearInterval(timer);
@@ -105,13 +107,15 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 		parameters: backgroundSchema,
 		promptSnippet: "Run a local shell command in the background and manage its task.",
 		promptGuidelines: ["Use ct_background when a command can run alongside other work; continue useful work until its completion event."],
-		renderCall(args, _theme, _context) {
-			const subject = args.action === "start" ? oneLine(args.command ?? "", 100) : args.taskId ?? "commands";
-			return new Text(`Background command · ${args.action}: ${subject}`, 0, 0);
+		renderShell: "self",
+		renderCall(args, theme, _context) {
+			const action = args.action ?? "start";
+			const subject = action === "start" ? args.command ?? "" : args.taskId ? commands.get(args.taskId) ?? args.taskId : "all commands";
+			const verb = action === "start" ? "" : ` ${theme.fg("muted", action)}`;
+			return new Text(`${theme.fg("accent", "●")} ${theme.fg("toolTitle", theme.bold("Background"))}${verb} ${theme.fg("muted", oneLine(subject, 100))}`, 0, 0);
 		},
-		renderResult(result, options, _theme, _context) {
-			const text = result.content.filter((item) => item.type === "text").map((item) => item.text).join("\n");
-			return new Text(options.expanded ? sanitizeTerminalText(text) : oneLine(text, 320), 0, 0);
+		renderResult(result, options, theme, context) {
+			return new Text(resultText(result, options.expanded, theme, context?.args?.action, context?.isError === true), 0, 0);
 		},
 		async execute(_toolCallId, params: BackgroundParams, _signal, _onUpdate, ctx) {
 			const manager = await getManager(ctx);
@@ -186,9 +190,94 @@ function completionMessage(tasks: BackgroundTaskSummary[]) {
 	};
 }
 
+function commandRows(manager: BackgroundCommandManager, theme: Theme): string[] {
+	const running = manager.list().filter((task) => task.state === "running");
+	const visible = running.slice(-MAX_COMMAND_ROWS);
+	const hidden = running.length - visible.length;
+	const now = Date.now();
+	const rows: string[] = [];
+	visible.forEach((task, index) => {
+		const last = index === visible.length - 1 && hidden === 0;
+		const tail = lastLine(manager.outputTail(task.id)) || "waiting for output…";
+		rows.push(
+			`${theme.fg("dim", last ? "└─" : "├─")} ${theme.fg("accent", spinnerFrame(now))} ${theme.fg("text", oneLine(task.command, 160))} ${theme.fg("dim", `· ${formatClock(now - task.createdAt)}`)}`,
+			theme.fg("dim", `${last ? "   " : "│  "}  ⎿  ${tail}`),
+		);
+	});
+	if (hidden > 0) rows.push(theme.fg("dim", `└─ +${hidden} more running`));
+	return rows;
+}
+
+function resultText(result: { content: { type: string; text?: string }[]; details?: unknown }, expanded: boolean, theme: Theme, action: string | undefined, isError: boolean): string {
+	const text = result.content.filter((item) => item.type === "text").map((item) => item.text ?? "").join("\n");
+	const details = (result.details ?? {}) as { task?: BackgroundTaskSummary; tasks?: BackgroundTaskSummary | BackgroundTaskSummary[]; text?: string };
+	if (isError) return indent(theme.fg("error", expanded ? sanitizeTerminalText(text) : oneLine(text, 320)));
+	if (action === "start") return "";
+	if (action === "cancel" && details.task) return indent(`${stateMark(details.task, theme)} ${theme.fg("muted", stateWords(details.task))}`);
+	if (action === "status" && details.tasks !== undefined) {
+		const tasks = Array.isArray(details.tasks) ? details.tasks : [details.tasks];
+		if (tasks.length === 0) return indent(theme.fg("muted", "No background commands."));
+		return tasks.map((task) => indent(`${stateMark(task, theme)} ${theme.fg("muted", `${stateWords(task)} · ${oneLine(task.command, 100)}`)}`)).join("\n");
+	}
+	if (action === "output" && typeof details.text === "string") {
+		const lines = sanitizeTerminalText(details.text).replace(/\r\n?/g, "\n").trimEnd().split("\n");
+		if (lines.length === 1 && lines[0] === "") return indent(theme.fg("muted", "no output yet"));
+		const shown = expanded ? lines : lines.slice(-OUTPUT_PREVIEW_LINES);
+		const skipped = lines.length - shown.length;
+		const hint = skipped > 0 ? [indent(theme.fg("muted", `… (${skipped} earlier line${skipped === 1 ? "" : "s"})`))] : [];
+		return [...hint, ...shown.map((line) => indent(theme.fg("toolOutput", line)))].join("\n");
+	}
+	return indent(theme.fg("muted", expanded ? sanitizeTerminalText(text) : oneLine(text, 320)));
+}
+
+function indent(line: string): string {
+	return line ? `  ${line}` : line;
+}
+
+function stateMark(task: BackgroundTaskSummary, theme: Theme): string {
+	if (task.state === "running") return theme.fg("accent", "●");
+	return theme.fg(stateColor(task), task.state === "succeeded" ? "✓" : task.state === "cancelled" || task.state === "interrupted" ? "■" : "✗");
+}
+
+function stateColor(task: BackgroundTaskSummary): "accent" | "success" | "error" | "warning" {
+	if (task.state === "running") return "accent";
+	if (task.state === "succeeded") return "success";
+	if (task.state === "cancelled" || task.state === "interrupted") return "warning";
+	return "error";
+}
+
+function stateWords(task: BackgroundTaskSummary): string {
+	const clock = formatClock((task.finishedAt ?? Date.now()) - task.createdAt);
+	switch (task.state) {
+		case "running": return `running for ${clock}`;
+		case "succeeded": return `finished in ${clock}`;
+		case "failed": return `failed in ${clock}${task.exitCode === undefined || task.exitCode === null ? "" : ` (exit ${task.exitCode})`}`;
+		case "timed_out": return `timed out after ${clock}`;
+		case "cancelled": return `cancelled after ${clock}`;
+		case "interrupted": return "interrupted by a restart";
+	}
+}
+
+function lastLine(text: string): string {
+	return text.split(/\r\n|\r|\n/).map((line) => oneLine(line, 200)).filter(Boolean).at(-1) ?? "";
+}
+
+function formatClock(ms: number): string {
+	const seconds = Math.max(0, Math.floor(ms / 1000));
+	if (seconds < 60) return `${seconds}s`;
+	const minutes = Math.floor(seconds / 60);
+	if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+	return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
 function completionText(tasks: BackgroundTaskSummary[]): string {
-	const descriptions = tasks.map((task) => `- ${task.id}: ${task.state} (exit ${task.exitCode ?? "unknown"}) — ${oneLine(task.command, 160)}`).join("\n");
-	return `Background command completion event. Read each task's output with ct_background(action="output", taskId="...") before reporting.\n${descriptions}`;
+	const descriptions = tasks.map((task) => `- ${plainMark(task)} ${task.id} ${stateWords(task)} · ${oneLine(task.command, 160)}`).join("\n");
+	return `Background command completion event\n${descriptions}\nRead each output with ct_background(action="output", taskId="...") before reporting.`;
+}
+
+function plainMark(task: BackgroundTaskSummary): string {
+	if (task.state === "succeeded") return "✓";
+	return task.state === "cancelled" || task.state === "interrupted" ? "■" : "✗";
 }
 
 function toolResult(text: string, details: unknown) {

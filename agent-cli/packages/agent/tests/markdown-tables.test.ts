@@ -47,3 +47,10 @@ test("numeric columns align without Markdown alignment markers", () => {
 	assert.equal(lines[2]!.indexOf("9") + 1, lines[4]!.indexOf("113") + 3);
 	assert.equal(lines[2]!.indexOf("-14.1%") + 6, lines[4]!.indexOf("+100.0%") + 7);
 });
+
+test("code blocks draw a language label and a bar instead of fences", () => {
+	const source = "Output:\n\n```text\nrun 1\nall done\n```\n\n```\nplain\n```\n\nAfter";
+	const lines = new Markdown(source, 0, 0, getMarkdownTheme()).render(60)
+		.map(stripVTControlCharacters).map((line) => line.trimEnd());
+	assert.deepEqual(lines, ["Output:", "", "text", "▎ run 1", "▎ all done", "", "▎ plain", "", "After"]);
+});
