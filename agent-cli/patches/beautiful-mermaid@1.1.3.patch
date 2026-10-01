@@ -1,0 +1,325 @@
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 6239e30019b1bc36d0722921db4ecc84f9b277a6..e75ed38584f46b71d97c79d1476e9d49978c44ea 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -310,3 +310,7 @@ declare const renderMermaidSync: typeof renderMermaidSVG;
+ declare const renderMermaid: typeof renderMermaidSVGAsync;
+ 
+ export { type AsciiRenderOptions, DEFAULTS, type DiagramColors, type MermaidGraph, type PositionedGraph, type RenderOptions, THEMES, type ThemeName, fromShikiTheme, parseMermaid, renderMermaid, renderMermaidASCII, renderMermaidAscii, renderMermaidSVG, renderMermaidSVGAsync, renderMermaidSync };
++
++export declare function renderMermaidTerminal(text: string, paint: (text: string, role: string | null, style: Record<string, string>) => string): string[];
++
++export declare function colorizeTerminalText(text: string, hex: string, background?: boolean): string;
+diff --git a/dist/index.js b/dist/index.js
+index e7e087bcb6f29d0d8f36cd558e0183bc0f162fcb..6c4c6e16e4e2d8ca1310c6a0e89255acfcd3c8cf 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -336,7 +336,7 @@ ${textEl}`;
+ }
+ 
+ // src/parser.ts
+-function parseMermaid(text) {
++function parseMermaid(text, strict = false) {
+   const lines = text.split("\n").map((l) => l.trim()).filter((l) => l.length > 0 && !l.startsWith("%%"));
+   if (lines.length === 0) {
+     throw new Error("Empty mermaid diagram");
+@@ -345,9 +345,9 @@ function parseMermaid(text) {
+   if (/^stateDiagram(-v2)?\s*$/i.test(header)) {
+     return parseStateDiagram(lines);
+   }
+-  return parseFlowchart(lines);
++  return parseFlowchart(lines, strict);
+ }
+-function parseFlowchart(lines) {
++function parseFlowchart(lines, strict = false) {
+   const headerMatch = lines[0].match(/^(?:graph|flowchart)\s+(TD|TB|LR|BT|RL)\s*$/i);
+   if (!headerMatch) {
+     throw new Error(`Invalid mermaid header: "${lines[0]}". Expected "graph TD", "flowchart LR", "stateDiagram-v2", etc.`);
+@@ -441,7 +441,7 @@ function parseFlowchart(lines) {
+       }
+       continue;
+     }
+-    parseEdgeLine(line, graph, subgraphStack);
++    parseEdgeLine(line, graph, subgraphStack, strict);
+   }
+   return graph;
+ }
+@@ -630,10 +630,10 @@ var NODE_PATTERNS = [
+ ];
+ var BARE_NODE_REGEX = /^([\w-]+)/;
+ var CLASS_SHORTHAND_REGEX = /^:::([\w][\w-]*)/;
+-function parseEdgeLine(line, graph, subgraphStack) {
++function parseEdgeLine(line, graph, subgraphStack, strict = false) {
+   let remaining = line.trim();
+   const firstGroup = consumeNodeGroup(remaining, graph, subgraphStack);
+-  if (!firstGroup || firstGroup.ids.length === 0) return;
++  if (!firstGroup || firstGroup.ids.length === 0) { if (strict) throw new Error("invalid"); return; };
+   remaining = firstGroup.remaining.trim();
+   let prevGroupIds = firstGroup.ids;
+   while (remaining.length > 0) {
+@@ -652,7 +652,7 @@ function parseEdgeLine(line, graph, subgraphStack) {
+       hasArrowEnd = arrowOp.endsWith(">");
+     } else {
+       const textMatch = remaining.match(TEXT_ARROW_REGEX);
+-      if (!textMatch) break;
++      if (!textMatch) { if (strict) throw new Error("invalid"); break; };
+       hasArrowStart = Boolean(textMatch[1]);
+       const rawLabel = textMatch[3].trim();
+       edgeLabel = rawLabel ? normalizeBrTags(rawLabel) : void 0;
+@@ -663,7 +663,7 @@ function parseEdgeLine(line, graph, subgraphStack) {
+       hasArrowEnd = closeOp.endsWith(">");
+     }
+     const nextGroup = consumeNodeGroup(remaining, graph, subgraphStack);
+-    if (!nextGroup || nextGroup.ids.length === 0) break;
++    if (!nextGroup || nextGroup.ids.length === 0) { if (strict) throw new Error("invalid"); break; };
+     remaining = nextGroup.remaining.trim();
+     for (const sourceId of prevGroupIds) {
+       for (const targetId of nextGroup.ids) {
+@@ -1015,6 +1015,7 @@ function colorizeText(text, hex, mode) {
+ 
+ // src/ascii/canvas.ts
+ function mkCanvas(x, y) {
++  if ((x + 1) * (y + 1) > 65536) throw new Error("limit");
+   const canvas = [];
+   for (let i = 0; i <= x; i++) {
+     const col = [];
+@@ -1030,6 +1031,7 @@ function copyCanvas(source) {
+   return mkCanvas(maxX, maxY);
+ }
+ function mkRoleCanvas(x, y) {
++  if ((x + 1) * (y + 1) > 65536) throw new Error("limit");
+   const roleCanvas = [];
+   for (let i = 0; i <= x; i++) {
+     const col = [];
+@@ -9294,3 +9296,59 @@ export {
+   renderMermaidSync
+ };
+ //# sourceMappingURL=index.js.map
++export function renderMermaidTerminal(text, paint) {
++  if (new TextEncoder().encode(text).length > 16384 || text.split("\n").length > 80 || (text.match(/&/g) ?? []).length > 24) throw new Error("limit");
++  const parsed = parseMermaid(text, true);
++  if (parsed.nodes.size > 16 || parsed.edges.length > 24) throw new Error("limit");
++  if (parsed.direction === "RL" || parsed.subgraphs.length || parsed.linkStyles.size) throw new Error("unsupported");
++  const styles = new Map();
++  for (const [id, node] of parsed.nodes) {
++    if (node.label.length > 40 || /[^\u0020-\u007e\u00a0-\u024f]/u.test(node.label)) throw new Error("unsupported");
++    const assigned = parsed.classAssignments.get(id);
++    if (assigned && !parsed.classDefs.has(assigned)) throw new Error("invalid");
++    const style = { ...parsed.classDefs.get("default"), ...parsed.classDefs.get(assigned), ...parsed.nodeStyles.get(id) };
++    styles.set(id, style);
++  }
++  for (const props of [...parsed.classDefs.values(), ...parsed.nodeStyles.values()]) {
++    for (const [key, value] of Object.entries(props)) {
++      if (!["fill", "stroke", "color"].includes(key) || !/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) throw new Error("unsupported");
++    }
++  }
++  for (const edge of parsed.edges) {
++    if (edge.label && (edge.label.length > 40 || /[^\u0020-\u007e\u00a0-\u024f]/u.test(edge.label))) throw new Error("unsupported");
++  }
++  const config = { useAscii: false, paddingX: 3, paddingY: 2, boxBorderPadding: 0, graphDirection: parsed.direction === "LR" ? "LR" : "TD" };
++  const graph = convertToAsciiGraph(parsed, config);
++  createMapping(graph);
++  drawGraph(graph);
++  const emptyStyle = {};
++  const rows = [];
++  const height = graph.canvas[0]?.length ?? 0;
++  for (let y = 0; y < height; y++) {
++    const spans = [];
++    for (let x = 0; x < graph.canvas.length; x++) {
++      const owner = graph.nodes.find(node => node.drawingCoord && node.drawing && x >= node.drawingCoord.x && y >= node.drawingCoord.y && x < node.drawingCoord.x + node.drawing.length && y < node.drawingCoord.y + node.drawing[0].length);
++      const role = graph.roleCanvas[x]?.[y] ?? null;
++      const style = owner ? styles.get(owner.name) : emptyStyle;
++      const char = graph.canvas[x][y];
++      const previous = spans.at(-1);
++      if (previous && previous.role === role && previous.style === style) previous.text += char;
++      else spans.push({ text: char, role, style });
++    }
++    rows.push(spans);
++  }
++  if (parsed.direction === "BT") {
++    rows.reverse();
++    const flipped = { "┌": "└", "└": "┌", "┐": "┘", "┘": "┐", "╭": "╰", "╰": "╭", "╮": "╯", "╯": "╮", "┬": "┴", "┴": "┬", "▼": "▲", "▲": "▼", "↓": "↑", "↑": "↓" };
++    for (const spans of rows) for (const span of spans) span.text = [...span.text].map(char => flipped[char] ?? char).join("");
++  }
++  return rows.map(spans => spans.map(span => paint(span.text, span.role, span.style)).join(""));
++}
++
++export function colorizeTerminalText(text, hex, background = false) {
++  if (process.env.NO_COLOR !== undefined || process.env.TERM === "dumb") return text;
++  const mode = detectColorMode();
++  const colored = colorizeText(text, hex, mode);
++  if (!background) return colored;
++  return colored.replace(/^\x1b\[(38)(;[^m]*)m/, "\x1b[48$2m").replace(/^\x1b\[(3[0-7]|9[0-7])m/, (_, code) => `\x1b[${Number(code) + 10}m`);
++}
+diff --git a/src/ascii/canvas.ts b/src/ascii/canvas.ts
+index e9949feb129161f010483e74ab9c91d918fdab6c..1c6f0b910d5486ba7db096d1a85805085051694b 100644
+--- a/src/ascii/canvas.ts
++++ b/src/ascii/canvas.ts
+@@ -14,6 +14,7 @@ import { colorizeLine, DEFAULT_ASCII_THEME } from './ansi.ts'
+  * Dimensions are inclusive: mkCanvas(3, 2) creates a 4x3 grid (indices 0..3, 0..2).
+  */
+ export function mkCanvas(x: number, y: number): Canvas {
++  if ((x + 1) * (y + 1) > 65536) throw new Error("limit");
+   const canvas: Canvas = []
+   for (let i = 0; i <= x; i++) {
+     const col: string[] = []
+@@ -40,6 +41,7 @@ export function copyCanvas(source: Canvas): Canvas {
+  * Same dimensions as mkCanvas — column-major, roleCanvas[x][y].
+  */
+ export function mkRoleCanvas(x: number, y: number): RoleCanvas {
++  if ((x + 1) * (y + 1) > 65536) throw new Error("limit");
+   const roleCanvas: RoleCanvas = []
+   for (let i = 0; i <= x; i++) {
+     const col: (CharRole | null)[] = []
+diff --git a/src/ascii/terminal.js b/src/ascii/terminal.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..f73b25bbc3c617c7b51ae143a3f1c2df8bdd330e
+--- /dev/null
++++ b/src/ascii/terminal.js
+@@ -0,0 +1,62 @@
++import { colorizeText, detectColorMode } from "./ansi.ts";
++import { parseMermaid } from "../parser.ts";
++import { convertToAsciiGraph } from "./converter.ts";
++import { createMapping } from "./grid.ts";
++import { drawGraph } from "./draw.ts";
++
++export function renderMermaidTerminal(text, paint) {
++  if (new TextEncoder().encode(text).length > 16384 || text.split("\n").length > 80 || (text.match(/&/g) ?? []).length > 24) throw new Error("limit");
++  const parsed = parseMermaid(text, true);
++  if (parsed.nodes.size > 16 || parsed.edges.length > 24) throw new Error("limit");
++  if (parsed.direction === "RL" || parsed.subgraphs.length || parsed.linkStyles.size) throw new Error("unsupported");
++  const styles = new Map();
++  for (const [id, node] of parsed.nodes) {
++    if (node.label.length > 40 || /[^\u0020-\u007e\u00a0-\u024f]/u.test(node.label)) throw new Error("unsupported");
++    const assigned = parsed.classAssignments.get(id);
++    if (assigned && !parsed.classDefs.has(assigned)) throw new Error("invalid");
++    const style = { ...parsed.classDefs.get("default"), ...parsed.classDefs.get(assigned), ...parsed.nodeStyles.get(id) };
++    styles.set(id, style);
++  }
++  for (const props of [...parsed.classDefs.values(), ...parsed.nodeStyles.values()]) {
++    for (const [key, value] of Object.entries(props)) {
++      if (!["fill", "stroke", "color"].includes(key) || !/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) throw new Error("unsupported");
++    }
++  }
++  for (const edge of parsed.edges) {
++    if (edge.label && (edge.label.length > 40 || /[^\u0020-\u007e\u00a0-\u024f]/u.test(edge.label))) throw new Error("unsupported");
++  }
++  const config = { useAscii: false, paddingX: 3, paddingY: 2, boxBorderPadding: 0, graphDirection: parsed.direction === "LR" ? "LR" : "TD" };
++  const graph = convertToAsciiGraph(parsed, config);
++  createMapping(graph);
++  drawGraph(graph);
++  const emptyStyle = {};
++  const rows = [];
++  const height = graph.canvas[0]?.length ?? 0;
++  for (let y = 0; y < height; y++) {
++    const spans = [];
++    for (let x = 0; x < graph.canvas.length; x++) {
++      const owner = graph.nodes.find(node => node.drawingCoord && node.drawing && x >= node.drawingCoord.x && y >= node.drawingCoord.y && x < node.drawingCoord.x + node.drawing.length && y < node.drawingCoord.y + node.drawing[0].length);
++      const role = graph.roleCanvas[x]?.[y] ?? null;
++      const style = owner ? styles.get(owner.name) : emptyStyle;
++      const char = graph.canvas[x][y];
++      const previous = spans.at(-1);
++      if (previous && previous.role === role && previous.style === style) previous.text += char;
++      else spans.push({ text: char, role, style });
++    }
++    rows.push(spans);
++  }
++  if (parsed.direction === "BT") {
++    rows.reverse();
++    const flipped = { "┌": "└", "└": "┌", "┐": "┘", "┘": "┐", "╭": "╰", "╰": "╭", "╮": "╯", "╯": "╮", "┬": "┴", "┴": "┬", "▼": "▲", "▲": "▼", "↓": "↑", "↑": "↓" };
++    for (const spans of rows) for (const span of spans) span.text = [...span.text].map(char => flipped[char] ?? char).join("");
++  }
++  return rows.map(spans => spans.map(span => paint(span.text, span.role, span.style)).join(""));
++}
++
++export function colorizeTerminalText(text, hex, background = false) {
++  if (process.env.NO_COLOR !== undefined || process.env.TERM === "dumb") return text;
++  const mode = detectColorMode();
++  const colored = colorizeText(text, hex, mode);
++  if (!background) return colored;
++  return colored.replace(/^\x1b\[(38)(;[^m]*)m/, "\x1b[48$2m").replace(/^\x1b\[(3[0-7]|9[0-7])m/, (_, code) => `\x1b[${Number(code) + 10}m`);
++}
+diff --git a/src/index.ts b/src/index.ts
+index b4a6454e1015b38924cacc674f488d3460861af2..a06e239f6fd9cc21622aeef7f907e3e266583100 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -175,3 +175,5 @@ export const renderMermaidSync = renderMermaidSVG
+ 
+ /** @deprecated Use `renderMermaidSVGAsync` */
+ export const renderMermaid = renderMermaidSVGAsync
++
++export { renderMermaidTerminal, colorizeTerminalText } from "./ascii/terminal.js";
+diff --git a/src/parser.ts b/src/parser.ts
+index 685835e3f1a9a480370ec8e1ff40b7356a3ed3c1..eade6706966c10d6b44b2ddeec6c2ade9ae898e4 100644
+--- a/src/parser.ts
++++ b/src/parser.ts
+@@ -17,7 +17,7 @@ import { normalizeBrTags } from './multiline-utils.ts'
+  * Auto-detects diagram type (flowchart or state diagram).
+  * Throws on invalid/unsupported input.
+  */
+-export function parseMermaid(text: string): MermaidGraph {
++export function parseMermaid(text: string, strict = false): MermaidGraph {
+   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0 && !l.startsWith('%%'))
+ 
+   if (lines.length === 0) {
+@@ -33,14 +33,14 @@ export function parseMermaid(text: string): MermaidGraph {
+   }
+ 
+   // Flowchart: "graph TD" or "flowchart LR"
+-  return parseFlowchart(lines)
++  return parseFlowchart(lines, strict)
+ }
+ 
+ // ============================================================================
+ // Flowchart parser
+ // ============================================================================
+ 
+-function parseFlowchart(lines: string[]): MermaidGraph {
++function parseFlowchart(lines: string[], strict = false): MermaidGraph {
+   const headerMatch = lines[0]!.match(/^(?:graph|flowchart)\s+(TD|TB|LR|BT|RL)\s*$/i)
+   if (!headerMatch) {
+     throw new Error(`Invalid mermaid header: "${lines[0]}". Expected "graph TD", "flowchart LR", "stateDiagram-v2", etc.`)
+@@ -158,7 +158,7 @@ function parseFlowchart(lines: string[]): MermaidGraph {
+     }
+ 
+     // --- Edge/node definitions ---
+-    parseEdgeLine(line, graph, subgraphStack)
++    parseEdgeLine(line, graph, subgraphStack, strict)
+   }
+ 
+   return graph
+@@ -450,13 +450,14 @@ const CLASS_SHORTHAND_REGEX = /^:::([\w][\w-]*)/
+ function parseEdgeLine(
+   line: string,
+   graph: MermaidGraph,
+-  subgraphStack: MermaidSubgraph[]
++  subgraphStack: MermaidSubgraph[],
++  strict = false
+ ): void {
+   let remaining = line.trim()
+ 
+   // Parse the first node group (possibly with & separators)
+   const firstGroup = consumeNodeGroup(remaining, graph, subgraphStack)
+-  if (!firstGroup || firstGroup.ids.length === 0) return
++  if (!firstGroup || firstGroup.ids.length === 0) { if (strict) throw new Error("invalid"); return; }
+ 
+   remaining = firstGroup.remaining.trim()
+   let prevGroupIds = firstGroup.ids
+@@ -480,7 +481,7 @@ function parseEdgeLine(
+     } else {
+       // Fallback: text-embedded label syntax (-- Yes -->, -. Maybe .->, == Sure ==>)
+       const textMatch = remaining.match(TEXT_ARROW_REGEX)
+-      if (!textMatch) break
++      if (!textMatch) { if (strict) throw new Error("invalid"); break; }
+       hasArrowStart = Boolean(textMatch[1])
+       const rawLabel = textMatch[3]!.trim()
+       edgeLabel = rawLabel ? normalizeBrTags(rawLabel) : undefined
+@@ -493,7 +494,7 @@ function parseEdgeLine(
+ 
+     // Parse the next node group
+     const nextGroup = consumeNodeGroup(remaining, graph, subgraphStack)
+-    if (!nextGroup || nextGroup.ids.length === 0) break
++    if (!nextGroup || nextGroup.ids.length === 0) { if (strict) throw new Error("invalid"); break; }
+ 
+     remaining = nextGroup.remaining.trim()
+ 

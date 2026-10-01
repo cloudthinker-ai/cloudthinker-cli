@@ -1,3 +1,9 @@
+## [0.8.0]
+
+- Add direct cloud commands for independent agents: create sessions, discover Connections, load their guides and SDK schemas, execute scoped scripts, and recover task output or approved writes. Print release-matched guidance with `cloudthinker --skill cloud`.
+- Render completed Mermaid flowcharts as themed terminal diagrams with authored node border colors; keep interiors and text in terminal theme colors. Preserve source while streaming and when a preview cannot fit or uses unsupported syntax.
+- Make authored Mermaid border colors opt-in through `markdown.mermaidBorderColors`, defaulting to off.
+
 ## Release build fix for 0.7.6
 
 - Restore Windows CLI builds by declaring the shared timestamp and file-lock dependencies for every platform.

@@ -2316,6 +2316,7 @@ fn ca_cli_skill_exports_bundled_modules_offline() {
         ("index", "SKILL.md"),
         ("auth", "auth.md"),
         ("chat", "chat.md"),
+        ("cloud", "cloud.md"),
         ("review", "review.md"),
         ("cyber", "cyber.md"),
         ("cyber-scan", "cyber-scan.md"),
@@ -3012,4 +3013,107 @@ fn login_hints_and_logout_follow_the_remembered_address() {
     let saved: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&config).unwrap()).unwrap();
     assert_eq!(saved["default_url"], serde_json::Value::Null);
+}
+
+#[test]
+fn cloud_exec_preserves_result_and_maps_script_failure() {
+    let api = RecordingApi::start(vec![(
+        "200 OK",
+        r#"{"status":"completed","return_code":7,"stdout":"observed","stderr":"script failed"}"#
+            .into(),
+    )]);
+    let output = cli(&api.base_url)
+        .args([
+            "cloud",
+            "exec",
+            "--session",
+            CONV_ID,
+            "--command",
+            "exit 7",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let body: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(body["conversation_id"], CONV_ID);
+    assert_eq!(body["return_code"], 7);
+    assert_eq!(body["stdout"], "observed");
+    let requests = api.requests();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].starts_with("POST /api/v1/agent-cli/executions "));
+    assert!(requests[0].contains(CONV_ID));
+}
+
+#[test]
+fn cloud_status_retains_task_id_and_output_cursor() {
+    let api = RecordingApi::start(vec![("200 OK", r#"{"status":"running","output":"partial","next_cursor":17,"truncated":true,"exit_code":null,"termination_reason":null}"#.into())]);
+    let output = cli(&api.base_url)
+        .args([
+            "cloud",
+            "status",
+            "--session",
+            CONV_ID,
+            "--task",
+            "task-1",
+            "--since",
+            "10",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    let body: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(body["task_id"], "task-1");
+    assert_eq!(body["next_cursor"], 17);
+    assert_eq!(body["truncated"], true);
+    assert!(api.requests()[0].starts_with("GET /api/v1/agent-cli/executions/task-1?"));
+    assert!(api.requests()[0].contains("since=10"));
+    assert!(api.requests()[0].contains(&format!("conversation_id={CONV_ID}")));
+}
+
+#[test]
+fn cloud_exec_rejects_overrides_when_resuming_stored_write() {
+    for overrides in [
+        vec!["--command", "echo replacement"],
+        vec!["--connection", "aws"],
+        vec!["--mode", "write"],
+    ] {
+        let api = RecordingApi::start(vec![]);
+        let output = cli(&api.base_url)
+            .args(["cloud", "exec", "--session", CONV_ID, "--write", RUN_ID])
+            .args(overrides)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(api.requests().is_empty());
+    }
+}
+
+#[test]
+fn cloud_reference_read_uses_empty_connection_scope() {
+    let api = RecordingApi::start(vec![(
+        "200 OK",
+        r#"{"status":"completed","return_code":0,"stdout":"reference","stderr":""}"#.into(),
+    )]);
+    let output = cli(&api.base_url)
+        .args([
+            "cloud",
+            "exec",
+            "--session",
+            CONV_ID,
+            "--command",
+            "cat /home/user/_skills/reference.md",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    let request = &api.requests()[0];
+    let (_, body) = request.split_once("\r\n\r\n").unwrap();
+    let body: serde_json::Value = serde_json::from_str(body).unwrap();
+    assert!(
+        body.get("connection_list")
+            .is_none_or(|scope| scope.as_array().unwrap().is_empty())
+    );
 }

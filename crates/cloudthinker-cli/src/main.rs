@@ -144,6 +144,7 @@ struct Cli {
 enum Command {
     /// Start the coding agent in this folder. A bare `cloudthinker` runs it too.
     Agent(AgentArgs),
+    Cloud(commands::cloud::CloudArgs),
     /// Send a headless prompt to Anna, or check a run's status.
     Chat(ChatArgs),
     /// Review local changes or inspect a tracked review by its merge-request URL.
@@ -827,6 +828,7 @@ async fn run_command(
         Command::Logout(args) => {
             commands::logout::run(base_url, workspace.as_deref(), args.all).await
         }
+        Command::Cloud(args) => commands::cloud::run(base_url, workspace.as_deref(), args).await,
         Command::Whoami { json } => {
             commands::whoami::run(base_url, workspace.as_deref(), json).await
         }

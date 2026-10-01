@@ -122,7 +122,7 @@ for triple in $TRIPLES; do
   dir="$root/cloudthinker-agent"
   mkdir -p "$dir/theme" "$dir/assets" "$dir/export-html/vendor"
 
-  (cd "$PKG_DIR" && "$BUN" build --compile --minify --keep-names --bytecode --format=esm --no-compile-autoload-bunfig \
+  (cd "$PKG_DIR" && "$BUN" build --compile --minify --keep-names --format=esm --no-compile-autoload-bunfig \
     --define "__CT_BUILD_ID__=\"$BUILD_ID\"" \
     "--target=$target" src/main.ts --outfile "$dir/cloudthinker-agent")
   chmod 0755 "$dir/cloudthinker-agent"
@@ -190,6 +190,9 @@ NOTICE
 	cat "$PKG_DIR/node_modules/@tintinweb/pi-subagents/LICENSE" >> "$dir/NOTICE"
 	cat "$PKG_DIR/node_modules/proper-lockfile/LICENSE" >> "$dir/NOTICE"
 	cat "$PKG_DIR/node_modules/typebox/license" >> "$dir/NOTICE"
+	cat "$PKG_DIR/node_modules/beautiful-mermaid/LICENSE" >> "$dir/NOTICE"
+	cat "$(dirname "$(realpath "$PKG_DIR/node_modules/beautiful-mermaid")")/entities/LICENSE" >> "$dir/NOTICE"
+	cat "$(dirname "$(realpath "$PKG_DIR/node_modules/beautiful-mermaid")")/elkjs/LICENSE.md" >> "$dir/NOTICE"
 
   node "$PKG_DIR/scripts/validate-assets.ts" "$dir" "$PI_ROOT"
   asset="cloudthinker-agent-$triple.tar.gz"

@@ -1,8 +1,37 @@
 diff --git a/dist/components/markdown.js b/dist/components/markdown.js
-index 5788d755400164552ed09c7d69bdd67083caa5b1..dd6bf8524689fb548378920063b144d76f5a2f95 100644
+index 5788d755400164552ed09c7d69bdd67083caa5b1..b91efd8817b4b2431d2e9d1cfa29307e667ddcfb 100644
 --- a/dist/components/markdown.js
 +++ b/dist/components/markdown.js
-@@ -669,9 +669,7 @@ export class Markdown {
+@@ -381,16 +381,17 @@ export class Markdown {
+             }
+             case "code": {
+                 const indent = this.theme.codeBlockIndent ?? "  ";
++                const codeText = token.lang?.split(/\s+/)[0]?.toLowerCase() === "mermaid" ? token.text.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, char => `\\x${char.charCodeAt(0).toString(16).padStart(2, "0")}`) : token.text;
+                 lines.push(this.theme.codeBlockBorder(`\`\`\`${token.lang || ""}`));
+                 if (this.theme.highlightCode) {
+-                    const highlightedLines = this.theme.highlightCode(token.text, token.lang);
++                    const highlightedLines = this.theme.highlightCode(codeText, token.lang);
+                     for (const hlLine of highlightedLines) {
+                         lines.push(`${indent}${hlLine}`);
+                     }
+                 }
+                 else {
+                     // Split code by newlines and style each line
+-                    const codeLines = token.text.split("\n");
++                    const codeLines = codeText.split("\n");
+                     for (const codeLine of codeLines) {
+                         lines.push(`${indent}${this.theme.codeBlock(codeLine)}`);
+                     }
+@@ -524,7 +525,7 @@ export class Markdown {
+                     break;
+                 }
+                 case "codespan":
+-                    result += this.theme.code(token.text) + stylePrefix;
++                    result += (process.env.NO_COLOR !== undefined || process.env.TERM === "dumb" ? token.text : this.theme.code(token.text)) + stylePrefix;
+                     break;
+                 case "link": {
+                     const linkText = this.renderInlineTokens(token.tokens || [], resolvedStyleContext);
+@@ -669,9 +670,7 @@ export class Markdown {
          if (numCols === 0) {
              return lines;
          }
@@ -13,7 +42,7 @@ index 5788d755400164552ed09c7d69bdd67083caa5b1..dd6bf8524689fb548378920063b144d7
          const availableForCells = availableWidth - borderOverhead;
          if (availableForCells < numCols) {
              // Too narrow to render a stable table. Fall back to raw markdown.
-@@ -759,10 +757,20 @@ export class Markdown {
+@@ -759,10 +758,20 @@ export class Markdown {
                  }
              }
          }
@@ -38,7 +67,7 @@ index 5788d755400164552ed09c7d69bdd67083caa5b1..dd6bf8524689fb548378920063b144d7
          const headerCellLines = token.header.map((cell, i) => {
              const text = this.renderInlineTokens(cell.tokens || [], styleContext);
              return this.wrapCellText(text, columnWidths[i], styleContext?.stylePrefix);
-@@ -771,16 +779,11 @@ export class Markdown {
+@@ -771,16 +780,11 @@ export class Markdown {
          for (let lineIdx = 0; lineIdx < headerLineCount; lineIdx++) {
              const rowParts = headerCellLines.map((cellLines, colIdx) => {
                  const text = cellLines[lineIdx] || "";
@@ -57,7 +86,7 @@ index 5788d755400164552ed09c7d69bdd67083caa5b1..dd6bf8524689fb548378920063b144d7
          for (let rowIndex = 0; rowIndex < token.rows.length; rowIndex++) {
              const row = token.rows[rowIndex];
              const rowCellLines = row.map((cell, i) => {
-@@ -791,17 +794,15 @@ export class Markdown {
+@@ -791,17 +795,15 @@ export class Markdown {
              for (let lineIdx = 0; lineIdx < rowLineCount; lineIdx++) {
                  const rowParts = rowCellLines.map((cellLines, colIdx) => {
                      const text = cellLines[lineIdx] || "";

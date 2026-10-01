@@ -9,9 +9,8 @@ import { ModuleKind, ScriptTarget, transpileModule } from "typescript";
 import { runWorkflow, workflowConcurrency } from "@tintinweb/pi-subagents/dist/workflow/runtime.js";
 
 async function compileWorkflowRuntimeSource() {
-	const packageRoot = fileURLToPath(new URL("../../../node_modules/.pnpm_patches/@tintinweb/pi-subagents@0.19.0/", import.meta.url));
-	const sourcePath = join(packageRoot, "src/workflow/runtime.ts");
 	const distWorkflow = dirname(fileURLToPath(import.meta.resolve("@tintinweb/pi-subagents/dist/workflow/runtime.js")));
+	const sourcePath = join(distWorkflow, "../../src/workflow/runtime.ts");
 	const source = readFileSync(sourcePath, "utf8");
 	const output = transpileModule(source, { compilerOptions: { module: ModuleKind.ESNext, target: ScriptTarget.ES2022 } }).outputText
 		.replace(/from ["']\.\/([^"']+\.js)["']/g, (_match, file: string) => `from ${JSON.stringify(pathToFileURL(join(distWorkflow, file)).href)}`);

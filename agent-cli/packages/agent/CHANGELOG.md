@@ -1,3 +1,8 @@
+## [0.8.0]
+
+- Render completed Mermaid flowcharts as themed terminal diagrams with authored node border colors; keep interiors and text in terminal theme colors. Preserve source while streaming and when a preview cannot fit or uses unsupported syntax.
+- Make authored Mermaid border colors configurable through `markdown.mermaidBorderColors` in settings.json, defaulting to false. Suppress colored fallback notices when color is disabled.
+
 ## Additional changes for 0.7.6
 
 - Replace the fixed tour command with a bundled /skill:tour that explains Local and Cloud and helps users choose a first task.

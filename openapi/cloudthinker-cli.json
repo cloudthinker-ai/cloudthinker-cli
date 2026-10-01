@@ -1,6 +1,57 @@
 {
   "components": {
     "schemas": {
+      "AgentCliAutoMode": {
+        "description": "The workspace's Auto Mode as the terminal shows it at session start.",
+        "properties": {
+          "can_edit": {
+            "description": "Whether the caller may flip it through `PATCH /workspaces/{workspace_id}/auto-mode`.",
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "can_edit"
+        ],
+        "title": "AgentCliAutoMode",
+        "type": "object"
+      },
+      "AgentCliConnectionsContext": {
+        "description": "200 response for `GET /agent-cli/connections`.\n\nBoth fields come from one build of the workspace's connection scope, so the\nXML the local model reads and the allowlist the terminal checks\n`connection_list` against cannot disagree.",
+        "properties": {
+          "connections": {
+            "items": {
+              "$ref": "#/components/schemas/CloudConnectionEntry"
+            },
+            "title": "Connections",
+            "type": "array"
+          },
+          "prefixes": {
+            "description": "The connected Connection prefixes the terminal may pass as `connection_list`.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Prefixes",
+            "type": "array"
+          },
+          "xml": {
+            "description": "The `<connections_context>` block Anna reads in chat, slim, or an empty string when nothing is connected.",
+            "title": "Xml",
+            "type": "string"
+          }
+        },
+        "required": [
+          "xml",
+          "prefixes"
+        ],
+        "title": "AgentCliConnectionsContext",
+        "type": "object"
+      },
       "AgentCliEntriesAppended": {
         "description": "Response for an append: what landed, and the session's arrival high-water mark.",
         "properties": {
@@ -116,6 +167,328 @@
         ],
         "title": "AgentCliEntryPublic",
         "type": "object"
+      },
+      "AgentCliExecutionCompleted": {
+        "description": "200 for a synchronous execution.\n\nEvery field is copied out of the Guardrails-protected carrier, so a\ncredential value the script printed arrives here already tokenized.",
+        "properties": {
+          "return_code": {
+            "title": "Return Code",
+            "type": "integer"
+          },
+          "status": {
+            "default": "completed",
+            "enum": [
+              "completed"
+            ],
+            "title": "AgentCliExecutionCompleted_status",
+            "type": "string"
+          },
+          "stderr": {
+            "title": "Stderr",
+            "type": "string"
+          },
+          "stdout": {
+            "title": "Stdout",
+            "type": "string"
+          }
+        },
+        "required": [
+          "return_code",
+          "stdout",
+          "stderr"
+        ],
+        "title": "AgentCliExecutionCompleted",
+        "type": "object"
+      },
+      "AgentCliExecutionOutput": {
+        "description": "200 for `GET /agent-cli/executions/{task_id}`.\n\n`next_cursor` is the `since` for the next poll. An id that names no task of\nthis conversation answers `unknown` with empty output rather than a 404, so\nthe endpoint is not an existence oracle for another conversation's tasks.",
+        "properties": {
+          "exit_code": {
+            "nullable": true,
+            "title": "Exit Code",
+            "type": "integer"
+          },
+          "next_cursor": {
+            "title": "Next Cursor",
+            "type": "integer"
+          },
+          "output": {
+            "title": "Output",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BgTaskStatus"
+          },
+          "termination_reason": {
+            "nullable": true,
+            "title": "Termination Reason",
+            "type": "string"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "output",
+          "next_cursor",
+          "truncated"
+        ],
+        "title": "AgentCliExecutionOutput",
+        "type": "object"
+      },
+      "AgentCliExecutionStarted": {
+        "description": "200 for `run_in_background=true`: nothing has run yet.",
+        "properties": {
+          "status": {
+            "default": "running",
+            "enum": [
+              "running"
+            ],
+            "title": "AgentCliExecutionStarted_status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id"
+        ],
+        "title": "AgentCliExecutionStarted",
+        "type": "object"
+      },
+      "AgentCliSessionCreated": {
+        "description": "201 response for a created agent CLI session.",
+        "properties": {
+          "auto_mode": {
+            "$ref": "#/components/schemas/AgentCliAutoMode"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "web_url": {
+            "title": "Web Url",
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "workspace_id",
+          "web_url",
+          "auto_mode"
+        ],
+        "title": "AgentCliSessionCreated",
+        "type": "object"
+      },
+      "AgentCliWriteOutcome": {
+        "description": "200 for a write request or a run: the record, plus the execution once it ran.",
+        "properties": {
+          "execution": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentCliExecutionCompleted"
+              },
+              {
+                "$ref": "#/components/schemas/AgentCliExecutionStarted"
+              }
+            ],
+            "nullable": true,
+            "title": "Execution"
+          },
+          "write": {
+            "$ref": "#/components/schemas/AgentCliWritePublic"
+          }
+        },
+        "required": [
+          "write"
+        ],
+        "title": "AgentCliWriteOutcome",
+        "type": "object"
+      },
+      "AgentCliWritePage": {
+        "description": "The newest writes of one session, live ones first among equals.",
+        "properties": {
+          "writes": {
+            "items": {
+              "$ref": "#/components/schemas/AgentCliWritePublic"
+            },
+            "title": "Writes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "writes"
+        ],
+        "title": "AgentCliWritePage",
+        "type": "object"
+      },
+      "AgentCliWritePublic": {
+        "description": "One cloud write from a local session, as the terminal and the viewer read it.",
+        "properties": {
+          "connection_list": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Connection List",
+            "type": "array"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Decided At",
+            "type": "string"
+          },
+          "decided_by_name": {
+            "description": "Display name of the approver, resolved for the terminal and the card.",
+            "nullable": true,
+            "title": "Decided By Name",
+            "type": "string"
+          },
+          "decided_by_user_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Decided By User Id",
+            "type": "string"
+          },
+          "decline_reason": {
+            "nullable": true,
+            "title": "Decline Reason",
+            "type": "string"
+          },
+          "executed_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Executed At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reasoning": {
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "requested_by_user_id": {
+            "format": "uuid",
+            "title": "Requested By User Id",
+            "type": "string"
+          },
+          "return_code": {
+            "nullable": true,
+            "title": "Return Code",
+            "type": "integer"
+          },
+          "run_in_background": {
+            "title": "Run In Background",
+            "type": "boolean"
+          },
+          "script": {
+            "title": "Script",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentCliWriteStatus"
+          },
+          "task_id": {
+            "nullable": true,
+            "title": "Task Id",
+            "type": "string"
+          },
+          "timeout": {
+            "title": "Timeout",
+            "type": "integer"
+          },
+          "tool_call_id": {
+            "title": "Tool Call Id",
+            "type": "string"
+          },
+          "trusted": {
+            "description": "Whether the approval also trusted the script on the workspace default policy.",
+            "title": "Trusted",
+            "type": "boolean"
+          },
+          "verdict": {
+            "description": "The Auto Mode gate's answer: `allow`, `require_approval`, `escalate`, or `hard_deny`.",
+            "title": "Verdict",
+            "type": "string"
+          },
+          "verdict_reason": {
+            "title": "Verdict Reason",
+            "type": "string"
+          },
+          "web_url": {
+            "description": "The session in the browser, where the write is decided.",
+            "title": "Web Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "tool_call_id",
+          "connection_list",
+          "script",
+          "reasoning",
+          "timeout",
+          "run_in_background",
+          "verdict",
+          "verdict_reason",
+          "status",
+          "requested_by_user_id",
+          "decided_by_user_id",
+          "decided_by_name",
+          "decided_at",
+          "decline_reason",
+          "trusted",
+          "task_id",
+          "return_code",
+          "executed_at",
+          "expires_at",
+          "created_at",
+          "web_url"
+        ],
+        "title": "AgentCliWritePublic",
+        "type": "object"
+      },
+      "AgentCliWriteStatus": {
+        "enum": [
+          "required_approval",
+          "approved",
+          "declined",
+          "denied",
+          "outcome_unknown",
+          "executed",
+          "failed"
+        ],
+        "title": "AgentCliWriteStatus",
+        "type": "string"
       },
       "AgentRunStatus": {
         "description": "Lifecycle state of a background agent run.\n\nValues are deliberately identical to TaskScheduleStatus (app/models/tasks.py)\nso AgentExecutionResult.status needs zero remapping when origins migrate onto\nAgentRun (plan decision, plans/product-cli-mr-c-agentrun.md).",
@@ -989,6 +1362,17 @@
         "title": "BackgroundOperation",
         "type": "object"
       },
+      "BgTaskStatus": {
+        "enum": [
+          "running",
+          "done",
+          "error",
+          "cancelled",
+          "unknown"
+        ],
+        "title": "BgTaskStatus",
+        "type": "string"
+      },
       "ChangeFocusBaseState": {
         "description": "WHY a target's `base_ref` is empty or set \u2014 resolves the `base_ref==\"\"`\noverload into an explicit, observable state (Gap #3).\n\n- `incremental`: `base_ref` is a real prior-run SHA; a diff is rendered.\n- `first_run`: no prior successful run for this repo yet.\n- `unchanged`: prior head SHA == current HEAD SHA (full scan, no wasted diff).\n- `provider_unsupported`: the provider couldn't resolve a base (e.g. branch\n  pagination cap in `ref_validation.branch_ref_exists`) \u2014 reserved for a\n  future producer; `_derive_diff_focus` does not emit this value today\n  (an unresolved HEAD omits the repo entirely rather than recording a row).",
         "enum": [
@@ -1189,6 +1573,87 @@
           "workspace_name"
         ],
         "title": "CliWhoAmIResponse",
+        "type": "object"
+      },
+      "CloudConnectionEntry": {
+        "properties": {
+          "alias": {
+            "title": "Alias",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "execution_method": {
+            "enum": [
+              "cli",
+              "sdk"
+            ],
+            "title": "CloudConnectionEntry_execution_method",
+            "type": "string"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "skills": {
+            "items": {
+              "$ref": "#/components/schemas/CloudConnectionSkill"
+            },
+            "title": "Skills",
+            "type": "array"
+          }
+        },
+        "required": [
+          "prefix",
+          "alias",
+          "execution_method",
+          "description",
+          "skills"
+        ],
+        "title": "CloudConnectionEntry",
+        "type": "object"
+      },
+      "CloudConnectionSkill": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "CloudConnectionSkill",
+        "type": "object"
+      },
+      "CloudToolPolicy": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "requires_approval": {
+            "title": "Requires Approval",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "enabled",
+          "requires_approval"
+        ],
+        "title": "CloudToolPolicy",
         "type": "object"
       },
       "CodeReviewCategoryCounts": {
@@ -2150,6 +2615,43 @@
         "title": "CoverageStatus",
         "type": "string"
       },
+      "CreateAgentCliSessionRequest": {
+        "description": "Body for `POST /agent-cli/sessions`.",
+        "properties": {
+          "cwd": {
+            "description": "Absolute directory the local agent session was started in. Its last path segment becomes the conversation title when `title` is omitted.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "CreateAgentCliSessionRequest_cwd",
+            "type": "string"
+          },
+          "skip_sandbox_warmup": {
+            "default": false,
+            "description": "Skip warming the workspace sandbox when the local session does not use CloudThinker sandbox tools.",
+            "title": "Skip Sandbox Warmup",
+            "type": "boolean"
+          },
+          "source_conversation_id": {
+            "description": "Optional. The conversation this session was forked from (a pi `/fork`). Must belong to the authenticated workspace.",
+            "format": "uuid",
+            "nullable": true,
+            "title": "Source Conversation Id",
+            "type": "string"
+          },
+          "title": {
+            "description": "Optional conversation title. Defaults to the last path segment of `cwd`.",
+            "maxLength": 255,
+            "nullable": true,
+            "title": "CreateAgentCliSessionRequest_title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cwd"
+        ],
+        "title": "CreateAgentCliSessionRequest",
+        "type": "object"
+      },
       "CreateOutpostRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2312,6 +2814,51 @@
           "reference"
         ],
         "title": "ExchangeWorkerRegistrationRequest",
+        "type": "object"
+      },
+      "ExecuteAgentCliReadRequest": {
+        "description": "Body for `POST /agent-cli/executions`.",
+        "properties": {
+          "connection_list": {
+            "description": "Connection prefixes whose credentials the script needs (`aws`, `k8s`, `github_acme`). Every prefix must be connected in this workspace. Omit for a pure-sandbox command.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Connection List",
+            "type": "array"
+          },
+          "conversation_id": {
+            "description": "The `AGENT_CLI` conversation this local session mirrors. It scopes the sandbox working tree and the credential staging, so it must exist in the authenticated workspace before the first execution.",
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "run_in_background": {
+            "default": false,
+            "description": "Detach the script and answer with a `task_id` in about a second. Poll `GET /agent-cli/executions/{task_id}` for its output.",
+            "title": "Run In Background",
+            "type": "boolean"
+          },
+          "script": {
+            "description": "A read-only shell command, or an inline TypeScript program whose first statement is an ES `import`/`export`. State-changing work goes to Anna, not here.",
+            "minLength": 1,
+            "title": "ExecuteAgentCliReadRequest_script",
+            "type": "string"
+          },
+          "timeout": {
+            "description": "Seconds the executor may spend on the script. A longer read belongs in `run_in_background`, which is not bound by this cap.",
+            "maximum": 120,
+            "minimum": 1,
+            "title": "Timeout",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "script",
+          "timeout"
+        ],
+        "title": "ExecuteAgentCliReadRequest",
         "type": "object"
       },
       "ExecutorAvailability": {
@@ -3394,6 +3941,119 @@
         "title": "IssueArtifactGrantRequest",
         "type": "object"
       },
+      "LoadConnectionSkillRequest": {
+        "properties": {
+          "connection_prefix": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "title": "LoadConnectionSkillRequest_connection_prefix",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "skill_names": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Skill Names",
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "connection_prefix"
+        ],
+        "title": "LoadConnectionSkillRequest",
+        "type": "object"
+      },
+      "LoadConnectionToolsRequest": {
+        "properties": {
+          "connection_prefix": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_-]+$",
+            "title": "LoadConnectionToolsRequest_connection_prefix",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "connection_prefix",
+          "tools"
+        ],
+        "title": "LoadConnectionToolsRequest",
+        "type": "object"
+      },
+      "LoadedConnectionContent": {
+        "properties": {
+          "cloud_root": {
+            "default": "/home/user",
+            "title": "Cloud Root",
+            "type": "string"
+          },
+          "connection_prefix": {
+            "title": "Connection Prefix",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "execution_method": {
+            "enum": [
+              "cli",
+              "sdk"
+            ],
+            "title": "LoadedConnectionContent_execution_method",
+            "type": "string"
+          },
+          "roster_only": {
+            "default": false,
+            "title": "Roster Only",
+            "type": "boolean"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/CloudToolPolicy"
+            },
+            "title": "Tools",
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "connection_prefix",
+          "execution_method",
+          "content",
+          "tools"
+        ],
+        "title": "LoadedConnectionContent",
+        "type": "object"
+      },
       "LocalInputSchema": {
         "additionalProperties": false,
         "properties": {
@@ -4410,6 +5070,76 @@
           "kind"
         ],
         "title": "RepositoryOperation",
+        "type": "object"
+      },
+      "RequestAgentCliWriteRequest": {
+        "description": "Body for `POST /agent-cli/writes`.",
+        "properties": {
+          "connection_list": {
+            "description": "Connection prefixes whose credentials the script needs. Every prefix must be connected in this workspace.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Connection List",
+            "type": "array"
+          },
+          "conversation_id": {
+            "description": "The `AGENT_CLI` conversation this local session mirrors. Only the session's own creator may ask it for a write.",
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "reasoning": {
+            "description": "Plain-language line for the human approver: what this command changes and why it is needed right now.",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "RequestAgentCliWriteRequest_reasoning",
+            "type": "string"
+          },
+          "recent_user_messages": {
+            "description": "The developer's latest prompts in this session, newest last, so the Auto Mode classifier sees the intent a chat turn would.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Recent User Messages",
+            "type": "array"
+          },
+          "run_in_background": {
+            "default": false,
+            "description": "Detach the script once it may run and answer with a `task_id` to poll on `GET /agent-cli/executions/{task_id}`.",
+            "title": "Run In Background",
+            "type": "boolean"
+          },
+          "script": {
+            "description": "The state-changing shell command. It is stored as sent, and it is the only script an approval of this write will ever run.",
+            "minLength": 1,
+            "title": "RequestAgentCliWriteRequest_script",
+            "type": "string"
+          },
+          "timeout": {
+            "description": "Seconds the executor may spend on the script.",
+            "maximum": 120,
+            "minimum": 1,
+            "title": "Timeout",
+            "type": "integer"
+          },
+          "tool_call_id": {
+            "description": "pi's id for this tool call. The Auto Mode gate keys its durable verdict on it, so a retried call replays the same verdict.",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "RequestAgentCliWriteRequest_tool_call_id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "tool_call_id",
+          "script",
+          "reasoning",
+          "timeout"
+        ],
+        "title": "RequestAgentCliWriteRequest",
         "type": "object"
       },
       "ReviewEffort": {
@@ -6032,12 +6762,13 @@
         "type": "object"
       },
       "WorkspaceRole": {
-        "description": "Workspace-level roles for RBAC.\n\nRole hierarchy (highest to lowest):\n- ADMIN: Full control within workspace\n- DEVELOPER: Can use chat, view resources, manage recommendations\n- VIEWER: Read-only access\n\nNote: OWNER is deprecated. Use organization-level roles instead:\n- ORG_OWNER/ORG_ADMIN inherit to ADMIN in all workspaces\n- ORG_DEVELOPER inherits to DEVELOPER in all workspaces\n- ORG_VIEWER inherits to VIEWER in all workspaces",
+        "description": "Workspace-level roles for RBAC.\n\nRole hierarchy (highest to lowest):\n- ADMIN: Full control within workspace\n- DEVELOPER: Can use chat, view resources, manage recommendations\n- VIEWER: Read-only access\n- SYSTEM: The workspace's own non-login actor for background work; never assignable\n\nNote: OWNER is deprecated. Use organization-level roles instead:\n- ORG_OWNER/ORG_ADMIN inherit to ADMIN in all workspaces\n- ORG_DEVELOPER inherits to DEVELOPER in all workspaces\n- ORG_VIEWER inherits to VIEWER in all workspaces",
         "enum": [
           "OWNER",
           "ADMIN",
           "DEVELOPER",
-          "VIEWER"
+          "VIEWER",
+          "SYSTEM"
         ],
         "title": "WorkspaceRole",
         "type": "string"
@@ -6201,6 +6932,196 @@
   },
   "openapi": "3.0.3",
   "paths": {
+    "/api/v1/agent-cli/connections": {
+      "get": {
+        "operationId": "agent-cli-read_agent_cli_connections",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCliConnectionsContext"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Agent Cli Connections",
+        "tags": [
+          "agent-cli"
+        ]
+      }
+    },
+    "/api/v1/agent-cli/executions": {
+      "post": {
+        "operationId": "agent-cli-execute_agent_cli_read",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecuteAgentCliReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentCliExecutionCompleted"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AgentCliExecutionStarted"
+                    }
+                  ],
+                  "title": "Response Agent-Cli-Execute Agent Cli Read"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Execute Agent Cli Read",
+        "tags": [
+          "agent-cli"
+        ]
+      }
+    },
+    "/api/v1/agent-cli/executions/{task_id}": {
+      "get": {
+        "operationId": "agent-cli-read_agent_cli_execution",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The session that started this task; it owns the output.",
+            "in": "query",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "description": "The session that started this task; it owns the output.",
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Absolute output cursor. Send 0 first, then the `next_cursor` of the previous poll.",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Absolute output cursor. Send 0 first, then the `next_cursor` of the previous poll.",
+              "minimum": 0,
+              "title": "Since",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCliExecutionOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Agent Cli Execution",
+        "tags": [
+          "agent-cli"
+        ]
+      }
+    },
+    "/api/v1/agent-cli/sessions": {
+      "post": {
+        "operationId": "agent-cli-create_agent_cli_session",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentCliSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCliSessionCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Create Agent Cli Session",
+        "tags": [
+          "agent-cli"
+        ]
+      }
+    },
     "/api/v1/agent-cli/sessions/{conversation_id}/entries": {
       "get": {
         "operationId": "agent-cli-list_agent_cli_session_entries",
@@ -6311,6 +7232,295 @@
           }
         },
         "summary": "Append Agent Cli Session Entries",
+        "tags": [
+          "agent-cli"
+        ]
+      }
+    },
+    "/api/v1/agent-cli/sessions/{conversation_id}/writes": {
+      "get": {
+        "operationId": "agent-cli-list_agent_cli_session_writes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Keep only writes in these statuses; omitted means all",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "description": "Keep only writes in these statuses; omitted means all",
+              "items": {
+                "$ref": "#/components/schemas/AgentCliWriteStatus"
+              },
+              "nullable": true,
+              "title": "Status",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCliWritePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Agent Cli Session Writes",
+        "tags": [
+          "agent-cli"
+        ]
+      }
+    },
+    "/api/v1/agent-cli/skills/load": {
+      "post": {
+        "operationId": "agent-cli-load_agent_cli_skill",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoadConnectionSkillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoadedConnectionContent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Load Agent Cli Skill",
+        "tags": [
+          "agent-cli"
+        ]
+      }
+    },
+    "/api/v1/agent-cli/tools/load": {
+      "post": {
+        "operationId": "agent-cli-load_agent_cli_tools",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoadConnectionToolsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoadedConnectionContent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Load Agent Cli Tools",
+        "tags": [
+          "agent-cli"
+        ]
+      }
+    },
+    "/api/v1/agent-cli/writes": {
+      "post": {
+        "operationId": "agent-cli-request_agent_cli_write",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestAgentCliWriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCliWriteOutcome"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Request Agent Cli Write",
+        "tags": [
+          "agent-cli"
+        ]
+      }
+    },
+    "/api/v1/agent-cli/writes/{write_id}": {
+      "get": {
+        "operationId": "agent-cli-read_agent_cli_write",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "write_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Write Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "nullable": true,
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCliWritePublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Agent Cli Write",
+        "tags": [
+          "agent-cli"
+        ]
+      }
+    },
+    "/api/v1/agent-cli/writes/{write_id}/run": {
+      "post": {
+        "operationId": "agent-cli-run_agent_cli_write",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "write_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Write Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "nullable": true,
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCliWriteOutcome"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Run Agent Cli Write",
         "tags": [
           "agent-cli"
         ]

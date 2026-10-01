@@ -5,6 +5,7 @@ pub enum Module {
     Index,
     Auth,
     Chat,
+    Cloud,
     Review,
     Cyber,
     CyberScan,
@@ -18,6 +19,7 @@ impl Module {
         match self {
             Self::Index => include_str!("../skills/cloudthinker-cli/SKILL.md"),
             Self::Auth => include_str!("../skills/cloudthinker-cli/auth.md"),
+            Self::Cloud => include_str!("../skills/cloudthinker-cli/cloud.md"),
             Self::Chat => include_str!("../skills/cloudthinker-cli/chat.md"),
             Self::Review => include_str!("../skills/cloudthinker-cli/review.md"),
             Self::Cyber => include_str!("../skills/cloudthinker-cli/cyber.md"),
