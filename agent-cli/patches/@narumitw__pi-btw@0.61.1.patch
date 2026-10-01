@@ -1,5 +1,5 @@
 diff --git a/dist/index.ts b/dist/index.ts
-index 08700dd6f3ab70f612ee5e84756c00a95c17c189..6ec9c7e98021bd6199a9c9500b0c661e974ff821 100644
+index 08700dd6f3ab70f612ee5e84756c00a95c17c189..fe36a7dadb152e021af842fb81f80d09cb9a1260 100644
 --- a/dist/index.ts
 +++ b/dist/index.ts
 @@ -3,6 +3,7 @@
@@ -45,7 +45,7 @@ index 08700dd6f3ab70f612ee5e84756c00a95c17c189..6ec9c7e98021bd6199a9c9500b0c661e
  function truncateFromStart(text, maxChars) {
    if (text.length <= maxChars) return text;
    return `[Earlier context omitted; showing the last ${maxChars} characters.]
-@@ -877,6 +892,8 @@ function formatError(error) {
+@@ -877,12 +892,14 @@ function formatError(error) {
  }
  var SYSTEM_PROMPT = `You answer quick side questions for a coding-agent user.
  
@@ -54,6 +54,13 @@ index 08700dd6f3ab70f612ee5e84756c00a95c17c189..6ec9c7e98021bd6199a9c9500b0c661e
  Use the provided conversation context only as background. Answer the user's side question directly and concisely. Do not claim to have changed files, run tools, or affected the main task. If the context is insufficient, say what is unknown and give the best next step.`;
  
  // src/settings.ts
+ var BTW_SETTINGS_FILE = "pi-btw.json";
+ var BTW_LAYOUTS = ["fullscreen", "left-pane", "right-pane"];
+-var DEFAULT_BTW_LAYOUT = "fullscreen";
++var DEFAULT_BTW_LAYOUT = "right-pane";
+ var DEFAULT_FULLSCREEN_COPY_ON_SELECT = true;
+ var DEFAULT_REMEMBER_THINKING_LEVEL_CHANGES = true;
+ var DEFAULT_BTW_SIDE_PANE_RATIO = 0.5;
 @@ -2600,8 +2617,6 @@ async function showBtwCommandMenu(ctx, options) {
          kind: "actions",
          title: "Pi BTW",
@@ -111,6 +118,61 @@ index 08700dd6f3ab70f612ee5e84756c00a95c17c189..6ec9c7e98021bd6199a9c9500b0c661e
              id: action,
              label: shortcutLabels[action],
              description: "Edit a BTW-only key combination or restore its default. Ctrl+C always hard-cancels.",
+@@ -3432,7 +3424,7 @@ var BtwTranscriptPager = class {
+       this.tui.requestRender();
+       return;
+     }
+-    if (this.shortcuts.matches(data, "exit")) {
++    if (this.shortcuts.matches(data, "exit") || matchesKey4(data, Key4.escape)) {
+       this.finished = true;
+       this.onAction({ kind: "close" });
+       return;
+@@ -3476,17 +3468,17 @@ var BtwTranscriptPager = class {
+     this.onAction({ kind: "close" });
+   }
+   renderFooter(width) {
+-    const exit = this.shortcuts.label("exit");
++    const exit = `Esc/${this.shortcuts.label("exit")}`;
+     const bring = this.canBringToMain && this.shortcuts.keys.bringToMain.length > 0;
+     const bringKey = this.shortcuts.label("bringToMain");
+     if (this.warning) {
+-      const warning = width < 32 ? `Empty \u2022 ${exit}` : `${this.warning} \u2022 ${exit} exit`;
++      const warning = width < 32 ? `Empty \u2022 ${exit}` : `${this.warning} \u2022 ${exit} close`;
+       return truncateToWidth4(this.theme.fg("warning", warning), width);
+     }
+     const scrollable = this.getMaxScrollOffset() > 0;
+     const thinking = this.options.thinking;
+     const cycleHint = thinking && thinking.levels.length > 1 && this.thinkingLevel && this.shortcuts.keys.cycleThinkingLevel.length ? ` \u2022 thinking ${this.thinkingLevel} \u2022 ${this.shortcuts.label("cycleThinkingLevel")} cycle` : "";
+-    const base = bring ? `btw \u2022 Enter send \u2022 ${bringKey} bring to main \u2022 ${exit} exit` : `btw \u2022 Enter send \u2022 ${exit} exit`;
++    const base = bring ? `btw \u2022 Enter send \u2022 ${bringKey} bring to main \u2022 ${exit} close` : `btw \u2022 Enter send \u2022 ${exit} close`;
+     const fullBase = `${base}${cycleHint}`;
+     const fallbackBase = `btw \u2022 Enter \u2022 ${exit}`;
+     const compactBase = bring ? `btw \u2022 Enter \u2022 ${bringKey} \u2022 ${exit}` : fallbackBase;
+@@ -3669,7 +3661,7 @@ var BtwAnsweringView = class {
+       this.tui.requestRender();
+       return;
+     }
+-    if (this.shortcuts.matches(data, "exit")) {
++    if (this.shortcuts.matches(data, "exit") || matchesKey4(data, Key4.escape)) {
+       this.finished = true;
+       this.loader.stop();
+       this.controller.abort();
+@@ -3720,12 +3712,12 @@ var BtwAnsweringView = class {
+     this.onCancel();
+   }
+   renderFooter(width) {
+-    const exit = this.shortcuts.label("exit");
++    const exit = `Esc/${this.shortcuts.label("exit")}`;
+     if (this.warning) {
+-      const warning = width < 32 ? `Empty \u2022 ${exit}` : `${this.warning} \u2022 ${exit} cancel`;
++      const warning = width < 32 ? `Empty \u2022 ${exit}` : `${this.warning} \u2022 ${exit} close`;
+       return truncateToWidth4(this.theme.fg("warning", warning), width);
+     }
+-    const baseHint = this.editor ? `Enter steer \u2022 ${exit} cancel` : `${exit} cancel`;
++    const baseHint = this.editor ? `Enter steer \u2022 ${exit} close` : `${exit} close`;
+     const thinking = this.options.steering?.thinking;
+     const cycleHint = thinking && thinking.levels.length > 1 && this.thinkingLevel && this.shortcuts.keys.cycleThinkingLevel.length ? ` \u2022 thinking ${this.thinkingLevel} \u2022 ${this.shortcuts.label("cycleThinkingLevel")} cycle` : "";
+     const scrollHint = this.getMaxScrollOffset() > 0 ? " \u2022 PgUp/PgDn history" : "";
 @@ -3804,8 +3796,8 @@ function buildTranscriptComponents(turns, theme, pendingQuestion, markdownTransf
  function renderTranscriptLines(components, width) {
    return components.flatMap((component) => component.render(width)).map(stripShellIntegrationMarkers);

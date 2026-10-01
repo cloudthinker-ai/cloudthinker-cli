@@ -8,6 +8,7 @@
 - Fold successful local tool output to a one-line summary by default; `/verbosity` or the `toolOutput` setting switches to the 5-line preview.
 - Draw Markdown code blocks with a language label and a bar instead of fence lines.
 - Ask a side question with `/btw` while the agent works. The side thread answers from the conversation so far, including finished tool output, and the main turn keeps running.
+- `/btw` now opens in the right half of the terminal beside the running agent, and Esc or Ctrl+C closes it at any time, with the hint shown in its footer.
 
 ## Additional changes for 0.7.6
 
