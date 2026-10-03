@@ -6,10 +6,12 @@ import { AgentSession, formatSkillsForPrompt, getAgentDir, type Skill } from "@e
 
 export const SKILL_CATALOG_BYTES = 8192;
 
+type PromptOptions = { skills: Skill[]; sections: Record<string, string> };
+
 type PromptHost = {
 	_resourceLoader: AgentSession["resourceLoader"];
-	_baseSystemPromptOptions: unknown;
-	_rebuildSystemPrompt: (tools: string[]) => string;
+	_baseSystemPromptOptions: PromptOptions;
+	_rebuildSystemPrompt: (tools: string[]) => void;
 };
 
 export function budgetSkillCatalog(skills: Skill[], readTool: "read" | "bash", agentDir = getAgentDir()): { skills: Skill[]; guidance: string } {
@@ -45,22 +47,13 @@ export function applySkillCatalogGuard(): void {
 	const original = prototype._rebuildSystemPrompt;
 	if (typeof original !== "function") throw new Error("Pi no longer defines _rebuildSystemPrompt; skill catalog budgeting cannot be installed");
 	prototype._rebuildSystemPrompt = function (tools) {
+		original.call(this, tools);
 		const readTool = tools.includes("read") ? "read" : tools.includes("bash") ? "bash" : undefined;
-		if (!readTool) return original.call(this, tools);
-		const loaded = this._resourceLoader.getSkills();
-		const catalog = budgetSkillCatalog(loaded.skills, readTool);
-		if (!catalog.guidance) return original.call(this, tools);
-		const shadow = Object.create(this) as PromptHost;
-		shadow._resourceLoader = new Proxy(this._resourceLoader, {
-			get(target, property) {
-				if (property === "getSkills") return () => ({ ...loaded, skills: catalog.skills });
-				const value = Reflect.get(target, property, target);
-				return typeof value === "function" ? value.bind(target) : value;
-			},
-		});
-		const prompt = original.call(shadow, tools);
-		this._baseSystemPromptOptions = shadow._baseSystemPromptOptions;
-		return prompt + catalog.guidance;
+		if (!readTool) return;
+		const catalog = budgetSkillCatalog(this._resourceLoader.getSkills().skills, readTool);
+		if (!catalog.guidance) return;
+		const options = this._baseSystemPromptOptions;
+		this._baseSystemPromptOptions = { ...options, skills: catalog.skills, sections: { ...options.sections, skill_catalog: catalog.guidance.trim() } };
 	};
 	installed = true;
 }

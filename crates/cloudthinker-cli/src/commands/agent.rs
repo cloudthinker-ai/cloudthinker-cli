@@ -1,4 +1,4 @@
-//! `cloudthinker agent` — install and exec the local coding agent.
+//! `cloudthinker agent` — install and exec the CloudThinker agent.
 
 use std::ffi::OsString;
 use std::io::IsTerminal;
@@ -24,20 +24,24 @@ const URL_ENV_VAR: &str = "CLOUDTHINKER_URL";
 
 const BIN_ENV_VAR: &str = "CLOUDTHINKER_BIN";
 
+const AGENT_HELP: &str = include_str!("../agent_help.txt");
+
 pub async fn run(base_url: &str, workspace: Option<&str>, args: Vec<OsString>) -> ExitCode {
     let mut timing = crate::engine::timing::PhaseTimer::from_env();
     timing.mark("wrapper.dispatch");
-    let workspace_id = if asks_for_help(&args) {
-        None
-    } else {
-        let pending_check = crate::commands::update::offer_on_start(base_url).await;
-        timing.mark("wrapper.update_check");
-        let identity = resolve_identity(base_url, workspace).await;
-        pending_check.settle().await;
-        match identity {
-            Ok(identity) => Some(identity.workspace_id.to_string()),
-            Err(code) => return code,
-        }
+    if asks_for_help(&args) {
+        return match output::print_text(AGENT_HELP) {
+            Ok(()) => ExitCode::Ok,
+            Err(error) => exit::report(&CtError::Transport(error)),
+        };
+    }
+    let pending_check = crate::commands::update::offer_on_start(base_url).await;
+    timing.mark("wrapper.update_check");
+    let identity = resolve_identity(base_url, workspace).await;
+    pending_check.settle().await;
+    let workspace_id = match identity {
+        Ok(identity) => Some(identity.workspace_id.to_string()),
+        Err(code) => return code,
     };
     timing.mark("wrapper.identity");
     let binary = match resolve_binary().await {
@@ -49,7 +53,9 @@ pub async fn run(base_url: &str, workspace: Option<&str>, args: Vec<OsString>) -
 }
 
 fn asks_for_help(args: &[OsString]) -> bool {
-    args.iter().any(|arg| arg == "--help" || arg == "-h")
+    args.iter()
+        .take_while(|arg| *arg != "--")
+        .any(|arg| arg == "--help" || arg == "-h")
 }
 
 /// Prove the login before anything else, and offer the login itself when there
@@ -279,5 +285,6 @@ mod tests {
         assert!(asks_for_help(&["--tui-mode".into(), "-h".into()]));
         assert!(!asks_for_help(&["--tui-mode".into(), "fullscreen".into()]));
         assert!(!asks_for_help(&[]));
+        assert!(!asks_for_help(&["-p".into(), "--".into(), "--help".into()]));
     }
 }

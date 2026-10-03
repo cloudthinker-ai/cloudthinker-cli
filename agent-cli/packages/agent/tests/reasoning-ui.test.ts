@@ -2,21 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { stripVTControlCharacters } from "node:util";
 
-import { InteractiveMode } from "@earendil-works/pi-coding-agent";
+import { InteractiveMode, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { AssistantMessageComponent } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/assistant-message.js";
 import { FooterComponent } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/footer.js";
+import { WorkingStatusIndicator } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/status-indicator.js";
 import { SettingsSelectorComponent } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/settings-selector.js";
 import { getMarkdownTheme, initTheme } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
-import { applyReasoningUiGuard, withoutThinkingHotkeys, withoutThinkingStatus } from "../src/reasoning-ui.ts";
+import { applyReasoningUiGuard, cloudThinkerHotkeys, withoutThinkingStatus } from "../src/reasoning-ui.ts";
+import { applyThinkingUi, formatThoughtTime } from "../src/thinking-ui.ts";
 
 initTheme("light");
 applyReasoningUiGuard();
+applyThinkingUi();
 
 test("the actual footer shows the mode without exposing or changing its reasoning state", () => {
 	for (const thinkingLevel of ["off", "low", "medium", "high"]) {
 		const session = {
 			state: { model: { id: "light", reasoning: true, contextWindow: 200_000 }, thinkingLevel },
-			sessionManager: { getEntries: () => [], getCwd: () => "/workspace", getSessionName: () => undefined },
+			sessionManager: { getEntries: () => [], getEntryCount: () => 0, getSessionId: () => "footer", getLeafId: () => null, getCwd: () => "/workspace", getSessionName: () => undefined },
 			getContextUsage() {
 				assert.equal(this.state, this.state);
 				return undefined;
@@ -36,37 +39,49 @@ test("the actual footer shows the mode without exposing or changing its reasonin
 	}
 });
 
-test("streamed and resumed assistant rendering retains answers but never reveals reasoning", () => {
-	const message = {
-		role: "assistant", content: [
-			{ type: "thinking", thinking: "PRIVATE_REASONING", thinkingSignature: "signed" },
-			{ type: "text", text: "Visible answer" },
-		], stopReason: "stop",
-	} as unknown as Parameters<AssistantMessageComponent["updateContent"]>[0];
-	const component = new AssistantMessageComponent(message, false);
-	for (const streaming of [true, false]) {
-		component.updateContent(message, streaming);
-		component.setHideThinkingBlock(false);
-		component.invalidate();
-		const rendered = stripVTControlCharacters(component.render(80).join("\n"));
-		assert.match(rendered, /Visible answer/);
-		assert.doesNotMatch(rendered, /PRIVATE_REASONING|Thinking/);
+test("thinking leaves the chat: it shows live on the working line and a finished thought takes no rows", () => {
+	assert.equal(SettingsManager.inMemory().getHideThinkingBlock(), true);
+	assert.equal(SettingsManager.inMemory({ hideThinkingBlock: false }).getHideThinkingBlock(), false);
+	const thinking = { type: "thinking", thinking: "step one\nstep two", thinkingSignature: "signed" };
+	const message = (...content: object[]) =>
+		({ role: "assistant", content, stopReason: "stop" }) as unknown as Parameters<AssistantMessageComponent["updateContent"]>[0];
+	const screen = (component: AssistantMessageComponent) => stripVTControlCharacters(component.render(80).join("\n"));
+	const working = new WorkingStatusIndicator({ requestRender() {} } as never, "Working (esc to interrupt)");
+	const status = () => stripVTControlCharacters(working.render(80).join("\n")).trim();
+	try {
+		const live = new AssistantMessageComponent(undefined, true);
+		live.updateContent(message(thinking), true);
+		assert.deepEqual(live.render(80), []);
+		working.invalidate();
+		assert.match(status(), /Thinking 1s \(esc to interrupt\)$/);
+		live.updateContent(message(thinking, { type: "text", text: "Visible answer" }), true);
+		working.invalidate();
+		assert.match(status(), /Working \(esc to interrupt\)$/);
+		assert.equal(screen(live).trim(), "Visible answer");
+
+		const toolStep = new AssistantMessageComponent(message(thinking, { type: "toolCall", id: "t-1", name: "bash", arguments: {} }), true);
+		assert.deepEqual(toolStep.render(80), []);
+
+		const resumed = new AssistantMessageComponent(message({ type: "text", text: "Before" }, thinking, { type: "text", text: "Visible answer" }), true);
+		assert.doesNotMatch(screen(resumed), /step|Thought/);
+		resumed.setHideThinkingBlock(false);
+		assert.match(screen(resumed), /Before[\s\S]*step one[\s\S]*Visible answer/);
+		resumed.setHideThinkingBlock(true);
+		assert.doesNotMatch(screen(resumed), /step one/);
+	} finally {
+		working.dispose();
 	}
-	assert.equal(message.content.length, 2);
-	assert.equal(message.content[0]?.type, "thinking");
+	assert.equal(formatThoughtTime(65_000), "1m 5s");
+	assert.equal(formatThoughtTime(120_000), "2m");
 });
 
-test("thinking keyboard actions cannot change session state or reveal blocks", () => {
-	const prototype = InteractiveMode.prototype as unknown as {
-		cycleThinkingLevel(): void;
-		toggleThinkingBlockVisibility(): void;
-	};
+test("the thinking level key cannot change session state", () => {
+	const prototype = InteractiveMode.prototype as unknown as { cycleThinkingLevel(): void };
 	const host = new Proxy({}, { get() { throw new Error("thinking action reached runtime"); } });
 	assert.doesNotThrow(() => prototype.cycleThinkingLevel.call(host));
-	assert.doesNotThrow(() => prototype.toggleThinkingBlockVisibility.call(host));
 });
 
-test("settings search cannot restore either thinking control", () => {
+test("settings offer hiding thinking but never the thinking level", () => {
 	const config = {
 		availableDefaultModels: [], availableThemes: ["light"], modelThinkingLevels: {},
 		currentTheme: "light", httpIdleTimeoutMs: 60_000, thinkingLevel: "medium",
@@ -77,7 +92,8 @@ test("settings search cannot restore either thinking control", () => {
 	const list = component.getSettingsList();
 	list.handleInput("thinking");
 	const rendered = stripVTControlCharacters(list.render(80).join("\n"));
-	assert.doesNotMatch(rendered, /Hide thinking|Default thinking level/);
+	assert.match(rendered, /Hide thinking/);
+	assert.doesNotMatch(rendered, /Default thinking level/);
 	for (let index = 0; index < 8; index += 1) list.handleInput("\u007f");
 	list.handleInput("theme");
 	assert.match(stripVTControlCharacters(list.render(80).join("\n")), /Theme/);
@@ -86,7 +102,7 @@ test("settings search cannot restore either thinking control", () => {
 test("built-in keyboard help keeps working controls without advertising thinking", () => {
 	const components: { render(width: number): string[] }[] = [];
 	const host = {
-		getEditorKeyDisplay: () => "Key", getAppKeyDisplay: () => "Key",
+		getEditorKeyDisplay: () => "Key", getAppKeyDisplay: (action: string) => ({ "app.screen.clear": "Ctrl+L", "app.prompt.search": "Ctrl+R" })[action] ?? "Key",
 		getMarkdownThemeWithSettings: getMarkdownTheme,
 		session: { extensionRunner: { getShortcuts: () => new Map() } },
 		keybindings: { getEffectiveConfig: () => ({}) },
@@ -97,13 +113,18 @@ test("built-in keyboard help keeps working controls without advertising thinking
 	prototype.handleHotkeysCommand.call(host);
 	const rendered = stripVTControlCharacters(components.flatMap((component) => component.render(100)).join("\n"));
 	assert.match(rendered, /Cycle models/);
-	assert.doesNotMatch(rendered, /thinking/i);
+	assert.match(rendered, /Open the transcript/);
+	assert.match(rendered, /Ctrl\+L\s+Clear the screen/);
+	assert.match(rendered, /Ctrl\+R\s+Search past prompts/);
+	assert.doesNotMatch(rendered, /model selector/);
+	assert.match(rendered, /Show or hide thinking/);
+	assert.doesNotMatch(rendered, /thinking level|Toggle tool output/i);
 });
 
 test("changed upstream thinking presentation fails loudly", () => {
 	assert.equal(withoutThinkingStatus("Switched to Light (thinking: medium)"), "Switched to Light");
 	assert.equal(withoutThinkingStatus("Ready"), "Ready");
 	assert.throws(() => withoutThinkingStatus("Switched to Light thinking: medium"), /format changed/);
-	assert.throws(() => withoutThinkingHotkeys("Cycle thinking level\nToggle thinking block visibility"), /format changed/);
-	assert.throws(() => withoutThinkingHotkeys("New upstream help format"), /format changed/);
+	assert.throws(() => cloudThinkerHotkeys("Cycle thinking level\nToggle thinking block visibility"), /format changed/);
+	assert.throws(() => cloudThinkerHotkeys("New upstream help format"), /format changed/);
 });

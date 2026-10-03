@@ -52,6 +52,34 @@ impl WorkerStore {
             return self.read(id);
         }
         let mut matched = None;
+        for candidate in self.all()? {
+            if candidate.name == selector {
+                if matched.is_some() {
+                    return Err(CtError::Usage(
+                        "outpost name is ambiguous; use its id".into(),
+                    ));
+                }
+                matched = Some(candidate);
+            }
+        }
+        matched.ok_or_else(|| missing_credential(selector))
+    }
+
+    pub fn only(&self) -> CtResult<WorkerCredential> {
+        let mut credentials = self.all()?;
+        match credentials.len() {
+            0 => Err(CtError::Usage(
+                "no outpost is set up on this machine; run `cloudthinker worker outpost create <name>` first".into(),
+            )),
+            1 => Ok(credentials.remove(0)),
+            count => Err(CtError::Usage(format!(
+                "this machine holds {count} outposts; pick one with --outpost <name>"
+            ))),
+        }
+    }
+
+    fn all(&self) -> CtResult<Vec<WorkerCredential>> {
+        let mut credentials = Vec::new();
         for entry in self
             .dir
             .entries()
@@ -66,17 +94,9 @@ impl WorkerStore {
             else {
                 continue;
             };
-            let candidate = self.read(id)?;
-            if candidate.name == selector {
-                if matched.is_some() {
-                    return Err(CtError::Usage(
-                        "outpost name is ambiguous; use its id".into(),
-                    ));
-                }
-                matched = Some(candidate);
-            }
+            credentials.push(self.read(id)?);
         }
-        matched.ok_or_else(|| missing_credential(selector))
+        Ok(credentials)
     }
 
     fn read(&self, id: Uuid) -> CtResult<WorkerCredential> {
@@ -275,6 +295,9 @@ mod tests {
         let store = WorkerStore::open(&root.path().join("workers"), "https://one.example").unwrap();
         let first = Uuid::from_u128(1);
         let second = Uuid::from_u128(2);
+        assert!(
+            matches!(store.only(), Err(CtError::Usage(message)) if message.contains("no outpost"))
+        );
         for id in [first, second] {
             store
                 .save(&WorkerCredential {
@@ -283,7 +306,13 @@ mod tests {
                     token: format!("token-{id}"),
                 })
                 .unwrap();
+            if id == first {
+                assert_eq!(store.only().unwrap().target_id, first);
+            }
         }
+        assert!(
+            matches!(store.only(), Err(CtError::Usage(message)) if message.contains("2 outposts"))
+        );
 
         let Err(error) = store.load("build") else {
             panic!("the name matches two entries");

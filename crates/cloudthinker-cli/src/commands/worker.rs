@@ -39,10 +39,11 @@ enum WorkerCommand {
         #[arg(long, env = "CLOUDTHINKER_OUTPOST_ID")]
         outpost: String,
 
-        /// Emit the machine-readable outpost contract.
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
+    /// Supervise one background command for a running worker.
     #[command(hide = true)]
     BgShim(BgShimArgs),
 }
@@ -58,13 +59,13 @@ enum OutpostCommand {
         #[arg(long)]
         shared: bool,
 
-        /// Emit the machine-readable outpost contract.
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
     /// List the outposts this workspace can run work on.
     Ls {
-        /// Emit the machine-readable outpost contract.
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -73,7 +74,7 @@ enum OutpostCommand {
         /// Outpost UUID or exact name.
         outpost: String,
 
-        /// Emit the machine-readable outpost contract.
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -113,14 +114,17 @@ pub struct StartArgs {
     #[arg(long)]
     reset_folder: bool,
 
+    /// Read the worker credential from this machine's worker store, as an installed service does.
     #[arg(long, hide = true)]
     stored_credential: bool,
 }
 
 #[derive(Debug, Args)]
 pub struct BgShimArgs {
+    /// The task's private state directory, holding its command file.
     #[arg(long)]
     pub task_dir: PathBuf,
+    /// Stop the command after this many seconds.
     #[arg(long)]
     pub timeout_secs: u64,
 }

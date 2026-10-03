@@ -5,18 +5,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
-import { DefaultResourceLoader, SessionManager, SettingsManager, createAgentSession, type AgentSession, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { runAgent, resumeAgent } from "@tintinweb/pi-subagents/dist/agent-runner.js";
-import { registerAgents } from "@tintinweb/pi-subagents/dist/agent-types.js";
-import cloudthinker from "@cloudthinker/pi/src/index.ts";
-import { findLinkedSession } from "@cloudthinker/pi/src/session.ts";
+import { DefaultResourceLoader, SessionManager, SettingsManager, createAgentSession, type AgentSession, type ExtensionAPI, type ExtensionToolContext } from "@earendil-works/pi-coding-agent";
+import { runAgent, resumeAgent } from "@cloudthinker/subagents/src/agent-runner.ts";
+import { runMentionClone } from "@cloudthinker/subagents/src/mention-clone.ts";
+import { registerAgents } from "@cloudthinker/subagents/src/agent-types.ts";
+import cloudthinker from "@cloudthinker/cloud/src/index.ts";
+import { findLinkedSession } from "@cloudthinker/cloud/src/session.ts";
 import bundledSubagents, { createCloudChild, cloudDelegationTool } from "../src/subagents.ts";
 
-test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real upstream runtime", { timeout: 30_000 }, async () => {
+test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real subagents runtime", { timeout: 30_000 }, async () => {
 	const root = mkdtempSync(join(tmpdir(), "ct-subagents-"));
 	const old = { url: process.env.CLOUDTHINKER_URL, token: process.env.CLOUDTHINKER_TOKEN, dir: process.env.PI_CODING_AGENT_DIR };
 	const sessions = new Map<string, { source?: string; entries: unknown[] }>();
-	const calls: { model: string; conversation: string; tools: { name: string }[] }[] = [];
+	const calls: { model: string; conversation: string; tools: { name: string }[]; system: string; messages: string }[] = [];
 	let holdModelResponses = false;
 	let heldModelRequestCount = 0;
 	const heldModelReleases: (() => void)[] = [];
@@ -54,7 +55,7 @@ test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real upstream runtime", {
 		else if (path.endsWith("/executions")) result = { status: "completed", return_code: 0, stdout: "", stderr: "" };
 		else if (path.endsWith("/messages")) {
 			const conversation = String(request.headers["x-cloudthinker-conversation"] ?? "");
-			calls.push({ model: body.model, conversation, tools: body.tools ?? [] });
+			calls.push({ model: body.model, conversation, tools: body.tools ?? [], system: typeof body.system === "string" ? body.system : (body.system ?? []).map((block: { text: string }) => block.text).join(""), messages: JSON.stringify(body.messages) });
 			if (!sessions.has(conversation)) { response.writeHead(400); response.end("missing conversation"); return; }
 			if (holdModelResponses) {
 				heldModelRequestCount++;
@@ -88,7 +89,7 @@ test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real upstream runtime", {
 	let parent: AgentSession | undefined;
 	const children: AgentSession[] = [];
 	try {
-		let ctx!: ExtensionContext;
+		let ctx!: ExtensionToolContext;
 		let pi!: ExtensionAPI;
 		const settingsManager = SettingsManager.inMemory({ defaultProvider: "cloudthinker", defaultModel: "pro" });
 		const loader = new DefaultResourceLoader({ cwd: root, agentDir: root, settingsManager, noExtensions: true, noSkills: true, noThemes: true, extensionFactories: [
@@ -96,7 +97,7 @@ test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real upstream runtime", {
 			{ name: "subagents", factory: bundledSubagents },
 			{ name: "capture", factory: (api) => {
 				pi = api;
-				api.on("session_start", (_event, context) => { ctx = context; });
+				api.on("session_start", (_event, context) => { ctx = context as ExtensionToolContext; });
 				api.on("message_end", (event) => {
 					if (event.message.role !== "custom" || event.message.customType !== "subagent-notification") return;
 					workflowNotificationCount++;
@@ -284,6 +285,14 @@ test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real upstream runtime", {
 		assert.equal(calls.filter((call) => call.conversation !== parentId).length, childCallsBeforeActiveStarts + 4);
 		clone.session.sessionManager.appendModelChange("anthropic", "claude-opus");
 		await assert.rejects(createCloudChild({ cwd: root, model: ctx.model, sessionManager: clone.session.sessionManager }, ctx), /CloudThinker agent mode/);
+		await parent.waitForIdle();
+		parent.sessionManager.appendMessage({ role: "user", content: "Remember the codeword heron", timestamp: Date.now() });
+		const mention = await runMentionClone({ ctx, type: "Explore", message: "Count the files", agentTool });
+		assert.equal(mention.spawned, false);
+		const mentionCall = calls.at(-1)!;
+		assert.match(mentionCall.messages, /codeword heron/);
+		assert.equal(mentionCall.system, ctx.getSystemPrompt());
+		assert.deepEqual(mentionCall.tools.map((tool) => tool.name), ["Agent"]);
 	} finally {
 		holdModelResponses = false;
 		for (const release of heldModelReleases.splice(0)) release();

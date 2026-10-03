@@ -40,12 +40,12 @@ pub enum ServiceCommand {
 
 #[derive(Debug, Args)]
 pub struct ServiceInstallArgs {
-    /// Outpost UUID or exact name.
+    /// Outpost UUID or exact name; defaults to the only outpost set up on this machine.
     #[arg(long, env = "CLOUDTHINKER_OUTPOST_ID")]
-    pub outpost: String,
+    pub outpost: Option<String>,
 
     /// The one folder the service's worker serves.
-    #[arg(long)]
+    #[arg(long, default_value = ".")]
     pub workdir: PathBuf,
 
     /// How many assignments the service's worker serves at once.
@@ -56,22 +56,22 @@ pub struct ServiceInstallArgs {
     #[arg(long)]
     pub label: Option<String>,
 
-    /// Emit the machine-readable service contract.
+    /// Print JSON on stdout instead of text.
     #[arg(long)]
     pub json: bool,
 }
 
 #[derive(Debug, Args)]
 pub struct ServiceTargetArgs {
-    /// Outpost UUID or exact name.
+    /// Outpost UUID or exact name; defaults to the only outpost set up on this machine.
     #[arg(long, env = "CLOUDTHINKER_OUTPOST_ID")]
-    pub outpost: String,
+    pub outpost: Option<String>,
 
     /// The served folder that identifies the service.
-    #[arg(long)]
+    #[arg(long, default_value = ".")]
     pub workdir: PathBuf,
 
-    /// Emit the machine-readable service contract.
+    /// Print JSON on stdout instead of text.
     #[arg(long)]
     pub json: bool,
 }
@@ -138,7 +138,7 @@ pub fn execute(base_url: &str, workspace: Option<&str>, command: ServiceCommand)
 
 fn install(base_url: &str, workspace: Option<&str>, args: ServiceInstallArgs) -> CtResult<()> {
     let origin = origin_of(base_url)?;
-    let target = target(&origin, &args.outpost, &args.workdir)?;
+    let target = target(&origin, args.outpost.as_deref(), &args.workdir)?;
     require_stored_credential(&origin, target.target_id)?;
     validate_service_text(&origin, "host")?;
     if let Some(workspace) = workspace {
@@ -254,7 +254,7 @@ fn manager_reload(target: &ServiceTarget) -> CtResult<()> {
 }
 
 fn uninstall(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
-    let target = target(base_url, &args.outpost, &args.workdir)?;
+    let target = target(base_url, args.outpost.as_deref(), &args.workdir)?;
     require_descriptor(&target)?;
     manager_uninstall(&target)?;
     fs::remove_file(&target.descriptor_path)
@@ -273,7 +273,7 @@ fn uninstall(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
 }
 
 fn status(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
-    let target = target(base_url, &args.outpost, &args.workdir)?;
+    let target = target(base_url, args.outpost.as_deref(), &args.workdir)?;
     match fs::symlink_metadata(&target.descriptor_path) {
         Ok(metadata) => validate_descriptor_metadata(&metadata)?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -303,7 +303,7 @@ fn status(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
 }
 
 fn start(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
-    let target = target(base_url, &args.outpost, &args.workdir)?;
+    let target = target(base_url, args.outpost.as_deref(), &args.workdir)?;
     require_descriptor(&target)?;
     require_stored_credential(base_url, target.target_id)?;
     manager_start(&target)?;
@@ -315,7 +315,7 @@ fn start(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
 }
 
 fn stop(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
-    let target = target(base_url, &args.outpost, &args.workdir)?;
+    let target = target(base_url, args.outpost.as_deref(), &args.workdir)?;
     require_descriptor(&target)?;
     manager_stop(&target)?;
     emit(
@@ -330,16 +330,19 @@ fn require_stored_credential(origin: &str, target_id: Uuid) -> CtResult<()> {
     Ok(())
 }
 
-fn target(base_url: &str, selector: &str, workdir: &Path) -> CtResult<ServiceTarget> {
+fn target(base_url: &str, selector: Option<&str>, workdir: &Path) -> CtResult<ServiceTarget> {
     let platform = ServicePlatform::current()?;
     let origin = origin_of(base_url)?;
-    let target_id = match Uuid::parse_str(selector) {
-        Ok(id) => id,
-        Err(_) => {
-            WorkerStore::open_default(&origin)?
-                .load(selector)?
-                .target_id
-        }
+    let target_id = match selector {
+        Some(selector) => match Uuid::parse_str(selector) {
+            Ok(id) => id,
+            Err(_) => {
+                WorkerStore::open_default(&origin)?
+                    .load(selector)?
+                    .target_id
+            }
+        },
+        None => WorkerStore::open_default(&origin)?.only()?.target_id,
     };
     let workdir = workdir
         .canonicalize()

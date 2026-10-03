@@ -1,0 +1,33 @@
+cloudthinker agent - the CloudThinker agent in your terminal
+
+Usage:
+  cloudthinker agent [options] [@files...] [prompt...]
+
+Options:
+  -p, --print <prompt>      Run headless: answer, print, and exit
+  --mode json               With -p, stream events as JSON lines
+  -c, --continue            Continue the most recent session in this directory
+  -r, --resume              Pick a session to resume
+  --session <id>            Open a session by id or file
+  -n, --name <name>         Name this session
+  --model <mode>            Agent mode: light, pro, or ultra
+  --list-models             List the agent modes your workspace offers
+  --tools <names>           Allow only these local tools (comma-separated)
+  --exclude-tools <names>   Turn off these local tools (comma-separated)
+  --tui-mode <mode>         fullscreen (default) or regular
+  -a, --approve             Trust this project's local files for this run
+  -na, --no-approve         Ignore this project's local files for this run
+  -h, --help                Show this help
+  -v, --version             Show the agent version
+
+Examples:
+  cloudthinker agent
+  cloudthinker agent "Why is the api pod restarting?"
+  cloudthinker agent -p "Summarize the open alerts"
+  cloudthinker agent -p "List the Postgres tables" --mode json
+  git diff | cloudthinker agent -p "Review this change"
+  cloudthinker agent --tools read,grep,find,ls -p "Review src/ without editing"
+  cloudthinker agent -c
+
+Inside the agent, type / for commands: /model, /cloud, /share, /login, /changelog, /bug.
+Project instructions come from AGENTS.md or CLAUDE.md in your repository.

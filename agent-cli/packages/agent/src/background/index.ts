@@ -1,8 +1,9 @@
 import { resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import { Type } from "typebox";
-import { Text } from "@earendil-works/pi-tui";
+import { isKeyRelease, matchesKey, Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import {
+	createBashToolDefinition,
 	createLocalBashOperations,
 	getAgentDir,
 	SettingsManager,
@@ -15,11 +16,17 @@ import {
 	BackgroundCommandManager,
 	type BackgroundTaskSummary,
 } from "./manager.ts";
-import { spinnerFrame, tasksPane } from "../tasks-pane.ts";
+import { autoBackgroundSeconds, ForegroundShells, movableShell, staysInForeground } from "./shell.ts";
+import { formatClock, tasksPane } from "../tasks-pane.ts";
+import { toolOutputMode } from "../verbosity.ts";
+import { UserMessageComponent } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/user-message.js";
+import { theme as uiTheme } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 
 const TOOL_NAME = "ct_background";
-const MAX_COMMAND_ROWS = 4;
+const COMPLETION_HEADER = "Background command completion event";
+const COMPLETION_ROW = /^- (\S+) (.+?) · (.*)$/;
 const OUTPUT_PREVIEW_LINES = 5;
+const OUTPUT_VIEW_BYTES = 8 * 1024;
 const TOOL_PROMPT = "Start and manage local shell commands by task id. Inspect status/output or cancel; terminal results resume automatically. Print and JSON runs drain started commands before exit.";
 const backgroundSchema = Type.Object({
 	action: Type.Union([Type.Literal("start"), Type.Literal("status"), Type.Literal("output"), Type.Literal("cancel")]),
@@ -46,21 +53,55 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 	const contexts = new Map<string, ExtensionContext>();
 	const statusTimers = new Map<string, NodeJS.Timeout>();
 	const commands = new Map<string, string>();
+	const keyListeners = new Map<string, () => void>();
+	const foreground = new ForegroundShells();
 	const sessionKey = (ctx: ExtensionContext) => ctx.sessionManager.getSessionId();
+	const shells = new Map<string, { shellPath?: string; commandPrefix?: string }>();
+	const shellSettings = (ctx: ExtensionContext) => {
+		const key = sessionKey(ctx);
+		let shell = shells.get(key);
+		if (!shell) {
+			const settings = SettingsManager.create(ctx.cwd, getAgentDir());
+			shell = { shellPath: settings.getShellPath(), commandPrefix: settings.getShellCommandPrefix() };
+			shells.set(key, shell);
+		}
+		return shell;
+	};
 	const renderStatus = (ctx: ExtensionContext, manager: BackgroundCommandManager) => {
 		const tasks = manager.list();
 		for (const task of tasks) commands.set(task.id, task.command);
 		if (!ctx.hasUI) return;
 		tasksPane.bind(ctx.ui);
-		const active = tasks.filter((task) => task.state === "running").length;
-		ctx.ui.setStatus("ct-background", active > 0 ? `${active} running command${active === 1 ? "" : "s"}` : undefined);
-		tasksPane.setGroup("Commands", active > 0 ? (_tui, theme) => commandRows(manager, theme) : undefined, active);
-		if (active > 0 && !statusTimers.has(sessionKey(ctx))) {
-			statusTimers.set(sessionKey(ctx), setInterval(() => renderStatus(ctx, manager), 80).unref());
-		} else if (active === 0) {
+		const running = tasks.filter((task) => task.state === "running");
+		tasksPane.setCommands(running.map((task) => ({
+			id: task.id,
+			command: oneLine(task.command, 160),
+			startedAt: task.createdAt,
+			tail: () => lastLine(manager.outputTail(task.id)),
+			output: () => {
+				const current = manager.list().find((item) => item.id === task.id);
+				return current ? manager.readOutput(task.id, Math.max(0, current.totalOutputBytes - OUTPUT_VIEW_BYTES)).text : "";
+			},
+			running: () => manager.list().some((item) => item.id === task.id && item.state === "running"),
+			stop: async () => {
+				if (manager.get(task.id).state !== "running") return;
+				const stopped = await manager.cancel(task.id, true);
+				if (stopped.stoppedByUser) deliver(ctx, [stopped]);
+			},
+		})));
+		if (running.length > 0 && !statusTimers.has(sessionKey(ctx))) {
+			statusTimers.set(sessionKey(ctx), setInterval(() => renderStatus(ctx, manager), 1000).unref());
+		} else if (running.length === 0) {
 			const timer = statusTimers.get(sessionKey(ctx));
 			if (timer) clearInterval(timer);
 			statusTimers.delete(sessionKey(ctx));
+		}
+	};
+	const deliver = (ctx: ExtensionContext, tasks: BackgroundTaskSummary[]) => {
+		if (ctx.mode === "tui" || ctx.mode === "rpc") {
+			pi.sendUserMessage(completionText(tasks), { deliverAs: "followUp", expandPromptTemplates: false });
+		} else {
+			pi.sendMessage(completionMessage(tasks), { triggerTurn: true, deliverAs: "followUp" });
 		}
 	};
 	const getManager = async (ctx: ExtensionContext): Promise<BackgroundCommandManager> => {
@@ -69,9 +110,8 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 		let managerPromise = managers.get(key);
 		if (!managerPromise) {
 			let manager!: BackgroundCommandManager;
-			const settings = SettingsManager.create(ctx.cwd, getAgentDir());
-			const bash = createLocalBashOperations({ shellPath: settings.getShellPath(), cleanupOnExit: true });
-			const commandPrefix = settings.getShellCommandPrefix();
+			const { shellPath, commandPrefix } = shellSettings(ctx);
+			const bash = createLocalBashOperations({ shellPath, cleanupOnExit: true });
 			manager = new BackgroundCommandManager({
 				storageDirectory: BackgroundCommandManager.sessionStorageDirectory(getAgentDir(), key),
 				cwd: ctx.cwd,
@@ -86,12 +126,7 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 					const current = contexts.get(key);
 					if (!current) return;
 					const completed = manager!.takeCompletions();
-					if (completed.length === 0) return;
-					if (current.mode === "tui" || current.mode === "rpc") {
-						pi.sendUserMessage(completionText(completed), { deliverAs: "followUp", expandPromptTemplates: false });
-					} else {
-						pi.sendMessage(completionMessage(completed), { triggerTurn: true, deliverAs: "followUp" });
-					}
+					if (completed.length > 0) deliver(current, completed);
 				},
 			});
 			managerPromise = manager.initialize().then(() => manager);
@@ -112,10 +147,23 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 			const action = args.action ?? "start";
 			const subject = action === "start" ? args.command ?? "" : args.taskId ? commands.get(args.taskId) ?? args.taskId : "all commands";
 			const verb = action === "start" ? "" : ` ${theme.fg("muted", action)}`;
-			return new Text(`${theme.fg("accent", "●")} ${theme.fg("toolTitle", theme.bold("Background"))}${verb} ${theme.fg("muted", oneLine(subject, 100))}`, 0, 0);
+			const head = `${theme.fg("accent", "●")} ${theme.fg("toolTitle", theme.bold("Background"))}${verb} ${theme.fg("muted", oneLine(subject, 100))}`;
+			const state = (_context?.state ?? {}) as { ctSuffix?: string };
+			return {
+				render: (width: number) => {
+					if (!state.ctSuffix) return [truncateToWidth(head, width)];
+					const tail = ` ${theme.fg("muted", "·")} ${state.ctSuffix}`;
+					return [`${truncateToWidth(head, Math.max(1, width - visibleWidth(tail)))}${tail}`];
+				},
+				invalidate() {},
+			} satisfies Component;
 		},
 		renderResult(result, options, theme, context) {
-			return new Text(resultText(result, options.expanded, theme, context?.args?.action, context?.isError === true), 0, 0);
+			const state = (context?.state ?? {}) as { ctSuffix?: string };
+			const action = context?.args?.action;
+			const isError = context?.isError === true;
+			state.ctSuffix = toolOutputMode() === "compact" && !options.expanded && !isError ? summaryText(result, theme, action) : undefined;
+			return new Text(state.ctSuffix === undefined ? resultText(result, options.expanded, theme, action, isError) : "", 0, 0);
 		},
 		async execute(_toolCallId, params: BackgroundParams, _signal, _onUpdate, ctx) {
 			const manager = await getManager(ctx);
@@ -141,9 +189,43 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 		},
 	});
 
+	pi.registerTool({
+		...createBashToolDefinition(process.cwd()),
+		async execute(toolCallId, params: { command: string; timeout?: number }, signal, onUpdate, ctx) {
+			const shell = shellSettings(ctx);
+			const manager = ctx.mode === "tui" && !staysInForeground(params.command) ? await getManager(ctx).catch(() => undefined) : undefined;
+			if (!manager) return createBashToolDefinition(ctx.cwd, shell).execute(toolCallId, params, signal, onUpdate, ctx);
+			const timeoutSeconds = params.timeout ?? BACKGROUND_DEFAULT_TIMEOUT_SECONDS;
+			let moved: BackgroundTaskSummary | undefined;
+			const operations = movableShell({
+				local: createLocalBashOperations({ shellPath: shell.shellPath, cleanupOnExit: true }),
+				displayCommand: params.command,
+				seconds: autoBackgroundSeconds(),
+				foreground,
+				adopt: (command) => manager.adopt(command, timeoutSeconds),
+				onMoved: (task) => { moved = task; },
+			});
+			const result = await createBashToolDefinition(ctx.cwd, { operations, commandPrefix: shell.commandPrefix }).execute(toolCallId, params, signal, onUpdate, ctx);
+			if (!moved) return result;
+			const text = result.content.filter((item) => item.type === "text").map((item) => item.text).join("\n");
+			return {
+				content: [{ type: "text" as const, text: movedText(text, moved, timeoutSeconds) }],
+				details: { ...(result.details ?? {}), backgroundTaskId: moved.id },
+			};
+		},
+	});
+
 	pi.on("session_start", async (_event, ctx) => {
 		const manager = await getManager(ctx);
 		renderStatus(ctx, manager);
+		if (ctx.hasUI && ctx.mode === "tui") {
+			keyListeners.get(sessionKey(ctx))?.();
+			keyListeners.set(sessionKey(ctx), ctx.ui.onTerminalInput((data) => {
+				if (isKeyRelease(data) || !matchesKey(data, "ctrl+b") || foreground.size === 0) return undefined;
+				foreground.moveAll();
+				return { consume: true };
+			}));
+		}
 		const interrupted = manager.list().filter((task) => task.state === "interrupted");
 		if (ctx.hasUI && interrupted.length > 0) ctx.ui.notify(`${interrupted.length} background command${interrupted.length === 1 ? " was" : "s were"} interrupted by a previous shutdown.`, "warning");
 	});
@@ -175,7 +257,10 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 		const timer = statusTimers.get(key);
 		if (timer) clearInterval(timer);
 		statusTimers.delete(key);
+		keyListeners.get(key)?.();
+		keyListeners.delete(key);
 		contexts.delete(key);
+		shells.delete(key);
 		if (managerPromise) await (await managerPromise).shutdown();
 		managers.delete(key);
 	});
@@ -190,34 +275,16 @@ function completionMessage(tasks: BackgroundTaskSummary[]) {
 	};
 }
 
-function commandRows(manager: BackgroundCommandManager, theme: Theme): string[] {
-	const running = manager.list().filter((task) => task.state === "running");
-	const visible = running.slice(-MAX_COMMAND_ROWS);
-	const hidden = running.length - visible.length;
-	const now = Date.now();
-	const rows: string[] = [];
-	visible.forEach((task, index) => {
-		const last = index === visible.length - 1 && hidden === 0;
-		const tail = lastLine(manager.outputTail(task.id)) || "waiting for output…";
-		rows.push(
-			`${theme.fg("dim", last ? "└─" : "├─")} ${theme.fg("accent", spinnerFrame(now))} ${theme.fg("text", oneLine(task.command, 160))} ${theme.fg("dim", `· ${formatClock(now - task.createdAt)}`)}`,
-			theme.fg("dim", `${last ? "   " : "│  "}  ⎿  ${tail}`),
-		);
-	});
-	if (hidden > 0) rows.push(theme.fg("dim", `└─ +${hidden} more running`));
-	return rows;
-}
-
 function resultText(result: { content: { type: string; text?: string }[]; details?: unknown }, expanded: boolean, theme: Theme, action: string | undefined, isError: boolean): string {
 	const text = result.content.filter((item) => item.type === "text").map((item) => item.text ?? "").join("\n");
 	const details = (result.details ?? {}) as { task?: BackgroundTaskSummary; tasks?: BackgroundTaskSummary | BackgroundTaskSummary[]; text?: string };
 	if (isError) return indent(theme.fg("error", expanded ? sanitizeTerminalText(text) : oneLine(text, 320)));
 	if (action === "start") return "";
-	if (action === "cancel" && details.task) return indent(`${stateMark(details.task, theme)} ${theme.fg("muted", stateWords(details.task))}`);
+	if (action === "cancel" && details.task) return indent(stateLine(details.task, theme));
 	if (action === "status" && details.tasks !== undefined) {
 		const tasks = Array.isArray(details.tasks) ? details.tasks : [details.tasks];
 		if (tasks.length === 0) return indent(theme.fg("muted", "No background commands."));
-		return tasks.map((task) => indent(`${stateMark(task, theme)} ${theme.fg("muted", `${stateWords(task)} · ${oneLine(task.command, 100)}`)}`)).join("\n");
+		return tasks.map((task) => indent(`${stateLine(task, theme)} ${theme.fg("muted", `· ${oneLine(task.command, 100)}`)}`)).join("\n");
 	}
 	if (action === "output" && typeof details.text === "string") {
 		const lines = sanitizeTerminalText(details.text).replace(/\r\n?/g, "\n").trimEnd().split("\n");
@@ -234,9 +301,9 @@ function indent(line: string): string {
 	return line ? `  ${line}` : line;
 }
 
-function stateMark(task: BackgroundTaskSummary, theme: Theme): string {
-	if (task.state === "running") return theme.fg("accent", "●");
-	return theme.fg(stateColor(task), task.state === "succeeded" ? "✓" : task.state === "cancelled" || task.state === "interrupted" ? "■" : "✗");
+function stateLine(task: BackgroundTaskSummary, theme: Theme): string {
+	if (task.state === "running") return `${theme.fg("accent", "●")} ${theme.fg("muted", stateWords(task))}`;
+	return theme.fg(task.state === "succeeded" ? "muted" : stateColor(task), stateWords(task));
 }
 
 function stateColor(task: BackgroundTaskSummary): "accent" | "success" | "error" | "warning" {
@@ -253,7 +320,7 @@ function stateWords(task: BackgroundTaskSummary): string {
 		case "succeeded": return `finished in ${clock}`;
 		case "failed": return `failed in ${clock}${task.exitCode === undefined || task.exitCode === null ? "" : ` (exit ${task.exitCode})`}`;
 		case "timed_out": return `timed out after ${clock}`;
-		case "cancelled": return `cancelled after ${clock}`;
+		case "cancelled": return `${task.stoppedByUser ? "stopped by the user" : "cancelled"} after ${clock}`;
 		case "interrupted": return "interrupted by a restart";
 	}
 }
@@ -262,22 +329,53 @@ function lastLine(text: string): string {
 	return text.split(/\r\n|\r|\n/).map((line) => oneLine(line, 200)).filter(Boolean).at(-1) ?? "";
 }
 
-function formatClock(ms: number): string {
-	const seconds = Math.max(0, Math.floor(ms / 1000));
-	if (seconds < 60) return `${seconds}s`;
-	const minutes = Math.floor(seconds / 60);
-	if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
-	return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+function movedText(output: string, task: BackgroundTaskSummary, timeoutSeconds: number): string {
+	return `${output}\n\nStill running, so it moved to background command ${task.id}; it was not restarted and stops ${timeoutSeconds} seconds after it started. Continue other work: its completion event arrives on its own. Read its output with ct_background(action="output", taskId="${task.id}"), and do not run it again.`;
 }
 
 function completionText(tasks: BackgroundTaskSummary[]): string {
-	const descriptions = tasks.map((task) => `- ${plainMark(task)} ${task.id} ${stateWords(task)} · ${oneLine(task.command, 160)}`).join("\n");
-	return `Background command completion event\n${descriptions}\nRead each output with ct_background(action="output", taskId="...") before reporting.`;
+	const descriptions = tasks.map((task) => `- ${task.id} ${stateWords(task)} · ${oneLine(task.command, 160)}`).join("\n");
+	return `${COMPLETION_HEADER}\n${descriptions}\nRead each output with ct_background(action="output", taskId="...") before reporting.`;
 }
 
-function plainMark(task: BackgroundTaskSummary): string {
-	if (task.state === "succeeded") return "✓";
-	return task.state === "cancelled" || task.state === "interrupted" ? "■" : "✗";
+export function completionRows(text: string, theme: Pick<Theme, "fg" | "bold">): string[] | undefined {
+	const [header, ...lines] = text.split("\n");
+	if (header !== COMPLETION_HEADER) return undefined;
+	const rows = lines.flatMap((line) => {
+		const match = COMPLETION_ROW.exec(line);
+		if (!match) return [];
+		const words = match[2]!;
+		const color = words.startsWith("finished") ? "success" : words.startsWith("stopped") || words.startsWith("cancelled") ? "warning" : "error";
+		return [` ${theme.bold(match[3]!)} ${theme.fg("dim", "·")} ${theme.fg(color, words)}`];
+	});
+	return rows.length > 0 ? rows : undefined;
+}
+
+export function applyCompletionRows(): void {
+	const prototype = UserMessageComponent.prototype as unknown as { text: string; render(width: number): string[] };
+	const render = prototype.render;
+	if (typeof render !== "function") throw new Error("pi's user message renderer changed, so background completions cannot render as one row");
+	prototype.render = function (width) {
+		const rows = typeof this.text === "string" ? completionRows(this.text, uiTheme) : undefined;
+		return rows ? ["", ...rows.map((row) => truncateToWidth(row, width))] : render.call(this, width);
+	};
+}
+
+function summaryText(result: { content: { type: string; text?: string }[]; details?: unknown }, theme: Theme, action: string | undefined): string | undefined {
+	const details = (result.details ?? {}) as { task?: BackgroundTaskSummary; tasks?: BackgroundTaskSummary | BackgroundTaskSummary[]; text?: string };
+	if (action === "cancel" && details.task) return stateLine(details.task, theme);
+	if (action === "status" && details.tasks !== undefined) {
+		if (!Array.isArray(details.tasks)) return stateLine(details.tasks, theme);
+		const running = details.tasks.filter((task) => task.state === "running").length;
+		if (details.tasks.length === 0) return theme.fg("muted", "no commands");
+		return theme.fg("muted", `${details.tasks.length} command${details.tasks.length === 1 ? "" : "s"}${running > 0 ? ` · ${running} running` : ""}`);
+	}
+	if (action === "output" && typeof details.text === "string") {
+		const text = details.text.replace(/\r\n?/g, "\n").trimEnd();
+		const count = text ? text.split("\n").length : 0;
+		return theme.fg("muted", count === 0 ? "no output yet" : `${count} line${count === 1 ? "" : "s"}`);
+	}
+	return undefined;
 }
 
 function toolResult(text: string, details: unknown) {
@@ -295,5 +393,5 @@ function sanitizeTerminalText(text: string): string {
 
 function formatTask(task: BackgroundTaskSummary): string {
 	const duration = Math.max(0, Math.floor(((task.finishedAt ?? Date.now()) - task.createdAt) / 1000));
-	return `${task.id} · ${task.state} · ${duration}s${task.exitCode === undefined ? "" : ` · exit ${task.exitCode}`}\n${oneLine(task.command, 200)}`;
+	return `${task.id} · ${task.stoppedByUser ? "stopped by the user" : task.state} · ${duration}s${task.exitCode === undefined ? "" : ` · exit ${task.exitCode}`}\n${oneLine(task.command, 200)}`;
 }

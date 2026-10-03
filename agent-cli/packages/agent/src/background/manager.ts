@@ -24,6 +24,7 @@ export interface BackgroundTask {
 	output: string;
 	completionDelivered: boolean;
 	persistenceErrorReported?: boolean;
+	stoppedByUser?: boolean;
 }
 
 export type BackgroundTaskSummary = Omit<BackgroundTask, "output" | "outputBaseByte" | "completionDelivered" | "persistenceErrorReported">;
@@ -49,6 +50,17 @@ export interface BackgroundManagerOptions {
 	onTerminal?: (task: BackgroundTaskSummary) => void | Promise<void>;
 	onChange?: (tasks: readonly BackgroundTaskSummary[]) => void;
 }
+
+export interface AdoptedCommand {
+	command: string;
+	cwd: string;
+	startedAt: number;
+	done: Promise<{ exitCode: number | null }>;
+	abort: () => void;
+	attach: (onData: (chunk: Buffer) => void) => { backlog: Buffer; droppedBytes: number };
+}
+
+type CommandRun = (task: BackgroundTask, onData: (chunk: Buffer) => void, signal: AbortSignal, timeoutSeconds: number) => Promise<{ exitCode: number | null }>;
 
 interface RunningProcess {
 	controller: AbortController;
@@ -142,6 +154,35 @@ export class BackgroundCommandManager {
 	}
 
 	async start(command: string, cwd = this.options.cwd, timeoutSeconds?: number): Promise<BackgroundTaskSummary> {
+		return this.launch(command, cwd, timeoutSeconds, Date.now(), (_task, onData, signal, timeout) => this.options.operations.exec(command, cwd, { onData, signal, timeout }));
+	}
+
+	async adopt(adopted: AdoptedCommand, timeoutSeconds?: number): Promise<BackgroundTaskSummary> {
+		return this.launch(adopted.command, adopted.cwd, timeoutSeconds, adopted.startedAt, (task, onData, signal, timeoutSeconds) => {
+			const { backlog, droppedBytes } = adopted.attach(onData);
+			task.outputBaseByte = droppedBytes;
+			task.totalOutputBytes = droppedBytes;
+			this.appendOutput(task, backlog);
+			let timedOut = false;
+			const timer = setTimeout(() => {
+				timedOut = true;
+				adopted.abort();
+			}, Math.max(0, timeoutSeconds * 1000 - (Date.now() - adopted.startedAt)));
+			timer.unref();
+			const abort = () => adopted.abort();
+			if (signal.aborted) abort();
+			else signal.addEventListener("abort", abort, { once: true });
+			return adopted.done.catch((error: unknown) => {
+				if (timedOut) throw new Error(`timeout:${timeoutSeconds}`);
+				throw error;
+			}).finally(() => {
+				clearTimeout(timer);
+				signal.removeEventListener("abort", abort);
+			});
+		});
+	}
+
+	private async launch(command: string, cwd: string, timeoutSeconds: number | undefined, createdAt: number, exec: CommandRun): Promise<BackgroundTaskSummary> {
 		this.ensureReady();
 		if (this.closed) throw new Error("Background command manager is shutting down");
 		if (command.trim().length === 0) throw new Error("command must not be empty");
@@ -155,7 +196,7 @@ export class BackgroundCommandManager {
 			command,
 			cwd,
 			state: "running",
-			createdAt: Date.now(),
+			createdAt,
 			outputBaseByte: 0,
 			totalOutputBytes: 0,
 			output: "",
@@ -178,7 +219,7 @@ export class BackgroundCommandManager {
 			return this.publicTask(task);
 		}
 		const controller = new AbortController();
-		const processDone = Promise.resolve().then(() => this.run(task, controller, timeoutSeconds ?? BACKGROUND_DEFAULT_TIMEOUT_SECONDS));
+		const processDone = Promise.resolve().then(() => this.run(task, controller, timeoutSeconds ?? BACKGROUND_DEFAULT_TIMEOUT_SECONDS, exec));
 		this.running.set(task.id, { controller, processDone });
 		this.changed();
 		return this.publicTask(task);
@@ -240,13 +281,14 @@ export class BackgroundCommandManager {
 		return bytes.subarray(utf8Boundary(bytes, 0)).toString("utf8");
 	}
 
-	async cancel(taskId: string): Promise<BackgroundTaskSummary> {
+	async cancel(taskId: string, byUser = false): Promise<BackgroundTaskSummary> {
 		this.ensureReady();
 		if (this.compromised) throw new Error("Background command session ownership was lost");
 		const task = this.requireTask(taskId);
 		const running = this.running.get(task.id);
 		if (running && task.state === "running") {
 			task.state = "cancelled";
+			if (byUser) task.stoppedByUser = true;
 			task.finishedAt = Date.now();
 			running.controller.abort();
 			this.changed();
@@ -310,7 +352,7 @@ export class BackgroundCommandManager {
 		}
 	}
 
-	private async run(task: BackgroundTask, controller: AbortController, timeoutSeconds?: number): Promise<void> {
+	private async run(task: BackgroundTask, controller: AbortController, timeoutSeconds: number, exec: CommandRun): Promise<void> {
 		const onData = (chunk: Buffer) => {
 			this.appendOutput(task, chunk);
 			this.changed();
@@ -319,11 +361,7 @@ export class BackgroundCommandManager {
 		let state: BackgroundTaskState = "failed";
 		let exitCode: number | null | undefined;
 		try {
-			const result = await this.options.operations.exec(task.command, task.cwd, {
-				onData,
-				signal: controller.signal,
-				timeout: timeoutSeconds,
-			});
+			const result = await exec(task, onData, controller.signal, timeoutSeconds);
 			exitCode = result.exitCode;
 			state = exitCode === 0 ? "succeeded" : "failed";
 		} catch (error) {

@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { Extension, ExtensionContext, LoadExtensionsResult, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { resolveResumeTarget } from "@tintinweb/pi-subagents/dist/workflow/task.js";
-import { fullWorkflowToolDescription } from "@tintinweb/pi-subagents/dist/workflow/tool-description.js";
+import { resolveResumeTarget } from "@cloudthinker/subagents/src/workflow/task.ts";
+import { fullWorkflowToolDescription } from "@cloudthinker/subagents/src/workflow/tool-description.ts";
 
-import { CLOUD_ENTRY_TYPE } from "@cloudthinker/pi/src/runtime.ts";
+import { CLOUD_ENTRY_TYPE } from "@cloudthinker/cloud/src/runtime.ts";
 import { childLoaderOptions, cloudDelegationTool, cloudEnabled, resolveCloudMode } from "../src/subagents.ts";
 
 const modes = [
@@ -38,6 +38,36 @@ test("CA-SUB-5: empty catalog does not select a vendor model", () => {
 
 test("CA-SUB-DESCRIPTION: upstream description drift fails closed", () => {
 	assert.throws(() => cloudDelegationTool({ name: "Agent", description: "Unrecognized upstream schema", parameters: { type: "object", properties: {} } } as unknown as ToolDefinition), /Unsupported upstream Agent description/);
+});
+
+test("in the terminal every Agent runs in the background, and its launch and a workflow card collapse to one row", async () => {
+	const { Text } = await import("@earendil-works/pi-tui");
+	const seen: unknown[] = [];
+	const agent = cloudDelegationTool({
+		name: "Agent",
+		description: '- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").\n- Use thinking to control extended thinking level.\n',
+		parameters: { type: "object", properties: { run_in_background: { type: "boolean" } } },
+		execute: async (_id: string, params: unknown) => { seen.push(params); return { content: [] }; },
+		renderResult: () => new Text("  ⎿  Running in background (ID: a1)", 0, 0),
+	} as unknown as ToolDefinition);
+	await agent.execute("call", { prompt: "p", run_in_background: false }, undefined, undefined, { mode: "tui" } as never);
+	await agent.execute("call", { prompt: "p", run_in_background: false }, undefined, undefined, { mode: "print" } as never);
+	assert.deepEqual(seen, [{ prompt: "p", run_in_background: true }, { prompt: "p", run_in_background: false }]);
+	const launched = agent.renderResult!({ content: [], details: { status: "background" } } as never, { expanded: false } as never, {} as never, {} as never);
+	assert.deepEqual(launched.render(80), []);
+	const mentionCopy = cloudDelegationTool({ ...agent, execute: agent.execute });
+	assert.equal(mentionCopy.description, agent.description, "an @mention's copy of the adapted Agent tool is not adapted twice");
+
+	const workflow = cloudDelegationTool({
+		name: "ct_workflow",
+		description: "Concurrent agent() calls are capped at the configured session limit; excess calls queue. Nested workflows share this limit. effort?: string, opts.effort overrides these settings up to opts.isolation: agentType, model, effort, isolation",
+		parameters: { type: "object", properties: {} },
+		execute: async () => ({ content: [] }),
+		renderResult: () => new Text("audit  2/5 agents · 12s\n┌ phase 1\n│ ├ ✓ scan", 0, 0),
+	} as unknown as ToolDefinition);
+	const render = (expanded: boolean) => workflow.renderResult!({ content: [], details: {} } as never, { expanded } as never, {} as never, {} as never).render(80).map((line) => line.trimEnd());
+	assert.deepEqual(render(false), ["audit  2/5 agents · 12s"]);
+	assert.equal(render(true).length, 3);
 });
 
 test("workflow tool description renders the effective session concurrency limit", () => {
@@ -120,37 +150,62 @@ test("CA-SUB-8: a child of a setting-off parent gets no cloud tools, and an entr
 	}
 });
 
-test("running agents and commands share one Tasks pane, agents first", async () => {
-	const { AgentWidget } = await import("@tintinweb/pi-subagents/dist/ui/agent-widget.js");
-	const { setSubagentHost } = await import("@tintinweb/pi-subagents/dist/host.js");
+test("running agents and commands share one Tasks row, and the fleet panel lists commands only on demand", async () => {
+	const { AgentWidget } = await import("@cloudthinker/subagents/src/ui/agent-widget.ts");
+	const { FleetList } = await import("@cloudthinker/subagents/src/ui/fleet-list.ts");
+	const { setSubagentHost } = await import("@cloudthinker/subagents/src/host.ts");
 	const { subagentHost } = await import("../src/subagents.ts");
 	const { tasksPane } = await import("../src/tasks-pane.ts");
 	const widgets = new Map<string, unknown>();
+	const statuses = new Map<string, string | undefined>();
+	const keys: ((data: string) => { consume?: boolean } | undefined)[] = [];
+	const stopped: string[] = [];
 	const ui = {
 		setWidget: (key: string, value: unknown) => { value === undefined ? widgets.delete(key) : widgets.set(key, value); },
-		setStatus() {},
+		setStatus: (key: string, value: string | undefined) => { statuses.set(key, value); },
+		onTerminalInput: (handler: (data: string) => { consume?: boolean } | undefined) => { keys.push(handler); return () => {}; },
+		getEditorText: () => "",
+		notify() {},
 	};
 	const theme = { fg: (_color: string, value: string) => value, bold: (value: string) => value };
-	const render = () => {
-		const factory = widgets.get("ct-tasks") as ((tui: unknown, theme: unknown) => { render(): string[] }) | undefined;
-		return factory?.({ terminal: { columns: 160 }, requestRender() {} }, theme).render() ?? [];
+	const render = (key: string) => {
+		const factory = widgets.get(key) as ((tui: unknown, theme: unknown) => { render(width?: number): string[] }) | undefined;
+		return factory?.({ terminal: { columns: 160 }, requestRender() {} }, theme).render(160) ?? [];
 	};
-	const agents = [{ id: "agent-1", type: "Explore", status: "running", description: "find render path", toolUses: 0, startedAt: Date.now() }];
+	const agents = [{ id: "agent-1", type: "Explore", status: "running", description: "find render path", toolUses: 0, startedAt: Date.now(), session: {} }];
+	const manager = { listAgents: () => agents, abort: () => true };
 	setSubagentHost(subagentHost);
+	tasksPane.managed = true;
 	tasksPane.bind(ui as never);
-	const widget = new AgentWidget({ listAgents: () => agents } as never, new Map());
+	const widget = new AgentWidget(manager as never, new Map());
 	widget.setUICtx(ui as never);
 	widget.update();
-	tasksPane.setGroup("Commands", () => ["└─ ⠋ sleep 30 · 1s"], 1);
-	const lines = render();
-	assert.equal(lines[0], "● Tasks");
-	assert.equal(lines[1], "▾ Agents 1");
-	assert.match(lines[2]!, /^└─ \S .+  find render path · /);
-	assert.ok(lines.indexOf("▾ Commands 1") > 2);
+	tasksPane.setCommands([{ id: "cmd-1", command: "pnpm test", startedAt: Date.now(), tail: () => "", output: () => "", running: () => true, stop: async () => { stopped.push("cmd-1"); } }]);
+	assert.deepEqual(render("ct-tasks").map((line) => line.slice(2)), ["1 agent · 1 command  ↓ to manage"]);
 	assert.equal(widgets.has("agents"), false);
-	agents.length = 0;
-	widget.update();
-	tasksPane.setGroup("Commands", undefined);
-	assert.equal(widgets.has("ct-tasks"), false);
-	widget.dispose();
+	assert.equal(statuses.get("subagents"), undefined);
+
+	const fleet = new FleetList(manager as never, new Map(), () => false);
+	try {
+		fleet.setUICtx(ui as never);
+		fleet.update();
+		assert.deepEqual(render("fleet"), []);
+		assert.deepEqual(keys.at(-1)!("\u001b[B"), { consume: true });
+		const panel = render("fleet").join("\n");
+		assert.match(panel, /x stop/);
+		assert.match(panel, /● \S+ {2}find render path/);
+		assert.match(panel, /command {2}pnpm test/);
+		keys.at(-1)!("\u001b[B");
+		keys.at(-1)!("x");
+		await new Promise((resolve) => setImmediate(resolve));
+		assert.deepEqual(stopped, ["cmd-1"]);
+
+		agents.length = 0;
+		widget.update();
+		tasksPane.setCommands([]);
+		assert.equal(widgets.has("ct-tasks"), false);
+	} finally {
+		fleet.dispose();
+		widget.dispose();
+	}
 });

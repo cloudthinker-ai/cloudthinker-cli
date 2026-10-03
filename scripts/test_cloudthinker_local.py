@@ -93,7 +93,7 @@ print(json.dumps({
             "CT_CLI_SOURCE": str(source),
         })
         env.update(env_overrides)
-        adapter = Path(__file__).resolve().parents[2] / "tools/ct-cli/scripts/agent-source.sh"
+        adapter = Path(__file__).resolve().parents[2] / "tools/ct/cli/scripts/agent-source.sh"
         return subprocess.run(
             ["bash", str(adapter), *args],
             cwd=self.target,
@@ -108,7 +108,7 @@ print(json.dumps({
         self.assertEqual(result.returncode, 0, result.stderr)
         payload = json.loads(result.stdout)
         self.assertEqual(payload["args"], [])
-        self.assertEqual(payload["cwd"], str(self.target))
+        self.assertEqual(payload["cwd"], os.path.realpath(self.target))
         self.assertEqual(payload["env"]["CLOUDTHINKER_URL"], "http://backend.test")
         self.assertEqual(payload["env"]["CLOUDTHINKER_TOKEN"], "backend-token")
         self.assertEqual(payload["env"]["CLOUDTHINKER_WORKFLOW_MAX_CONCURRENCY"], "4")
@@ -118,7 +118,7 @@ print(json.dumps({
         )
         self.assertEqual(payload["env"]["CYBER_OWNER_AUTH"], "Authorization: Bearer target-token")
         self.assertEqual(payload["env"]["CT_CLI_SOURCE"], str(self.source))
-        self.assertEqual(payload["env"]["CLOUDTHINKER_AGENT_BIN"], str(self.source / "tools/ct-cli/scripts/agent-source.sh"))
+        self.assertEqual(payload["env"]["CLOUDTHINKER_AGENT_BIN"], str(self.source / "tools/ct/cli/scripts/agent-source.sh"))
         self.assertIn("Test stack: target", result.stderr)
 
     def test_workflow_concurrency_override_is_forwarded(self):
@@ -225,7 +225,7 @@ esac
         payload = json.loads(result.stdout)
         self.assertEqual(payload["cloudthinker_bin"], str(auth_bin))
         self.assertEqual(payload["local_auth_bin"], str(auth_bin))
-        self.assertEqual(payload["cwd"], str(self.target))
+        self.assertEqual(payload["cwd"], os.path.realpath(self.target))
         self.assertEqual(
             payload["argv"][1:],
             ["--mode", "json", "-p", "hello"],
@@ -298,8 +298,8 @@ esac
         helper.chmod(0o700)
 
         selected = self.backend
-        (selected / "tools/ct-cli").mkdir(parents=True, exist_ok=True)
-        (selected / "tools/ct-cli/Cargo.toml").write_text("[workspace]\n")
+        (selected / "tools/ct/cli").mkdir(parents=True, exist_ok=True)
+        (selected / "tools/ct/cli/Cargo.toml").write_text("[workspace]\n")
         (self.source / ".env").write_text("COMPOSE_PROJECT_NAME=source-project\n")
         (self.source / ".env.local").write_text("")
         (selected / ".env").write_text("COMPOSE_PROJECT_NAME=selected-project\n")
@@ -357,10 +357,10 @@ print("fixture-token")
                 self.assertEqual(len(cargo_calls), 2)
                 self.assertEqual(len(docker_calls), 1)
                 for call in cargo_calls:
-                    self.assertEqual(call["cwd"], str(expected_root))
+                    self.assertEqual(call["cwd"], os.path.realpath(expected_root))
                     manifest = call["argv"][call["argv"].index("--manifest-path") + 1]
-                    self.assertEqual(manifest, str(expected_root / "tools/ct-cli/Cargo.toml"))
-                self.assertEqual(docker_calls[0]["cwd"], str(expected_root))
+                    self.assertEqual(manifest, str(expected_root / "tools/ct/cli/Cargo.toml"))
+                self.assertEqual(docker_calls[0]["cwd"], os.path.realpath(expected_root))
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const REQUIRED = [
-	"cloudthinker-agent", "package.json", "NOTICE", "photon_rs_bg.wasm",
+	"cloudthinker-agent", "package.json", "NOTICE", "CHANGELOG.md", "photon_rs_bg.wasm",
 	"theme/dark.json", "theme/light.json", "theme/theme-schema.json",
 	"theme/cloudthinker-dark.json", "theme/cloudthinker-light.json",
 	"assets/clankolas.png", "export-html/template.html", "export-html/template.css",
@@ -53,7 +53,7 @@ export function validateAssets(bundle: string, piRoot: string): void {
 	};
 	checkDirectories("");
 	const manifest = JSON.parse(readFileSync(join(bundle, "package.json"), "utf8"));
-	if (manifest.piVersion !== "0.85.1" || manifest.piConfig?.name !== "cloudthinker") {
+	if (manifest.piVersion !== "1.0.0" || manifest.piConfig?.name !== "cloudthinker") {
 		throw new Error("Incompatible bundle manifest");
 	}
 	const notice = readFileSync(join(bundle, "NOTICE"), "utf8");

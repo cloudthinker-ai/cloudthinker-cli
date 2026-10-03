@@ -146,6 +146,7 @@ for triple in $TRIPLES; do
   ' "$PI_ROOT/dist/core/export-html/template.js" "$dir/export-html/template.js"
   cp "$PHOTON" "$dir/"
   cp -r "$PI_ROOT/docs" "$PI_ROOT/examples" "$dir/"
+  cp "$PKG_DIR/CHANGELOG.md" "$dir/"
   mkdir -p "$dir/.agents/skills"
   cp -r "$PKG_DIR/.agents/skills/tour" "$dir/.agents/skills/"
 
@@ -187,7 +188,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 NOTICE
-	cat "$PKG_DIR/node_modules/@tintinweb/pi-subagents/LICENSE" >> "$dir/NOTICE"
+	cat "$PKG_DIR/node_modules/@cloudthinker/subagents/LICENSE" >> "$dir/NOTICE"
 	cat "$PKG_DIR/node_modules/proper-lockfile/LICENSE" >> "$dir/NOTICE"
 	cat "$PKG_DIR/node_modules/typebox/license" >> "$dir/NOTICE"
 	cat "$PKG_DIR/node_modules/beautiful-mermaid/LICENSE" >> "$dir/NOTICE"

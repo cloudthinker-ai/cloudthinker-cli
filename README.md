@@ -80,7 +80,7 @@ cloudthinker completion fish > ~/.config/fish/completions/cloudthinker.fish
 ```
 
 
-## The coding agent
+## The CloudThinker agent
 
 `cloudthinker` opens the interactive CloudThinker agent in your directory. The
 agent can edit files, run shell commands, and operate supported CloudThinker
@@ -267,7 +267,7 @@ The `crates/` directory holds three crates:
 - `cloudthinker-client` owns the HTTP client, login, and the token store.
 - `cloudthinker-api` is generated from `openapi/cloudthinker-cli.json`. Do not edit it by hand.
 
-`agent-cli/` holds the source of the coding agent that `cloudthinker agent`
+`agent-cli/` holds the source of the CloudThinker agent that `cloudthinker agent`
 downloads.
 
 ## Contributing
@@ -287,7 +287,7 @@ Read the product documentation at <https://docs.cloudthinker.io>.
 
 The CloudThinker CLI is licensed under the [Apache License, Version 2.0](LICENSE).
 
-The CloudThinker coding agent (`cloudthinker agent`) is built on the
+The CloudThinker agent (`cloudthinker agent`) is built on the
 [pi](https://github.com/earendil-works/pi) agent harness by Mario Zechner, which
 is licensed under the MIT License. [NOTICE](NOTICE) lists pi and the other
 third-party components with their license texts.

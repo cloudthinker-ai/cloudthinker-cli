@@ -8,8 +8,8 @@ import { Text, type TUI } from "@earendil-works/pi-tui";
 import { ToolExecutionComponent } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/tool-execution.js";
 import { initTheme } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 
-test("CA-AD-13 pi collapses absent and explicit regular TUI settings", () => {
-	assert.equal(SettingsManager.inMemory().getTuiMode(), "regular");
+test("CA-AD-13 pi defaults an absent TUI setting to fullscreen and keeps explicit settings", () => {
+	assert.equal(SettingsManager.inMemory().getTuiMode(), "fullscreen");
 	assert.equal(SettingsManager.inMemory({ tuiMode: "regular" }).getTuiMode(), "regular");
 	assert.equal(SettingsManager.inMemory({ tuiMode: "fullscreen" }).getTuiMode(), "fullscreen");
 });

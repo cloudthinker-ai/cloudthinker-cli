@@ -154,10 +154,10 @@ async fn wait_for_run(
 fn waiting_line(status: Option<RunStatus>) -> String {
     match status {
         Some(status) => format!(
-            "Anna is working — {}. Ctrl-C stops waiting; the run continues",
+            "The cloud agent is working — {}. Ctrl-C stops waiting; the run continues",
             output::status_label(status)
         ),
-        None => "Anna is working. Ctrl-C stops waiting; the run continues".to_string(),
+        None => "The cloud agent is working. Ctrl-C stops waiting; the run continues".to_string(),
     }
 }
 

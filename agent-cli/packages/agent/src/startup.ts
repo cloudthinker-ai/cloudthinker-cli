@@ -3,7 +3,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { Container, Text } from "@earendil-works/pi-tui";
 import type { Component } from "@earendil-works/pi-tui";
 
-import { machineBarLines } from "@cloudthinker/pi/src/awareness.ts";
+import { machineBarLines } from "@cloudthinker/cloud/src/awareness.ts";
 import { theme } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 
 interface ResourceOptions {
@@ -62,9 +62,10 @@ export function applyStartupUi(): void {
 	prototype.showLoadedResources = function (options) {
 		let warnings = 0;
 		let errors = 0;
+		let counting = true;
 		const view = Object.create(this) as StartupHost;
 		view.formatDiagnostics = (diagnostics, sources) => {
-			for (const diagnostic of diagnostics) {
+			for (const diagnostic of counting ? diagnostics : []) {
 				if (diagnostic.type === "error") errors += 1;
 				else warnings += 1;
 			}
@@ -72,6 +73,8 @@ export function applyStartupUi(): void {
 		};
 		original.call(view, options);
 		const container = this.loadedResourcesContainer;
+		for (const child of container.children) child.render(120);
+		counting = false;
 		const showMachineBar = Boolean(options?.force || this.options.verbose || !this.settingsManager.getQuietStartup());
 		const summary: string[] = [];
 		if (showMachineBar) {

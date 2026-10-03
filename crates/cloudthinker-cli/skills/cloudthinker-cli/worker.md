@@ -40,6 +40,10 @@ cloudthinker worker service start --outpost my-project --workdir "$PWD"
 cloudthinker worker service status --outpost my-project --workdir "$PWD" --json
 ```
 
+`--workdir` defaults to the current folder, and `--outpost` to the only outpost
+set up on this machine, so from the served folder `cloudthinker worker service
+start` needs no flags; with two or more outposts it asks for `--outpost`.
+
 The descriptor stores the executable, host, workspace, outpost UUID, workdir,
 concurrency, and label as arguments. The worker reads its credential from the
 private store for that host; service install and start require that stored

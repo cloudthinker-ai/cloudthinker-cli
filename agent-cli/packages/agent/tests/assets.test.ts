@@ -8,7 +8,7 @@ import test from "node:test";
 import { assetFiles, validateAssets } from "../scripts/validate-assets.ts";
 
 const piRoot = dirname(dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"))));
-const subagentsLicense = readFileSync(new URL("../node_modules/@tintinweb/pi-subagents/LICENSE", import.meta.url), "utf8");
+const subagentsLicense = readFileSync(new URL("../node_modules/@cloudthinker/subagents/LICENSE", import.meta.url), "utf8");
 const notice = subagentsLicense + readFileSync(new URL("../node_modules/@narumitw/pi-btw/LICENSE", import.meta.url), "utf8");
 
 test("CA-AD-6 real pi assets validate, and a missing theme or unexpected entry fails", () => {
@@ -29,9 +29,9 @@ test("CA-AD-6 real pi assets validate, and a missing theme or unexpected entry f
 			cpSync(join(piRoot, "dist/core/export-html", file), join(root, "export-html", file), { recursive: true });
 		}
 		cpSync(new URL("../themes/", import.meta.url), join(root, "theme"), { recursive: true });
-		for (const file of ["cloudthinker-agent", "NOTICE", "photon_rs_bg.wasm"]) writeFileSync(join(root, file), "fixture");
+		for (const file of ["cloudthinker-agent", "NOTICE", "CHANGELOG.md", "photon_rs_bg.wasm"]) writeFileSync(join(root, file), "fixture");
 		writeFileSync(join(root, "NOTICE"), notice);
-		writeFileSync(join(root, "package.json"), JSON.stringify({ piVersion: "0.85.1", piConfig: { name: "cloudthinker" } }));
+		writeFileSync(join(root, "package.json"), JSON.stringify({ piVersion: "1.0.0", piConfig: { name: "cloudthinker" } }));
 		validateAssets(root, piRoot);
 		const tourPath = join(root, ".agents/skills/tour/SKILL.md");
 		rmSync(tourPath);

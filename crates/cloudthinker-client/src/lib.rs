@@ -8,6 +8,8 @@ mod agent_release;
 pub mod auth;
 mod cli_config;
 mod client;
+mod cloud;
+pub use cloud::{CloudExecutionInput, CloudOutcome, CloudResult};
 pub mod cyber_run_guard;
 mod discovery;
 mod error;
@@ -17,6 +19,7 @@ mod review_url;
 mod toolpack;
 pub mod worker_api;
 pub use cloudthinker_api::types as worker_types;
+pub use cloudthinker_api::types as cloud_types;
 mod update_cache;
 
 #[cfg(test)]

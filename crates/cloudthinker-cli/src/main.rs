@@ -119,9 +119,9 @@ const DEFAULT_TIMEOUT_SECS: u64 = 2400;
 #[command(
     name = "cloudthinker",
     version,
-    about = "CloudThinker CLI — chat, local pentests, code review, and developer workflows",
+    about = "CloudThinker in your terminal: the agent, code review, Cyber pentests, and outpost workers",
     disable_help_subcommand = true,
-    after_help = "Get started:\n  cloudthinker login                  Sign in; over SSH it shows a short code instead of a browser\n  cloudthinker                        Start the coding agent in this folder\n  cloudthinker chat -p 'Check prod'   Ask Anna from a script; only the answer goes to stdout\n\nAgent guidance: cloudthinker --skill (then --skill <module> as needed)."
+    after_help = "Get started:\n  cloudthinker login                  Sign in; over SSH it shows a short code instead of a browser\n  cloudthinker                        Start the CloudThinker agent in this folder\n  cloudthinker chat -p 'Check prod'   Ask the cloud agent; only the answer goes to stdout\n  cloudthinker agent -p 'Explain src' Ask the agent about this folder, headless\n\nAgent guidance: cloudthinker --skill (then --skill <module> as needed)."
 )]
 struct Cli {
     #[arg(long, num_args = 0..=1, default_missing_value = "index", value_name = "MODULE",
@@ -136,15 +136,22 @@ struct Cli {
     #[arg(long, env = commands::WORKSPACE_ENV_VAR, global = true)]
     workspace: Option<String>,
 
+    /// Agent screen for a bare `cloudthinker`: fullscreen (the default) or regular, which keeps the chat in terminal scrollback.
+    #[arg(long, value_name = "MODE", value_parser = ["fullscreen", "regular"])]
+    tui_mode: Option<String>,
+
     #[command(subcommand)]
     command: Option<Command>,
 }
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Start the coding agent in this folder. A bare `cloudthinker` runs it too.
+    /// Start the CloudThinker agent in this folder; a bare `cloudthinker` does too.
     Agent(AgentArgs),
-    /// Send a headless prompt to Anna, or check a run's status.
+    /// Let another AI agent use your workspace's Connections; `cloudthinker --skill cloud` is its guide.
+    #[command(hide = true)]
+    Cloud(commands::cloud::CloudArgs),
+    /// Ask the CloudThinker agent in the cloud; it keeps running if you disconnect.
     Chat(ChatArgs),
     /// Review local changes or inspect a tracked review by its merge-request URL.
     Review(ReviewArgs),
@@ -152,15 +159,15 @@ enum Command {
     Login(LoginArgs),
     /// Log out and clear stored credentials.
     Logout(LogoutArgs),
-    /// Show the live account and workspace for the selected credential.
+    /// Show which account and workspace you are signed in as, checked live.
     Whoami {
-        /// Emit the machine-readable identity contract.
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// List, switch, or print the stored workspace logins for this host.
+    /// List or switch the workspace logins saved on this machine.
     Auth(AuthArgs),
-    /// Run a local Cyber pentest for an App target.
+    /// Cyber Apps, domains, runs, and findings; ask the agent to start a pentest.
     Cyber(CyberArgs),
     /// Run this machine as an outpost worker, and manage its outposts.
     Worker(commands::worker::WorkerArgs),
@@ -171,6 +178,7 @@ enum Command {
         after_help = "Examples:\n  cloudthinker completion bash > ~/.local/share/bash-completion/completions/cloudthinker\n  cloudthinker completion zsh > \"${fpath[1]}/_cloudthinker\"\n  cloudthinker completion fish > ~/.config/fish/completions/cloudthinker.fish"
     )]
     Completion {
+        /// The shell to print the script for.
         #[arg(value_enum)]
         shell: clap_complete::Shell,
     },
@@ -190,13 +198,13 @@ struct AgentArgs {
 
 #[derive(Debug, Args)]
 struct LoginArgs {
-    /// Print the consent URL instead of opening a browser.
-    #[arg(long)]
-    no_browser: bool,
-
-    /// Use a short code instead of a loopback browser callback. Set CLOUDTHINKER_LOGIN=browser to keep the browser over SSH.
+    /// Sign in with a short code you enter in any browser, for SSH or a machine without one.
     #[arg(long)]
     device_auth: bool,
+
+    /// Print the sign-in URL without opening a browser.
+    #[arg(long, hide = true)]
+    no_browser: bool,
 }
 
 #[derive(Debug, Args)]
@@ -209,9 +217,9 @@ struct AuthArgs {
 enum AuthSub {
     /// Print the current access token for a tool that shells out for a bearer; it is a secret.
     Token,
-    /// List the stored workspace logins for this host and mark the active one.
+    /// List the workspace logins saved on this machine and mark the active one; `whoami` checks it live.
     Status {
-        /// Emit the stored logins as JSON.
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -238,7 +246,7 @@ struct ChatArgs {
     #[command(subcommand)]
     command: Option<ChatSub>,
 
-    /// Prompt to send to CloudThinker (headless). `-` reads the prompt from stdin; other piped stdin is added to the prompt.
+    /// Prompt to send to the cloud agent. `-` reads the prompt from stdin; other piped stdin is added to the prompt.
     #[arg(short = 'p', long = "prompt")]
     prompt: Option<String>,
 
@@ -250,7 +258,7 @@ struct ChatArgs {
     #[arg(long)]
     no_wait: bool,
 
-    /// Emit a JSON envelope on stdout instead of plain text.
+    /// Print JSON on stdout instead of text.
     #[arg(long)]
     json: bool,
 
@@ -265,7 +273,7 @@ enum ChatSub {
     Status {
         /// The run id returned by a previous `chat -p`.
         run_id: Uuid,
-        /// Emit a JSON envelope on stdout instead of plain text.
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
         /// Poll until the run reaches a terminal state.
@@ -283,7 +291,7 @@ enum ChatSub {
         /// Maximum number of runs to show.
         #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(1..=50))]
         limit: u64,
-        /// Emit JSON on stdout instead of a human table.
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -302,7 +310,7 @@ struct ReviewArgs {
     #[arg(long)]
     base: Option<String>,
 
-    /// Emit one JSON result object on stdout.
+    /// Print JSON on stdout instead of text.
     #[arg(long)]
     json: bool,
 
@@ -337,6 +345,7 @@ struct CyberAppArgs {
 enum CyberAppSub {
     /// List Apps visible in the selected workspace.
     Ls {
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -352,18 +361,23 @@ struct CyberDomainArgs {
 enum CyberDomainSub {
     /// List workspace domains and their ownership proof.
     Ls {
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
     /// Add a domain to prove ownership of.
     Add {
+        /// The domain name, for example example.com.
         domain: String,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
     /// Re-check a domain's ownership proof.
     Verify {
+        /// The domain ID that `cyber domain ls` prints.
         domain_id: Uuid,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -373,21 +387,28 @@ enum CyberDomainSub {
 enum CyberConfigSub {
     /// Print the resolved project-over-user configuration.
     Show {
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
     /// Print one resolved setting.
     Get {
+        /// The setting name, for example target.
         key: String,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
     /// Set one project setting, or a user default with --user.
     Set {
+        /// The setting name, for example target.
         key: String,
+        /// The new value.
         value: String,
+        /// Save it as your default for every project instead of this project only.
         #[arg(long)]
         user: bool,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -401,7 +422,8 @@ struct CyberRunArgs {
 
 #[derive(Debug, Subcommand)]
 enum CyberRunSub {
-    /// Resolve or create an App, check setup, launch a local run, and bind this session.
+    /// Resolve or create an App, check setup, start a local run, and attach this agent session.
+    #[command(hide = true)]
     Open {
         /// Existing App UUID or exact App name.
         #[arg(long)]
@@ -418,7 +440,7 @@ enum CyberRunSub {
         /// How far a probe may push. Mode and scan-focus are derived, not set.
         #[arg(long, value_enum)]
         intensity: Option<IntensityArg>,
-        /// The owning agent-cli conversation to bind.
+        /// The agent session's conversation to attach the run to.
         #[arg(long, env = "CLOUDTHINKER_CONVERSATION_ID")]
         conversation_id: Option<Uuid>,
         #[arg(
@@ -431,12 +453,14 @@ enum CyberRunSub {
             help = "Exclude a path or host pattern. May be repeated."
         )]
         exclude: Vec<String>,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// Create a RUNNING local run for an App, without binding a session.
+    /// Start a local run for an App without attaching an agent session.
+    #[command(hide = true)]
     Launch {
-        /// The App to test (CloudThinker > Cyber > the App's UUID).
+        /// The App ID; `cyber app ls` lists them.
         app_id: Uuid,
         /// How far a probe may push. Mode and scan-focus are derived, not set.
         #[arg(long, value_enum)]
@@ -451,21 +475,24 @@ enum CyberRunSub {
             help = "Exclude a path or host pattern. May be repeated."
         )]
         exclude: Vec<String>,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// Bind this session's conversation to an existing local run and print the brief.
+    /// Attach an agent session to a local run and print the run brief.
+    #[command(hide = true)]
     Bind {
-        /// The run UUID returned by `cyber run launch`.
+        /// The run ID that `cyber run launch` printed.
         run_id: Uuid,
-        /// This session's CloudThinker conversation UUID.
+        /// The agent session's conversation ID.
         conversation_id: Uuid,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// Show a run's state: lifecycle, host, session binding, finding counts. --wait polls.
+    /// Show a run's state, host, agent session, and finding counts; --wait follows it to the end.
     Status {
-        /// The run UUID returned by `cyber run launch`.
+        /// The pentest run's ID.
         run_id: Uuid,
         /// Poll until the run reaches a terminal state.
         #[arg(long)]
@@ -473,17 +500,22 @@ enum CyberRunSub {
         /// Stop waiting after this many seconds (the run continues server-side).
         #[arg(long, default_value_t = DEFAULT_TIMEOUT_SECS)]
         timeout: u64,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// Cancel a run through the shared terminal transition CAS.
+    /// Stop a running pentest.
     Cancel {
+        /// The pentest run's ID.
         run_id: Uuid,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// Settle a finished run; the backend's finalize CAS decides the winner.
+    /// Close a finished run as succeeded or failed; the first close wins.
+    #[command(hide = true)]
     Settle {
+        /// The run ID that `cyber run open` printed.
         run_id: Uuid,
         /// Settle as failed instead of succeeded.
         #[arg(long)]
@@ -491,21 +523,28 @@ enum CyberRunSub {
         /// A short closing note recorded with the settlement (max 2000 chars).
         #[arg(long, value_name = "TEXT")]
         message: Option<String>,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// Replay a run's mirrored local-agent transcript.
+    /// Replay the agent transcript of a local run.
+    #[command(hide = true)]
     Session {
+        /// The run ID that `cyber run open` printed.
         run_id: Uuid,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// Upload bounded text files or binary artifacts into the run's durable evidence tree.
+    /// Upload text files or binary artifacts as the run's evidence.
+    #[command(hide = true)]
     Evidence {
+        /// The run ID that `cyber run open` printed.
         run_id: Uuid,
         /// Evidence files to upload, by path (relative paths upload under that name).
         #[arg(value_name = "FILE", num_args = 1..)]
         paths: Vec<String>,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -513,35 +552,43 @@ enum CyberRunSub {
 
 #[derive(Debug, Subcommand)]
 enum CyberSub {
-    #[command(about = "Discover the run's surface on this machine.")]
+    /// Crawl the run's target from this machine to map its attack surface.
+    #[command(hide = true)]
     Discover {
+        /// The run ID that `cyber run open` printed.
         run_id: Uuid,
+        /// Stop after this many URLs.
         #[arg(long, default_value_t = 5000, value_parser = clap::value_parser!(u64).range(1..=20000))]
         max_urls: u64,
+        /// Stop after this many seconds.
         #[arg(long, default_value_t = 720, value_parser = clap::value_parser!(u64).range(1..=720))]
         timeout: u64,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// The App record in this workspace.
+    /// The Apps this workspace tests.
     App(CyberAppArgs),
-    /// Workspace domain ownership proof.
+    /// Prove you own a domain before testing it.
     Domain(CyberDomainArgs),
-    /// A Cyber pentest run that executes on this machine.
+    /// Check or stop a pentest run on this machine.
     Run(CyberRunArgs),
-    /// The backend-owned probe plan and its coverage gate.
+    /// The run's probe plan and its coverage; the agent drives these.
+    #[command(hide = true)]
     Probe(CyberProbeArgs),
-    /// An App's findings.
+    /// List, read, or export an App's findings.
     Finding(CyberFindingArgs),
-    /// Pull canonical App memory to a local directory for a local run.
+    /// Download an App's findings and surface for a local run.
+    #[command(hide = true)]
     Memory(CyberMemoryArgs),
-    /// Read or write project/user Cyber defaults.
+    /// Read or change Cyber settings for this project or as your default.
     Config(CyberConfigArgs),
-    /// Report local pentest readiness; `--fix` repairs the probe toolpack.
+    /// Check this machine is ready to run a pentest; `--fix` installs missing tools.
     Doctor {
         /// Download every missing or outdated pinned tool for this platform.
         #[arg(long)]
         fix: bool,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -555,14 +602,17 @@ struct CyberMemoryArgs {
 
 #[derive(Debug, Subcommand)]
 enum CyberMemorySub {
-    /// Pull an App's canonical findings, surface, and optional context files.
+    /// Download an App's findings, surface, and optional context files.
     Pull {
+        /// The App ID; `cyber app ls` lists them.
         app_id: Uuid,
+        /// The directory to write into.
         #[arg(long, required = true)]
         output: PathBuf,
         /// Download non-credential App context documents into the output directory.
         #[arg(long)]
         include_context: bool,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -576,14 +626,17 @@ struct CyberProbeArgs {
 
 #[derive(Debug, Subcommand)]
 enum CyberProbeSub {
-    /// Print the backend-issued probe plan for this run.
+    /// Print the run's probe plan.
     Plan {
+        /// The run ID that `cyber run open` printed.
         run_id: Uuid,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// Execute the backend's plan on this machine and report the results.
+    /// Run the probe plan from this machine and report the results.
     Exec {
+        /// The run ID that `cyber run open` printed.
         run_id: Uuid,
         /// Probe selected rows; omit to probe all executable rows.
         #[arg(long, value_delimiter = ',')]
@@ -591,37 +644,48 @@ enum CyberProbeSub {
         /// Identity role from [cyber.auth], or `anonymous` for no auth header.
         #[arg(long)]
         identity: Option<String>,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// Show the run's coverage ledger and completion gate.
+    /// Show which plan rows are covered and whether the run may finish.
     Coverage {
+        /// The run ID that `cyber run open` printed.
         run_id: Uuid,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// Read the attack-surface overview for authoring fan-out themes.
+    /// Show the attack surface, to plan parallel work.
     Surface {
+        /// The run ID that `cyber run open` printed.
         run_id: Uuid,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
     /// Group plan rows for parallel work.
     Partition {
+        /// The run ID that `cyber run open` printed.
         run_id: Uuid,
         /// Themes doc as JSON, or `@path` to a JSON file. Omit for surface only.
         #[arg(long)]
         themes: Option<String>,
+        /// Put at most this many plan rows in one group.
         #[arg(long)]
         max_rows_per_shard: Option<i64>,
+        /// Group only rows with this coverage status.
         #[arg(long)]
         only_status: Option<String>,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
     /// Report a reasoned observation for one or more plan rows.
     Ingest {
+        /// The run ID that `cyber run open` printed.
         run_id: Uuid,
+        /// The plan ID that `cyber probe plan` printed.
         plan_id: String,
         /// The plan rows this observation closes (comma-separated row_ids).
         #[arg(long = "row", value_delimiter = ',')]
@@ -638,6 +702,7 @@ enum CyberProbeSub {
         /// The worker that examined the rows.
         #[arg(long, default_value = "cloudthinker-cli")]
         worker: String,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -653,9 +718,12 @@ struct CyberFindingArgs {
 enum CyberFindingSub {
     /// List an App's findings.
     Ls {
+        /// The App ID; `cyber app ls` lists them.
         app_id: Uuid,
+        /// The page to show, from 1.
         #[arg(long, default_value_t = 1)]
         page: u64,
+        /// How many findings one page holds.
         #[arg(long, default_value_t = 50)]
         take: u64,
         /// Keep only findings on this agent-owned status.
@@ -667,20 +735,26 @@ enum CyberFindingSub {
         /// Keep only findings at this severity.
         #[arg(long, value_enum)]
         severity: Option<SeverityArg>,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
     /// Show one finding.
     Get {
+        /// The finding ID that `cyber finding ls` prints.
         finding_id: Uuid,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// Export an App's findings as PDF, or one finding with --finding.
+    /// Export an App's findings as a PDF report, or one finding with --finding-id.
     Export {
+        /// The App ID; `cyber app ls` lists them.
         app_id: Uuid,
+        /// Export only this finding.
         #[arg(long)]
         finding_id: Option<Uuid>,
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -692,7 +766,7 @@ enum ReviewSub {
     Status {
         /// The GitLab/GitHub merge-request URL.
         mr_url: String,
-        /// Emit a JSON envelope on stdout instead of plain text.
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -700,7 +774,7 @@ enum ReviewSub {
     Findings {
         /// The GitLab/GitHub merge-request URL.
         mr_url: String,
-        /// Emit a JSON envelope on stdout instead of plain text.
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
@@ -708,7 +782,7 @@ enum ReviewSub {
     Watch {
         /// The GitLab/GitHub merge-request URL.
         mr_url: String,
-        /// Emit a JSON envelope on stdout instead of plain text.
+        /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
         /// Stop waiting after this many seconds (the review continues server-side).
@@ -726,7 +800,7 @@ struct UpdateArgs {
     #[arg(long)]
     force: bool,
 
-    /// Emit a JSON envelope on stdout instead of plain text.
+    /// Print JSON on stdout instead of text.
     #[arg(long)]
     json: bool,
 }
@@ -781,9 +855,20 @@ async fn dispatch(cli: Cli, url_from_flag: bool) -> ExitCode {
     }
     let base_url = resolve_base_url(cli.url);
     let workspace = cli.workspace;
-    let command = cli
-        .command
-        .unwrap_or_else(|| Command::Agent(AgentArgs { args: Vec::new() }));
+    let command = match (cli.command, cli.tui_mode) {
+        (Some(_), Some(_)) => {
+            engine::output::eprintln_error(
+                "--tui-mode starts the agent and cannot be combined with a command; use `cloudthinker agent --tui-mode <MODE>`",
+            );
+            return ExitCode::Usage;
+        }
+        (Some(command), None) => command,
+        (None, mode) => Command::Agent(AgentArgs {
+            args: mode
+                .map(|mode| vec![OsString::from("--tui-mode"), OsString::from(mode)])
+                .unwrap_or_default(),
+        }),
+    };
     if workspace.is_some() && commands::env_token_is_set() {
         engine::output::eprintln_error("--workspace cannot be used with CLOUDTHINKER_TOKEN");
         return ExitCode::Usage;
@@ -827,6 +912,7 @@ async fn run_command(
         Command::Logout(args) => {
             commands::logout::run(base_url, workspace.as_deref(), args.all).await
         }
+        Command::Cloud(args) => commands::cloud::run(base_url, workspace.as_deref(), args).await,
         Command::Whoami { json } => {
             commands::whoami::run(base_url, workspace.as_deref(), json).await
         }
@@ -1240,17 +1326,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn login_accepts_explicit_device_auth_without_disabling_no_browser() {
+    fn every_command_and_argument_explains_itself() {
+        fn walk(command: &clap::Command, path: &str, missing: &mut Vec<String>) {
+            if command.get_about().is_none() && !path.is_empty() {
+                missing.push(path.to_string());
+            }
+            for arg in command.get_arguments() {
+                let id = arg.get_id().as_str();
+                if id != "help" && id != "version" && arg.get_help().is_none() {
+                    missing.push(format!("{path} <{id}>"));
+                }
+            }
+            for sub in command.get_subcommands() {
+                walk(sub, &format!("{path} {}", sub.get_name()), missing);
+            }
+        }
+        let mut missing = Vec::new();
+        walk(&Cli::command(), "", &mut missing);
+        assert!(missing.is_empty(), "add help text for: {missing:#?}");
+    }
+
+    #[test]
+    fn login_shows_device_auth_and_keeps_no_browser_hidden() {
         let cli = Cli::try_parse_from(["cloudthinker", "login", "--device-auth", "--no-browser"])
             .expect("valid login args");
-
         match cli.command.expect("a named subcommand") {
-            Command::Login(args) => {
-                assert!(args.device_auth);
-                assert!(args.no_browser);
-            }
+            Command::Login(args) => assert!(args.device_auth && args.no_browser),
             _ => panic!("expected login command"),
         }
+        let login = Cli::command();
+        let login = login.find_subcommand("login").expect("login");
+        let shown: Vec<_> = login
+            .get_arguments()
+            .filter(|arg| !arg.is_hide_set())
+            .map(|arg| arg.get_id().as_str().to_string())
+            .collect();
+        assert!(shown.contains(&"device_auth".to_string()));
+        assert!(!shown.contains(&"no_browser".to_string()));
     }
 
     #[test]
@@ -1321,6 +1433,16 @@ mod tests {
         let cli = Cli::try_parse_from(["cloudthinker"]).expect("a bare invocation parses");
 
         assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn a_bare_invocation_takes_the_agent_screen_mode() {
+        let cli = Cli::try_parse_from(["cloudthinker", "--tui-mode", "regular"])
+            .expect("a bare invocation with a screen mode parses");
+
+        assert!(cli.command.is_none());
+        assert_eq!(cli.tui_mode.as_deref(), Some("regular"));
+        assert!(Cli::try_parse_from(["cloudthinker", "--tui-mode", "tiny"]).is_err());
     }
 
     #[test]

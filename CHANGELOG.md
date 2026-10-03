@@ -1,3 +1,21 @@
+## [0.8.0-dev.3]
+
+- The agent opens fullscreen with a status line for workspace, approval mode, credits, and Connections; Ctrl+O opens a searchable transcript, and a cloud write asks in one approval modal.
+- A bare `cloudthinker --tui-mode regular` or `--tui-mode fullscreen` picks the agent screen without the `agent` subcommand.
+- `cloudthinker agent --help` shows CloudThinker's own help, and the top-level help calls it the CloudThinker agent. Flags and commands the agent does not support now stop with the next step instead of running.
+- In the agent, `/share` copies the conversation link, `/login` and `/logout` sign in and out of CloudThinker, `/changelog` shows the agent's releases, and `/bug` opens a GitHub issue.
+- The generated API client picks up the code review `layer_count` field.
+- `cloudthinker --help` lists what a person runs. Commands only an AI agent drives (`cloud`, and the Cyber run, probe, discovery, and memory steps) still work but are hidden; `cloudthinker --skill <module>` documents them.
+- Every command and option now has help text, Cyber help is written for users instead of describing internals, and every `--json` reads the same.
+- `chat` is described as the cloud agent and `agent` as the agent in this folder, so the two headless paths (`chat -p` and `agent -p`) are easy to tell apart.
+- `login --help` shows one sign-in option, `--device-auth`, for a short code; `--no-browser` still works but is no longer listed.
+- `worker service` commands default `--workdir` to the current folder and `--outpost` to the only outpost set up on this machine.
+- `cloudthinker agent --help` prints the agent's help at once, without downloading the agent.
+
+## [0.8.0]
+
+- Add direct cloud commands for independent agents: create sessions, discover Connections, load their guides and SDK schemas, execute scoped scripts, and recover task output or approved writes. Print release-matched guidance with `cloudthinker --skill cloud`.
+
 ## [0.7.7]
 
 - Render completed Mermaid flowcharts as themed terminal diagrams with authored node border colors; keep interiors and text in terminal theme colors. Preserve source while streaming and when a preview cannot fit or uses unsupported syntax.

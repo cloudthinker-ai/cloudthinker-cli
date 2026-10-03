@@ -85,7 +85,7 @@ while (($#)); do
 done
 
 ct() {
-  (cd "$SLOT_ROOT" && cargo run --quiet --locked --release --manifest-path "$SLOT_ROOT/tools/ct-cli/Cargo.toml" -- "$@")
+  (cd "$SLOT_ROOT" && cargo run --quiet --locked --release --manifest-path "$SLOT_ROOT/tools/ct/cli/Cargo.toml" -- "$@")
 }
 
 mint_token() (
@@ -159,7 +159,7 @@ CLOUDTHINKER_URL="$(ct env --json | python3 -c 'import json,sys; print(json.load
 export CLOUDTHINKER_URL
 export CLOUDTHINKER_NO_UPDATE_CHECK=1
 export CT_CLI_SOURCE="$REPO_ROOT"
-export CLOUDTHINKER_AGENT_BIN="$REPO_ROOT/tools/ct-cli/scripts/agent-source.sh"
+export CLOUDTHINKER_AGENT_BIN="$REPO_ROOT/tools/ct/cli/scripts/agent-source.sh"
 
 if [[ -z "${CLOUDTHINKER_TOKEN:-}" ]]; then
   CLOUDTHINKER_TOKEN="$(mint_token "$SLOT_ROOT" "$EMAIL")"

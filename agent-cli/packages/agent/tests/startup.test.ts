@@ -5,7 +5,7 @@ import { stripVTControlCharacters } from "node:util";
 import { InteractiveMode, initTheme } from "@earendil-works/pi-coding-agent";
 import { Container } from "@earendil-works/pi-tui";
 
-import { setMachineState } from "@cloudthinker/pi/src/awareness.ts";
+import { setMachineState } from "@cloudthinker/cloud/src/awareness.ts";
 import { applyStartupUi } from "../src/startup.ts";
 
 initTheme("dark");

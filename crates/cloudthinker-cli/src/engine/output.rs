@@ -267,6 +267,11 @@ pub fn print_config_value(key: &str, value: &str) -> Result<(), String> {
     write_line(&mut out, &format!("{key} = {value}"))
 }
 
+pub fn print_text(text: &str) -> Result<(), String> {
+    let mut out = std::io::stdout().lock();
+    out.write_all(text.as_bytes()).map_err(|e| e.to_string())
+}
+
 pub fn print_lines(lines: &[String]) -> Result<(), String> {
     let mut out = std::io::stdout().lock();
     for line in lines {
@@ -1101,6 +1106,118 @@ pub fn emit_auth_status(status: &AuthStatus, login: &str, json: bool) -> Result<
     } else {
         print_answer(&auth_status_text(status, login))
     }
+}
+
+pub fn emit_cloud(result: &cloudthinker_client::CloudResult, json: bool) -> Result<(), String> {
+    if json {
+        return emit_json(result);
+    }
+    use cloudthinker_client::{CloudResult, cloud_types as api};
+    let lines = match result {
+        CloudResult::Session(value) => vec![
+            format!("session: {}", value.conversation_id),
+            format!("workspace: {}", value.workspace_id),
+            value.web_url.clone(),
+            format!("Auto Mode: {}", value.auto_mode.enabled),
+        ],
+        CloudResult::Connections(value) => value
+            .connections
+            .iter()
+            .map(|entry| {
+                format!(
+                    "{} [{}] {} — {}",
+                    entry.prefix,
+                    entry.alias,
+                    entry.execution_method,
+                    entry
+                        .skills
+                        .iter()
+                        .map(|skill| skill.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })
+            .collect(),
+        CloudResult::Content(value) => vec![
+            format!("{} ({})", value.connection_prefix, value.execution_method),
+            format!("cloud root: {}", value.cloud_root),
+            value.content.clone(),
+        ],
+        CloudResult::Read {
+            conversation_id,
+            execution,
+        } => {
+            let mut lines = vec![format!("session: {conversation_id}")];
+            match execution {
+                api::ResponseAgentCliExecuteAgentCliRead::Completed(value) => lines.extend([
+                    format!("completed (exit {})", value.return_code),
+                    value.stdout.clone(),
+                    value.stderr.clone(),
+                ]),
+                api::ResponseAgentCliExecuteAgentCliRead::Started(value) => {
+                    lines.push(format!("running: {}", value.task_id))
+                }
+            }
+            lines
+        }
+        CloudResult::Task {
+            conversation_id,
+            task_id,
+            output,
+        } => vec![
+            format!("session: {conversation_id}"),
+            format!("task: {task_id} ({})", output.status),
+            output.output.clone(),
+            format!(
+                "next cursor: {}{}",
+                output.next_cursor,
+                if output.truncated { " (truncated)" } else { "" }
+            ),
+        ],
+        CloudResult::Write(value) => {
+            let mut lines = cloud_write_lines(&value.write);
+            match &value.execution {
+                Some(api::AgentCliWriteOutcomeExecution::Completed(value)) => lines.extend([
+                    format!("exit: {}", value.return_code),
+                    value.stdout.clone(),
+                    value.stderr.clone(),
+                ]),
+                Some(api::AgentCliWriteOutcomeExecution::Started(value)) => {
+                    lines.push(format!("task: {}", value.task_id))
+                }
+                None => (),
+            }
+            lines
+        }
+        CloudResult::WriteStatus(value) => cloud_write_lines(value),
+        CloudResult::Writes(value) => value.writes.iter().flat_map(cloud_write_lines).collect(),
+    };
+    let text = if lines.is_empty() {
+        "No Connections or operations found.".into()
+    } else {
+        lines.join("\n")
+    };
+    let text = text
+        .lines()
+        .map(terminal_text)
+        .collect::<Vec<_>>()
+        .join("\n");
+    print_answer(&text)
+}
+
+fn cloud_write_lines(value: &cloudthinker_client::cloud_types::AgentCliWritePublic) -> Vec<String> {
+    let mut lines = vec![
+        format!("write: {} ({})", value.id, value.status),
+        value.verdict_reason.clone(),
+        value.web_url.clone(),
+    ];
+    if value.status == cloudthinker_client::cloud_types::AgentCliWriteStatus::Approved {
+        lines.push(format!(
+            "Approved; execution has not started. Resume with cloud exec --session {} --write {}.",
+            value.conversation_id, value.id
+        ));
+    }
+    lines
 }
 
 #[cfg(test)]

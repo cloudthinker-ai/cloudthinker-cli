@@ -29,7 +29,7 @@ test("SDK sessions bound automatic skill metadata without losing discovery, relo
 		assert.equal(session.resourceLoader.getSkills().skills.length, 101);
 		assert.ok(session.systemPrompt.startsWith("CUSTOM CONTRACT"));
 		assert.ok(!session.systemPrompt.includes("Private manual metadata"));
-		const guidanceStart = session.systemPrompt.indexOf("\n\nSkill catalog:");
+		const guidanceStart = session.systemPrompt.indexOf("Skill catalog:");
 		assert.ok(guidanceStart > 0);
 		const guidance = session.systemPrompt.slice(guidanceStart);
 		const location = JSON.parse(guidance.match(/catalog is at (".*?") \(JSONL/)![1]!);
@@ -57,7 +57,7 @@ test("SDK sessions bound automatic skill metadata without losing discovery, relo
 		writeFileSync(join(small, "SKILL.md"), "---\nname: small\ndescription: A small catalog\n---\n\nSmall body.\n");
 		await loader.reload();
 		session.setActiveToolsByName(["read"]);
-		assert.ok(session.systemPrompt.includes(formatSkillsForPrompt(loader.getSkills().skills, "read")));
+		assert.ok(session.systemPrompt.includes(formatSkillsForPrompt(loader.getSkills().skills, "read").trim()));
 		assert.ok(!session.systemPrompt.includes("Skill catalog:"));
 	} finally {
 		session?.dispose();

@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
-	detectTerminalThemeForAuto,
+	detectTerminalTheme,
 	getMarkdownTheme,
 	loadThemeFromPath,
 	resolveThemeSetting,
@@ -21,13 +21,7 @@ function luminance(rgb: number[]): number {
 
 for (const background of [255, 18]) {
 	test(`default Markdown colors stay readable on terminal background ${background}`, async () => {
-		const terminalTheme = await detectTerminalThemeForAuto({
-			ui: {
-				queryTerminalBackgroundColor: async () => ({ r: background, g: background, b: background }),
-			},
-			timeoutMs: 100,
-			env: {},
-		});
+		const terminalTheme = detectTerminalTheme({ background: { r: background, g: background, b: background } }, undefined, {});
 		const directory = fileURLToPath(new URL("../themes/", import.meta.url));
 		const args = themeArgs(bundledThemePaths(directory), [], undefined);
 		const selected = resolveThemeSetting(args[args.indexOf("--use-theme") + 1], terminalTheme);

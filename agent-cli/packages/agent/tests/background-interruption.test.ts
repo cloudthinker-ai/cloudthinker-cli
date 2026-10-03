@@ -73,7 +73,7 @@ test("an unknown task is reported as a failed Pi tool call", { timeout: 10_000 }
 	const oldAgentDir = process.env.PI_CODING_AGENT_DIR;
 	process.env.PI_CODING_AGENT_DIR = agentDir;
 	const settingsManager = SettingsManager.inMemory({});
-	const ui = { notify() {}, setStatus() {}, setWidget() {} } as unknown as ExtensionUIContext;
+	const ui = { notify() {}, setStatus() {}, setWidget() {}, onTerminalInput: () => () => {} } as unknown as ExtensionUIContext;
 	let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
 	const toolEvents: Array<{ isError?: boolean; result?: { isError?: boolean } }> = [];
 	let unsubscribe = () => {};
@@ -89,6 +89,7 @@ test("an unknown task is reported as a failed Pi tool call", { timeout: 10_000 }
 			checkAuth: async () => ({ type: "api_key", source: "test" }),
 			getAuth: async () => ({ auth: { apiKey: "test" }, env: {} }),
 			isUsingOAuth: () => false,
+			getModel: (provider: string, id: string) => provider === model.provider && id === model.id ? model : undefined,
 			streamSimple: (_model: unknown, _context: { messages: unknown[] }) => {
 				if (toolEvents.length === 0) return stream(assistant([{
 					type: "toolCall",
@@ -134,7 +135,7 @@ test("Esc restores a queued background completion with the current draft for Con
 	const modelSystemPrompts: string[] = [];
 	const settingsManager = SettingsManager.inMemory({});
 	const ui = {
-		notify() {}, setStatus() {}, setWidget() {},
+		notify() {}, setStatus() {}, setWidget() {}, onTerminalInput: () => () => {},
 	} as unknown as ExtensionUIContext;
 	let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
 	try {
@@ -154,6 +155,7 @@ test("Esc restores a queued background completion with the current draft for Con
 			checkAuth: async () => ({ type: "api_key", source: "test" }),
 			getAuth: async () => ({ auth: { apiKey: "test" }, env: {} }),
 			isUsingOAuth: () => false,
+			getModel: (provider: string, id: string) => provider === model.provider && id === model.id ? model : undefined,
 			streamSimple: (_model: unknown, context: { messages: unknown[] }) => {
 				const index = modelInputs.length;
 				modelInputs.push(JSON.stringify(context.messages));
@@ -229,7 +231,7 @@ test("recovered task context survives Esc and remains available on Continue", { 
 	const firstStarted = new Promise<void>((resolve) => { markFirstStarted = resolve; });
 	const modelInputs: string[] = [];
 	const settingsManager = SettingsManager.inMemory({});
-	const ui = { notify() {}, setStatus() {}, setWidget() {} } as unknown as ExtensionUIContext;
+	const ui = { notify() {}, setStatus() {}, setWidget() {}, onTerminalInput: () => () => {} } as unknown as ExtensionUIContext;
 	let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
 	try {
 		const sessionManager = SessionManager.create(cwd);
@@ -267,6 +269,7 @@ test("recovered task context survives Esc and remains available on Continue", { 
 			checkAuth: async () => ({ type: "api_key", source: "test" }),
 			getAuth: async () => ({ auth: { apiKey: "test" }, env: {} }),
 			isUsingOAuth: () => false,
+			getModel: (provider: string, id: string) => provider === model.provider && id === model.id ? model : undefined,
 			streamSimple: (_model: unknown, context: { messages: unknown[] }) => {
 				const index = modelInputs.length;
 				modelInputs.push(JSON.stringify(context.messages));

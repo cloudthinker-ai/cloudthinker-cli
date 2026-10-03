@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
-import { SESSION_ENTRY_TYPE } from "@cloudthinker/pi/src/runtime.ts";
+import { SESSION_ENTRY_TYPE } from "@cloudthinker/cloud/src/runtime.ts";
 import { BTW_NEEDS_CONVERSATION, btwRequestHeaders } from "../src/btw-headers.ts";
 
 const sessionWith = (entries: unknown[]) => ({ sessionManager: { getEntries: () => entries as SessionEntry[] } }) as Parameters<typeof btwRequestHeaders>[1];

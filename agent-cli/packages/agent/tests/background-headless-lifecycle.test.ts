@@ -179,6 +179,7 @@ async function runScenario(scenario: Scenario) {
 			checkAuth: async () => ({ type: "api_key", source: "test" }),
 			getAuth: async () => ({ auth: { apiKey: "test" }, env: {} }),
 			isUsingOAuth: () => false,
+			getModel: (provider: string, id: string) => provider === model.provider && id === model.id ? model : undefined,
 			streamSimple: (_model: unknown, context: { messages: unknown[] }) => {
 				const index = streamCalls.length;
 				const serialized = JSON.stringify(context.messages);

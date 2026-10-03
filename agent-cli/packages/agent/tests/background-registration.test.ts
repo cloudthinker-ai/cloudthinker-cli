@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { registerBackgroundCommands } from "../src/background/index.ts";
+import type { ExtensionAPI, ExtensionContext, ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { completionRows, registerBackgroundCommands } from "../src/background/index.ts";
+import { queuedLines } from "../src/queue-ui.ts";
+import { tasksPane } from "../src/tasks-pane.ts";
 import { BackgroundCommandManager } from "../src/background/manager.ts";
+import { setToolOutputMode } from "../src/verbosity.ts";
 
 interface TestUI {
 	status: Map<string, string | undefined>;
 	widgets: Map<string, unknown>;
+	keys?: ((data: string) => { consume?: boolean } | undefined)[];
 }
 
 const plainTheme = { fg: (_color: string, value: string) => value, bold: (value: string) => value } as never;
@@ -20,39 +24,43 @@ function renderTasks(ui: TestUI): string {
 	return factory({ terminal: { columns: 200 }, requestRender() {} }, plainTheme).render().join("\n");
 }
 
-function createContext(id: string, mode: ExtensionContext["mode"], cwd: string, ui: TestUI): ExtensionContext {
+function createContext(id: string, mode: ExtensionContext["mode"], cwd: string, ui: TestUI): ExtensionToolContext {
 	return {
 		mode,
 		hasUI: mode === "tui" || mode === "rpc",
 		cwd,
-		sessionManager: { getSessionId: () => id },
+		sessionManager: { getSessionId: () => id, getSessionFile: () => undefined },
 		ui: {
 			setStatus: (key: string, value: string | undefined) => { ui.status.set(key, value); },
 			setWidget: (key: string, value: unknown) => { ui.widgets.set(key, value); },
+			onTerminalInput: (handler: (data: string) => { consume?: boolean } | undefined) => {
+				(ui.keys ??= []).push(handler);
+				return () => { ui.keys = ui.keys?.filter((item) => item !== handler); };
+			},
 		} as unknown as ExtensionContext["ui"],
-	} as ExtensionContext;
+	} as ExtensionToolContext;
 }
 
 function createApi() {
 	const handlers = new Map<string, (event: unknown, ctx: ExtensionContext) => unknown>();
 	const messages: unknown[] = [];
-	let tool: ToolDefinition | undefined;
+	const tools = new Map<string, ToolDefinition>();
 	const api = {
-		registerTool: (registered: ToolDefinition) => { tool = registered; },
+		registerTool: (registered: ToolDefinition) => { tools.set(registered.name, registered); },
 		on: (event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) => { handlers.set(event, handler); },
 		sendMessage: (message: unknown) => { messages.push(message); },
 		sendUserMessage: (message: unknown) => { messages.push(message); },
 	} as unknown as ExtensionAPI;
 	registerBackgroundCommands(api);
-	assert.ok(tool);
-	return { handlers, messages, tool: tool as ToolDefinition };
+	assert.ok(tools.has("ct_background") && tools.has("bash"));
+	return { handlers, messages, tool: tools.get("ct_background")!, bash: tools.get("bash")! };
 }
 
 function assertSafeDisplay(value: string): void {
 	assert.doesNotMatch(value, /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u206f]/u);
 }
 
-async function execute(tool: ToolDefinition, ctx: ExtensionContext, params: Record<string, unknown>) {
+async function execute(tool: ToolDefinition, ctx: ExtensionToolContext, params: Record<string, unknown>) {
 	return tool.execute("fixture", params, undefined, undefined, ctx);
 }
 
@@ -87,19 +95,25 @@ test("registration exposes start/status/output/cancel and TUI progress", async (
 		assert.match(expandedText, /line/);
 		assert.equal(unsafeResult.details.raw, unsafeOutput);
 		const lines = Array.from({ length: 8 }, (_, index) => `line ${index + 1}`).join("\n");
-		const outputContext = { args: { action: "output" } } as never;
+		const outputContext = { args: { action: "output", taskId: "abc" }, state: {} } as never;
+		const outputRow = api.tool.renderCall?.({ action: "output", taskId: "abc" }, plainTheme, outputContext);
+		const compactOutput = api.tool.renderResult?.({ content: [{ type: "text", text: lines }], details: { text: lines } }, { expanded: false, isPartial: false } as never, plainTheme, outputContext);
+		assert.deepEqual(compactOutput?.render(200), []);
+		assert.deepEqual(outputRow?.render(200), ["● Background output abc · 8 lines"]);
+		setToolOutputMode("preview");
 		const preview = api.tool.renderResult?.({ content: [{ type: "text", text: lines }], details: { text: lines } }, { expanded: false, isPartial: false } as never, plainTheme, outputContext)?.render(200).map((line) => line.trim()) ?? [];
+		setToolOutputMode("compact");
 		assert.deepEqual(preview, ["… (3 earlier lines)", "line 4", "line 5", "line 6", "line 7", "line 8"]);
+		assert.deepEqual(outputRow?.render(200), ["● Background output abc"]);
 		const startResult = api.tool.renderResult?.({ content: [{ type: "text", text: "Started background command abc." }], details: {} }, { expanded: false, isPartial: false } as never, plainTheme, { args: { action: "start" } } as never);
 		assert.deepEqual(startResult?.render(200), []);
 		await api.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 		const widgetUnsafeCommand = "printf 'ready'; sleep 30 # \u001b[2J \u001b]52;c;secret\u0007 \u202eRTL\u2066";
 		const started = await execute(api.tool, ctx, { action: "start", command: widgetUnsafeCommand }) as { details: { task: { id: string } } };
 		const id = started.details.task.id;
-		assert.equal(ui.status.get("ct-background"), "1 running command");
 		const widget = renderTasks(ui);
-		assert.match(widget, /^● Tasks\n▾ Commands 1\n└─ \S printf 'ready'; sleep 30/);
-		assert.match(widget, /⎿ {2}(ready|waiting for output…)/);
+		assert.match(widget, /^\S \$ printf 'ready'; sleep 30 .* · \d+s/);
+		assert.equal(widget.split("\n").length, 1);
 		assertSafeDisplay(widget);
 		let output = await execute(api.tool, ctx, { action: "output", taskId: id }) as { details: { text: string } };
 		for (let attempt = 0; attempt < 50 && output.details.text.length === 0; attempt++) {
@@ -138,16 +152,21 @@ test("completed background commands leave the TUI widget while status and output
 		const widget = renderTasks(ui);
 		assert.match(widget, /sleep 30/);
 		assert.ok(!widget.includes("printf ready"));
-		assert.equal(ui.status.get("ct-background"), "1 running command");
 		const output = await execute(api.tool, ctx, { action: "output", taskId: finished.details.task.id }) as { details: { text: string } };
 		assert.equal(output.details.text, "ready");
 		for (let attempt = 0; attempt < 200 && api.messages.length === 0; attempt++) {
 			await new Promise((resolve) => setTimeout(resolve, 10));
 		}
 		assert.equal(api.messages.length, 1);
-		await execute(api.tool, ctx, { action: "cancel", taskId: active.details.task.id });
+		assert.deepEqual(completionRows(api.messages[0] as string, plainTheme), [` printf ready · ${(api.messages[0] as string).match(/finished in \d+s/)![0]}`]);
+		await tasksPane.commands.find((task) => task.id === active.details.task.id)!.stop();
+		assert.equal(api.messages.length, 2);
+		assert.match(api.messages[1] as string, new RegExp(`^- ${active.details.task.id} stopped by the user after \\d+s · sleep 30$`, "m"));
+		assert.deepEqual(completionRows(api.messages[1] as string, plainTheme)?.map((row) => row.replace(/\d+s$/, "Ns")), [" sleep 30 · stopped by the user after Ns"]);
+		const stoppedStatus = await execute(api.tool, ctx, { action: "status", taskId: active.details.task.id }) as { content: { text: string }[] };
+		assert.match(stoppedStatus.content[0]!.text, / · stopped by the user · /);
+		assert.deepEqual(queuedLines([], [api.messages[1] as string], "", plainTheme).map((line) => line.replace(/\d+s · /, "Ns · ")), ["Queued 1", "  › sleep 30 · stopped by the user after Ns · after this turn"]);
 		assert.equal(ui.widgets.get("ct-tasks"), undefined);
-		assert.equal(ui.status.get("ct-background"), undefined);
 		await api.handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, ctx);
 		await api.handlers.get("session_start")?.({ type: "session_start", reason: "resume" }, ctx);
 		assert.equal(ui.widgets.get("ct-tasks"), undefined);
@@ -231,6 +250,58 @@ test("headless next turn receives one recovery notice for interrupted work", asy
 		await api.handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, ctx);
 		if (oldAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = oldAgentDir;
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("a TUI bash call still running after the wait moves to the background without restarting, and Ctrl+B moves one at once", async () => {
+	const root = await mkdtemp(join(tmpdir(), "ct-background-auto-"));
+	const oldAgentDir = process.env.PI_CODING_AGENT_DIR;
+	const oldSeconds = process.env.CLOUDTHINKER_AUTO_BACKGROUND_SECONDS;
+	process.env.PI_CODING_AGENT_DIR = root;
+	process.env.CLOUDTHINKER_AUTO_BACKGROUND_SECONDS = "0.3";
+	const ui = { status: new Map(), widgets: new Map() } as TestUI;
+	const ctx = createContext("auto-session", "tui", root, ui);
+	const api = createApi();
+	const bash = (command: string, context = ctx) => api.bash.execute("call", { command }, undefined, undefined, context) as Promise<{ content: { text: string }[]; details?: { backgroundTaskId?: string } }>;
+	try {
+		await api.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
+		const quick = await bash("printf quick");
+		assert.equal(quick.content[0]!.text, "quick");
+		assert.equal(quick.details?.backgroundTaskId, undefined);
+
+		const marker = join(root, "runs");
+		const moved = await bash(`echo run >> ${marker}; printf before; sleep 1.2; printf after`);
+		const taskId = moved.details?.backgroundTaskId;
+		assert.ok(taskId);
+		assert.match(moved.content[0]!.text, new RegExp(`^before\\n\\nStill running, so it moved to background command ${taskId}`));
+		assert.match(renderTasks(ui), /\$ echo run/);
+		for (let attempt = 0; attempt < 300 && api.messages.length === 0; attempt++) await new Promise((resolve) => setTimeout(resolve, 10));
+		assert.match(String(api.messages[0]), new RegExp(`${taskId} finished in 1s`));
+		const output = await execute(api.tool, ctx, { action: "output", taskId }) as { details: { text: string } };
+		assert.equal(output.details.text, "beforeafter");
+		assert.equal((await readFile(marker, "utf8")).trim().split("\n").length, 1);
+
+		process.env.CLOUDTHINKER_AUTO_BACKGROUND_SECONDS = "0";
+		const held = bash("printf held; sleep 30");
+		await new Promise((resolve) => setTimeout(resolve, 200));
+		assert.deepEqual(ui.keys!.map((handler) => handler("\u0002")), [{ consume: true }]);
+		const pressed = await held;
+		assert.ok(pressed.details?.backgroundTaskId);
+		assert.deepEqual(ui.keys!.map((handler) => handler("\u0002")), [undefined]);
+		await execute(api.tool, ctx, { action: "cancel", taskId: pressed.details!.backgroundTaskId });
+
+		const printCtx = createContext("auto-print-session", "print", root, { status: new Map(), widgets: new Map() });
+		process.env.CLOUDTHINKER_AUTO_BACKGROUND_SECONDS = "0.1";
+		const waited = await bash("sleep 0.3; printf waited", printCtx);
+		assert.equal(waited.content[0]!.text, "waited");
+		assert.equal(waited.details?.backgroundTaskId, undefined);
+	} finally {
+		await api.handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, ctx);
+		if (oldAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = oldAgentDir;
+		if (oldSeconds === undefined) delete process.env.CLOUDTHINKER_AUTO_BACKGROUND_SECONDS;
+		else process.env.CLOUDTHINKER_AUTO_BACKGROUND_SECONDS = oldSeconds;
 		await rm(root, { recursive: true, force: true });
 	}
 });

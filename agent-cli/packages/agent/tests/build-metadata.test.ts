@@ -10,7 +10,7 @@ test("CA-AD-5 release packaging identifies monorepo source and rejects malformed
 	try {
 		const pkg = join(root, "agent-cli/packages/agent");
 		mkdirSync(pkg, { recursive: true });
-		for (const path of ["scripts", "themes", ".agents", "package.json"]) {
+		for (const path of ["scripts", "themes", ".agents", "package.json", "CHANGELOG.md"]) {
 			cpSync(new URL(`../${path}`, import.meta.url), join(pkg, path), { recursive: true });
 		}
 		symlinkSync(new URL("../node_modules", import.meta.url), join(pkg, "node_modules"), "dir");

@@ -38,7 +38,7 @@ tar = { version = "0.4", default-features = false }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 
-# Copied verbatim from tools/ct-cli/Cargo.toml: hand-written crates opt in with
+# Copied verbatim from tools/ct/cli/Cargo.toml: hand-written crates opt in with
 # `[lints] workspace = true`; the generated `cloudthinker-api` crate does NOT
 # (it relaxes these at its crate root instead).
 [workspace.lints.rust]

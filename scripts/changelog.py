@@ -15,7 +15,8 @@ def packages(root):
     return {
         cli: [f"{cli}/crates/cloudthinker-cli/src/", f"{cli}/crates/cloudthinker-client/src/"],
         "agent-cli/packages/agent": ["agent-cli/packages/agent/src/"],
-        "agent-cli/packages/pi": ["agent-cli/packages/pi/src/"],
+        "agent-cli/packages/cloud": ["agent-cli/packages/cloud/src/"],
+        "agent-cli/packages/subagents": ["agent-cli/packages/subagents/src/"],
     }
 
 
