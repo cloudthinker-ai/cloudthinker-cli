@@ -148,7 +148,7 @@ test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real subagents runtime", 
 		}
 		for (const child of children) assert.match(readFileSync(child.sessionManager.getSessionFile()!, "utf8"), /child verified/);
 		registerAgents(new Map([["invalid", { name: "invalid", description: "Invalid mode", model: "anthropic/claude-opus", systemPrompt: "", promptMode: "replace", extensions: false, skills: false }]]));
-		await assert.rejects(runAgent(ctx, "invalid", "Never send", { pi }), /CloudThinker agent mode/);
+		await assert.rejects(runAgent(ctx, "invalid", "Never send", { pi }), /CloudThinker Agent mode/);
 		assert.equal(calls.length, 2);
 		const resumed = await resumeAgent(children[0]!, "Reply child verified again");
 		assert.equal(resumed.text, "child verified");
@@ -284,7 +284,7 @@ test("CA-SUB-1/2/6/7/8/11: child lifecycle through the real subagents runtime", 
 		await completedRerunRequest;
 		assert.equal(calls.filter((call) => call.conversation !== parentId).length, childCallsBeforeActiveStarts + 4);
 		clone.session.sessionManager.appendModelChange("anthropic", "claude-opus");
-		await assert.rejects(createCloudChild({ cwd: root, model: ctx.model, sessionManager: clone.session.sessionManager }, ctx), /CloudThinker agent mode/);
+		await assert.rejects(createCloudChild({ cwd: root, model: ctx.model, sessionManager: clone.session.sessionManager }, ctx), /CloudThinker Agent mode/);
 		await parent.waitForIdle();
 		parent.sessionManager.appendMessage({ role: "user", content: "Remember the codeword heron", timestamp: Date.now() });
 		const mention = await runMentionClone({ ctx, type: "Explore", message: "Count the files", agentTool });

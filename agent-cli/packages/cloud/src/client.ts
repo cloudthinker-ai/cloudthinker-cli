@@ -7,11 +7,19 @@ const SAFE_BINARY_PATH = /^\/[A-Za-z0-9._\/+-]+$/;
 
 export class CloudThinkerApiError extends Error {
 	readonly status: number;
+	readonly code: string | undefined;
+	readonly context: Record<string, unknown> | undefined;
 
-	constructor(status: number, message: string) {
+	constructor(
+		status: number,
+		message: string,
+		options: { code?: string; context?: Record<string, unknown> } = {},
+	) {
 		super(message);
 		this.name = "CloudThinkerApiError";
 		this.status = status;
+		this.code = options.code;
+		this.context = options.context;
 	}
 }
 
@@ -143,7 +151,9 @@ export interface SessionCreated {
 	workspace_id: string;
 	web_url: string;
 	auto_mode: AutoModeStatus;
+	selected_agent_reference?: string;
 }
+
 
 export interface MirrorEntryInput {
 	entry_id: string;
@@ -354,6 +364,7 @@ export class CloudThinkerClient {
 		cwd: string;
 		title?: string;
 		source_conversation_id?: string;
+		selected_agent_reference?: string;
 		skip_sandbox_warmup?: boolean;
 	}): Promise<SessionCreated> {
 		return this.json({
@@ -569,7 +580,13 @@ export class CloudThinkerClient {
 	}
 
 	submitRun(
-		body: { prompt: string; conversation_id?: string; source_conversation_id?: string },
+		body: {
+			prompt: string;
+			selection: { option_id: string; thinking_effort?: string | null };
+			conversation_id?: string;
+			source_conversation_id?: string;
+			selected_agent_reference?: string;
+		},
 		signal?: AbortSignal,
 	): Promise<RunSubmitted> {
 		return this.json({
@@ -630,7 +647,8 @@ export class CloudThinkerClient {
 
 	private async checked(response: Response): Promise<Response> {
 		if (response.ok) return response;
-		throw new CloudThinkerApiError(response.status, await readErrorMessage(response));
+		const error = await readError(response);
+		throw new CloudThinkerApiError(response.status, error.message, error);
 	}
 }
 
@@ -639,20 +657,33 @@ function describeTransportFailure(error: unknown, url: URL): string {
 	return `Could not reach ${url.origin}: ${reason}`;
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
+async function readError(response: Response): Promise<{
+	message: string;
+	code?: string;
+	context?: Record<string, unknown>;
+}> {
 	const fallback = `${response.status} ${response.statusText}`.trim();
 	let body: unknown;
 	try {
 		body = JSON.parse(await response.text());
 	} catch {
-		return fallback;
+		return { message: fallback };
 	}
-	if (typeof body !== "object" || body === null) return fallback;
-	const envelope = body as { error?: { message?: unknown }; detail?: unknown };
+	if (typeof body !== "object" || body === null) return { message: fallback };
+	const envelope = body as {
+		error?: { code?: unknown; message?: unknown; context?: unknown };
+		detail?: unknown;
+	};
 	const message = envelope.error?.message;
-	if (typeof message === "string" && message.length > 0) return message;
+	const code = envelope.error?.code;
+	const context = envelope.error?.context;
+	const details = {
+		...(typeof code === "string" && code.length > 0 ? { code } : {}),
+		...(typeof context === "object" && context !== null ? { context: context as Record<string, unknown> } : {}),
+	};
+	if (typeof message === "string" && message.length > 0) return { message, ...details };
 	const detail = envelope.detail;
-	if (typeof detail === "string" && detail.length > 0) return detail;
-	if (detail !== undefined && detail !== null) return JSON.stringify(detail);
-	return fallback;
+	if (typeof detail === "string" && detail.length > 0) return { message: detail, ...details };
+	if (detail !== undefined && detail !== null) return { message: JSON.stringify(detail), ...details };
+	return { message: fallback, ...details };
 }

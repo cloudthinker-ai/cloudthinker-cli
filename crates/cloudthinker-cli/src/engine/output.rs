@@ -12,9 +12,10 @@ use crate::engine::local_review::LocalReviewResult;
 use cloudthinker_client::{
     CliIdentity, CoverageReport, CoverageStatus, CyberApp, CyberDomain, CyberExecutionHost,
     CyberExport, CyberFinding, CyberRun, CyberRunBrief, CyberRunResult, CyberSessionEntry,
-    EvidenceReceipt, Partition, ReviewFinding, ReviewSeverityCounts, ReviewStatus, ReviewVerdict,
-    ReviewView, RunListItem, RunStatus, RunView, SettleResult, StoredWorkspace, SubmittedRun,
-    Surface, WorkPlan, worker_types::ExecutorChoicePublic,
+    EvidenceReceipt, IncidentView, Partition, RecommendationView, ReviewFinding,
+    ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView, RunListItem, RunStatus, RunView,
+    SettleResult, StoredWorkspace, SubmittedRun, Surface, WorkPlan,
+    worker_types::ExecutorChoicePublic,
 };
 use owo_colors::{AnsiColors, OwoColorize};
 use serde::Serialize;
@@ -185,6 +186,86 @@ pub fn print_run_list(runs: &[RunListItem]) -> Result<(), String> {
                 preview,
                 run.created_at.to_rfc3339(),
                 web_url
+            ),
+        )?;
+    }
+    Ok(())
+}
+
+pub fn print_incident_list(incidents: &[IncidentView]) -> Result<(), String> {
+    if incidents.is_empty() {
+        progress("No incidents match.");
+        return Ok(());
+    }
+    let mut out = std::io::stdout().lock();
+    write_line(&mut out, "INCIDENT ID\tSEVERITY\tSTATUS\tCREATED AT\tTITLE")?;
+    for incident in incidents {
+        write_line(
+            &mut out,
+            &format!(
+                "{}\t{}\t{}\t{}\t{}",
+                incident.id,
+                terminal_text(&incident.severity),
+                incident.status.label(),
+                incident.created_at.to_rfc3339(),
+                terminal_text(&incident.title)
+            ),
+        )?;
+    }
+    Ok(())
+}
+
+pub fn print_incident_status(incident: &IncidentView) -> Result<(), String> {
+    let mut out = std::io::stdout().lock();
+    write_line(&mut out, &format!("incident: {}", incident.id))?;
+    write_line(
+        &mut out,
+        &format!("title:    {}", terminal_text(&incident.title)),
+    )?;
+    write_line(&mut out, &format!("status:   {}", incident.status.label()))?;
+    write_line(
+        &mut out,
+        &format!("severity: {}", terminal_text(&incident.severity)),
+    )?;
+    write_line(
+        &mut out,
+        &format!("created:  {}", incident.created_at.to_rfc3339()),
+    )?;
+    if let Some(resolved_at) = incident.resolved_at {
+        write_line(&mut out, &format!("resolved: {}", resolved_at.to_rfc3339()))?;
+    }
+    Ok(())
+}
+
+pub fn print_recommendation_list(recommendations: &[RecommendationView]) -> Result<(), String> {
+    if recommendations.is_empty() {
+        progress("No recommendations match.");
+        return Ok(());
+    }
+    let mut out = std::io::stdout().lock();
+    write_line(
+        &mut out,
+        "RECOMMENDATION ID\tSTATUS\tSAVINGS/MONTH\tEFFORT\tRISK\tRESOURCE\tTITLE",
+    )?;
+    for recommendation in recommendations {
+        let savings = recommendation
+            .potential_savings
+            .map_or_else(|| "-".to_string(), |amount| format!("${amount:.2}"));
+        let resource = recommendation
+            .resource_name
+            .as_deref()
+            .map_or_else(|| "-".to_string(), terminal_text);
+        write_line(
+            &mut out,
+            &format!(
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                recommendation.id,
+                recommendation.status.label(),
+                savings,
+                terminal_text(&recommendation.effort),
+                terminal_text(&recommendation.risk),
+                resource,
+                terminal_text(&recommendation.title)
             ),
         )?;
     }

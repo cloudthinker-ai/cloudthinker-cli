@@ -1,6 +1,6 @@
 ---
 name: cloudthinker-cli
-description: 'Use CloudThinker through its CLI to delegate cloud work, follow conversations, inspect code reviews, or run a local Cyber pentest.'
+description: 'Use CloudThinker through its CLI to chat, follow conversations, inspect code reviews, or run a local Cyber pentest.'
 ---
 
 # CloudThinker CLI
@@ -28,7 +28,7 @@ Read every module whose signal matches the task:
 
 - `cloudthinker --skill auth` ([auth.md](auth.md)): login, identity, host selection, workspace selection, authentication errors.
 - `cloudthinker --skill cloud` ([cloud.md](cloud.md)): use Connections and MCP directly from your own agent, load guides and schemas, execute in cloud and follow approval.
-- `cloudthinker --skill chat` ([chat.md](chat.md)): delegate cloud work, recover a run, continue a conversation, timeout or approval handling.
+- `cloudthinker --skill chat` ([chat.md](chat.md)): send a CloudThinker turn, recover a run, continue a conversation, timeout or approval handling.
 - `cloudthinker --skill review` ([review.md](review.md)): inspect the status or findings of a tracked merge request or pull request.
 - `cloudthinker --skill cyber` ([cyber.md](cyber.md)): the agent's internal procedure for running a Cyber pentest on this machine.
 - `cloudthinker --skill cyber-scan` ([cyber-scan.md](cyber-scan.md)): plan and record coverage for a local Cyber run.

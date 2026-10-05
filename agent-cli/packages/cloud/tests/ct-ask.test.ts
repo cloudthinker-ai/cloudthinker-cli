@@ -96,10 +96,21 @@ test("a rendered run always names the run id, the status, and the pickup tool", 
 });
 
 test("the first ask names the session as its source and later asks continue the thread", async () => {
-	assert.deepEqual(submitBody("why", "c-1", undefined), { prompt: "why", source_conversation_id: "c-1" });
+	assert.deepEqual(submitBody("why", "c-1", undefined), {
+		prompt: "why",
+		selection: { option_id: "mode:pro" },
+		source_conversation_id: "c-1",
+	});
 	assert.deepEqual(submitBody("more", "c-1", { conversation_id: "h-1" }), {
 		prompt: "more",
+		selection: { option_id: "mode:pro" },
 		conversation_id: "h-1",
+	});
+	assert.deepEqual(submitBody("custom", "c-1", undefined, "researcher"), {
+		prompt: "custom",
+		selection: { option_id: "mode:pro" },
+		selected_agent_reference: "researcher",
+		source_conversation_id: "c-1",
 	});
 
 	const bodies: unknown[] = [];
@@ -119,6 +130,8 @@ test("the first ask names the session as its source and later asks continue the 
 		} as unknown as ExtensionAPI,
 		client,
 		hostVersionsFrom({ version: "0.4.0", piVersion: "0.85.1" }, "0.4.0"),
+		false,
+		"researcher",
 	);
 	runtime.session = {
 		conversation_id: "c-1",
@@ -133,8 +146,26 @@ test("the first ask names the session as its source and later asks continue the 
 	await tool.execute("call-1", { prompt: "why" }, undefined, undefined, ctx);
 	await tool.execute("call-2", { prompt: "more" }, undefined, undefined, ctx);
 	assert.deepEqual(bodies, [
-		{ prompt: "why", source_conversation_id: "c-1" },
-		{ prompt: "more", conversation_id: "h-1" },
+		{
+			prompt: "why",
+			selection: { option_id: "mode:pro" },
+			selected_agent_reference: "researcher",
+			source_conversation_id: "c-1",
+		},
+		{
+			prompt: "more",
+			selection: { option_id: "mode:pro" },
+			selected_agent_reference: "researcher",
+			conversation_id: "h-1",
+		},
 	]);
 	assert.equal(entries.length, 1);
+	assert.deepEqual(entries[0], {
+		type: "cloudthinker.ask_thread",
+		data: {
+			conversation_id: "h-1",
+			web_url: "http://web/h-1",
+			selected_agent_reference: "researcher",
+		},
+	});
 });

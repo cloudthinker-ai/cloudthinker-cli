@@ -1,6 +1,6 @@
 import { PROVIDER_ID } from "@cloudthinker/cloud/src/provider.ts";
 
-export const AGENT_HELP = `cloudthinker agent - the CloudThinker agent in your terminal
+export const AGENT_HELP = `cloudthinker agent - CloudThinker Agent in your terminal
 
 Usage:
   cloudthinker agent [options] [@files...] [prompt...]
@@ -36,7 +36,7 @@ Project instructions come from AGENTS.md or CLAUDE.md in your repository.
 `;
 
 export const NO_SESSION_REFUSAL = "cloudthinker agent always keeps a session; --no-session is not supported";
-export const MODEL_REFUSAL = "cloudthinker agent runs CloudThinker agent modes only: pick one with --model light, pro, or ultra (--list-models shows them)";
+export const MODEL_REFUSAL = "cloudthinker agent runs CloudThinker Agent modes only: pick one with --model light, pro, or ultra (--list-models shows them)";
 export const THINKING_REFUSAL = "--thinking is not available: each agent mode carries its own reasoning, so pick a mode with --model light, pro, or ultra";
 export const PRINT_NEEDS_PROMPT = "-p needs a prompt: cloudthinker agent -p \"your question\", or pipe one in: echo \"your question\" | cloudthinker agent -p";
 export const UPDATE_REFUSAL = "`cloudthinker agent update` is not a command: run `cloudthinker update` to update the CLI and its agent";

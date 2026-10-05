@@ -8,6 +8,79 @@ pub use progenitor_client::{ByteStream, ClientInfo, Error, ResponseValue};
 /// Types used as operation parameters and responses.
 #[allow(clippy::all)]
 pub mod types {
+    ///Service affected by an incident.
+    ///
+    ///Stores both external_id (ARN or cloud resource ID) and human-readable
+    /// name. Used by RCA agents to identify affected infrastructure and
+    /// external services.
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct AffectedService {
+        ///External resource ID (ARN for AWS, URL for external services)
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub external_id: ::std::option::Option<::std::string::String>,
+        ///Human-readable service name
+        pub name: AffectedServiceName,
+    }
+
+    ///Human-readable service name
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct AffectedServiceName(::std::string::String);
+    impl ::std::ops::Deref for AffectedServiceName {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<AffectedServiceName> for ::std::string::String {
+        fn from(value: AffectedServiceName) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for AffectedServiceName {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 256usize {
+                return Err("longer than 256 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for AffectedServiceName {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for AffectedServiceName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for AffectedServiceName {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
     ///The workspace's Auto Mode as the terminal shows it at session start.
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliAutoMode {
@@ -29,8 +102,8 @@ pub mod types {
         ///The connected Connection prefixes the terminal may pass as
         /// `connection_list`.
         pub prefixes: ::std::vec::Vec<::std::string::String>,
-        ///The `<connections_context>` block Anna reads in chat, slim, or an
-        /// empty string when nothing is connected.
+        ///The `<connections_context>` block CloudThinker reads in chat, slim,
+        /// or an empty string when nothing is connected.
         pub xml: ::std::string::String,
     }
 
@@ -419,6 +492,10 @@ pub mod types {
     pub struct AgentCliSessionCreated {
         pub auto_mode: AgentCliAutoMode,
         pub conversation_id: ::uuid::Uuid,
+        ///The resolved custom-agent UUID carried by this session, if one was
+        /// selected.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub selected_agent_reference: ::std::option::Option<::uuid::Uuid>,
         pub web_url: ::std::string::String,
         pub workspace_id: ::uuid::Uuid,
     }
@@ -2214,6 +2291,65 @@ pub mod types {
         }
     }
 
+    ///`BrowserResourceOriginsItem`
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct BrowserResourceOriginsItem(::std::string::String);
+    impl ::std::ops::Deref for BrowserResourceOriginsItem {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<BrowserResourceOriginsItem> for ::std::string::String {
+        fn from(value: BrowserResourceOriginsItem) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for BrowserResourceOriginsItem {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 100usize {
+                return Err("longer than 100 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for BrowserResourceOriginsItem {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for BrowserResourceOriginsItem {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for BrowserResourceOriginsItem {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
     ///WHY a target's `base_ref` is empty or set — resolves the `base_ref==""`
     ///overload into an explicit, observable state (Gap #3).
     ///
@@ -2323,6 +2459,21 @@ pub mod types {
         pub repository_identity: ::std::string::String,
         #[serde(default)]
         pub worktree_name: ::std::string::String,
+    }
+
+    ///Severity breakdown for child incidents.
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug, Default)]
+    pub struct ChildrenSeverityBreakdown {
+        #[serde(default)]
+        pub critical: i64,
+        #[serde(default)]
+        pub high: i64,
+        #[serde(default)]
+        pub info: i64,
+        #[serde(default)]
+        pub low: i64,
+        #[serde(default)]
+        pub medium: i64,
     }
 
     ///`ClaimAssignmentRequest`
@@ -3518,6 +3669,10 @@ pub mod types {
         ///Absolute directory the local agent session was started in. Its last
         /// path segment becomes the conversation title when `title` is omitted.
         pub cwd: CreateAgentCliSessionRequestCwd,
+        ///Optional custom-agent UUID or alias. It is resolved in the
+        /// authenticated workspace before the session is created.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub selected_agent_reference: ::std::option::Option<::std::string::String>,
         ///Skip warming the workspace sandbox when the local session does not
         /// use CloudThinker sandbox tools.
         #[serde(default)]
@@ -3730,6 +3885,122 @@ pub mod types {
         pub safety_scope: ScopeSpec,
         pub target_id: ::uuid::Uuid,
         pub target_ref: ::std::string::String,
+    }
+
+    ///`DeclarationMode`
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum DeclarationMode {
+        #[serde(rename = "active_response")]
+        ActiveResponse,
+        #[serde(rename = "retrospective")]
+        Retrospective,
+    }
+
+    impl ::std::fmt::Display for DeclarationMode {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::ActiveResponse => f.write_str("active_response"),
+                Self::Retrospective => f.write_str("retrospective"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for DeclarationMode {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "active_response" => Ok(Self::ActiveResponse),
+                "retrospective" => Ok(Self::Retrospective),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for DeclarationMode {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for DeclarationMode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///Agent self-report of what backs the claim.
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum EvidenceBasis {
+        #[serde(rename = "verified")]
+        Verified,
+        #[serde(rename = "inferred")]
+        Inferred,
+        #[serde(rename = "assumed")]
+        Assumed,
+    }
+
+    impl ::std::fmt::Display for EvidenceBasis {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Verified => f.write_str("verified"),
+                Self::Inferred => f.write_str("inferred"),
+                Self::Assumed => f.write_str("assumed"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for EvidenceBasis {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "verified" => Ok(Self::Verified),
+                "inferred" => Ok(Self::Inferred),
+                "assumed" => Ok(Self::Assumed),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for EvidenceBasis {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for EvidenceBasis {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
     }
 
     ///One bounded text or binary artifact of local evidence.
@@ -4021,7 +4292,7 @@ pub mod types {
         pub run_in_background: bool,
         ///A read-only shell command, or an inline TypeScript program whose
         /// first statement is an ES `import`/`export`. State-changing work goes
-        /// to Anna, not here.
+        /// through the CloudThinker session, not here.
         pub script: ExecuteAgentCliReadRequestScript,
         ///Seconds the executor may spend on the script. A longer read belongs
         /// in `run_in_background`, which is not bound by this cap.
@@ -4029,8 +4300,8 @@ pub mod types {
     }
 
     ///A read-only shell command, or an inline TypeScript program whose first
-    /// statement is an ES `import`/`export`. State-changing work goes to Anna,
-    /// not here.
+    /// statement is an ES `import`/`export`. State-changing work goes through
+    /// the CloudThinker session, not here.
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct ExecuteAgentCliReadRequestScript(::std::string::String);
@@ -5102,6 +5373,66 @@ pub mod types {
         pub response_truncated: bool,
     }
 
+    ///`FindingDisposition`
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum FindingDisposition {
+        #[serde(rename = "expected")]
+        Expected,
+        #[serde(rename = "snoozed")]
+        Snoozed,
+        #[serde(rename = "disputed")]
+        Disputed,
+    }
+
+    impl ::std::fmt::Display for FindingDisposition {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Expected => f.write_str("expected"),
+                Self::Snoozed => f.write_str("snoozed"),
+                Self::Disputed => f.write_str("disputed"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for FindingDisposition {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "expected" => Ok(Self::Expected),
+                "snoozed" => Ok(Self::Snoozed),
+                "disputed" => Ok(Self::Disputed),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for FindingDisposition {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for FindingDisposition {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///One browser-captured evidence image, derived from finding
     /// metadata.evidence[].
     ///
@@ -5566,6 +5897,469 @@ pub mod types {
         }
     }
 
+    ///Paginated list of incidents.
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct IncidentListPublic {
+        pub data: ::std::vec::Vec<IncidentPublic>,
+        pub meta: PaginationMeta,
+    }
+
+    ///Full incident response schema.
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct IncidentPublic {
+        pub affected_services: ::std::vec::Vec<AffectedService>,
+        #[serde(default)]
+        pub child_count: i64,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub children_severity_breakdown: ::std::option::Option<ChildrenSeverityBreakdown>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub closed_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub conversation_id: ::std::option::Option<::uuid::Uuid>,
+        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub declaration_mode: ::std::option::Option<DeclarationMode>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub declaration_reason: ::std::option::Option<::std::string::String>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub declared_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub dedup_key: ::std::option::Option<::std::string::String>,
+        ///Detailed description
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub description: ::std::option::Option<::std::string::String>,
+        pub id: ::uuid::Uuid,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub incident_connection_id: ::std::option::Option<::uuid::Uuid>,
+        ///Native Incident Room bound to this incident, absent when On-call
+        /// never opened one or a responder deleted it
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub incident_room_id: ::std::option::Option<::uuid::Uuid>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub investigation_phase: ::std::option::Option<InvestigationPhase>,
+        #[serde(default)]
+        pub is_child: bool,
+        pub is_deleted: bool,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub last_webhook_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub metadata: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+        pub occurred_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub parent_incident_id: ::std::option::Option<::uuid::Uuid>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub platform_type: ::std::option::Option<::std::string::String>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub queue_state: ::std::option::Option<IncidentQueueStatePublic>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub resolved_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub response_level: ::std::option::Option<ResponseLevel>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub severity: ::std::option::Option<Severity>,
+        pub source: IncidentSource,
+        pub status: IncidentStatus,
+        ///Incident title
+        pub title: IncidentPublicTitle,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub triage_assessed_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub triage_assessment: ::std::option::Option<TriageAssessment>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub triage_next_action: ::std::option::Option<::std::string::String>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub triage_reason: ::std::option::Option<::std::string::String>,
+        #[serde(default)]
+        pub triage_version: i64,
+        pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        #[serde(default = "defaults::default_u64::<i64, 1>")]
+        pub webhook_occurrence_count: i64,
+        pub workspace_id: ::uuid::Uuid,
+    }
+
+    ///Incident title
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct IncidentPublicTitle(::std::string::String);
+    impl ::std::ops::Deref for IncidentPublicTitle {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<IncidentPublicTitle> for ::std::string::String {
+        fn from(value: IncidentPublicTitle) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for IncidentPublicTitle {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 512usize {
+                return Err("longer than 512 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for IncidentPublicTitle {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for IncidentPublicTitle {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for IncidentPublicTitle {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///The five mutually exclusive groups in the Investigation queue.
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum IncidentQueueBucket {
+        #[serde(rename = "ai_handling")]
+        AiHandling,
+        #[serde(rename = "needs_decision")]
+        NeedsDecision,
+        #[serde(rename = "not_started")]
+        NotStarted,
+        #[serde(rename = "resolved")]
+        Resolved,
+        #[serde(rename = "dismissed")]
+        Dismissed,
+    }
+
+    impl ::std::fmt::Display for IncidentQueueBucket {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::AiHandling => f.write_str("ai_handling"),
+                Self::NeedsDecision => f.write_str("needs_decision"),
+                Self::NotStarted => f.write_str("not_started"),
+                Self::Resolved => f.write_str("resolved"),
+                Self::Dismissed => f.write_str("dismissed"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for IncidentQueueBucket {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "ai_handling" => Ok(Self::AiHandling),
+                "needs_decision" => Ok(Self::NeedsDecision),
+                "not_started" => Ok(Self::NotStarted),
+                "resolved" => Ok(Self::Resolved),
+                "dismissed" => Ok(Self::Dismissed),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for IncidentQueueBucket {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for IncidentQueueBucket {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///Why an incident is in its current queue bucket.
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum IncidentQueueReason {
+        #[serde(rename = "no_action_needed")]
+        NoActionNeeded,
+        #[serde(rename = "issue")]
+        Issue,
+        #[serde(rename = "inconclusive")]
+        Inconclusive,
+        #[serde(rename = "investigating")]
+        Investigating,
+        #[serde(rename = "verdict_ready")]
+        VerdictReady,
+        #[serde(rename = "human_input_required")]
+        HumanInputRequired,
+        #[serde(rename = "investigation_failed")]
+        InvestigationFailed,
+        #[serde(rename = "investigation_cancelled")]
+        InvestigationCancelled,
+        #[serde(rename = "result_ready")]
+        ResultReady,
+        #[serde(rename = "queued")]
+        Queued,
+        #[serde(rename = "ready_to_investigate")]
+        ReadyToInvestigate,
+        #[serde(rename = "missing_run")]
+        MissingRun,
+        #[serde(rename = "resolved")]
+        Resolved,
+        #[serde(rename = "auto_resolved")]
+        AutoResolved,
+        #[serde(rename = "false_alarm")]
+        FalseAlarm,
+    }
+
+    impl ::std::fmt::Display for IncidentQueueReason {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::NoActionNeeded => f.write_str("no_action_needed"),
+                Self::Issue => f.write_str("issue"),
+                Self::Inconclusive => f.write_str("inconclusive"),
+                Self::Investigating => f.write_str("investigating"),
+                Self::VerdictReady => f.write_str("verdict_ready"),
+                Self::HumanInputRequired => f.write_str("human_input_required"),
+                Self::InvestigationFailed => f.write_str("investigation_failed"),
+                Self::InvestigationCancelled => f.write_str("investigation_cancelled"),
+                Self::ResultReady => f.write_str("result_ready"),
+                Self::Queued => f.write_str("queued"),
+                Self::ReadyToInvestigate => f.write_str("ready_to_investigate"),
+                Self::MissingRun => f.write_str("missing_run"),
+                Self::Resolved => f.write_str("resolved"),
+                Self::AutoResolved => f.write_str("auto_resolved"),
+                Self::FalseAlarm => f.write_str("false_alarm"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for IncidentQueueReason {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "no_action_needed" => Ok(Self::NoActionNeeded),
+                "issue" => Ok(Self::Issue),
+                "inconclusive" => Ok(Self::Inconclusive),
+                "investigating" => Ok(Self::Investigating),
+                "verdict_ready" => Ok(Self::VerdictReady),
+                "human_input_required" => Ok(Self::HumanInputRequired),
+                "investigation_failed" => Ok(Self::InvestigationFailed),
+                "investigation_cancelled" => Ok(Self::InvestigationCancelled),
+                "result_ready" => Ok(Self::ResultReady),
+                "queued" => Ok(Self::Queued),
+                "ready_to_investigate" => Ok(Self::ReadyToInvestigate),
+                "missing_run" => Ok(Self::MissingRun),
+                "resolved" => Ok(Self::Resolved),
+                "auto_resolved" => Ok(Self::AutoResolved),
+                "false_alarm" => Ok(Self::FalseAlarm),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for IncidentQueueReason {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for IncidentQueueReason {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///The server-owned Investigation queue state for one incident.
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct IncidentQueueStatePublic {
+        pub bucket: IncidentQueueBucket,
+        pub reason: IncidentQueueReason,
+        pub since_at: ::chrono::DateTime<::chrono::offset::Utc>,
+    }
+
+    ///Source of incident creation.
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum IncidentSource {
+        #[serde(rename = "webhook")]
+        Webhook,
+        #[serde(rename = "manual")]
+        Manual,
+        #[serde(rename = "api")]
+        Api,
+    }
+
+    impl ::std::fmt::Display for IncidentSource {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Webhook => f.write_str("webhook"),
+                Self::Manual => f.write_str("manual"),
+                Self::Api => f.write_str("api"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for IncidentSource {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "webhook" => Ok(Self::Webhook),
+                "manual" => Ok(Self::Manual),
+                "api" => Ok(Self::Api),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for IncidentSource {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for IncidentSource {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///Incident lifecycle status.
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum IncidentStatus {
+        #[serde(rename = "OPEN")]
+        Open,
+        #[serde(rename = "ACKNOWLEDGED")]
+        Acknowledged,
+        #[serde(rename = "INVESTIGATING")]
+        Investigating,
+        #[serde(rename = "IDENTIFIED")]
+        Identified,
+        #[serde(rename = "ON_HOLD")]
+        OnHold,
+        #[serde(rename = "NOT_FOUND")]
+        NotFound,
+        #[serde(rename = "FALSE_ALARM")]
+        FalseAlarm,
+        #[serde(rename = "RESOLVED")]
+        Resolved,
+        #[serde(rename = "AUTO_RESOLVED")]
+        AutoResolved,
+    }
+
+    impl ::std::fmt::Display for IncidentStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Open => f.write_str("OPEN"),
+                Self::Acknowledged => f.write_str("ACKNOWLEDGED"),
+                Self::Investigating => f.write_str("INVESTIGATING"),
+                Self::Identified => f.write_str("IDENTIFIED"),
+                Self::OnHold => f.write_str("ON_HOLD"),
+                Self::NotFound => f.write_str("NOT_FOUND"),
+                Self::FalseAlarm => f.write_str("FALSE_ALARM"),
+                Self::Resolved => f.write_str("RESOLVED"),
+                Self::AutoResolved => f.write_str("AUTO_RESOLVED"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for IncidentStatus {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "OPEN" => Ok(Self::Open),
+                "ACKNOWLEDGED" => Ok(Self::Acknowledged),
+                "INVESTIGATING" => Ok(Self::Investigating),
+                "IDENTIFIED" => Ok(Self::Identified),
+                "ON_HOLD" => Ok(Self::OnHold),
+                "NOT_FOUND" => Ok(Self::NotFound),
+                "FALSE_ALARM" => Ok(Self::FalseAlarm),
+                "RESOLVED" => Ok(Self::Resolved),
+                "AUTO_RESOLVED" => Ok(Self::AutoResolved),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for IncidentStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for IncidentStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///`IncludeItem`
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
@@ -5684,6 +6478,66 @@ pub mod types {
     }
 
     impl ::std::convert::TryFrom<::std::string::String> for Intensity {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`InvestigationPhase`
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum InvestigationPhase {
+        #[serde(rename = "quiet")]
+        Quiet,
+        #[serde(rename = "active_response")]
+        ActiveResponse,
+        #[serde(rename = "retrospective")]
+        Retrospective,
+    }
+
+    impl ::std::fmt::Display for InvestigationPhase {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Quiet => f.write_str("quiet"),
+                Self::ActiveResponse => f.write_str("active_response"),
+                Self::Retrospective => f.write_str("retrospective"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for InvestigationPhase {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "quiet" => Ok(Self::Quiet),
+                "active_response" => Ok(Self::ActiveResponse),
+                "retrospective" => Ok(Self::Retrospective),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for InvestigationPhase {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for InvestigationPhase {
         type Error = self::error::ConversionError;
         fn try_from(
             value: ::std::string::String,
@@ -7036,6 +7890,78 @@ pub mod types {
         pub session_id: ::uuid::Uuid,
     }
 
+    ///`PillarId`
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum PillarId {
+        #[serde(rename = "COST_OPTIMIZATION")]
+        CostOptimization,
+        #[serde(rename = "SECURITY")]
+        Security,
+        #[serde(rename = "OPERATIONAL_EXCELLENCE")]
+        OperationalExcellence,
+        #[serde(rename = "RELIABILITY")]
+        Reliability,
+        #[serde(rename = "PERFORMANCE_EFFICIENCY")]
+        PerformanceEfficiency,
+        #[serde(rename = "SUSTAINABILITY")]
+        Sustainability,
+    }
+
+    impl ::std::fmt::Display for PillarId {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::CostOptimization => f.write_str("COST_OPTIMIZATION"),
+                Self::Security => f.write_str("SECURITY"),
+                Self::OperationalExcellence => f.write_str("OPERATIONAL_EXCELLENCE"),
+                Self::Reliability => f.write_str("RELIABILITY"),
+                Self::PerformanceEfficiency => f.write_str("PERFORMANCE_EFFICIENCY"),
+                Self::Sustainability => f.write_str("SUSTAINABILITY"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for PillarId {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "COST_OPTIMIZATION" => Ok(Self::CostOptimization),
+                "SECURITY" => Ok(Self::Security),
+                "OPERATIONAL_EXCELLENCE" => Ok(Self::OperationalExcellence),
+                "RELIABILITY" => Ok(Self::Reliability),
+                "PERFORMANCE_EFFICIENCY" => Ok(Self::PerformanceEfficiency),
+                "SUSTAINABILITY" => Ok(Self::Sustainability),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for PillarId {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for PillarId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///One in-scope row and the check a host executes for it.
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct PlanCheckPublic {
@@ -7046,6 +7972,508 @@ pub mod types {
         pub note: ::std::string::String,
         pub row_id: ::std::string::String,
         pub url: ::std::string::String,
+    }
+
+    ///`QuickWinClass`
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum QuickWinClass {
+        #[serde(rename = "quick_win")]
+        QuickWin,
+        #[serde(rename = "needs_review")]
+        NeedsReview,
+        #[serde(rename = "no_action")]
+        NoAction,
+    }
+
+    impl ::std::fmt::Display for QuickWinClass {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::QuickWin => f.write_str("quick_win"),
+                Self::NeedsReview => f.write_str("needs_review"),
+                Self::NoAction => f.write_str("no_action"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for QuickWinClass {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "quick_win" => Ok(Self::QuickWin),
+                "needs_review" => Ok(Self::NeedsReview),
+                "no_action" => Ok(Self::NoAction),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for QuickWinClass {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for QuickWinClass {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///Lightweight schema for list endpoints — excludes heavy fields.
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct RecommendationListPublic {
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub assigned_to: ::std::option::Option<::uuid::Uuid>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub assignee_avatar_url: ::std::option::Option<::std::string::String>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub assignee_name: ::std::option::Option<::std::string::String>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub conversation_id: ::std::option::Option<::uuid::Uuid>,
+        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub created_by: ::uuid::Uuid,
+        pub description: ::std::string::String,
+        #[serde(default)]
+        pub discussion_count: i64,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub disposition: ::std::option::Option<FindingDisposition>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub disposition_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub disposition_by: ::std::option::Option<::uuid::Uuid>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub disposition_by_name: ::std::option::Option<::std::string::String>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub disposition_reason: ::std::option::Option<::std::string::String>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub disposition_until: ::std::option::Option<::chrono::naive::NaiveDate>,
+        pub effort: RecommendationListPublicEffort,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub evidence_basis: ::std::option::Option<EvidenceBasis>,
+        pub id: ::uuid::Uuid,
+        #[serde(default)]
+        pub is_stale: bool,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub keeper_id: ::std::option::Option<::std::string::String>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub keeper_name: ::std::option::Option<::std::string::String>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub keeper_pillar: ::std::option::Option<::std::string::String>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub last_verified_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default)]
+        pub number: i64,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub pillar_id: ::std::option::Option<PillarId>,
+        #[serde(default)]
+        pub position: i64,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub potential_savings: ::std::option::Option<f64>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub quick_win_class: ::std::option::Option<QuickWinClass>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub resource_id: ::std::option::Option<::uuid::Uuid>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub resource_name: ::std::option::Option<::std::string::String>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub resource_type: ::std::option::Option<::std::string::String>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub reversible: ::std::option::Option<bool>,
+        pub risk: RecommendationListPublicRisk,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub source_id: ::std::option::Option<::uuid::Uuid>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub source_type: ::std::option::Option<RecommendationSourceType>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub status: ::std::option::Option<RecommendationStatus>,
+        pub title: RecommendationListPublicTitle,
+        #[serde(rename = "type")]
+        pub type_: ::std::string::String,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub visibility: ::std::option::Option<RecommendationVisibility>,
+    }
+
+    ///`RecommendationListPublicEffort`
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct RecommendationListPublicEffort(::std::string::String);
+    impl ::std::ops::Deref for RecommendationListPublicEffort {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<RecommendationListPublicEffort> for ::std::string::String {
+        fn from(value: RecommendationListPublicEffort) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for RecommendationListPublicEffort {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 50usize {
+                return Err("longer than 50 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RecommendationListPublicEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RecommendationListPublicEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for RecommendationListPublicEffort {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`RecommendationListPublicRisk`
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct RecommendationListPublicRisk(::std::string::String);
+    impl ::std::ops::Deref for RecommendationListPublicRisk {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<RecommendationListPublicRisk> for ::std::string::String {
+        fn from(value: RecommendationListPublicRisk) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for RecommendationListPublicRisk {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 50usize {
+                return Err("longer than 50 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RecommendationListPublicRisk {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RecommendationListPublicRisk {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for RecommendationListPublicRisk {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`RecommendationListPublicTitle`
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct RecommendationListPublicTitle(::std::string::String);
+    impl ::std::ops::Deref for RecommendationListPublicTitle {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<RecommendationListPublicTitle> for ::std::string::String {
+        fn from(value: RecommendationListPublicTitle) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for RecommendationListPublicTitle {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 255usize {
+                return Err("longer than 255 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RecommendationListPublicTitle {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RecommendationListPublicTitle {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for RecommendationListPublicTitle {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`RecommendationSourceType`
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum RecommendationSourceType {
+        #[serde(rename = "assessment")]
+        Assessment,
+        #[serde(rename = "conversation")]
+        Conversation,
+        #[serde(rename = "manual")]
+        Manual,
+        #[serde(rename = "cloudkeepers")]
+        Cloudkeepers,
+        #[serde(rename = "costops")]
+        Costops,
+    }
+
+    impl ::std::fmt::Display for RecommendationSourceType {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Assessment => f.write_str("assessment"),
+                Self::Conversation => f.write_str("conversation"),
+                Self::Manual => f.write_str("manual"),
+                Self::Cloudkeepers => f.write_str("cloudkeepers"),
+                Self::Costops => f.write_str("costops"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for RecommendationSourceType {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "assessment" => Ok(Self::Assessment),
+                "conversation" => Ok(Self::Conversation),
+                "manual" => Ok(Self::Manual),
+                "cloudkeepers" => Ok(Self::Cloudkeepers),
+                "costops" => Ok(Self::Costops),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RecommendationSourceType {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RecommendationSourceType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`RecommendationStatus`
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum RecommendationStatus {
+        #[serde(rename = "pending")]
+        Pending,
+        #[serde(rename = "implemented")]
+        Implemented,
+        #[serde(rename = "ignored")]
+        Ignored,
+        #[serde(rename = "in_progress")]
+        InProgress,
+    }
+
+    impl ::std::fmt::Display for RecommendationStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Pending => f.write_str("pending"),
+                Self::Implemented => f.write_str("implemented"),
+                Self::Ignored => f.write_str("ignored"),
+                Self::InProgress => f.write_str("in_progress"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for RecommendationStatus {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "pending" => Ok(Self::Pending),
+                "implemented" => Ok(Self::Implemented),
+                "ignored" => Ok(Self::Ignored),
+                "in_progress" => Ok(Self::InProgress),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RecommendationStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RecommendationStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`RecommendationVisibility`
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum RecommendationVisibility {
+        #[serde(rename = "draft")]
+        Draft,
+        #[serde(rename = "active")]
+        Active,
+        #[serde(rename = "archived")]
+        Archived,
+    }
+
+    impl ::std::fmt::Display for RecommendationVisibility {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Draft => f.write_str("draft"),
+                Self::Active => f.write_str("active"),
+                Self::Archived => f.write_str("archived"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for RecommendationVisibility {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "draft" => Ok(Self::Draft),
+                "active" => Ok(Self::Active),
+                "archived" => Ok(Self::Archived),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RecommendationVisibility {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RecommendationVisibility {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///Paginated list response wrapper using lightweight schema.
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct RecommendationsListPublic {
+        pub data: ::std::vec::Vec<RecommendationListPublic>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub meta: ::std::option::Option<PaginationMeta>,
     }
 
     ///Request to refresh access token.
@@ -7620,6 +9048,62 @@ pub mod types {
         }
     }
 
+    ///`ResponseLevel`
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ResponseLevel {
+        #[serde(rename = "page_responders")]
+        PageResponders,
+        #[serde(rename = "track_only")]
+        TrackOnly,
+    }
+
+    impl ::std::fmt::Display for ResponseLevel {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::PageResponders => f.write_str("page_responders"),
+                Self::TrackOnly => f.write_str("track_only"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ResponseLevel {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "page_responders" => Ok(Self::PageResponders),
+                "track_only" => Ok(Self::TrackOnly),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ResponseLevel {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ResponseLevel {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///How much reviewer attention a change likely demands, as a triage badge.
     ///
     ///A single glance signal next to the verdict: LIGHT changes can be
@@ -7830,6 +9314,20 @@ pub mod types {
         }
     }
 
+    ///`RunGeneratedAccountPublic`
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct RunGeneratedAccountPublic {
+        #[serde(deserialize_with = "::std::option::Option::deserialize")]
+        pub created: ::std::option::Option<bool>,
+        pub generator_name: ::std::string::String,
+        pub id: ::uuid::Uuid,
+        #[serde(deserialize_with = "::std::option::Option::deserialize")]
+        pub login_proven: ::std::option::Option<bool>,
+        #[serde(deserialize_with = "::std::option::Option::deserialize")]
+        pub reason: ::std::option::Option<::std::string::String>,
+        pub role: ::std::string::String,
+    }
+
     ///Request body for POST /appsec/apps/{app_id}/runs.
     ///
     ///run_scope narrows the App's scope for this run — MUST be ⊆ app.scope.
@@ -7950,6 +9448,8 @@ pub mod types {
         #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub finished_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub frameworks: ::std::vec::Vec<OwaspFramework>,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub generated_accounts: ::std::vec::Vec<RunGeneratedAccountPublic>,
         pub id: ::uuid::Uuid,
         pub intensity: ::std::string::String,
         pub mode: Mode,
@@ -8245,6 +9745,8 @@ pub mod types {
     #[serde(deny_unknown_fields)]
     pub struct ScopeSpec {
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub browser_resource_origins: ::std::vec::Vec<BrowserResourceOriginsItem>,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub exclude: ::std::vec::Vec<ExcludeItem>,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub include: ::std::vec::Vec<IncludeItem>,
@@ -8385,6 +9887,10 @@ pub mod types {
         #[serde(skip_serializing_if = "::std::option::Option::is_none")]
         pub credential_ref: ::std::option::Option<::uuid::Uuid>,
         pub kind: ScriptRunKind,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub needs_skills: ::std::option::Option<bool>,
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub renew_idle_timer: ::std::option::Option<bool>,
         pub script: ::std::string::String,
         #[serde(skip_serializing_if = "::std::option::Option::is_none")]
         pub task_id: ::std::option::Option<::std::string::String>,
@@ -8990,9 +10496,8 @@ pub mod types {
 
     ///Body for `POST /cli/runs`.
     ///
-    ///`agent_mode` is intentionally NOT exposed in V1 — the server picks the
-    /// tier (Starter is coerced to Light at submit; every other plan runs
-    /// the default).
+    ///The selected custom agent is an identity reference and is independent
+    /// from the model selection.
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SubmitHeadlessRunRequest {
         ///Optional. Continue this existing conversation (a run is attached to
@@ -9006,6 +10511,10 @@ pub mod types {
         #[serde(skip_serializing_if = "::std::option::Option::is_none")]
         pub idempotency_key: ::std::option::Option<SubmitHeadlessRunRequestIdempotencyKey>,
         pub prompt: SubmitHeadlessRunRequestPrompt,
+        ///Optional custom-agent UUID or alias. It is resolved in the
+        /// authenticated workspace before the run is reserved.
+        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub selected_agent_reference: ::std::option::Option<::std::string::String>,
         pub selection: SavedSelection,
         ///Optional. The AGENT_CLI conversation whose terminal watches this
         /// run. Only for a new run: it cannot be combined with
@@ -10316,6 +11825,74 @@ pub mod types {
         >,
         #[serde(skip_serializing_if = "::std::option::Option::is_none")]
         pub workspace_id: ::std::option::Option<::uuid::Uuid>,
+    }
+
+    ///`TriageAssessment`
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum TriageAssessment {
+        #[serde(rename = "pending")]
+        Pending,
+        #[serde(rename = "no_action_needed")]
+        NoActionNeeded,
+        #[serde(rename = "issue")]
+        Issue,
+        #[serde(rename = "incident_warranted")]
+        IncidentWarranted,
+        #[serde(rename = "inconclusive")]
+        Inconclusive,
+    }
+
+    impl ::std::fmt::Display for TriageAssessment {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Pending => f.write_str("pending"),
+                Self::NoActionNeeded => f.write_str("no_action_needed"),
+                Self::Issue => f.write_str("issue"),
+                Self::IncidentWarranted => f.write_str("incident_warranted"),
+                Self::Inconclusive => f.write_str("inconclusive"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for TriageAssessment {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "pending" => Ok(Self::Pending),
+                "no_action_needed" => Ok(Self::NoActionNeeded),
+                "issue" => Ok(Self::Issue),
+                "incident_warranted" => Ok(Self::IncidentWarranted),
+                "inconclusive" => Ok(Self::Inconclusive),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for TriageAssessment {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for TriageAssessment {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
     }
 
     ///Human work-tracking on an open finding — NOT a finding status.
@@ -14354,6 +15931,164 @@ impl Client {
         }
     }
 
+    ///List incidents
+    ///
+    ///List incidents with filters and pagination.
+    ///
+    ///By default, excludes child incidents (include_children=False).
+    ///
+    ///Sends a `GET` request to `/api/v1/incidents/`
+    ///
+    ///Arguments:
+    /// - `awaiting_approval`: Only incidents with at least one runbook
+    ///   execution whose approval is still pending
+    /// - `bound_closed_queues`: Cap Resolved and Dismissed incidents at the
+    ///   last 30 days. Open incidents are never capped. The investigation queue
+    ///   sets this; history readers leave it off.
+    /// - `bucket`
+    /// - `closed_since`: Only Resolved and Dismissed incidents closed after
+    ///   this time. Open incidents are never filtered by it.
+    /// - `from`
+    /// - `include_children`: Include child incidents in list
+    /// - `limit`: Maximum records to return
+    /// - `page`: Page number (1-based)
+    /// - `search`: Search in title/description
+    /// - `severity`
+    /// - `sort_by`: Sort field. 'queue_priority' orders by investigation queue
+    ///   bucket first (AI handling, Needs decision, Not started, Resolved,
+    ///   Dismissed) and by recency inside each bucket, so no bucket is starved
+    ///   by paging.
+    /// - `sort_order`: Sort order
+    /// - `status`
+    /// - `to`
+    /// - `workspace_id`
+    pub async fn incidents_list_incidents<'a>(
+        &'a self,
+        awaiting_approval: Option<bool>,
+        bound_closed_queues: Option<bool>,
+        bucket: Option<&'a ::std::vec::Vec<types::IncidentQueueBucket>>,
+        closed_since: Option<&'a ::chrono::DateTime<::chrono::offset::Utc>>,
+        from: Option<&'a ::chrono::DateTime<::chrono::offset::Utc>>,
+        include_children: Option<bool>,
+        limit: Option<::std::num::NonZeroU64>,
+        page: Option<::std::num::NonZeroU64>,
+        search: Option<&'a str>,
+        severity: Option<&'a ::std::vec::Vec<types::Severity>>,
+        sort_by: Option<&'a str>,
+        sort_order: Option<types::SortOrder>,
+        status: Option<&'a ::std::vec::Vec<types::IncidentStatus>>,
+        to: Option<&'a ::chrono::DateTime<::chrono::offset::Utc>>,
+        workspace_id: Option<&'a ::serde_json::Value>,
+    ) -> Result<ResponseValue<types::IncidentListPublic>, Error<()>> {
+        let url = format!("{}/api/v1/incidents/", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new(
+                "awaiting_approval",
+                &awaiting_approval,
+            ))
+            .query(&progenitor_client::QueryParam::new(
+                "bound_closed_queues",
+                &bound_closed_queues,
+            ))
+            .query(&progenitor_client::QueryParam::new("bucket", &bucket))
+            .query(&progenitor_client::QueryParam::new(
+                "closed_since",
+                &closed_since,
+            ))
+            .query(&progenitor_client::QueryParam::new("from", &from))
+            .query(&progenitor_client::QueryParam::new(
+                "include_children",
+                &include_children,
+            ))
+            .query(&progenitor_client::QueryParam::new("limit", &limit))
+            .query(&progenitor_client::QueryParam::new("page", &page))
+            .query(&progenitor_client::QueryParam::new("search", &search))
+            .query(&progenitor_client::QueryParam::new("severity", &severity))
+            .query(&progenitor_client::QueryParam::new("sort_by", &sort_by))
+            .query(&progenitor_client::QueryParam::new(
+                "sort_order",
+                &sort_order,
+            ))
+            .query(&progenitor_client::QueryParam::new("status", &status))
+            .query(&progenitor_client::QueryParam::new("to", &to))
+            .query(&progenitor_client::QueryParam::new(
+                "workspace_id",
+                &workspace_id,
+            ))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "incidents_list_incidents",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Get incident detail
+    ///
+    ///Get incident by ID.
+    ///
+    ///Sends a `GET` request to `/api/v1/incidents/{incident_id}`
+    pub async fn incidents_get_incident<'a>(
+        &'a self,
+        incident_id: &'a ::uuid::Uuid,
+        workspace_id: Option<&'a ::serde_json::Value>,
+    ) -> Result<ResponseValue<types::IncidentPublic>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/incidents/{}",
+            self.baseurl,
+            encode_path(&incident_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new(
+                "workspace_id",
+                &workspace_id,
+            ))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "incidents_get_incident",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
     ///Start Cli Device Authorization
     ///
     ///Create a short-lived device authorization for an outbound-only CLI.
@@ -14554,6 +16289,136 @@ impl Client {
             .build()?;
         let info = OperationInfo {
             operation_id: "login_refresh_token",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Read Recommendations
+    ///
+    ///Sends a `GET` request to `/api/v1/recommendations/`
+    ///
+    ///Arguments:
+    /// - `assessment_id`
+    /// - `assigned_to`
+    /// - `conversation_id`
+    /// - `end_date`
+    /// - `limit`: Page size limit
+    /// - `order_by`
+    /// - `order_direction`
+    /// - `order_savings`
+    /// - `pillar_id`
+    /// - `resource_id`
+    /// - `resource_name`
+    /// - `resource_type`
+    /// - `search`
+    /// - `skip`
+    /// - `source_type`
+    /// - `start_date`
+    /// - `status`
+    /// - `visibility`
+    /// - `workspace_id`
+    pub async fn recommendations_read_recommendations<'a>(
+        &'a self,
+        assessment_id: Option<&'a ::std::vec::Vec<::std::string::String>>,
+        assigned_to: Option<&'a ::uuid::Uuid>,
+        conversation_id: Option<&'a ::uuid::Uuid>,
+        end_date: Option<&'a ::chrono::DateTime<::chrono::offset::Utc>>,
+        limit: Option<::std::num::NonZeroU64>,
+        order_by: Option<&'a str>,
+        order_direction: Option<&'a str>,
+        order_savings: Option<&'a str>,
+        pillar_id: Option<&'a ::std::vec::Vec<::std::string::String>>,
+        resource_id: Option<&'a ::std::vec::Vec<::std::string::String>>,
+        resource_name: Option<&'a ::std::vec::Vec<::std::string::String>>,
+        resource_type: Option<&'a ::std::vec::Vec<::std::string::String>>,
+        search: Option<&'a str>,
+        skip: Option<i64>,
+        source_type: Option<&'a ::std::vec::Vec<::std::string::String>>,
+        start_date: Option<&'a ::chrono::DateTime<::chrono::offset::Utc>>,
+        status: Option<&'a ::std::vec::Vec<::std::string::String>>,
+        visibility: Option<&'a ::std::vec::Vec<::std::string::String>>,
+        workspace_id: Option<&'a ::serde_json::Value>,
+    ) -> Result<ResponseValue<types::RecommendationsListPublic>, Error<()>> {
+        let url = format!("{}/api/v1/recommendations/", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new(
+                "assessment_id",
+                &assessment_id,
+            ))
+            .query(&progenitor_client::QueryParam::new(
+                "assigned_to",
+                &assigned_to,
+            ))
+            .query(&progenitor_client::QueryParam::new(
+                "conversation_id",
+                &conversation_id,
+            ))
+            .query(&progenitor_client::QueryParam::new("end_date", &end_date))
+            .query(&progenitor_client::QueryParam::new("limit", &limit))
+            .query(&progenitor_client::QueryParam::new("order_by", &order_by))
+            .query(&progenitor_client::QueryParam::new(
+                "order_direction",
+                &order_direction,
+            ))
+            .query(&progenitor_client::QueryParam::new(
+                "order_savings",
+                &order_savings,
+            ))
+            .query(&progenitor_client::QueryParam::new("pillar_id", &pillar_id))
+            .query(&progenitor_client::QueryParam::new(
+                "resource_id",
+                &resource_id,
+            ))
+            .query(&progenitor_client::QueryParam::new(
+                "resource_name",
+                &resource_name,
+            ))
+            .query(&progenitor_client::QueryParam::new(
+                "resource_type",
+                &resource_type,
+            ))
+            .query(&progenitor_client::QueryParam::new("search", &search))
+            .query(&progenitor_client::QueryParam::new("skip", &skip))
+            .query(&progenitor_client::QueryParam::new(
+                "source_type",
+                &source_type,
+            ))
+            .query(&progenitor_client::QueryParam::new(
+                "start_date",
+                &start_date,
+            ))
+            .query(&progenitor_client::QueryParam::new("status", &status))
+            .query(&progenitor_client::QueryParam::new(
+                "visibility",
+                &visibility,
+            ))
+            .query(&progenitor_client::QueryParam::new(
+                "workspace_id",
+                &workspace_id,
+            ))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "recommendations_read_recommendations",
         };
         self.pre(&mut request, &info).await?;
         let result = self.exec(request, &info).await;

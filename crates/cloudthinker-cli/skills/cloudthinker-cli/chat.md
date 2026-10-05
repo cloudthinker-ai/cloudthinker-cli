@@ -1,6 +1,6 @@
-# Delegate and follow conversations
+# Chat and follow conversations
 
-Read this module to delegate cloud work or recover and continue a conversation. Establish the intended identity using the auth module before the first authenticated command.
+Read this module to send a CloudThinker turn or recover and continue a conversation. Establish the intended identity using the auth module before the first authenticated command.
 
 ## Submit one bounded task
 
@@ -28,9 +28,12 @@ Inspect `status`, `answer`, `web_url`, `message`, and `failure_kind` as well as 
 cloudthinker chat ls --limit 10 --json
 cloudthinker chat ls --conversation '<conversation-id>' --limit 10 --json
 cloudthinker chat -p 'Explain the evidence behind that conclusion.' --continue '<conversation-id>' --no-wait --json
+cloudthinker chat -p 'Review this repository' --agent '<custom-agent-uuid-or-alias>'
 ```
 
 Use recent runs to find an explicitly identified task, not to assume the newest row is the user's conversation. Ask for clarification if several match. `--continue` accepts a run ID or conversation ID for a HEADLESS or CHAT conversation in the selected workspace. Other feature-owned conversation types cannot be continued here.
+
+`--agent` selects one authorized custom agent by UUID or alias for the turn. It is independent from model selection; an unavailable or deleted custom agent is rejected by the server.
 
 Only one turn runs in a conversation at a time. Wait for its active run to finish before continuing. A `stream_already_active` failure means another producer still owns the conversation; follow that work before retrying.
 

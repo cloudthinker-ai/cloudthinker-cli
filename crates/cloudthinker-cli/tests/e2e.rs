@@ -2038,7 +2038,7 @@ fn agent_help_prints_without_a_release_offer_or_the_agent() {
         "a help request must not offer a release, got:\n{output}"
     );
     assert!(
-        output.contains("cloudthinker agent - the CloudThinker agent in your terminal"),
+        output.contains("cloudthinker agent - CloudThinker Agent in your terminal"),
         "expected the agent's help, got:\n{output}"
     );
     assert!(
@@ -3120,4 +3120,214 @@ fn cloud_reference_read_uses_empty_connection_scope() {
         body.get("connection_list")
             .is_none_or(|scope| scope.as_array().unwrap().is_empty())
     );
+}
+
+const INCIDENT_ID: &str = "33333333-3333-4333-8333-333333333333";
+
+fn incident_json(status: &str, resolved_at: Option<&str>) -> serde_json::Value {
+    serde_json::json!({
+        "id": INCIDENT_ID,
+        "workspace_id": RUN_ID,
+        "title": "checkout latency alarm",
+        "severity": "high",
+        "status": status,
+        "source": "webhook",
+        "affected_services": [],
+        "metadata": {},
+        "created_at": "2026-07-20T00:00:00Z",
+        "updated_at": "2026-07-20T00:05:00Z",
+        "occurred_at": "2026-07-20T00:00:00Z",
+        "resolved_at": resolved_at,
+        "is_child": false,
+        "is_deleted": false
+    })
+}
+
+fn incident_page(incidents: Vec<serde_json::Value>) -> String {
+    let total = incidents.len();
+    serde_json::json!({
+        "data": incidents,
+        "meta": {
+            "page": 1,
+            "take": 25,
+            "start_index": 0,
+            "end_index": total,
+            "total_items": total,
+            "total_pages": 1,
+            "has_next": false,
+            "has_previous": false
+        }
+    })
+    .to_string()
+}
+
+#[test]
+fn incident_ls_renders_table_json_and_status_filter() {
+    let api = RecordingApi::start(vec![
+        (
+            "200 OK",
+            incident_page(vec![incident_json("INVESTIGATING", None)]),
+        ),
+        (
+            "200 OK",
+            incident_page(vec![incident_json("INVESTIGATING", None)]),
+        ),
+        ("200 OK", incident_page(vec![])),
+    ]);
+    cli(&api.base_url)
+        .args([
+            "incident",
+            "ls",
+            "--status",
+            "investigating",
+            "--limit",
+            "5",
+        ])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(INCIDENT_ID))
+        .stdout(predicates::str::contains("checkout latency alarm"))
+        .stdout(predicates::str::contains("investigating"));
+
+    let output = cli(&api.base_url)
+        .args(["incident", "ls", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(value[0]["id"], INCIDENT_ID);
+    assert_eq!(value[0]["status"], "INVESTIGATING");
+    assert_eq!(value[0]["terminal"], false);
+
+    cli(&api.base_url)
+        .args(["incident", "ls"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr(predicates::str::contains("No incidents match."));
+
+    let requests = api.requests();
+    assert!(requests[0].contains("status=INVESTIGATING"));
+    assert!(requests[0].contains("limit=5"));
+}
+
+#[test]
+fn incident_status_wait_polls_until_a_terminal_status_and_exits_zero() {
+    let api = RecordingApi::start(vec![
+        ("200 OK", incident_json("INVESTIGATING", None).to_string()),
+        (
+            "200 OK",
+            incident_json("RESOLVED", Some("2026-07-20T00:30:00Z")).to_string(),
+        ),
+    ]);
+    let output = cli(&api.base_url)
+        .args(["incident", "status", INCIDENT_ID, "--wait", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(value["status"], "RESOLVED");
+    assert_eq!(value["terminal"], true);
+    assert_eq!(api.requests().len(), 2);
+}
+
+#[test]
+fn incident_status_reads_one_snapshot_times_out_and_reports_unknown_ids() {
+    let open = MockApi::start(incident_json("IDENTIFIED", None).to_string());
+    cli(&open.base_url)
+        .args(["incident", "status", INCIDENT_ID])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("status:   identified"));
+    cli(&open.base_url)
+        .args([
+            "incident",
+            "status",
+            INCIDENT_ID,
+            "--wait",
+            "--timeout",
+            "0",
+        ])
+        .assert()
+        .code(4)
+        .stderr(predicates::str::contains("incident status"));
+
+    let missing = MockApi::start_with_status(
+        "404 Not Found",
+        serde_json::json!({"detail": "Incident not found"}).to_string(),
+    );
+    cli(&missing.base_url)
+        .args(["incident", "status", INCIDENT_ID])
+        .assert()
+        .code(1)
+        .stderr(predicates::str::contains("incident not found"));
+}
+
+#[test]
+fn recommendations_ls_renders_savings_json_and_status_filter() {
+    let recommendation = serde_json::json!({
+        "id": RUN_ID,
+        "type": "Cost Optimization - Rightsizing",
+        "title": "Downsize the idle batch instance",
+        "description": "The instance averages 3 percent CPU.",
+        "potential_savings": 120.5,
+        "effort": "low",
+        "risk": "low",
+        "status": "pending",
+        "resource_name": "batch-worker",
+        "created_by": CONV_ID,
+        "created_at": "2026-07-20T00:00:00Z",
+        "discussion_count": 0,
+        "position": 0,
+        "number": 7,
+        "is_stale": false
+    });
+    let page = serde_json::json!({"data": [recommendation]}).to_string();
+    let api = RecordingApi::start(vec![
+        ("200 OK", page.clone()),
+        ("200 OK", page),
+        ("200 OK", r#"{"data":[]}"#.into()),
+    ]);
+    cli(&api.base_url)
+        .args([
+            "recommendations",
+            "ls",
+            "--status",
+            "in-progress",
+            "--limit",
+            "3",
+        ])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("$120.50"))
+        .stdout(predicates::str::contains(
+            "Downsize the idle batch instance",
+        ))
+        .stdout(predicates::str::contains("batch-worker"));
+
+    let output = cli(&api.base_url)
+        .args(["recommendations", "ls", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(value[0]["potential_savings"], 120.5);
+    assert_eq!(value[0]["status"], "pending");
+
+    cli(&api.base_url)
+        .args(["recommendations", "ls"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr(predicates::str::contains("No recommendations match."));
+
+    let requests = api.requests();
+    assert!(requests[0].contains("status=in_progress"));
+    assert!(requests[0].contains("limit=3"));
 }

@@ -1,6 +1,29 @@
 {
   "components": {
     "schemas": {
+      "AffectedService": {
+        "description": "Service affected by an incident.\n\nStores both external_id (ARN or cloud resource ID) and human-readable name.\nUsed by RCA agents to identify affected infrastructure and external services.",
+        "properties": {
+          "external_id": {
+            "description": "External resource ID (ARN for AWS, URL for external services)",
+            "nullable": true,
+            "title": "External Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "Human-readable service name",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "AffectedService_name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "AffectedService",
+        "type": "object"
+      },
       "AgentCliAutoMode": {
         "description": "The workspace's Auto Mode as the terminal shows it at session start.",
         "properties": {
@@ -40,7 +63,7 @@
             "type": "array"
           },
           "xml": {
-            "description": "The `<connections_context>` block Anna reads in chat, slim, or an empty string when nothing is connected.",
+            "description": "The `<connections_context>` block CloudThinker reads in chat, slim, or an empty string when nothing is connected.",
             "title": "Xml",
             "type": "string"
           }
@@ -269,6 +292,13 @@
           "conversation_id": {
             "format": "uuid",
             "title": "Conversation Id",
+            "type": "string"
+          },
+          "selected_agent_reference": {
+            "description": "The resolved custom-agent UUID carried by this session, if one was selected.",
+            "format": "uuid",
+            "nullable": true,
+            "title": "Selected Agent Reference",
             "type": "string"
           },
           "web_url": {
@@ -1420,6 +1450,38 @@
           "head_ref"
         ],
         "title": "ChangeFocusTarget",
+        "type": "object"
+      },
+      "ChildrenSeverityBreakdown": {
+        "description": "Severity breakdown for child incidents.",
+        "properties": {
+          "critical": {
+            "default": 0,
+            "title": "Critical",
+            "type": "integer"
+          },
+          "high": {
+            "default": 0,
+            "title": "High",
+            "type": "integer"
+          },
+          "info": {
+            "default": 0,
+            "title": "Info",
+            "type": "integer"
+          },
+          "low": {
+            "default": 0,
+            "title": "Low",
+            "type": "integer"
+          },
+          "medium": {
+            "default": 0,
+            "title": "Medium",
+            "type": "integer"
+          }
+        },
+        "title": "ChildrenSeverityBreakdown",
         "type": "object"
       },
       "ClaimAssignmentRequest": {
@@ -2631,6 +2693,12 @@
             "title": "CreateAgentCliSessionRequest_cwd",
             "type": "string"
           },
+          "selected_agent_reference": {
+            "description": "Optional custom-agent UUID or alias. It is resolved in the authenticated workspace before the session is created.",
+            "nullable": true,
+            "title": "Selected Agent Reference",
+            "type": "string"
+          },
           "skip_sandbox_warmup": {
             "default": false,
             "description": "Skip warming the workspace sandbox when the local session does not use CloudThinker sandbox tools.",
@@ -2706,6 +2774,24 @@
         ],
         "title": "CyberDiscoveryTargetPublic",
         "type": "object"
+      },
+      "DeclarationMode": {
+        "enum": [
+          "active_response",
+          "retrospective"
+        ],
+        "title": "DeclarationMode",
+        "type": "string"
+      },
+      "EvidenceBasis": {
+        "description": "Agent self-report of what backs the claim.",
+        "enum": [
+          "verified",
+          "inferred",
+          "assumed"
+        ],
+        "title": "EvidenceBasis",
+        "type": "string"
       },
       "EvidenceFileUpload": {
         "description": "One bounded text or binary artifact of local evidence.",
@@ -2846,7 +2932,7 @@
             "type": "boolean"
           },
           "script": {
-            "description": "A read-only shell command, or an inline TypeScript program whose first statement is an ES `import`/`export`. State-changing work goes to Anna, not here.",
+            "description": "A read-only shell command, or an inline TypeScript program whose first statement is an ES `import`/`export`. State-changing work goes through the CloudThinker session, not here.",
             "minLength": 1,
             "title": "ExecuteAgentCliReadRequest_script",
             "type": "string"
@@ -3453,6 +3539,15 @@
         "title": "FindingApiCapturePublic",
         "type": "object"
       },
+      "FindingDisposition": {
+        "enum": [
+          "expected",
+          "snoozed",
+          "disputed"
+        ],
+        "title": "FindingDisposition",
+        "type": "string"
+      },
       "FindingEvidencePublic": {
         "description": "One browser-captured evidence image, derived from finding metadata.evidence[].\n\nA screenshot the agent saved via the `evidence` browser verb and referenced in\nthe finding markdown; sync uploaded the .png to S3. ``url`` is a short-lived\npresigned GET the FE renders inline \u2014 the raw S3 key is never exposed. ``url`` is\nNone only if the presign could not be minted (the FE hides that entry rather than\nshowing a broken image).",
         "properties": {
@@ -3883,6 +3978,313 @@
         "title": "HeartbeatAssignmentRequest",
         "type": "object"
       },
+      "IncidentListPublic": {
+        "description": "Paginated list of incidents.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/IncidentPublic"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "IncidentListPublic",
+        "type": "object"
+      },
+      "IncidentPublic": {
+        "description": "Full incident response schema.",
+        "properties": {
+          "affected_services": {
+            "items": {
+              "$ref": "#/components/schemas/AffectedService"
+            },
+            "title": "Affected Services",
+            "type": "array"
+          },
+          "child_count": {
+            "default": 0,
+            "title": "Child Count",
+            "type": "integer"
+          },
+          "children_severity_breakdown": {
+            "$ref": "#/components/schemas/ChildrenSeverityBreakdown",
+            "nullable": true
+          },
+          "closed_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Closed At",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "declaration_mode": {
+            "$ref": "#/components/schemas/DeclarationMode"
+          },
+          "declaration_reason": {
+            "nullable": true,
+            "title": "Declaration Reason",
+            "type": "string"
+          },
+          "declared_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Declared At",
+            "type": "string"
+          },
+          "dedup_key": {
+            "nullable": true,
+            "title": "Dedup Key",
+            "type": "string"
+          },
+          "description": {
+            "description": "Detailed description",
+            "nullable": true,
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "incident_connection_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Incident Connection Id",
+            "type": "string"
+          },
+          "incident_room_id": {
+            "description": "Native Incident Room bound to this incident, absent when On-call never opened one or a responder deleted it",
+            "format": "uuid",
+            "nullable": true,
+            "title": "Incident Room Id",
+            "type": "string"
+          },
+          "investigation_phase": {
+            "$ref": "#/components/schemas/InvestigationPhase"
+          },
+          "is_child": {
+            "default": false,
+            "title": "Is Child",
+            "type": "boolean"
+          },
+          "is_deleted": {
+            "title": "Is Deleted",
+            "type": "boolean"
+          },
+          "last_webhook_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Last Webhook At",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "parent_incident_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Parent Incident Id",
+            "type": "string"
+          },
+          "platform_type": {
+            "nullable": true,
+            "title": "Platform Type",
+            "type": "string"
+          },
+          "queue_state": {
+            "$ref": "#/components/schemas/IncidentQueueStatePublic",
+            "nullable": true
+          },
+          "resolved_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Resolved At",
+            "type": "string"
+          },
+          "response_level": {
+            "$ref": "#/components/schemas/ResponseLevel",
+            "nullable": true
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "source": {
+            "$ref": "#/components/schemas/IncidentSource"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IncidentStatus"
+          },
+          "title": {
+            "description": "Incident title",
+            "maxLength": 512,
+            "title": "IncidentPublic_title",
+            "type": "string"
+          },
+          "triage_assessed_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Triage Assessed At",
+            "type": "string"
+          },
+          "triage_assessment": {
+            "$ref": "#/components/schemas/TriageAssessment"
+          },
+          "triage_next_action": {
+            "nullable": true,
+            "title": "Triage Next Action",
+            "type": "string"
+          },
+          "triage_reason": {
+            "nullable": true,
+            "title": "Triage Reason",
+            "type": "string"
+          },
+          "triage_version": {
+            "default": 0,
+            "title": "Triage Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "webhook_occurrence_count": {
+            "default": 1,
+            "title": "Webhook Occurrence Count",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "status",
+          "id",
+          "workspace_id",
+          "source",
+          "metadata",
+          "affected_services",
+          "created_at",
+          "updated_at",
+          "occurred_at",
+          "is_deleted"
+        ],
+        "title": "IncidentPublic",
+        "type": "object"
+      },
+      "IncidentQueueBucket": {
+        "description": "The five mutually exclusive groups in the Investigation queue.",
+        "enum": [
+          "ai_handling",
+          "needs_decision",
+          "not_started",
+          "resolved",
+          "dismissed"
+        ],
+        "title": "IncidentQueueBucket",
+        "type": "string"
+      },
+      "IncidentQueueReason": {
+        "description": "Why an incident is in its current queue bucket.",
+        "enum": [
+          "no_action_needed",
+          "issue",
+          "inconclusive",
+          "investigating",
+          "verdict_ready",
+          "human_input_required",
+          "investigation_failed",
+          "investigation_cancelled",
+          "result_ready",
+          "queued",
+          "ready_to_investigate",
+          "missing_run",
+          "resolved",
+          "auto_resolved",
+          "false_alarm"
+        ],
+        "title": "IncidentQueueReason",
+        "type": "string"
+      },
+      "IncidentQueueStatePublic": {
+        "description": "The server-owned Investigation queue state for one incident.",
+        "properties": {
+          "bucket": {
+            "$ref": "#/components/schemas/IncidentQueueBucket"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/IncidentQueueReason"
+          },
+          "since_at": {
+            "format": "date-time",
+            "title": "Since At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bucket",
+          "reason",
+          "since_at"
+        ],
+        "title": "IncidentQueueStatePublic",
+        "type": "object"
+      },
+      "IncidentSource": {
+        "description": "Source of incident creation.",
+        "enum": [
+          "webhook",
+          "manual",
+          "api"
+        ],
+        "title": "IncidentSource",
+        "type": "string"
+      },
+      "IncidentStatus": {
+        "description": "Incident lifecycle status.",
+        "enum": [
+          "OPEN",
+          "ACKNOWLEDGED",
+          "INVESTIGATING",
+          "IDENTIFIED",
+          "ON_HOLD",
+          "NOT_FOUND",
+          "FALSE_ALARM",
+          "RESOLVED",
+          "AUTO_RESOLVED"
+        ],
+        "title": "IncidentStatus",
+        "type": "string"
+      },
       "Intensity": {
         "description": "Per-run probing intensity: safe|aggressive|full.\n\nConsolidates two legacy flags into one: the dead PentestRun.safe_mode\n(hardcoded True, never varied) and the live App.allow_active_probing\nconsent gate (destructive DELETE/data-changing probing). App carries a\ndefault_intensity that seeds new runs; PentestRun and AppSecSchedule each\nfreeze their own chosen intensity at construction (a schedule's frozen\nintensity survives a later change to the App's default).",
         "enum": [
@@ -3891,6 +4293,15 @@
           "full"
         ],
         "title": "Intensity",
+        "type": "string"
+      },
+      "InvestigationPhase": {
+        "enum": [
+          "quiet",
+          "active_response",
+          "retrospective"
+        ],
+        "title": "InvestigationPhase",
         "type": "string"
       },
       "IssueArtifactGrantRequest": {
@@ -4834,6 +5245,18 @@
         "title": "PendingAssignmentPublic",
         "type": "object"
       },
+      "PillarId": {
+        "enum": [
+          "COST_OPTIMIZATION",
+          "SECURITY",
+          "OPERATIONAL_EXCELLENCE",
+          "RELIABILITY",
+          "PERFORMANCE_EFFICIENCY",
+          "SUSTAINABILITY"
+        ],
+        "title": "PillarId",
+        "type": "string"
+      },
       "PlanCheckPublic": {
         "description": "One in-scope row and the check a host executes for it.",
         "properties": {
@@ -4876,6 +5299,269 @@
           "note"
         ],
         "title": "PlanCheckPublic",
+        "type": "object"
+      },
+      "QuickWinClass": {
+        "enum": [
+          "quick_win",
+          "needs_review",
+          "no_action"
+        ],
+        "title": "QuickWinClass",
+        "type": "string"
+      },
+      "RecommendationListPublic": {
+        "description": "Lightweight schema for list endpoints \u2014 excludes heavy fields.",
+        "properties": {
+          "assigned_to": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Assigned To",
+            "type": "string"
+          },
+          "assignee_avatar_url": {
+            "nullable": true,
+            "title": "Assignee Avatar Url",
+            "type": "string"
+          },
+          "assignee_name": {
+            "nullable": true,
+            "title": "Assignee Name",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "discussion_count": {
+            "default": 0,
+            "title": "Discussion Count",
+            "type": "integer"
+          },
+          "disposition": {
+            "$ref": "#/components/schemas/FindingDisposition",
+            "nullable": true
+          },
+          "disposition_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Disposition At",
+            "type": "string"
+          },
+          "disposition_by": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Disposition By",
+            "type": "string"
+          },
+          "disposition_by_name": {
+            "nullable": true,
+            "title": "Disposition By Name",
+            "type": "string"
+          },
+          "disposition_reason": {
+            "nullable": true,
+            "title": "Disposition Reason",
+            "type": "string"
+          },
+          "disposition_until": {
+            "format": "date",
+            "nullable": true,
+            "title": "Disposition Until",
+            "type": "string"
+          },
+          "effort": {
+            "maxLength": 50,
+            "title": "RecommendationListPublic_effort",
+            "type": "string"
+          },
+          "evidence_basis": {
+            "$ref": "#/components/schemas/EvidenceBasis",
+            "nullable": true
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_stale": {
+            "default": false,
+            "title": "Is Stale",
+            "type": "boolean"
+          },
+          "keeper_id": {
+            "nullable": true,
+            "title": "Keeper Id",
+            "type": "string"
+          },
+          "keeper_name": {
+            "nullable": true,
+            "title": "Keeper Name",
+            "type": "string"
+          },
+          "keeper_pillar": {
+            "nullable": true,
+            "title": "Keeper Pillar",
+            "type": "string"
+          },
+          "last_verified_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Last Verified At",
+            "type": "string"
+          },
+          "number": {
+            "default": 0,
+            "title": "Number",
+            "type": "integer"
+          },
+          "pillar_id": {
+            "$ref": "#/components/schemas/PillarId",
+            "nullable": true
+          },
+          "position": {
+            "default": 0,
+            "title": "Position",
+            "type": "integer"
+          },
+          "potential_savings": {
+            "nullable": true,
+            "title": "Potential Savings",
+            "type": "number"
+          },
+          "quick_win_class": {
+            "$ref": "#/components/schemas/QuickWinClass",
+            "nullable": true
+          },
+          "resource_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_name": {
+            "nullable": true,
+            "title": "Resource Name",
+            "type": "string"
+          },
+          "resource_type": {
+            "nullable": true,
+            "title": "Resource Type",
+            "type": "string"
+          },
+          "reversible": {
+            "nullable": true,
+            "title": "Reversible",
+            "type": "boolean"
+          },
+          "risk": {
+            "maxLength": 50,
+            "title": "RecommendationListPublic_risk",
+            "type": "string"
+          },
+          "source_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/RecommendationSourceType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RecommendationStatus"
+          },
+          "title": {
+            "maxLength": 255,
+            "title": "RecommendationListPublic_title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/RecommendationVisibility"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "title",
+          "description",
+          "effort",
+          "risk",
+          "created_by",
+          "created_at"
+        ],
+        "title": "RecommendationListPublic",
+        "type": "object"
+      },
+      "RecommendationSourceType": {
+        "enum": [
+          "assessment",
+          "conversation",
+          "manual",
+          "cloudkeepers",
+          "costops"
+        ],
+        "title": "RecommendationSourceType",
+        "type": "string"
+      },
+      "RecommendationStatus": {
+        "enum": [
+          "pending",
+          "implemented",
+          "ignored",
+          "in_progress"
+        ],
+        "title": "RecommendationStatus",
+        "type": "string"
+      },
+      "RecommendationVisibility": {
+        "enum": [
+          "draft",
+          "active",
+          "archived"
+        ],
+        "title": "RecommendationVisibility",
+        "type": "string"
+      },
+      "RecommendationsListPublic": {
+        "description": "Paginated list response wrapper using lightweight schema.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/RecommendationListPublic"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta",
+            "nullable": true
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "RecommendationsListPublic",
         "type": "object"
       },
       "RefreshTokenRequest": {
@@ -5148,6 +5834,14 @@
         "title": "RequestAgentCliWriteRequest",
         "type": "object"
       },
+      "ResponseLevel": {
+        "enum": [
+          "page_responders",
+          "track_only"
+        ],
+        "title": "ResponseLevel",
+        "type": "string"
+      },
       "ReviewEffort": {
         "description": "How much reviewer attention a change likely demands, as a triage badge.\n\nA single glance signal next to the verdict: LIGHT changes can be skimmed,\nHEAVY ones deserve a careful pass. Derived from diff size (files + lines) in\n`domain/review_effort.py`, NOT the AI quality `score` \u2014 a small change can be\nlow-quality and a huge one clean, so effort and score are orthogonal axes.\n\nAbsent (NULL on the detail) when no diff-stats were ever recorded, so the\nbadge stays hidden rather than mislabelling an unmeasured MR as LIGHT.",
         "enum": [
@@ -5202,6 +5896,48 @@
         ],
         "title": "RunExecutionHost",
         "type": "string"
+      },
+      "RunGeneratedAccountPublic": {
+        "properties": {
+          "created": {
+            "nullable": true,
+            "title": "Created",
+            "type": "boolean"
+          },
+          "generator_name": {
+            "title": "Generator Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "login_proven": {
+            "nullable": true,
+            "title": "Login Proven",
+            "type": "boolean"
+          },
+          "reason": {
+            "nullable": true,
+            "title": "Reason",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "generator_name",
+          "role",
+          "created",
+          "login_proven",
+          "reason"
+        ],
+        "title": "RunGeneratedAccountPublic",
+        "type": "object"
       },
       "RunLaunchRequest": {
         "description": "Request body for POST /appsec/apps/{app_id}/runs.\n\nrun_scope narrows the App's scope for this run \u2014 MUST be \u2286 app.scope.\nOmit or pass null for a full-scope run. mode and intensity are\noptional \u2014 when omitted (None), the use case applies the backend default\n(Mode.BLACK / app.default_intensity). The default lives in\nlaunch_run only, not here. scan_mode is optional too \u2014 omitted (None)\ncoalesces to incremental in the use case (the single default source); pass\n\"full\" for a deep whole-worktree sweep (moot for gray/black).\n\nNote an App with NO prior SUCCESS run always runs \"full\": the use case\ncoerces scan_mode on a first run, so an explicit \"incremental\" here is\nhonoured only once a successful run exists to diff against.",
@@ -5338,6 +6074,13 @@
             "title": "Frameworks",
             "type": "array"
           },
+          "generated_accounts": {
+            "items": {
+              "$ref": "#/components/schemas/RunGeneratedAccountPublic"
+            },
+            "title": "Generated Accounts",
+            "type": "array"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -5448,6 +6191,16 @@
         "additionalProperties": false,
         "description": "Strict include/exclude safety fence shared by App, run, and schedule APIs.",
         "properties": {
+          "browser_resource_origins": {
+            "items": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Browser Resource Origins",
+            "type": "array"
+          },
           "exclude": {
             "items": {
               "maxLength": 100,
@@ -5515,6 +6268,16 @@
             ],
             "title": "ScriptRun_kind",
             "type": "string"
+          },
+          "needs_skills": {
+            "nullable": true,
+            "title": "Needs Skills",
+            "type": "boolean"
+          },
+          "renew_idle_timer": {
+            "nullable": true,
+            "title": "Renew Idle Timer",
+            "type": "boolean"
           },
           "script": {
             "title": "Script",
@@ -5773,7 +6536,7 @@
         "type": "object"
       },
       "SubmitHeadlessRunRequest": {
-        "description": "Body for `POST /cli/runs`.\n\n`agent_mode` is intentionally NOT exposed in V1 \u2014 the server picks the tier\n(Starter is coerced to Light at submit; every other plan runs the default).",
+        "description": "Body for `POST /cli/runs`.\n\nThe selected custom agent is an identity reference and is independent from\nthe model selection.",
         "properties": {
           "conversation_id": {
             "description": "Optional. Continue this existing conversation (a run is attached to it) instead of creating a new one. Must belong to the authenticated workspace and be a chat-type conversation (HEADLESS or CHAT).",
@@ -5793,6 +6556,12 @@
             "maxLength": 50000,
             "minLength": 1,
             "title": "SubmitHeadlessRunRequest_prompt",
+            "type": "string"
+          },
+          "selected_agent_reference": {
+            "description": "Optional custom-agent UUID or alias. It is resolved in the authenticated workspace before the run is reserved.",
+            "nullable": true,
+            "title": "Selected Agent Reference",
             "type": "string"
           },
           "selection": {
@@ -6296,6 +7065,17 @@
         ],
         "title": "Token",
         "type": "object"
+      },
+      "TriageAssessment": {
+        "enum": [
+          "pending",
+          "no_action_needed",
+          "issue",
+          "incident_warranted",
+          "inconclusive"
+        ],
+        "title": "TriageAssessment",
+        "type": "string"
       },
       "TriageState": {
         "description": "Human work-tracking on an open finding \u2014 NOT a finding status.\n\nAnswers \"is a person working this?\", which `FindingStatus` cannot: a finding\nis equally OPEN whether nobody has looked at it or an engineer has been\nfixing it all week. The two axes compose into the UI's triage rail\n(open+NONE = \"needs triage\", open+IN_PROGRESS, open+AWAITING_RETEST,\nresolved = \"verified fixed\"). A human reconfirming a NEEDS_VERIFICATION\nlead reuses AWAITING_RETEST \u2014 it flags the finding for the next scan, no new\nTriageState value is minted for it.\n\nOwnership is strictly split: the agent owns `status` (mirrored from the\napp-memory folder at sync()), a human owns this. A human value can never sit\nin `status` \u2014 sync() rewrites that column from the tree every run and would\ndestroy it. AWAITING_RETEST is a LABEL, not a trigger: it flags the finding\nfor the next scan, it does not launch one.\n\nCleared to NONE by sync() when the agent resolves the finding \u2014 the question\nthis was tracking is settled.",
@@ -10050,6 +10830,256 @@
         ]
       }
     },
+    "/api/v1/incidents/": {
+      "get": {
+        "description": "List incidents with filters and pagination.\n\nBy default, excludes child incidents (include_children=False).",
+        "operationId": "incidents-list_incidents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/IncidentStatus"
+              },
+              "nullable": true,
+              "title": "Status",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/IncidentQueueBucket"
+              },
+              "nullable": true,
+              "title": "Bucket",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "items": {
+                "$ref": "#/components/schemas/Severity"
+              },
+              "nullable": true,
+              "title": "Severity",
+              "type": "array"
+            }
+          },
+          {
+            "description": "Search in title/description",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "description": "Search in title/description",
+              "nullable": true,
+              "title": "Search",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "nullable": true,
+              "title": "From",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "nullable": true,
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page number (1-based)",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "Page number (1-based)",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Maximum records to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "description": "Maximum records to return",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Sort field. 'queue_priority' orders by investigation queue bucket first (AI handling, Needs decision, Not started, Resolved, Dismissed) and by recency inside each bucket, so no bucket is starved by paging.",
+            "in": "query",
+            "name": "sort_by",
+            "required": false,
+            "schema": {
+              "default": "created_at",
+              "description": "Sort field. 'queue_priority' orders by investigation queue bucket first (AI handling, Needs decision, Not started, Resolved, Dismissed) and by recency inside each bucket, so no bucket is starved by paging.",
+              "title": "Sort By",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort order",
+            "in": "query",
+            "name": "sort_order",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "description": "Sort order",
+              "pattern": "^(asc|desc)$",
+              "title": "Sort Order",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Include child incidents in list",
+            "in": "query",
+            "name": "include_children",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Include child incidents in list",
+              "title": "Include Children",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only incidents with at least one runbook execution whose approval is still pending",
+            "in": "query",
+            "name": "awaiting_approval",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Only incidents with at least one runbook execution whose approval is still pending",
+              "title": "Awaiting Approval",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Cap Resolved and Dismissed incidents at the last 30 days. Open incidents are never capped. The investigation queue sets this; history readers leave it off.",
+            "in": "query",
+            "name": "bound_closed_queues",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Cap Resolved and Dismissed incidents at the last 30 days. Open incidents are never capped. The investigation queue sets this; history readers leave it off.",
+              "title": "Bound Closed Queues",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Only Resolved and Dismissed incidents closed after this time. Open incidents are never filtered by it.",
+            "in": "query",
+            "name": "closed_since",
+            "required": false,
+            "schema": {
+              "description": "Only Resolved and Dismissed incidents closed after this time. Open incidents are never filtered by it.",
+              "format": "date-time",
+              "nullable": true,
+              "title": "Closed Since",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentListPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List incidents",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
+    "/api/v1/incidents/{incident_id}": {
+      "get": {
+        "description": "Get incident by ID.",
+        "operationId": "incidents-get_incident",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incident_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Incident Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get incident detail",
+        "tags": [
+          "incidents"
+        ]
+      }
+    },
     "/api/v1/login/cli/device/start": {
       "post": {
         "description": "Create a short-lived device authorization for an outbound-only CLI.",
@@ -10208,6 +11238,250 @@
         "summary": "Refresh Token",
         "tags": [
           "login"
+        ]
+      }
+    },
+    "/api/v1/recommendations/": {
+      "get": {
+        "operationId": "recommendations-read_recommendations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "skip",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Skip",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Page size limit",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Page size limit",
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Search",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "resource_id",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "nullable": true,
+              "title": "Resource Id",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "resource_type",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "nullable": true,
+              "title": "Resource Type",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "resource_name",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "nullable": true,
+              "title": "Resource Name",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "nullable": true,
+              "title": "Status",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pillar_id",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "nullable": true,
+              "title": "Pillar Id",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assessment_id",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "nullable": true,
+              "title": "Assessment Id",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "nullable": true,
+              "title": "Start Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "nullable": true,
+              "title": "End Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order_by",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Order By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order_direction",
+            "required": false,
+            "schema": {
+              "default": "desc",
+              "title": "Order Direction",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order_savings",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Order Savings",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "conversation_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "nullable": true,
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_type",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "nullable": true,
+              "title": "Source Type",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "visibility",
+            "required": false,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "nullable": true,
+              "title": "Visibility",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "assigned_to",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "nullable": true,
+              "title": "Assigned To",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationsListPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Recommendations",
+        "tags": [
+          "recommendations"
         ]
       }
     },

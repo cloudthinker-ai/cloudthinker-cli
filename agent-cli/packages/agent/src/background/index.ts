@@ -23,6 +23,7 @@ import { UserMessageComponent } from "../../node_modules/@earendil-works/pi-codi
 import { theme as uiTheme } from "../../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 
 const TOOL_NAME = "ct_background";
+const COMPLETION_MESSAGE_TYPE = "ct_background_completion";
 const COMPLETION_HEADER = "Background command completion event";
 const COMPLETION_ROW = /^- (\S+) (.+?) · (.*)$/;
 const OUTPUT_PREVIEW_LINES = 5;
@@ -134,6 +135,16 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 		}
 		return managerPromise;
 	};
+
+	pi.registerMessageRenderer(COMPLETION_MESSAGE_TYPE, (message, _options, theme) => {
+		const text = typeof message.content === "string" ? message.content : message.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("");
+		const rows = completionRows(text, theme);
+		if (!rows) return undefined;
+		return {
+			render: (width: number) => ["", ...rows.map((row) => truncateToWidth(row, width))],
+			invalidate() {},
+		} satisfies Component;
+	});
 
 	pi.registerTool({
 		name: TOOL_NAME,
@@ -269,7 +280,7 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 
 function completionMessage(tasks: BackgroundTaskSummary[]) {
 	return {
-		customType: "ct_background_completion",
+		customType: COMPLETION_MESSAGE_TYPE,
 		content: [{ type: "text" as const, text: completionText(tasks) }],
 		display: true,
 	};

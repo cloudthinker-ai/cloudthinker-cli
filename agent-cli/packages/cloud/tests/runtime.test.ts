@@ -124,7 +124,7 @@ test("a status read for another run leaves the waiting widget alone", async () =
 test("the approval line names the browser, the run's own link, and the notify command; a write's line has no notify", () => {
 	assert.equal(
 		approvalWidgetLine("https://web/a-1"),
-		"approval needed: CloudThinker agent is waiting in the browser → https://web/a-1 · /cloudthinker notify tells the approvers",
+		"approval needed: CloudThinker Agent is waiting in the browser → https://web/a-1 · /cloudthinker notify tells the approvers",
 	);
 	assert.equal(
 		approvalWidgetLine("https://web/c-1", "A cloud write", ""),

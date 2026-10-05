@@ -1,7 +1,7 @@
 {
 	"name": "@cloudthinker/agent",
 	"version": "0.1.0",
-	"description": "The CloudThinker agent in your terminal, built on pi: pi's TUI hosted with @cloudthinker/cloud baked in, compiled to one binary per platform.",
+	"description": "CloudThinker Agent in your terminal, built on pi: pi's TUI hosted with @cloudthinker/cloud baked in, compiled to one binary per platform.",
 	"type": "module",
 	"license": "Apache-2.0",
 	"private": true,
@@ -15,11 +15,12 @@
 	},
 	"dependencies": {
 		"@cloudthinker/cloud": "workspace:*",
+		"@cloudthinker/subagents": "workspace:*",
 		"@earendil-works/pi-ai": "1.0.0",
 		"@earendil-works/pi-coding-agent": "1.0.0",
 		"@narumitw/pi-btw": "0.61.1",
-		"@cloudthinker/subagents": "workspace:*",
 		"beautiful-mermaid": "1.1.3",
+		"diff": "8.0.4",
 		"proper-lockfile": "4.1.2",
 		"typebox": "1.3.7"
 	},

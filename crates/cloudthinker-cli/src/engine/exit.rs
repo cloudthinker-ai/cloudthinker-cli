@@ -84,7 +84,7 @@ mod tests {
             (CtError::Auth("x".into()), ExitCode::Auth),
             (
                 CtError::ObsoleteCredentials {
-                    login: "cloudthinker login".into(),
+                    origin: "https://app.cloudthinker.io".into(),
                 },
                 ExitCode::Auth,
             ),

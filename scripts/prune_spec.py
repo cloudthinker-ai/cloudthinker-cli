@@ -75,6 +75,19 @@ _REVIEW_PATHS = frozenset(
     }
 )
 
+_RESOLVE_PATHS = frozenset(
+    {
+        "/api/v1/incidents/",
+        "/api/v1/incidents/{incident_id}",
+    }
+)
+
+_OPTIMIZE_PATHS = frozenset(
+    {
+        "/api/v1/recommendations/",
+    }
+)
+
 _CYBER_PATHS = frozenset(
     {
         "/api/v1/appsec/apps/",
@@ -124,6 +137,8 @@ ALLOWED_PATHS = (
     | _LOGIN_PATHS
     | _CHAT_PATHS
     | _REVIEW_PATHS
+    | _RESOLVE_PATHS
+    | _OPTIMIZE_PATHS
     | _CYBER_PATHS
 )
 
@@ -131,8 +146,33 @@ _HTTP_METHODS = frozenset({"get", "put", "post", "delete", "patch", "options", "
 _GET_ONLY_PATHS = frozenset(
     {
         "/api/v1/appsec/apps/{app_id}/context",
+        "/api/v1/incidents/",
+        "/api/v1/incidents/{incident_id}",
+        "/api/v1/recommendations/",
     }
 )
+
+_UNREAD_PROPERTIES = {
+    "IncidentPublic": frozenset({"declaration_actor_kind"}),
+}
+
+
+def _drop_unread_properties(schemas: dict) -> dict:
+    kept = dict(schemas)
+    for name, dropped in _UNREAD_PROPERTIES.items():
+        schema = kept.get(name)
+        if not isinstance(schema, dict):
+            continue
+        schema = dict(schema)
+        schema["properties"] = {
+            key: value
+            for key, value in schema.get("properties", {}).items()
+            if key not in dropped
+        }
+        if "required" in schema:
+            schema["required"] = [key for key in schema["required"] if key not in dropped]
+        kept[name] = schema
+    return kept
 
 
 def _collect_refs(node: object, out: set[str]) -> None:
@@ -202,6 +242,7 @@ def prune(spec: dict) -> dict:
     pruned["paths"] = {p: kept_paths[p] for p in sorted(kept_paths)}
     components = dict(spec.get("components", {}))
     components.pop("securitySchemes", None)
+    components["schemas"] = _drop_unread_properties(components.get("schemas", {}))
     pruned["components"] = components
     pruned.pop("security", None)
     prune_unused_schemas(pruned)

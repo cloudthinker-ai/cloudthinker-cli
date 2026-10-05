@@ -43,11 +43,11 @@ pub use client::{
     CyberFindingPage, CyberFindingStatus, CyberIntensity, CyberMemoryContextSource,
     CyberMemoryFile, CyberMemorySnapshot, CyberMode, CyberRun, CyberRunBrief, CyberRunResult,
     CyberSessionEntry, CyberSeverity, CyberTriageState, DEFAULT_BASE_URL, DeviceAuthorization,
-    DeviceTokenPoll, EvidenceFile, EvidenceReceipt, EvidenceSkipped, FindingFilter,
-    LocalCyberWorkspace, LogoutOutcome, Observation, Partition, PlanCheck, ProbeOutcome,
-    ReviewFinding, ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView, RunListItem,
-    RunStatus, RunView, SettleResult, Shard, SubmittedRun, Surface, WorkPlan, login_command,
-    origin_of, persistent_store, resolve_store,
+    DeviceTokenPoll, EvidenceFile, EvidenceReceipt, EvidenceSkipped, FindingFilter, IncidentStatus,
+    IncidentView, LocalCyberWorkspace, LogoutOutcome, Observation, Partition, PlanCheck,
+    ProbeOutcome, RecommendationStatus, RecommendationView, ReviewFinding, ReviewSeverityCounts,
+    ReviewStatus, ReviewVerdict, ReviewView, RunListItem, RunStatus, RunView, SettleResult, Shard,
+    SubmittedRun, Surface, WorkPlan, login_command, origin_of, persistent_store, resolve_store,
 };
 pub use cyber_run_guard::{wait_for_run_stop, while_run_running};
 pub use discovery::{

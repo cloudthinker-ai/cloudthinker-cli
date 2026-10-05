@@ -15,7 +15,14 @@ import {
 	CloudThinkerRuntime,
 	SESSION_ENTRY_TYPE,
 } from "../src/runtime.ts";
-import { findLinkedSession, linkSession, retryLink, startLocalReviewSession, startSession } from "../src/session.ts";
+import {
+	findLinkedSession,
+	findSelectedAgentReference,
+	linkSession,
+	retryLink,
+	startLocalReviewSession,
+	startSession,
+} from "../src/session.ts";
 import { hostVersionsFrom } from "../src/versions.ts";
 
 const WORKSPACE = "22222222-2222-4222-8222-222222222222";
@@ -54,7 +61,11 @@ interface Appended {
 	data: unknown;
 }
 
-function harness(client: Partial<CloudThinkerClient>, entries: SessionEntry[]) {
+function harness(
+	client: Partial<CloudThinkerClient>,
+	entries: SessionEntry[],
+	selectedAgentReference?: string,
+) {
 	const appended: Appended[] = [];
 	const notes: { message: string; type: string | undefined }[] = [];
 	const statuses: (string | undefined)[] = [];
@@ -63,6 +74,8 @@ function harness(client: Partial<CloudThinkerClient>, entries: SessionEntry[]) {
 		{ appendEntry: (type: string, data: unknown) => appended.push({ type, data }) } as unknown as ExtensionAPI,
 		client as CloudThinkerClient,
 		hostVersionsFrom({ version: "0.4.0", piVersion: "0.85.1" }, "0.4.0"),
+		false,
+		selectedAgentReference,
 	);
 	const originalSet = runtime.header.set.bind(runtime.header);
 	runtime.header.set = (next) => {
@@ -96,11 +109,19 @@ function creating(): { client: Partial<CloudThinkerClient>; bodies: unknown[] } 
 	};
 }
 
+
+
+
+
 test("a resumed session reuses the carried link and its stored mode and thread", async () => {
 	const { client, bodies } = creating();
 	const entries = [
 		custom(SESSION_ENTRY_TYPE, carried),
-		custom(ASK_THREAD_ENTRY_TYPE, { conversation_id: "h-1", web_url: "http://web/h-1" }),
+		custom(ASK_THREAD_ENTRY_TYPE, {
+			conversation_id: "h-1",
+			web_url: "http://web/h-1",
+			selected_agent_reference: "researcher",
+		}),
 	];
 	const { runtime, ctx, appended } = harness(client, entries);
 
@@ -109,8 +130,38 @@ test("a resumed session reuses the carried link and its stored mode and thread",
 	assert.deepEqual(linked, carried);
 	assert.deepEqual(bodies, []);
 	assert.deepEqual(runtime.autoMode, { enabled: true, canEdit: true });
-	assert.deepEqual(runtime.askThread, { conversation_id: "h-1", web_url: "http://web/h-1" });
+	assert.deepEqual(runtime.askThread, {
+		conversation_id: "h-1",
+		web_url: "http://web/h-1",
+		selected_agent_reference: "researcher",
+	});
+	assert.equal(runtime.selectedAgentReference, "researcher");
 	assert.deepEqual(appended, []);
+});
+
+test("a linked custom selection is available to child CloudThinker sessions", () => {
+	const entries = [
+		custom(SESSION_ENTRY_TYPE, {
+			...carried,
+			selected_agent_reference: "  custom-agent  ",
+		}),
+	];
+	assert.equal(findSelectedAgentReference(entries), "custom-agent");
+});
+
+test("a configured custom selection supersedes a carried identity and is persisted", async () => {
+	const { client } = creating();
+	const entries = [custom(SESSION_ENTRY_TYPE, carried)];
+	const { runtime, ctx, appended } = harness(client, entries, "researcher");
+
+	await linkSession(runtime, event("resume"), ctx);
+
+	assert.equal(runtime.selectedAgentReference, "researcher");
+	assert.equal(runtime.session?.selected_agent_reference, "researcher");
+	assert.deepEqual(appended, [{
+		type: SESSION_ENTRY_TYPE,
+		data: { ...carried, selected_agent_reference: "researcher" },
+	}]);
 });
 
 test("local review links a generic gateway session without sending the checkout path", async () => {
@@ -151,6 +202,50 @@ test("a session with nothing carried is created fresh", async () => {
 	assert.deepEqual(bodies, [{ cwd: "/tmp/repo", source_conversation_id: undefined }]);
 	assert.deepEqual(runtime.session, created);
 	assert.equal(appended.length, 1);
+});
+
+test("a created session hydrates the resolved custom-agent identity", async () => {
+	const resolved = { ...created, selected_agent_reference: "agent-id" } satisfies SessionCreated;
+	const { bodies } = creating();
+	const { runtime, ctx, appended } = harness({
+		createSession: async (body: unknown) => {
+			bodies.push(body);
+			return resolved;
+		},
+	}, []);
+
+	await linkSession(runtime, event("new"), ctx);
+
+	assert.equal(runtime.selectedAgentReference, "agent-id");
+	assert.equal(runtime.session?.selected_agent_reference, "agent-id");
+	assert.deepEqual(appended, [{ type: SESSION_ENTRY_TYPE, data: resolved }]);
+});
+
+test("an explicit custom-agent identity is sent when opening a session", async () => {
+	const { client, bodies } = creating();
+	const { runtime, ctx } = harness(client, [], "cost-helper");
+
+	await linkSession(runtime, event("new"), ctx);
+
+	assert.deepEqual(bodies, [{
+		cwd: "/tmp/repo",
+		source_conversation_id: undefined,
+		selected_agent_reference: "cost-helper",
+	}]);
+});
+
+test("a linked session enables ct_ask independently of specialists", async () => {
+	const { bodies } = creating();
+	const explicit = { ...created } satisfies SessionCreated;
+	const { runtime, ctx } = harness({
+		createSession: async (body: unknown) => {
+			bodies.push(body);
+			return explicit;
+		},
+	}, []);
+
+	await linkSession(runtime, event("new"), ctx);
+
 });
 
 test("a changed approval mode is written to the session so a resume reads the latest", async () => {

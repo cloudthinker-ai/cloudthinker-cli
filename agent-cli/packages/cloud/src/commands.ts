@@ -404,7 +404,7 @@ export function registerCommands(runtime: CloudThinkerRuntime, options: CommandO
 	});
 
 	runtime.pi.registerCommand(PRODUCT_NAME, {
-		description: `CloudThinker agent subcommands: ${SUBCOMMANDS.join(", ")}`,
+		description: `CloudThinker Agent subcommands: ${SUBCOMMANDS.join(", ")}`,
 		getArgumentCompletions: (prefix) =>
 			SUBCOMMANDS.filter((name) => name.startsWith(prefix)).map((name) => ({
 				value: name,

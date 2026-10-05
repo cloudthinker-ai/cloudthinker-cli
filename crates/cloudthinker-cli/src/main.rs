@@ -28,6 +28,7 @@ use clap::parser::ValueSource;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use cloudthinker_client::{
     CyberFindingStatus, CyberIntensity, CyberSeverity, CyberTriageState, FindingFilter,
+    IncidentStatus, RecommendationStatus,
 };
 use uuid::Uuid;
 
@@ -46,6 +47,54 @@ impl From<IntensityArg> for CyberIntensity {
             IntensityArg::Safe => CyberIntensity::Safe,
             IntensityArg::Aggressive => CyberIntensity::Aggressive,
             IntensityArg::Full => CyberIntensity::Full,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum IncidentStatusArg {
+    Open,
+    Acknowledged,
+    Investigating,
+    Identified,
+    OnHold,
+    NotFound,
+    FalseAlarm,
+    Resolved,
+    AutoResolved,
+}
+
+impl From<IncidentStatusArg> for IncidentStatus {
+    fn from(value: IncidentStatusArg) -> Self {
+        match value {
+            IncidentStatusArg::Open => IncidentStatus::Open,
+            IncidentStatusArg::Acknowledged => IncidentStatus::Acknowledged,
+            IncidentStatusArg::Investigating => IncidentStatus::Investigating,
+            IncidentStatusArg::Identified => IncidentStatus::Identified,
+            IncidentStatusArg::OnHold => IncidentStatus::OnHold,
+            IncidentStatusArg::NotFound => IncidentStatus::NotFound,
+            IncidentStatusArg::FalseAlarm => IncidentStatus::FalseAlarm,
+            IncidentStatusArg::Resolved => IncidentStatus::Resolved,
+            IncidentStatusArg::AutoResolved => IncidentStatus::AutoResolved,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum RecommendationStatusArg {
+    Pending,
+    InProgress,
+    Implemented,
+    Ignored,
+}
+
+impl From<RecommendationStatusArg> for RecommendationStatus {
+    fn from(value: RecommendationStatusArg) -> Self {
+        match value {
+            RecommendationStatusArg::Pending => RecommendationStatus::Pending,
+            RecommendationStatusArg::InProgress => RecommendationStatus::InProgress,
+            RecommendationStatusArg::Implemented => RecommendationStatus::Implemented,
+            RecommendationStatusArg::Ignored => RecommendationStatus::Ignored,
         }
     }
 }
@@ -121,7 +170,7 @@ const DEFAULT_TIMEOUT_SECS: u64 = 2400;
     version,
     about = "CloudThinker in your terminal: the agent, code review, Cyber pentests, and outpost workers",
     disable_help_subcommand = true,
-    after_help = "Get started:\n  cloudthinker login                  Sign in; over SSH it shows a short code instead of a browser\n  cloudthinker                        Start the CloudThinker agent in this folder\n  cloudthinker chat -p 'Check prod'   Ask the cloud agent; only the answer goes to stdout\n  cloudthinker agent -p 'Explain src' Ask the agent about this folder, headless\n\nAgent guidance: cloudthinker --skill (then --skill <module> as needed)."
+    after_help = "Get started:\n  cloudthinker login                  Sign in; over SSH it shows a short code instead of a browser\n  cloudthinker                        Start CloudThinker Agent in this folder\n  cloudthinker chat -p 'Check prod'   Ask CloudThinker Agent in the cloud; stdout gets only the answer\n  cloudthinker agent -p 'Explain src' Ask CloudThinker Agent about this folder, headless\n\nAgent guidance: cloudthinker --skill (then --skill <module> as needed)."
 )]
 struct Cli {
     #[arg(long, num_args = 0..=1, default_missing_value = "index", value_name = "MODULE",
@@ -146,15 +195,19 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Start the CloudThinker agent in this folder; a bare `cloudthinker` does too.
+    /// Start CloudThinker Agent in this folder; a bare `cloudthinker` does too.
     Agent(AgentArgs),
     /// Let another AI agent use your workspace's Connections; `cloudthinker --skill cloud` is its guide.
     #[command(hide = true)]
     Cloud(commands::cloud::CloudArgs),
-    /// Ask the CloudThinker agent in the cloud; it keeps running if you disconnect.
+    /// Ask CloudThinker Agent in the cloud; it keeps running if you disconnect.
     Chat(ChatArgs),
     /// Review local changes or inspect a tracked review by its merge-request URL.
     Review(ReviewArgs),
+    /// List incidents, or wait for one to be resolved; for on-call scripts and CI.
+    Incident(IncidentArgs),
+    /// List cost and efficiency recommendations with their monthly savings.
+    Recommendations(RecommendationsArgs),
     /// Log in. Over SSH or without a display, it shows a short code instead of a browser.
     Login(LoginArgs),
     /// Log out and clear stored credentials.
@@ -246,13 +299,20 @@ struct ChatArgs {
     #[command(subcommand)]
     command: Option<ChatSub>,
 
-    /// Prompt to send to the cloud agent. `-` reads the prompt from stdin; other piped stdin is added to the prompt.
+    /// Prompt to send to CloudThinker Agent in the cloud. `-` reads the prompt from stdin; other piped stdin is added to the prompt.
     #[arg(short = 'p', long = "prompt")]
     prompt: Option<String>,
 
     /// Continue the conversation identified by a run or conversation UUID.
     #[arg(long = "continue", value_name = "UUID")]
     continue_id: Option<Uuid>,
+
+    #[arg(
+        long = "agent",
+        value_name = "UUID_OR_ALIAS",
+        help = "Use an authorized custom agent UUID or alias for this turn."
+    )]
+    agent: Option<String>,
 
     /// Return immediately after submission instead of polling the run.
     #[arg(long)]
@@ -795,6 +855,70 @@ enum ReviewSub {
 }
 
 #[derive(Debug, Args)]
+#[command(
+    after_help = "Examples:\n  cloudthinker incident ls --status investigating\n  cloudthinker incident status <INCIDENT_ID> --wait --timeout 1800 --json\n\nExit codes: 0 once the incident closes (resolved, auto resolved, false alarm, or the NOT_FOUND status); 4 on timeout; 1 when no incident has that ID."
+)]
+struct IncidentArgs {
+    #[command(subcommand)]
+    command: IncidentSub,
+}
+
+#[derive(Debug, Subcommand)]
+enum IncidentSub {
+    /// List incidents in the selected workspace, newest first.
+    Ls {
+        /// Only show incidents with this status.
+        #[arg(long, value_enum)]
+        status: Option<IncidentStatusArg>,
+        /// Maximum number of incidents to show.
+        #[arg(long, default_value_t = 25, value_parser = clap::value_parser!(u64).range(1..=100))]
+        limit: u64,
+        /// Print JSON on stdout instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show an incident's status; `--wait` blocks until it is settled.
+    Status {
+        /// The incident id shown by `incident ls`.
+        incident_id: Uuid,
+        /// Print JSON on stdout instead of text.
+        #[arg(long)]
+        json: bool,
+        /// Poll until the incident closes: resolved, auto resolved, false alarm, or the NOT_FOUND status.
+        #[arg(long)]
+        wait: bool,
+        /// Stop waiting after this many seconds (the incident is unaffected).
+        #[arg(long, default_value_t = DEFAULT_TIMEOUT_SECS)]
+        timeout: u64,
+    },
+}
+
+#[derive(Debug, Args)]
+#[command(
+    after_help = "Examples:\n  cloudthinker recommendations ls\n  cloudthinker recommendations ls --status pending --limit 100 --json"
+)]
+struct RecommendationsArgs {
+    #[command(subcommand)]
+    command: RecommendationsSub,
+}
+
+#[derive(Debug, Subcommand)]
+enum RecommendationsSub {
+    /// List recommendations in the selected workspace, in board order.
+    Ls {
+        /// Only show recommendations with this status.
+        #[arg(long, value_enum)]
+        status: Option<RecommendationStatusArg>,
+        /// Maximum number of recommendations to show.
+        #[arg(long, default_value_t = 25, value_parser = clap::value_parser!(u64).range(1..=100))]
+        limit: u64,
+        /// Print JSON on stdout instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Args)]
 struct UpdateArgs {
     /// Install the latest release even when already up to date.
     #[arg(long)]
@@ -833,6 +957,8 @@ fn shows_update_notice(command: &Command) -> bool {
         command,
         Command::Chat(_)
             | Command::Review(_)
+            | Command::Incident(_)
+            | Command::Recommendations(_)
             | Command::Login(_)
             | Command::Logout(_)
             | Command::Whoami { .. }
@@ -957,15 +1083,16 @@ async fn run_command(
                             return ExitCode::Usage;
                         }
                     };
-                    commands::chat::run_prompt(
+                    commands::chat::run_prompt(commands::chat::PromptOptions {
                         base_url,
-                        workspace.as_deref(),
-                        &prompt,
-                        args.continue_id,
-                        args.no_wait,
-                        args.json,
-                        args.timeout,
-                    )
+                        workspace: workspace.as_deref(),
+                        prompt: &prompt,
+                        continue_id: args.continue_id,
+                        selected_agent_reference: args.agent.as_deref(),
+                        no_wait: args.no_wait,
+                        json: args.json,
+                        timeout_secs: args.timeout,
+                    })
                     .await
                 }
                 None => {
@@ -975,6 +1102,54 @@ async fn run_command(
                     ExitCode::Usage
                 }
             },
+        },
+        Command::Incident(args) => match args.command {
+            IncidentSub::Ls {
+                status,
+                limit,
+                json,
+            } => {
+                commands::incident::run_list(
+                    base_url,
+                    workspace.as_deref(),
+                    status.map(IncidentStatus::from),
+                    limit,
+                    json,
+                )
+                .await
+            }
+            IncidentSub::Status {
+                incident_id,
+                json,
+                wait,
+                timeout,
+            } => {
+                commands::incident::run_status(
+                    base_url,
+                    workspace.as_deref(),
+                    incident_id,
+                    json,
+                    wait,
+                    timeout,
+                )
+                .await
+            }
+        },
+        Command::Recommendations(args) => match args.command {
+            RecommendationsSub::Ls {
+                status,
+                limit,
+                json,
+            } => {
+                commands::recommendations::run_list(
+                    base_url,
+                    workspace.as_deref(),
+                    status.map(RecommendationStatus::from),
+                    limit,
+                    json,
+                )
+                .await
+            }
         },
         Command::Review(args) => match args.command {
             None => {

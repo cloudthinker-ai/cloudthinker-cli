@@ -25,12 +25,12 @@ import { applyTranscriptUi } from "./transcript.ts";
 export const DISABLED_COMMANDS: readonly string[] = ["thinking", "scoped-models"];
 export const THINKING_STATUS =
 	"/thinking is disabled: the agent mode you pick with /model carries its own thinking level.";
-export const SCOPED_MODELS_STATUS = "/scoped-models is disabled: /model lists your CloudThinker agent modes.";
+export const SCOPED_MODELS_STATUS = "/scoped-models is disabled: /model lists your CloudThinker Agent modes.";
 export const CLOUD_COMMANDS = [
 	{ name: "share", description: "Copy this conversation's CloudThinker link" },
 	{ name: "login", description: "Sign in to CloudThinker" },
 	{ name: "logout", description: "Sign out of CloudThinker" },
-	{ name: "changelog", description: "Show what's new in this CloudThinker agent" },
+	{ name: "changelog", description: "Show what's new in this CloudThinker Agent" },
 	{ name: "bug", description: "Report a bug on the CloudThinker CLI GitHub" },
 ] as const;
 export const COPY_DESCRIPTION = "Copy the last answer, or its code block N (/copy 2)";

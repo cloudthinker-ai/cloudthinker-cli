@@ -344,7 +344,7 @@ impl FileStore {
         match self.read_contents()? {
             FileContents::Current(all) => Ok(all),
             FileContents::Older | FileContents::Corrupt => Err(CtError::ObsoleteCredentials {
-                login: self.login(),
+                origin: self.origin.clone(),
             }),
             FileContents::Newer(version) => Err(newer_format_error(version)),
         }
@@ -1195,7 +1195,7 @@ mod tests {
 
         let load = store.load().unwrap_err();
         assert!(
-            matches!(&load, CtError::ObsoleteCredentials { login } if login == "cloudthinker login --url https://dev.cloudthinker.io"),
+            matches!(&load, CtError::ObsoleteCredentials { origin } if origin == "https://dev.cloudthinker.io:443"),
             "{load:?}"
         );
         store.save(&workspace_token(1, "One", "one")).unwrap();

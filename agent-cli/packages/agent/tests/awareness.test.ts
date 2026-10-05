@@ -6,6 +6,9 @@ import { Text } from "@earendil-works/pi-tui";
 
 
 import { clickToExpand, pointer, tagLocalToolDefinition } from "../src/awareness.ts";
+import { splitCommand } from "../src/command-block.ts";
+import { parsePiDiff, renderHunks } from "../src/diff-view.ts";
+import { setDiffStyle, setToolOutputMode } from "../src/verbosity.ts";
 
 const theme = { fg: (_color: string, value: string) => value, bold: (value: string) => value } as never;
 
@@ -111,4 +114,112 @@ test("pi's leftover expand hint points at a click in fullscreen and at the trans
 	pointer.available = false;
 	assert.equal(stripVTControlCharacters(hinted.render(80)[0]!), "... (11 earlier lines, ctrl+o for the transcript)");
 	pointer.available = true;
+});
+
+const editDiff = [
+	" 10 const a = 1;",
+	" 11 const b = 2;",
+	"-12 const total = first + second;",
+	"-13 const label = 'old';",
+	"+12 const total = first + second + third;",
+	"+13 const label = 'new';",
+	"+14 const extra = true;",
+	" 15 const c = 3;",
+	...Array.from({ length: 30 }, (_, index) => `+${16 + index} added line ${index}`),
+].join("\n");
+
+function renderEdit(width: number, context: object): string[] {
+	const upstream = { name: "edit", renderCall: () => new Text("edit app.ts", 0, 0) } as unknown as ToolDefinition;
+	const wrapped = tagLocalToolDefinition("edit", upstream)!;
+	const fullTheme = { ...(theme as object), bg: (_color: string, value: string) => value, inverse: (value: string) => value } as never;
+	const state = { callComponent: { preview: { diff: editDiff } } };
+	return wrapped.renderCall!({}, fullTheme, { toolCallId: "e1", state, cwd: "/tmp", ...context } as never).render(width).map(stripVTControlCharacters).map((line) => line.trimEnd());
+}
+
+test("an expanded edit is split when each pane gets 60 columns and unified below, with paired rows and aligned gutters", () => {
+	setDiffStyle("auto");
+	const narrow = renderEdit(80, { expanded: true }).join("\n");
+	assert.match(narrow, /╌╌ line 10 ╌+/);
+	assert.match(narrow, /\n\s+12 - const total = first \+ second;\n\s+13 - const label = 'old';\n\s+12 \+ const total = first \+ second \+ third;/);
+	assert.doesNotMatch(narrow, /│/);
+
+	const wide = renderEdit(160, { expanded: true });
+	const pair = wide.find((line) => line.includes("const total = first + second;"))!;
+	assert.match(pair, /^\s+12 - const total = first \+ second;\s+│\s+12 \+ const total = first \+ second \+ third;$/);
+	const filler = wide.find((line) => line.includes("const extra = true;"))!;
+	assert.match(filler, /^\s+│\s+14 \+ const extra = true;$/);
+	const columns = wide.filter((line) => line.includes("│")).map((line) => line.indexOf("│"));
+	assert.equal(new Set(columns).size, 1);
+
+	const content = "import { describe } from './cart.ts';\nconst enabled = true;\n";
+	const write = tagLocalToolDefinition("write", { name: "write", renderCall: () => new Text("write", 0, 0) } as unknown as ToolDefinition)!;
+	const written = write.renderCall!({ path: "new.ts", content }, { ...(theme as object), bg: (_c: string, v: string) => v } as never, { toolCallId: "w1", expanded: true, state: {}, cwd: "/tmp" } as never).render(170).map(stripVTControlCharacters).map((line) => line.trimEnd()).join("\n");
+	assert.match(written, /╌╌ 2 lines written ╌+\n1 \+ import/);
+	assert.doesNotMatch(written, /│/);
+
+	const wrapped = renderEdit(36, { expanded: true });
+	const start = wrapped.findIndex((line) => line.startsWith(" 12 + const total"));
+	assert.deepEqual(wrapped.slice(start, start + 3), [" 12 + const total = first + second", "      + third;", " 13 + const label = 'new';"]);
+
+	setDiffStyle("unified");
+	assert.doesNotMatch(renderEdit(160, { expanded: true }).join("\n"), /│/);
+	setDiffStyle("split");
+	assert.match(renderEdit(130, { expanded: true }).join("\n"), /│/);
+	setDiffStyle("auto");
+
+	const plain = { fg: (_color: string, value: string) => value, inverse: (value: string) => `[${value}]` };
+	const respaced = renderHunks(parsePiDiff("-1 foo  bar baz\n+1 foo bar qux"), 80, plain, "unified").join("\n");
+	assert.match(respaced, /1 - foo\[  \]bar \[baz\]/);
+	assert.match(respaced, /1 \+ foo\[ \]bar \[qux\]/);
+});
+
+test("preview shows a capped diff with a fold hint, split only when wide, and compact keeps the one-line summary", () => {
+	try {
+		setToolOutputMode("preview");
+		assert.match(renderEdit(160, { expanded: false }).join("\n"), /│/);
+		const lines = renderEdit(100, { expanded: false });
+		assert.doesNotMatch(lines.join("\n"), /│/);
+		assert.equal(lines.filter((line) => /^ (╌╌|\d+ )/.test(line)).length, 12);
+		assert.ok(lines.some((line) => /^ … \+\d+ lines · ctrl\+o$/.test(line)));
+		setToolOutputMode("compact");
+		assert.match(renderEdit(160, { expanded: false }).join("\n"), /\+\d+ −2/);
+	} finally {
+		setToolOutputMode("compact");
+	}
+});
+
+test("a shell command splits at top-level operators and newlines, never inside quotes or a heredoc", () => {
+	const segments = splitCommand("cd app && sed -i 's/a && b/c; d/' f.txt | tee \"x || y\"; cat <<'EOF' > out.txt\nline && one\nline | two\nEOF\necho done");
+	assert.deepEqual(segments.map((segment) => segment.text), [
+		"cd app",
+		"&& sed -i 's/a && b/c; d/' f.txt",
+		"| tee \"x || y\"",
+		"; cat <<'EOF' > out.txt",
+		"echo done",
+	]);
+	assert.deepEqual(segments[3]!.body, ["line && one", "line | two"]);
+
+	const wrapped = tagLocalToolDefinition("bash", definition("bash", "$ x"))!;
+	const command = "git add . && git commit -m 'one && two'\ncat <<EOF\n1\n2\n3\n4\n5\n6\nEOF";
+	const render = (expanded: boolean) =>
+		wrapped.renderCall!({ command }, theme, { toolCallId: "b1", expanded, state: {} } as never).render(60).map(stripVTControlCharacters);
+	try {
+		setToolOutputMode("preview");
+		assert.deepEqual(render(false), [
+			"[L] $ git add .",
+			"      │ && git commit -m 'one && two'",
+			"      │ cat <<EOF",
+			"      │ 1",
+			"      │ 2",
+			"      │ 3",
+			"      │ 4",
+			"      │ … +2 lines",
+			"      │ EOF",
+		].map((line, index) => (index === 0 ? line : line.replace("      │", "    │"))));
+		assert.equal(render(true).filter((line) => /^\s+│ [1-6]$/.test(line)).length, 6);
+		setToolOutputMode("compact");
+		assert.deepEqual(render(false), ["[L] $ git add . && git commit -m 'one && two' +8 lines"]);
+	} finally {
+		setToolOutputMode("compact");
+	}
 });

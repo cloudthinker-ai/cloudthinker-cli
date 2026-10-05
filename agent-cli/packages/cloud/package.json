@@ -1,7 +1,7 @@
 {
   "name": "@cloudthinker/cloud",
   "version": "0.1.0",
-  "description": "CloudThinker provider, cloud tools, session mirror, and workspace skills for the CloudThinker agent in your terminal.",
+  "description": "CloudThinker provider, cloud tools, session mirror, and workspace skills for CloudThinker Agent in your terminal.",
   "type": "module",
   "license": "Apache-2.0",
   "keywords": ["pi-package"],

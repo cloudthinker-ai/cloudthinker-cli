@@ -49,12 +49,19 @@ export interface CloudThinkerSessionOptions {
 	cloudEnabled?: boolean;
 	localReview?: boolean;
 	sourceConversationId?: string;
+	selectedAgentReference?: string;
 	changelogPath?: string;
 }
 
 export default async function cloudthinker(pi: ExtensionAPI, options: CloudThinkerSessionOptions = {}): Promise<void> {
 	const root = options.cloudEnabled === undefined && options.sourceConversationId === undefined;
-	const runtime = new CloudThinkerRuntime(pi, undefined, undefined, root);
+	const runtime = new CloudThinkerRuntime(
+		pi,
+		undefined,
+		undefined,
+		root,
+		options.selectedAgentReference,
+	);
 	if (root) setConnectionSource(() => runtime.cloudEnabled ? runtime.connections.connections ?? [] : []);
 	const localReview = options.localReview === true;
 	const mirror = new SessionMirror(runtime.client, (status) =>

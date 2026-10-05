@@ -1,4 +1,4 @@
-cloudthinker agent - the CloudThinker agent in your terminal
+cloudthinker agent - CloudThinker Agent in your terminal
 
 Usage:
   cloudthinker agent [options] [@files...] [prompt...]

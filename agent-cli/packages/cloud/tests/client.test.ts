@@ -135,6 +135,34 @@ test("the bearer reaches the server and a 401 retries once on a fresh token", as
 	}
 });
 
+test("session creation carries a selected custom-agent reference", async () => {
+	const server = await startFakeServer((request) => ({
+		body: {
+			conversation_id: "c-1",
+			workspace_id: "w-1",
+			web_url: "http://web/c-1",
+			selected_agent_reference: "agent-id",
+		},
+	}));
+	try {
+		const client = new CloudThinkerClient({
+			baseUrl: server.origin,
+			tokens: new TokenSource({ CLOUDTHINKER_TOKEN: "t" }),
+		});
+		const created = await client.createSession({
+			cwd: "/tmp/repo",
+			selected_agent_reference: "cost-helper",
+		});
+		assert.equal(created.selected_agent_reference, "agent-id");
+		assert.deepEqual(server.requests[0]?.body, {
+			cwd: "/tmp/repo",
+			selected_agent_reference: "cost-helper",
+		});
+	} finally {
+		await server.close();
+	}
+});
+
 test("concurrent 401 responses share one refreshed token", async () => {
 	let calls = 0;
 	const tokens = new TokenSource({}, async () => {
@@ -154,6 +182,44 @@ test("concurrent 401 responses share one refreshed token", async () => {
 			server.requests.map((request) => request.headers.authorization),
 			["Bearer token-1", "Bearer token-1", "Bearer token-2", "Bearer token-2"],
 		);
+	} finally {
+		await server.close();
+	}
+});
+
+
+
+test("headless submission keeps custom-agent identity separate from model selection", async () => {
+	const server = await startFakeServer((request) => {
+		if (request.path === "/api/v1/cli/runs") {
+			return {
+				body: {
+					run_id: "r-1",
+					conversation_id: "h-1",
+					status: "pending",
+					web_url: "http://web/h-1",
+				},
+			};
+		}
+		return undefined;
+	});
+	try {
+		const client = new CloudThinkerClient({
+			baseUrl: server.origin,
+			tokens: new TokenSource({ CLOUDTHINKER_TOKEN: "t" }),
+		});
+		await client.submitRun({
+			prompt: "investigate",
+			selection: { option_id: "mode:pro" },
+			source_conversation_id: "c-1",
+			selected_agent_reference: "researcher",
+		});
+		assert.deepEqual(server.requests[0]?.body, {
+			prompt: "investigate",
+			selection: { option_id: "mode:pro" },
+			source_conversation_id: "c-1",
+			selected_agent_reference: "researcher",
+		});
 	} finally {
 		await server.close();
 	}

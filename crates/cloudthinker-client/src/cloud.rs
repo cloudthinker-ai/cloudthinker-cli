@@ -94,6 +94,7 @@ impl CtClient {
         title: Option<&str>,
     ) -> CtResult<CloudResult> {
         let body = api::CreateAgentCliSessionRequest {
+            selected_agent_reference: None,
             cwd: cwd.parse().map_err(|_| {
                 CtError::Usage("Working directory must contain 1–4096 characters.".into())
             })?,

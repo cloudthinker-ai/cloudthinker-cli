@@ -5,7 +5,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 
 import { setMachineState } from "./awareness.ts";
-import type { SessionCreated } from "./client.ts";
+import { CloudThinkerClient, type SessionCreated } from "./client.ts";
 import { classifyCloudError, failureNotice, failureStatus, retryDelay } from "./cloud-error.ts";
 import { DEFAULT_MODE, PROVIDER_ID, pinProviderWorkspace, registerProvider } from "./provider.ts";
 import {
@@ -14,6 +14,7 @@ import {
 	type CloudThinkerRuntime,
 	SESSION_ENTRY_TYPE,
 	autoModeFrom,
+	normalizeAgentReference,
 } from "./runtime.ts";
 
 function lastCustomData<T>(entries: SessionEntry[], customType: string): T | undefined {
@@ -33,7 +34,21 @@ export function findLinkedSession(entries: SessionEntry[]): SessionCreated | und
 
 export function findAskThread(entries: SessionEntry[]): AskThread | undefined {
 	const data = lastCustomData<AskThread>(entries, ASK_THREAD_ENTRY_TYPE);
-	return data && typeof data.conversation_id === "string" ? data : undefined;
+	if (!data || typeof data.conversation_id !== "string") return undefined;
+	const selectedAgentReference = normalizeAgentReference(data.selected_agent_reference);
+	return {
+		conversation_id: data.conversation_id,
+		web_url: data.web_url,
+		...(selectedAgentReference ? { selected_agent_reference: selectedAgentReference } : {}),
+	};
+}
+
+export function findSelectedAgentReference(entries: SessionEntry[]): string | undefined {
+	const linked = findLinkedSession(entries);
+	return (
+		normalizeAgentReference(linked?.selected_agent_reference) ??
+		findAskThread(entries)?.selected_agent_reference
+	);
 }
 
 export function linkSession(
@@ -58,22 +73,43 @@ async function openSession(
 ): Promise<SessionCreated> {
 	const entries = ctx.sessionManager.getEntries();
 	const carried = findLinkedSession(entries);
+	const carriedAskThread = findAskThread(entries);
 	const forked = event.reason === "fork";
 	if (carried && !forked) {
-		runtime.session = carried;
+		const configuredAgentReference = runtime.selectedAgentReference;
+		const selectedAgentReference =
+			configuredAgentReference ?? findSelectedAgentReference(entries);
+		runtime.setSelectedAgentReference(
+			selectedAgentReference,
+		);
+		runtime.session =
+			configuredAgentReference &&
+			configuredAgentReference !== carried.selected_agent_reference
+				? { ...carried, selected_agent_reference: configuredAgentReference }
+			: carried;
 		runtime.setAutoMode(autoModeFrom(carried));
-		runtime.askThread = findAskThread(entries);
-		return carried;
+		runtime.askThread = carriedAskThread;
+		if (runtime.session !== carried) runtime.pi.appendEntry(SESSION_ENTRY_TYPE, runtime.session);
+		return runtime.session;
 	}
 	const created = await runtime.client.createSession({
 		cwd: ctx.cwd,
 		source_conversation_id: forked ? carried?.conversation_id : sourceConversationId,
+		...(runtime.selectedAgentReference
+			? { selected_agent_reference: runtime.selectedAgentReference }
+			: {}),
 	});
-	runtime.session = created;
+	const createdAgentReference = normalizeAgentReference(created.selected_agent_reference);
+	runtime.setSelectedAgentReference(
+		createdAgentReference ?? runtime.selectedAgentReference ?? carried?.selected_agent_reference ?? carriedAskThread?.selected_agent_reference,
+	);
+	runtime.session = runtime.selectedAgentReference
+		? { ...created, selected_agent_reference: runtime.selectedAgentReference }
+		: created;
 	runtime.setAutoMode(autoModeFrom(created));
 	runtime.askThread = undefined;
-	runtime.pi.appendEntry(SESSION_ENTRY_TYPE, created);
-	return created;
+	runtime.pi.appendEntry(SESSION_ENTRY_TYPE, runtime.session);
+	return runtime.session;
 }
 
 export async function refreshConnections(runtime: CloudThinkerRuntime): Promise<void> {
@@ -171,13 +207,21 @@ export async function startLocalReviewSession(
 	const created = await runtime.client.createSession({
 		cwd: "local-review",
 		title: "Local code review",
+		...(runtime.selectedAgentReference
+			? { selected_agent_reference: runtime.selectedAgentReference }
+			: {}),
 		skip_sandbox_warmup: true,
 	});
-	runtime.session = created;
+	runtime.setSelectedAgentReference(
+		normalizeAgentReference(created.selected_agent_reference) ?? runtime.selectedAgentReference,
+	);
+	runtime.session = runtime.selectedAgentReference
+		? { ...created, selected_agent_reference: runtime.selectedAgentReference }
+		: created;
 	runtime.setAutoMode(autoModeFrom(created));
 	pinProviderWorkspace(runtime, created.workspace_id);
-	runtime.pi.appendEntry(SESSION_ENTRY_TYPE, created);
-	return created;
+	runtime.pi.appendEntry(SESSION_ENTRY_TYPE, runtime.session);
+	return runtime.session;
 }
 
 export async function linkLazily(

@@ -28,12 +28,12 @@ test("CA-SUB-3: child mode resolves only exact advertised CloudThinker modes", (
 
 test("CA-SUB-4: vendor credentials and fuzzy names cannot escape CloudThinker modes", () => {
 	for (const name of ["anthropic/claude-opus", "opus", "cl", "cloudthinker/removed", ""]) {
-		assert.match(String(resolveCloudMode(name, registry)), /CloudThinker agent mode/);
+		assert.match(String(resolveCloudMode(name, registry)), /CloudThinker Agent mode/);
 	}
 });
 
 test("CA-SUB-5: empty catalog does not select a vendor model", () => {
-	assert.match(String(resolveCloudMode("pro", { ...registry, getAll: () => [modes[2]!] })), /CloudThinker agent mode/);
+	assert.match(String(resolveCloudMode("pro", { ...registry, getAll: () => [modes[2]!] })), /CloudThinker Agent mode/);
 });
 
 test("CA-SUB-DESCRIPTION: upstream description drift fails closed", () => {

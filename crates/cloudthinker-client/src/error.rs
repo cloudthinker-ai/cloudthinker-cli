@@ -18,8 +18,11 @@ pub enum CtError {
 
     /// Persisted credentials predate workspace-keyed storage or cannot be
     /// read. They are never migrated or used; a new login replaces them.
-    #[error("stored credentials are unreadable or use an obsolete format; run `{login}`")]
-    ObsoleteCredentials { login: String },
+    #[error(
+        "stored credentials are unreadable or use an obsolete format; run `{}`",
+        crate::login_command(.origin)
+    )]
+    ObsoleteCredentials { origin: String },
 
     /// A structured API error carrying the HTTP status and safe backend
     /// message. The exit-code mapping keys off `status`.

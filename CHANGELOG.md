@@ -1,3 +1,14 @@
+## [0.8.0-dev.4]
+
+- The CLI names its agent CloudThinker Agent everywhere: `agent` starts CloudThinker Agent in this folder, and `chat` asks CloudThinker Agent in the cloud.
+- `cloudthinker incident ls` lists the workspace's incidents, and `cloudthinker incident status <INCIDENT_ID> --wait` polls until the incident is resolved, dismissed, or not found, so an on-call script or CI job can wait on it. It exits 4 on timeout; add `--json` for a script to read.
+- `cloudthinker recommendations ls` lists Optimize recommendations with their monthly savings, filtered by `--status`, for cost reports.
+- `cloudthinker chat -p` accepts `--agent` for an authorized custom-agent UUID or alias and keeps model selection separate.
+- Keep the generated CLI session and capability contract aligned with custom-agent selection and the specialist flag.
+- `cloudthinker incident status --help` now separates the exit codes: 0 when the incident closes (including the NOT_FOUND status), 1 when no incident has that ID.
+- The bundled Cyber discovery runtime accepts `browser_resource_origins` in a target scope, matching the backend.
+- The CLI's API contract no longer carries the incident declaration actor, which the CLI never reads.
+
 ## [0.8.0-dev.3]
 
 - The agent opens fullscreen with a status line for workspace, approval mode, credits, and Connections; Ctrl+O opens a searchable transcript, and a cloud write asks in one approval modal.

@@ -66,8 +66,11 @@ export function buildPromptBlock(runtime: CloudThinkerRuntime): string {
 		`For ONE state-changing cloud command, call ${CT_SANDBOX_WRITE}; the workspace runs it at once or pauses it for a human to approve, in this terminal or in the browser. That approval is the confirmation, so do not ask for one in chat first.`,
 	);
 	if (runtime.autoMode) lines.push(approvalModeLine(runtime.autoMode.enabled));
+	lines.push(`Use ${CT_SANDBOX_READ} for bounded cloud investigations.`);
 	lines.push(
-		`Use ${CT_SANDBOX_READ} for bounded cloud investigations. Call ${CT_ASK} for workspace memory, specialist judgment, or several dependent steps; delegated work runs on the workspace machine, human approval is required when requested, and ${CT_RUN_STATUS} resumes a paused run.`,
+		`Call ${CT_ASK} for workspace memory or several dependent steps; delegated work runs on the workspace machine, human approval is required when requested, and ${CT_RUN_STATUS} resumes a paused run.`,
+	);
+	lines.push(
 		`A workspace skill written for the workspace machine may name tools or paths that do not exist on this machine; run any step of it that needs a Connection through ${CT_SANDBOX_READ}.`,
 		"When asked who you are or what you can reach, answer with these two environments and that Connection list.",
 	);
@@ -81,7 +84,7 @@ export function buildPromptBlock(runtime: CloudThinkerRuntime): string {
 	if (runtime.memory?.memoryIndex) {
 		blocks.push(
 			`<memory_index>\n${neutralizeBlockTags(runtime.memory.memoryIndex)}\n</memory_index>`,
-			`The memory index is read-only here and was read once when this session started. It indexes ${MEMORY_DIR}/ on the workspace machine; open a named file with ${CT_SANDBOX_READ} (\`cat ${MEMORY_DIR}/<path>\`, no Connection needed). The CloudThinker agent writes there through ${CT_ASK}.`,
+			`The memory index is read-only here and was read once when this session started. It indexes ${MEMORY_DIR}/ on the workspace machine; open a named file with ${CT_SANDBOX_READ} (\`cat ${MEMORY_DIR}/<path>\`, no Connection needed). CloudThinker Agent in the cloud writes there through ${CT_ASK}.`,
 		);
 	}
 	if (runtime.memory?.userNotes) {

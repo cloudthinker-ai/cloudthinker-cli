@@ -77,7 +77,12 @@ async fn log_in(base_url: &str, options: LoginOptions) -> ExitCode {
 
     let code = match loopback.wait_for_code(LOGIN_WAIT).await {
         Ok(code) => code,
-        Err(err) => return exit::report(&callback_wait_error(err, base_url)),
+        Err(err) => {
+            return exit::report(&callback_wait_error(
+                err,
+                &cloudthinker_client::login_command(base_url),
+            ));
+        }
     };
 
     let token = match client.exchange_code(&code, &pkce.verifier).await {
@@ -130,12 +135,11 @@ where
 
 fn callback_wait_error(
     error: cloudthinker_client::CtError,
-    base_url: &str,
+    login: &str,
 ) -> cloudthinker_client::CtError {
     match error {
         cloudthinker_client::CtError::Timeout(_) => cloudthinker_client::CtError::Timeout(format!(
-            "timed out waiting for browser consent; try `{} --device-auth`",
-            cloudthinker_client::login_command(base_url)
+            "timed out waiting for browser consent; try `{login} --device-auth`"
         )),
         error => error,
     }
@@ -327,12 +331,13 @@ mod tests {
     fn callback_timeout_preserves_browser_mode_and_prints_device_recovery() {
         let error = callback_wait_error(
             CtError::Timeout("old message".into()),
-            "https://app.cloudthinker.io",
+            "cloudthinker login --url https://dev.cloudthinker.io",
         );
 
         assert!(matches!(
             error,
-            CtError::Timeout(message) if message.contains("login --device-auth")
+            CtError::Timeout(message) if message
+                == "timed out waiting for browser consent; try `cloudthinker login --url https://dev.cloudthinker.io --device-auth`"
         ));
     }
 }

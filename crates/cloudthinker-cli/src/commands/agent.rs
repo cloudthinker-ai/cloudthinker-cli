@@ -1,4 +1,4 @@
-//! `cloudthinker agent` — install and exec the CloudThinker agent.
+//! `cloudthinker agent` — install and exec CloudThinker Agent.
 
 use std::ffi::OsString;
 use std::io::IsTerminal;
@@ -75,7 +75,9 @@ async fn resolve_identity(
         .credential_provenance()
         .map_err(|error| exit::report(&error))?;
     let plan = login_guide::plan(&error, provenance, std::io::stdin().is_terminal());
-    if let Some((line, next)) = login_guide::explain(&error, plan, base_url) {
+    if let Some((line, next)) =
+        login_guide::explain(&error, plan, &cloudthinker_client::login_command(base_url))
+    {
         output::eprintln_error(&line);
         output::progress(&next);
     }
@@ -146,7 +148,7 @@ pub(super) async fn run_local_review(
     }
     let child = command.spawn().map_err(|error| {
         output::eprintln_error(&format!(
-            "could not run local CloudThinker agent {}: {error}",
+            "could not run local CloudThinker Agent {}: {error}",
             binary.display()
         ));
         ExitCode::JobFailed
@@ -157,27 +159,27 @@ pub(super) async fn run_local_review(
         Ok(Ok(output)) => {
             let detail = String::from_utf8_lossy(&output.stderr);
             output::eprintln_error(&format!(
-                "local CloudThinker agent failed: {}",
+                "local CloudThinker Agent failed: {}",
                 detail.trim()
             ));
             return Err(ExitCode::JobFailed);
         }
         Ok(Err(error)) => {
             output::eprintln_error(&format!(
-                "could not wait for local CloudThinker agent: {error}"
+                "could not wait for local CloudThinker Agent: {error}"
             ));
             return Err(ExitCode::JobFailed);
         }
         Err(_) => {
             output::eprintln_error(
-                "timed out waiting for the local CloudThinker agent; rerun the review to try again",
+                "timed out waiting for the local CloudThinker Agent; rerun the review to try again",
             );
             return Err(ExitCode::Timeout);
         }
     };
     String::from_utf8(output.stdout).map_err(|error| {
         output::eprintln_error(&format!(
-            "local CloudThinker agent returned non-UTF-8 output: {error}"
+            "local CloudThinker Agent returned non-UTF-8 output: {error}"
         ));
         ExitCode::JobFailed
     })

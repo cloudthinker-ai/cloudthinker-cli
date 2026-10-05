@@ -1,3 +1,13 @@
+## [0.8.0-dev.4]
+
+- The agent introduces itself to the model as CloudThinker Agent instead of pi's coding assistant, and its messages name CloudThinker Agent the same way everywhere.
+- Resuming a session after a `-p` run that waited on background commands draws each completion as one row, not as a raw completion event.
+- Keep built-in specialist visibility separate from temporary subagents: child sessions, workflows, and ct_ask remain available with specialists disabled. Keep runtime flag names out of model prompts and preserve selected custom-agent identity.
+- In `/verbosity preview` and in the Ctrl+O transcript, an edit or write shows a diff with a hunk header, line numbers, and word-level highlights: unified when narrow, split (old left, new right) when each side gets 60 columns; `diffStyle` in settings.json sets `auto` (default), `unified`, or `split`, and on a wide terminal `s` in the transcript switches between split and unified for the session.
+- In `/verbosity preview` and the transcript, a long shell command is drawn one segment per row (split at newlines, `&&`, `||`, `;`, `|`) behind a `│` gutter, with a heredoc body dimmed and folded to 4 lines in preview.
+- The Ctrl+O transcript strips terminal escape sequences from tool names, file paths, and message text, so a model-written path can no longer set the clipboard or redraw the screen.
+- The tour names the cloud agent CloudThinker.
+
 ## [0.8.0]
 
 - Open the terminal in fullscreen by default; `--tui-mode regular` or a saved TUI mode in `/settings` keeps the classic view.

@@ -1,3 +1,8 @@
+## [0.8.0-dev.4]
+
+- Messages and tool descriptions name CloudThinker Agent the same way everywhere; the cloud agent behind `ct_ask` is CloudThinker Agent in the cloud.
+- Keep temporary subagents and ct_ask independent of specialist visibility; remove unused mode capability polling and session state while preserving selected custom-agent UUID inheritance.
+
 ## [0.8.0]
 
 - Each `#connection/…` in a message resolves against the workspace's Connections, and the agent gets a short note saying which are connected, ambiguous, or missing.

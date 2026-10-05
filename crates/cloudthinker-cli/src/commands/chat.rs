@@ -13,38 +13,48 @@ use crate::engine::watch::{Poll, WatchConfig, watch};
 
 use super::build_client;
 
+pub struct PromptOptions<'a> {
+    pub base_url: &'a str,
+    pub workspace: Option<&'a str>,
+    pub prompt: &'a str,
+    pub continue_id: Option<Uuid>,
+    pub selected_agent_reference: Option<&'a str>,
+    pub no_wait: bool,
+    pub json: bool,
+    pub timeout_secs: u64,
+}
+
 /// Submit a prompt, watch to a terminal state, print the result.
-pub async fn run_prompt(
-    base_url: &str,
-    workspace: Option<&str>,
-    prompt: &str,
-    continue_id: Option<Uuid>,
-    no_wait: bool,
-    json: bool,
-    timeout_secs: u64,
-) -> ExitCode {
-    let client = match build_client(base_url, workspace) {
+pub async fn run_prompt(options: PromptOptions<'_>) -> ExitCode {
+    let client = match build_client(options.base_url, options.workspace) {
         Ok(client) => client,
         Err(err) => return exit::report(&err),
     };
 
-    let conversation_id = match continue_id {
+    let conversation_id = match options.continue_id {
         Some(id) => match client.resolve_conversation_id(id).await {
             Ok(conversation_id) => Some(conversation_id),
             Err(err) => return exit::report(&err),
         },
         None => None,
     };
-    let submitted = match client.submit_run(prompt, conversation_id).await {
+    let submitted = match client
+        .submit_run(
+            options.prompt,
+            conversation_id,
+            options.selected_agent_reference,
+        )
+        .await
+    {
         Ok(submitted) => submitted,
-        Err(CtError::Api { status: 404, .. }) if continue_id.is_some() => {
+        Err(CtError::Api { status: 404, .. }) if options.continue_id.is_some() => {
             output::eprintln_error("conversation or run not found");
             return ExitCode::JobFailed;
         }
         Err(err) => return exit::report(&err),
     };
-    if no_wait {
-        let result = if json {
+    if options.no_wait {
+        let result = if options.json {
             output::emit_json(&ChatSubmittedEnvelope::from(&submitted))
         } else {
             output::print_submitted(&submitted)
@@ -60,7 +70,7 @@ pub async fn run_prompt(
 
     let run_id = submitted.run_id;
     let interrupted = listen_for_interrupt();
-    if !json {
+    if !options.json {
         output::progress(&format!(
             "Submitted run {run_id} to your CloudThinker workspace (cloud). It runs there and cannot see your local files."
         ));
@@ -69,18 +79,18 @@ pub async fn run_prompt(
     wait_for_run(
         &client,
         run_id,
-        json,
-        timeout_secs,
+        options.json,
+        options.timeout_secs,
         &format!("cloudthinker chat status {run_id}"),
         interrupted,
     )
     .await
 }
 
-type Interrupted = Pin<Box<dyn Future<Output = ()> + Send>>;
+pub(crate) type Interrupted = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 #[cfg(unix)]
-fn listen_for_interrupt() -> Interrupted {
+pub(crate) fn listen_for_interrupt() -> Interrupted {
     use tokio::signal::unix::{SignalKind, signal};
     match signal(SignalKind::interrupt()) {
         Ok(mut interrupt) => Box::pin(async move {
@@ -98,7 +108,7 @@ fn listen_for_interrupt() -> Interrupted {
 }
 
 #[cfg(not(unix))]
-fn listen_for_interrupt() -> Interrupted {
+pub(crate) fn listen_for_interrupt() -> Interrupted {
     Box::pin(async {
         let _ = tokio::signal::ctrl_c().await;
     })
@@ -154,10 +164,10 @@ async fn wait_for_run(
 fn waiting_line(status: Option<RunStatus>) -> String {
     match status {
         Some(status) => format!(
-            "The cloud agent is working — {}. Ctrl-C stops waiting; the run continues",
+            "CloudThinker is working — {}. Ctrl-C stops waiting; the run continues",
             output::status_label(status)
         ),
-        None => "The cloud agent is working. Ctrl-C stops waiting; the run continues".to_string(),
+        None => "CloudThinker is working. Ctrl-C stops waiting; the run continues".to_string(),
     }
 }
 

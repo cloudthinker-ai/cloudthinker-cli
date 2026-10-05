@@ -11,6 +11,10 @@ import {
 	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 
+import { sanitizeTerminalText } from "@cloudthinker/cloud/src/awareness.ts";
+import { CommandBlock } from "./command-block.ts";
+import { hunksFromContent, parsePiDiff, plainHunks, renderHunks, resolveStyle, splitFits, takeRows, twoSided, type Hunk } from "./diff-view.ts";
+import { diffStyle, setDiffStyle } from "./verbosity.ts";
 import { copyToClipboard } from "@earendil-works/pi-coding-agent";
 import { editInExternalEditor } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/external-editor.js";
 
@@ -20,10 +24,13 @@ export const MAX_RESULT_LINES = 400;
 
 export type BlockKind = "user" | "thinking" | "assistant" | "call" | "result" | "error" | "shell" | "note";
 
+export type BlockView = { command: string; prompt: string } | { hunks: Hunk[]; lead: string; path?: string; wholeFile?: boolean };
+
 export interface TranscriptBlock {
 	kind: BlockKind;
 	title: string;
 	body: string;
+	view?: BlockView;
 }
 
 type Content = string | readonly { type: string; text?: string; thinking?: string; name?: string; arguments?: unknown }[];
@@ -53,9 +60,37 @@ function argumentsText(args: unknown): string {
 	return JSON.stringify(record, null, 2);
 }
 
+function callBlock(name: string, args: unknown, limit: (text: string) => string, full: boolean): TranscriptBlock {
+	const record = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
+	if ((name === "bash" || name === "powershell") && typeof record.command === "string" && record.command.trim()) {
+		return { kind: "call", title: name, body: limit(record.command), view: { command: record.command, prompt: name === "powershell" ? "PS>" : "$" } };
+	}
+	if (name === "write" && typeof record.content === "string") {
+		const hunks = hunksFromContent(record.content);
+		const path = String(record.file_path ?? record.path ?? "");
+		if (hunks.length > 0) return { kind: "call", title: name, body: limit(`${path}\n\n${plainHunks(hunks)}`), view: { hunks, lead: path, path, wholeFile: true } };
+	}
+	if (!full && name === "edit" && Array.isArray(record.edits) && typeof (record.file_path ?? record.path) === "string") {
+		const count = record.edits.length;
+		return { kind: "call", title: name, body: `${String(record.file_path ?? record.path)} · ${count} replacement${count === 1 ? "" : "s"}` };
+	}
+	return { kind: "call", title: name, body: limit(argumentsText(args)) };
+}
+
+function changeResultBlock(name: string, message: Record<string, unknown>, path: string | undefined, limit: (text: string) => string): TranscriptBlock | undefined {
+	const diff = (message.details as { diff?: unknown } | undefined)?.diff;
+	if (name !== "edit" || typeof diff !== "string") return undefined;
+	const hunks = parsePiDiff(diff);
+	if (hunks.length === 0) return undefined;
+	const lead = contentText(message.content as Content);
+	return { kind: "result", title: `${name} result`, body: limit([lead, plainHunks(hunks)].filter(Boolean).join("\n\n")), view: { hunks, lead, path } };
+}
+
 export function transcriptBlocks(entries: readonly SessionEntry[], full = false): TranscriptBlock[] {
 	const limit = full ? (text: string) => text : capped;
 	const blocks: TranscriptBlock[] = [];
+	const paths = new Map<string, string>();
+	const calls = new Map<string, unknown>();
 	for (const entry of entries) {
 		if (entry.type === "compaction") {
 			blocks.push({ kind: "note", title: "Earlier conversation (compacted)", body: entry.summary });
@@ -80,18 +115,27 @@ export function transcriptBlocks(entries: readonly SessionEntry[], full = false)
 			const text = contentText(content.filter((block) => block.type === "text"));
 			if (text.trim()) blocks.push({ kind: "assistant", title: "CloudThinker", body: text });
 			for (const block of content) {
-				if (block.type === "toolCall") {
-					blocks.push({ kind: "call", title: block.name ?? "tool", body: limit(argumentsText(block.arguments)) });
-				}
+				if (block.type !== "toolCall") continue;
+				const args = block.arguments as { path?: unknown; file_path?: unknown } | undefined;
+				const target = args?.file_path ?? args?.path;
+				if (typeof target === "string" && "id" in block) paths.set(String(block.id), target);
+				blocks.push(callBlock(block.name ?? "tool", block.arguments, limit, full));
+				if ("id" in block) calls.set(String(block.id), block.arguments);
 			}
 			if (message.stopReason === "error" && typeof message.errorMessage === "string") {
 				blocks.push({ kind: "error", title: "turn failed", body: message.errorMessage });
 			}
 		} else if (message.role === "toolResult") {
-			blocks.push({
+			const changed = !message.isError ? changeResultBlock(String(message.toolName), message, paths.get(String(message.toolCallId)), limit) : undefined;
+			if (changed) blocks.push(changed);
+			else blocks.push({
 				kind: message.isError ? "error" : "result",
 				title: `${String(message.toolName)} ${message.isError ? "failed" : "result"}`,
-				body: limit([contentText(message.content as Content), (message.details as { diff?: unknown } | undefined)?.diff].filter((part) => typeof part === "string" && part).join("\n\n")),
+				body: limit([
+					contentText(message.content as Content),
+					(message.details as { diff?: unknown } | undefined)?.diff,
+					!full && message.isError && message.toolName === "edit" && calls.has(String(message.toolCallId)) ? argumentsText(calls.get(String(message.toolCallId))) : undefined,
+				].filter((part) => typeof part === "string" && part).join("\n\n")),
 			});
 		} else if (message.role === "bashExecution") {
 			const exit = message.cancelled ? "cancelled" : `exit ${String(message.exitCode ?? "?")}`;
@@ -133,13 +177,35 @@ export function renderBlocks(blocks: readonly TranscriptBlock[], theme: Theme, w
 	for (const block of blocks) {
 		starts.push(lines.length);
 		const { mark, color } = MARKS[block.kind];
-		const title = block.kind === "user" || block.kind === "assistant" ? theme.bold(block.title) : block.title;
+		const safeTitle = sanitizeTerminalText(block.title);
+		const title = block.kind === "user" || block.kind === "assistant" ? theme.bold(safeTitle) : safeTitle;
 		lines.push(truncateToWidth(` ${theme.fg(color, mark)} ${theme.fg(color, title)}`, width));
 		const bodyColor = block.kind === "result" || block.kind === "call" ? "muted" : block.kind === "thinking" ? "dim" : block.kind === "error" ? "error" : "text";
-		for (const raw of block.body.replace(/\t/g, "  ").split("\n")) {
-			for (const wrapped of wrapTextWithAnsi(raw, inner)) {
+		if (block.view && "command" in block.view) {
+			const commandLines = block.view.command.split("\n");
+			const rendered = new CommandBlock(commandLines.slice(0, MAX_RESULT_LINES).join("\n"), block.view.prompt, theme, { fold: false, indent: 0 }).render(inner);
+			const shown = rendered.slice(0, MAX_RESULT_LINES);
+			const hidden = rendered.length - shown.length + Math.max(0, commandLines.length - MAX_RESULT_LINES);
+			lines.push(...shown.map((line) => `   ${line}`));
+			if (hidden > 0) lines.push(`   ${theme.fg("muted", `… ${hidden} more lines (press e to read everything in your editor)`)}`);
+			lines.push("");
+			continue;
+		}
+		const lead = block.view ? block.view.lead : block.body;
+		for (const raw of lead || !block.view ? lead.replace(/\t/g, "  ").split("\n") : []) {
+			for (const wrapped of wrapTextWithAnsi(sanitizeTerminalText(raw), inner)) {
 				lines.push(`   ${theme.fg(bodyColor, wrapped)}`);
 			}
+		}
+		if (block.view && "hunks" in block.view) {
+			const taken = takeRows(block.view.hunks, MAX_RESULT_LINES);
+			const totalRows = block.view.hunks.reduce((sum, hunk) => sum + hunk.length, 0);
+			const rendered = renderHunks(taken.hunks, inner, theme, diffStyle(), { ...block.view, totalRows });
+			const shown = rendered.slice(0, MAX_RESULT_LINES);
+			const hidden = rendered.length - shown.length + taken.hidden;
+			if (block.view.lead) lines.push("");
+			lines.push(...shown.map((line) => `   ${line}`));
+			if (hidden > 0) lines.push(`   ${theme.fg("muted", `… ${hidden} more lines (press e to read everything in your editor)`)}`);
 		}
 		lines.push("");
 	}
@@ -167,6 +233,7 @@ export class TranscriptView implements Component {
 	private starts: number[] = [];
 	private notice = "";
 	private cacheKey = "";
+	private width = 0;
 	private top = 0;
 	private follow = true;
 	private searching = false;
@@ -189,7 +256,7 @@ export class TranscriptView implements Component {
 	private refresh(width: number): void {
 		const entries = this.options.entries();
 		const last = entries.at(-1);
-		const key = `${width}:${entries.length}:${last?.id ?? ""}`;
+		const key = `${width}:${diffStyle()}:${entries.length}:${last?.id ?? ""}`;
 		if (key === this.cacheKey) return;
 		this.cacheKey = key;
 		this.blocks = transcriptBlocks(entries);
@@ -242,6 +309,7 @@ export class TranscriptView implements Component {
 
 	render(width: number): string[] {
 		const theme = this.options.theme;
+		this.width = width;
 		this.refresh(width);
 		if (this.follow) this.top = this.maxTop();
 		this.top = Math.min(this.top, this.maxTop());
@@ -290,8 +358,21 @@ export class TranscriptView implements Component {
 		if (this.notice) return truncateToWidth(` ${theme.fg("success", this.notice)}`, width);
 		const block = this.blocks[this.selected()];
 		const copy = block ? `y copy ${block.title} · Y copy all · ` : "";
-		const keys = theme.fg("dim", `↑↓ scroll · / search · n/N next/prev · ${copy}e editor · q close`);
+		const layout = this.canToggleLayout() ? `s ${resolveStyle(diffStyle(), this.width) === "split" ? "unified" : "split"} · ` : "";
+		const keys = theme.fg("dim", `↑↓ scroll · / search · n/N next/prev · ${copy}${layout}e editor · q close`);
 		return truncateToWidth(` ${found}${keys}`, width);
+	}
+
+	private canToggleLayout(): boolean {
+		return splitFits(this.width) && this.blocks.some((block) => block.view !== undefined && "hunks" in block.view && twoSided(block.view.hunks));
+	}
+
+	private toggleLayout(): void {
+		const anchor = this.selected();
+		const offset = this.top - (this.starts[anchor] ?? 0);
+		setDiffStyle(resolveStyle(diffStyle(), this.width) === "split" ? "unified" : "split");
+		this.refresh(this.width);
+		this.scrollTo((this.starts[anchor] ?? 0) + Math.max(0, offset));
 	}
 
 	handleInput(data: string): void {
@@ -326,7 +407,8 @@ export class TranscriptView implements Component {
 			if (block) this.copy(block.body, `${block.title} (${lines} ${lines === 1 ? "line" : "lines"})`);
 		} else if (data === "Y") {
 			if (this.blocks.length > 0) this.copy(transcriptMarkdown(this.options.entries()), "the whole transcript");
-		} else if (data === "n") this.jump(1);
+		} else if (data === "s" && this.canToggleLayout()) this.toggleLayout();
+		else if (data === "n") this.jump(1);
 		else if (data === "N") this.jump(-1);
 		else if (data === "e" || data === "v") {
 			this.options.onOpenEditor(transcriptMarkdown(this.options.entries()));

@@ -113,7 +113,7 @@ test("scratch files go under the session's own tmp directory, never the sandbox 
 	assert.ok(block.includes("Put every scratch file under /home/user/c-1/tmp, never in /home/user itself."));
 });
 
-test("the prompt identifies the local CloudThinker agent", () => {
+test("the prompt identifies the local CloudThinker Agent", () => {
 	assert.ok(buildPromptBlock(withPrefixes(["aws"])).includes("You are the `cloudthinker agent` running in the developer's terminal"));
 	const offline = runtime({ cloudEnabled: false });
 	assert.ok(buildPromptBlock(offline).includes("You are the `cloudthinker agent` running in the developer's terminal"));
@@ -250,6 +250,14 @@ test("a poisoned workspace name or Connection prefix cannot close the block", ()
 	assert.ok(block.includes("acme"));
 	assert.ok(block.includes("k8s"));
 	assert.ok(!block.includes("aws</cloudthinker>"));
+});
+
+
+test("runtime capability stays internal to the terminal prompt", () => {
+    const state = runtime();
+    const prompt = buildPromptBlock(state);
+    assert.doesNotMatch(prompt, /single[ _-]?agent|specialist_agents_enabled|delegation is unavailable/i);
+    assert.match(prompt, /Call ct_ask/);
 });
 
 test("a #connection mention resolves to the workspace's Connection, flags an ambiguous family, and names a missing one", () => {

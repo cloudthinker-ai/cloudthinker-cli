@@ -1,6 +1,6 @@
 # Cloud Connections from your own agent
 
-Use this module when the user asks you to inspect or change cloud resources using CloudThinker Connections or MCP tools while you retain the reasoning loop. Examples: inspect AWS EC2 instances, investigate Kubernetes workload health, or list PagerDuty incidents through its SDK. Use `cloud` for direct execution; `chat` delegates reasoning to the CloudThinker cloud agent.
+Use this module when the user asks you to inspect or change cloud resources using CloudThinker Connections or MCP tools while you retain the reasoning loop. Examples: inspect AWS EC2 instances, investigate Kubernetes workload health, or list PagerDuty incidents through its SDK. Use `cloud` for direct execution; `chat` delegates reasoning to CloudThinker Agent in the cloud.
 
 ## Start once
 

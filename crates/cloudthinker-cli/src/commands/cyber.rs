@@ -71,6 +71,7 @@ impl RunScopeOptions {
             })
             .collect::<Result<Vec<cloudthinker_client::worker_types::ExcludeItem>, _>>()?;
         Ok(Some(cloudthinker_client::worker_types::ScopeSpec {
+            browser_resource_origins: Vec::new(),
             include,
             exclude,
         }))

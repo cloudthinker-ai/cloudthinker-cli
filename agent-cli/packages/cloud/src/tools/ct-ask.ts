@@ -2,11 +2,12 @@ import { type Static, Type } from "typebox";
 
 import type { Theme } from "@earendil-works/pi-coding-agent";
 
-import type { RunState } from "../client.ts";
+import { CloudThinkerApiError, type RunState } from "../client.ts";
 import {
 	ASK_THREAD_ENTRY_TYPE,
 	type CloudThinkerRuntime,
 	NOTIFY_HINT,
+	normalizeAgentReference,
 } from "../runtime.ts";
 import { CT_ASK, CT_SANDBOX_READ, CT_SANDBOX_WRITE, CT_RUN_STATUS } from "./names.ts";
 import {
@@ -22,28 +23,28 @@ import { pollUntil, text } from "./shared.ts";
 
 export const POLL_INTERVAL_MS = 3_000;
 export const MAX_WAIT_MS = 10 * 60 * 1000;
-export const ASK_WORKING_MESSAGE = "Asking CloudThinker agent…";
+export const ASK_WORKING_MESSAGE = "Asking CloudThinker Agent…";
 
 export function askSummary(state: RunState, theme: Theme): string {
-	if (state.status === "succeeded") return "CloudThinker agent answered";
+	if (state.status === "succeeded") return "CloudThinker Agent answered";
 	if (state.status === "failed") return "failed";
 	if (state.status === "required_approval") {
 		const url = state.web_url;
 		return `waiting for approval in browser${url ? ` → ${link(theme, url)}` : ""}`;
 	}
-	return `CloudThinker agent is ${state.status}`;
+	return `CloudThinker Agent is ${state.status}`;
 }
 
 const parameters = Type.Object({
 	prompt: Type.String({
 		description:
-			"The question or instruction for the CloudThinker agent. Include the " +
+			"The question or instruction for CloudThinker Agent in the cloud. Include the " +
 			"context, requested result, constraints, and evidence needed.",
 	}),
 });
 
 const description = [
-	"Delegate cloud work that needs judgment or several steps to the CloudThinker agent.",
+	"Delegate cloud work that needs judgment or several steps to CloudThinker Agent in the cloud.",
 	"It runs on the workspace machine with workspace tools, memory, and incident history.",
 	"",
 	"Use it for:",
@@ -119,16 +120,26 @@ export function submitBody(
 	prompt: string,
 	sessionConversationId: string,
 	thread: { conversation_id: string } | undefined,
-): { prompt: string; conversation_id?: string; source_conversation_id?: string } {
+	selectedAgentReference?: string,
+): {
+	prompt: string;
+	selection: { option_id: string };
+	conversation_id?: string;
+	source_conversation_id?: string;
+	selected_agent_reference?: string;
+} {
+	const selection = { option_id: "mode:pro" };
+	const selected = normalizeAgentReference(selectedAgentReference);
+	const identity = selected ? { selected_agent_reference: selected } : {};
 	return thread
-		? { prompt, conversation_id: thread.conversation_id }
-		: { prompt, source_conversation_id: sessionConversationId };
+		? { prompt, selection, ...identity, conversation_id: thread.conversation_id }
+		: { prompt, selection, ...identity, source_conversation_id: sessionConversationId };
 }
 
 export function registerAsk(runtime: CloudThinkerRuntime): void {
 	runtime.pi.registerTool<typeof parameters, RunState & Elapsed>({
 		name: CT_ASK,
-		label: "Ask CloudThinker agent",
+		label: "Ask CloudThinker Agent",
 		description,
 		promptSnippet: "Delegate cloud work that needs judgment or several steps",
 		promptGuidelines: [
@@ -147,14 +158,25 @@ export function registerAsk(runtime: CloudThinkerRuntime): void {
 			const startedAt = Date.now();
 			if (ctx.hasUI) ctx.ui.setWorkingMessage(ASK_WORKING_MESSAGE);
 			try {
+				const selectedAgentReference = normalizeAgentReference(
+					runtime.selectedAgentReference ?? runtime.askThread?.selected_agent_reference,
+				);
 				const submitted = await runtime.client.submitRun(
-					submitBody(params.prompt, session.conversation_id, runtime.askThread),
+					submitBody(
+						params.prompt,
+						session.conversation_id,
+						runtime.askThread,
+						selectedAgentReference,
+					),
 					signal,
 				);
 				if (!runtime.askThread) {
 					runtime.askThread = {
 						conversation_id: submitted.conversation_id,
 						web_url: submitted.web_url,
+						...(selectedAgentReference
+							? { selected_agent_reference: selectedAgentReference }
+							: {}),
 					};
 					runtime.pi.appendEntry(ASK_THREAD_ENTRY_TYPE, runtime.askThread);
 				}
@@ -165,7 +187,7 @@ export function registerAsk(runtime: CloudThinkerRuntime): void {
 					onTick: (current, elapsedMs) => {
 						onUpdate?.(
 							text(
-								`CloudThinker agent is ${current.status} (${Math.round(elapsedMs / 1000)}s).`,
+								`CloudThinker Agent is ${current.status} (${Math.round(elapsedMs / 1000)}s).`,
 								{ ...current, elapsed_ms: elapsedMs },
 							),
 						);

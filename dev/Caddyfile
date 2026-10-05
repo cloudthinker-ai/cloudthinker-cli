@@ -16,7 +16,12 @@
 # so the browser calls the API here instead of the backend port directly;
 # scripts/development/worktree-stack.sh writes that into frontend/.env.local.
 
-:8080 {
+{
+	admin {$CADDY_ADMIN:localhost:2019}
+	default_bind {$CADDY_BIND:0.0.0.0}
+}
+
+:{$CADDY_HTTP_PORT:8080} {
 	handle /api/* {
 		reverse_proxy {$BACKEND_UPSTREAM:backend:8000}
 	}
@@ -40,6 +45,6 @@
 # only this stack's origin port also reaches it. Storybook must listen on a
 # host interface the container can reach; `pnpm storybook` binds 0.0.0.0 for
 # this, because a 127.0.0.1-only bind is invisible behind host.docker.internal.
-http://storybook.localhost:8080 {
+http://storybook.localhost:{$CADDY_HTTP_PORT:8080} {
 	reverse_proxy {$STORYBOOK_UPSTREAM:host.docker.internal:6006}
 }

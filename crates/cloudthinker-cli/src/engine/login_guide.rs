@@ -3,7 +3,7 @@
 //! Pure so the decision is table-testable: only the caller touches the network,
 //! the terminal, or the browser.
 
-use cloudthinker_client::{CredentialProvenance, CredentialSource, CtError, login_command};
+use cloudthinker_client::{CredentialProvenance, CredentialSource, CtError};
 
 /// Printed before the browser opens, so the user knows why it did.
 pub const OPENING_LOGIN: &str = "You are not logged in. Opening the CloudThinker login now.";
@@ -19,8 +19,7 @@ pub enum Hint {
 }
 
 impl Hint {
-    pub fn text(self, base_url: &str) -> String {
-        let login = login_command(base_url);
+    pub fn text(self, login: &str) -> String {
         match self {
             Hint::LogInFirst => {
                 format!("Run `{login}` on a machine with a browser, then run this command again.")
@@ -56,10 +55,10 @@ pub fn needs_login(error: &CtError) -> bool {
 /// What the terminal shows before the plan acts: the error the user must be
 /// able to read, then the line that says what happens next. `Report` prints
 /// nothing here because `exit::report` owns that error.
-pub fn explain(error: &CtError, plan: Plan, base_url: &str) -> Option<(String, String)> {
+pub fn explain(error: &CtError, plan: Plan, login: &str) -> Option<(String, String)> {
     match plan {
         Plan::Report => None,
-        Plan::Tell(hint) => Some((error.to_string(), hint.text(base_url))),
+        Plan::Tell(hint) => Some((error.to_string(), hint.text(login))),
         Plan::LogIn => Some((error.to_string(), OPENING_LOGIN.to_string())),
     }
 }
@@ -89,13 +88,13 @@ mod tests {
     use super::*;
     use cloudthinker_client::TOKEN_ENV_VAR;
 
-    const DEFAULT: &str = "https://app.cloudthinker.io";
+    const LOGIN: &str = "cloudthinker login";
 
     #[test]
     fn only_an_authentication_failure_offers_a_login() {
         assert!(needs_login(&CtError::Auth("x".into())));
         assert!(needs_login(&CtError::ObsoleteCredentials {
-            login: "cloudthinker login".into()
+            origin: "https://app.cloudthinker.io".into()
         }));
         assert!(needs_login(&CtError::Api {
             status: 401,
@@ -155,38 +154,34 @@ mod tests {
     fn a_login_never_hides_the_error_that_caused_it() {
         let error = CtError::Auth("keyring read: -25293; run `cloudthinker login`".into());
 
-        let (line, next) = explain(&error, Plan::LogIn, DEFAULT).unwrap();
+        let (line, next) = explain(&error, Plan::LogIn, LOGIN).unwrap();
 
         assert_eq!(line, error.to_string());
         assert_eq!(next, OPENING_LOGIN);
         assert_eq!(
-            explain(&error, Plan::Tell(Hint::LogInFirst), DEFAULT),
-            Some((error.to_string(), Hint::LogInFirst.text(DEFAULT)))
+            explain(&error, Plan::Tell(Hint::LogInFirst), LOGIN),
+            Some((error.to_string(), Hint::LogInFirst.text(LOGIN)))
         );
         assert_eq!(
-            explain(&CtError::Transport("down".into()), Plan::Report, DEFAULT),
+            explain(&CtError::Transport("down".into()), Plan::Report, LOGIN),
             None
         );
     }
 
     #[test]
     fn the_environment_hint_names_the_variable_it_talks_about() {
-        assert!(Hint::ReplaceEnvToken.text(DEFAULT).contains(TOKEN_ENV_VAR));
+        assert!(Hint::ReplaceEnvToken.text(LOGIN).contains(TOKEN_ENV_VAR));
     }
 
     #[test]
-    fn every_hint_names_the_host_it_was_given() {
+    fn every_hint_names_the_login_command_it_was_given() {
+        let login = "cloudthinker login --url https://dev.cloudthinker.io";
         for hint in [
             Hint::LogInFirst,
             Hint::ReplaceEnvToken,
             Hint::RenewStoredLogin,
         ] {
-            assert!(hint.text(DEFAULT).contains("`cloudthinker login`"));
-            assert!(
-                hint.text("https://dev.cloudthinker.io")
-                    .contains("`cloudthinker login --url https://dev.cloudthinker.io`"),
-                "{hint:?}"
-            );
+            assert!(hint.text(login).contains(&format!("`{login}`")), "{hint:?}");
         }
     }
 }

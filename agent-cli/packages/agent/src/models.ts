@@ -8,7 +8,7 @@ import { ModelRuntime } from "../node_modules/@earendil-works/pi-coding-agent/di
 
 export const MODEL_SCOPE = `${PROVIDER_ID}/*`;
 
-export const NO_CLOUD_MODEL = "No CloudThinker agent mode is loaded, so the message was not sent. Run /cloud retry, then press ↑ to send it again.";
+export const NO_CLOUD_MODEL = "No CloudThinker Agent mode is loaded, so the message was not sent. Run /cloud retry, then press ↑ to send it again.";
 
 export function modelScopeArgs(argv: string[]): string[] {
 	return argv.includes("--models") ? [] : ["--models", MODEL_SCOPE];

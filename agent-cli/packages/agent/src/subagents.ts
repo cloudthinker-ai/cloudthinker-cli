@@ -20,7 +20,7 @@ import cloudthinker from "@cloudthinker/cloud/src/index.ts";
 import { PROVIDER_ID } from "@cloudthinker/cloud/src/provider.ts";
 import { CLOUD_ENTRY_TYPE } from "@cloudthinker/cloud/src/runtime.ts";
 import { cloudDefaultEnabled } from "@cloudthinker/cloud/src/settings.ts";
-import { findLinkedSession } from "@cloudthinker/cloud/src/session.ts";
+import { findLinkedSession, findSelectedAgentReference } from "@cloudthinker/cloud/src/session.ts";
 import { CLOUD_TOOLS } from "@cloudthinker/cloud/src/tools/names.ts";
 import { adaptiveSubagentModeGuidance } from "./subagent-modes.ts";
 import { formatClock, tasksPane } from "./tasks-pane.ts";
@@ -32,7 +32,7 @@ export const resolveCloudMode: SubagentHost["resolveModel"] = (input, registry) 
 		.filter((model) => model.provider === PROVIDER_ID);
 	const id = input.startsWith(`${PROVIDER_ID}/`) ? input.slice(PROVIDER_ID.length + 1) : input;
 	const found = modes.find((model) => model.id === id);
-	return found ?? `Choose a CloudThinker agent mode: ${modes.map((model) => `${PROVIDER_ID}/${model.id}`).join(", ") || "unavailable; check authentication and restart"}.`;
+	return found ?? `Choose a CloudThinker Agent mode: ${modes.map((model) => `${PROVIDER_ID}/${model.id}`).join(", ") || "unavailable; check authentication and restart"}.`;
 };
 
 function requireCloudMode(model: Pick<NonNullable<CreateAgentSessionOptions["model"]>, "provider" | "id"> | undefined, ctx: ExtensionContext) {
@@ -58,7 +58,7 @@ export function childLoaderOptions(
 ): DefaultResourceLoaderOptions {
 	const entries = ctx.sessionManager.getEntries();
 	const sourceConversationId = findLinkedSession(entries)?.conversation_id;
-	const childOptions = { cloudEnabled: cloudEnabled(ctx) && includeCloudTools, sourceConversationId };
+	const childOptions = { cloudEnabled: cloudEnabled(ctx) && includeCloudTools, sourceConversationId, selectedAgentReference: findSelectedAgentReference(entries) };
 	return {
 		...options,
 		extensionFactories: [{
@@ -141,14 +141,14 @@ export function cloudDelegationTool(tool: ToolDefinition): ToolDefinition {
 		};
 	}
 	if (properties.model) {
-		properties.model = { ...properties.model, description: "CloudThinker agent mode ID, such as cloudthinker/pro. Omit to inherit the parent mode." };
+		properties.model = { ...properties.model, description: "CloudThinker Agent mode ID, such as cloudthinker/pro. Omit to inherit the parent mode." };
 	}
 	if (properties.run_in_background) {
 		properties.run_in_background = { ...properties.run_in_background, description: "Ignored in interactive sessions, where every agent runs in the background and its completion resumes you. Print and JSON runs always wait for completion." };
 	}
 	tool.parameters = { ...tool.parameters, properties };
 	const replacements: [string | RegExp, string][] = upstreamName === "Agent" ? [
-		['- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").', '- Use model only to select an advertised CloudThinker agent mode. Omit it to inherit the parent mode.'],
+		['- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").', '- Use model only to select an advertised CloudThinker Agent mode. Omit it to inherit the parent mode.'],
 		['- Use thinking to control extended thinking level.\n', ''],
 	] : [
 		['effort?: string, ', ''],

@@ -45,7 +45,9 @@ function createApi() {
 	const handlers = new Map<string, (event: unknown, ctx: ExtensionContext) => unknown>();
 	const messages: unknown[] = [];
 	const tools = new Map<string, ToolDefinition>();
+	const renderers = new Map<string, (message: unknown, options: unknown, theme: unknown) => { render(width: number): string[] } | undefined>();
 	const api = {
+		registerMessageRenderer: (type: string, renderer: never) => { renderers.set(type, renderer); },
 		registerTool: (registered: ToolDefinition) => { tools.set(registered.name, registered); },
 		on: (event: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) => { handlers.set(event, handler); },
 		sendMessage: (message: unknown) => { messages.push(message); },
@@ -53,7 +55,7 @@ function createApi() {
 	} as unknown as ExtensionAPI;
 	registerBackgroundCommands(api);
 	assert.ok(tools.has("ct_background") && tools.has("bash"));
-	return { handlers, messages, tool: tools.get("ct_background")!, bash: tools.get("bash")! };
+	return { handlers, messages, renderers, tool: tools.get("ct_background")!, bash: tools.get("bash")! };
 }
 
 function assertSafeDisplay(value: string): void {
@@ -304,4 +306,13 @@ test("a TUI bash call still running after the wait moves to the background witho
 		else process.env.CLOUDTHINKER_AUTO_BACKGROUND_SECONDS = oldSeconds;
 		await rm(root, { recursive: true, force: true });
 	}
+});
+
+test("a recorded background completion message resumes as one row per command", () => {
+	const { renderers } = createApi();
+	const render = renderers.get("ct_background_completion")!;
+	const content = [{ type: "text", text: "Background command completion event\n- abc123 finished in 2s · make build\n- def456 stopped by the user after 5s · sleep 30\nRead each output with ct_background(action=\"output\", taskId=\"...\") before reporting." }];
+	const lines = render({ content }, {}, plainTheme)!.render(80);
+	assert.deepEqual(lines, ["", " make build · finished in 2s", " sleep 30 · stopped by the user after 5s"]);
+	assert.equal(render({ content: [{ type: "text", text: "unrelated" }] }, {}, plainTheme), undefined);
 });

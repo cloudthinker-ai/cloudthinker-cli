@@ -5,7 +5,7 @@ import type { CloudThinkerClient } from "../src/client.ts";
 import { registerCommands } from "../src/commands.ts";
 import { buildPromptBlock } from "../src/prompt.ts";
 import { CLOUD_ENTRY_TYPE, CloudThinkerRuntime } from "../src/runtime.ts";
-import { CLOUD_TOOLS } from "../src/tools/names.ts";
+import { CLOUD_TOOLS, CT_ASK } from "../src/tools/names.ts";
 import { registerSandboxRead } from "../src/tools/ct-sandbox-read.ts";
 import { registerSandboxWrite } from "../src/tools/ct-sandbox-write.ts";
 import { registerAsk } from "../src/tools/ct-ask.ts";

@@ -3352,7 +3352,7 @@ The file format is a markdown file with YAML frontmatter and a system prompt bod
 description: <one-line description shown in UI>
 color: <optional agent name badge color: red, blue, green, yellow, purple, orange, pink, cyan, an Agency Agents alias, or quoted "#RRGGBB">
 tools: <comma-separated built-in tools: read, bash, edit, write, grep, find, ls. Use "none" for no tools. Omit for all tools>
-model: <${getSubagentHost() ? `optional CloudThinker agent mode: ${getSubagentHost()!.modelChoices(ctx).join(", ")}. Omit to inherit parent mode` : 'optional model as "provider/modelId". Omit to inherit parent model'}>${getSubagentHost() ? "" : `\nthinking: <optional thinking level: ${THINKING_LEVELS.join(", ")}. Omit to inherit>`}
+model: <${getSubagentHost() ? `optional CloudThinker Agent mode: ${getSubagentHost()!.modelChoices(ctx).join(", ")}. Omit to inherit parent mode` : 'optional model as "provider/modelId". Omit to inherit parent model'}>${getSubagentHost() ? "" : `\nthinking: <optional thinking level: ${THINKING_LEVELS.join(", ")}. Omit to inherit>`}
 max_turns: <optional max agentic turns. 0 or omit for unlimited (default)>
 prompt_mode: <"replace" (body IS the full system prompt) or "append" (body is appended to default prompt). Default: replace>
 extensions: <true (inherit all MCP/extension tools), false (none), or comma-separated names. Default: true>

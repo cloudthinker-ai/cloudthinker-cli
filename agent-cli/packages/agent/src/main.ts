@@ -16,6 +16,7 @@ import { registerBackgroundCommands } from "./background/index.ts";
 import { registerMentionPicker } from "./mention-picker.ts";
 import bundledBtw from "./btw.ts";
 import { applyGuard } from "./guard.ts";
+import { registerIdentity } from "./identity.ts";
 import { isLocalReview, withoutLocalReviewFlag } from "./local-review-mode.ts";
 import { modelScopeArgs } from "./models.ts";
 import { registerScrollPill } from "./scroll-pill.ts";
@@ -62,6 +63,7 @@ markStartup("agent.settings");
 
 await main([...themes, ...tuiMode, ...modelScopeArgs(argv), ...argv], {
 	extensionFactories: [
+		{ name: "identity", factory: (pi) => { registerIdentity(pi); } },
 		{ name: "cloudthinker", factory: (pi) => cloudthinker(pi, { localReview, changelogPath }) },
 		{ name: "background", factory: (pi) => { registerBackgroundCommands(pi); } },
 		{ name: "verbosity", factory: (pi) => { registerVerbosity(pi); } },

@@ -9,9 +9,9 @@ import {
 	type SessionCreated,
 	type SessionCredits,
 } from "./client.ts";
-import { CLOUD_TOOLS } from "./tools/names.ts";
-import type { CloudFailure } from "./cloud-error.ts";
+import { CLOUD_TOOLS, CT_ASK } from "./tools/names.ts";
 import { BOTH_TAG, LOCAL_TAG, sanitizeTerminalText, setMachineState } from "./awareness.ts";
+import type { CloudFailure } from "./cloud-error.ts";
 import { PRODUCT_NAME, SessionHeader } from "./header.ts";
 import { type HostVersions, readHostVersions } from "./versions.ts";
 
@@ -30,7 +30,7 @@ export const AUTO_MODE_OFF_REASON = "auto_mode_disabled";
 
 export function approvalWidgetLine(
 	webUrl: string,
-	subject = "CloudThinker agent",
+	subject = "CloudThinker Agent",
 	hint: string = NOTIFY_HINT,
 ): string {
 	const waiting = `approval needed: ${subject} is waiting in the browser → ${sanitizeTerminalText(webUrl)}`;
@@ -49,6 +49,12 @@ export function autoModeFrom(session: SessionCreated): AutoMode {
 export interface AskThread {
 	conversation_id: string;
 	web_url: string;
+	selected_agent_reference?: string;
+}
+
+export function normalizeAgentReference(reference: string | undefined): string | undefined {
+	const value = reference?.trim();
+	return value || undefined;
 }
 
 export interface MemorySnapshot {
@@ -79,6 +85,8 @@ export class CloudThinkerRuntime {
 	readonly header: SessionHeader;
 	readonly versions: HostVersions;
 	readonly root: boolean;
+	private readonly defaultSelectedAgentReference: string | undefined;
+	selectedAgentReference: string | undefined;
 	startEvent: SessionStartEvent | undefined;
 	sourceConversationId: string | undefined;
 	afterLink: ((ctx: ExtensionContext) => Promise<void>) | undefined;
@@ -90,12 +98,15 @@ export class CloudThinkerRuntime {
 		client: CloudThinkerClient = new CloudThinkerClient(),
 		versions: HostVersions = readHostVersions(),
 		root = false,
+		selectedAgentReference?: string,
 	) {
 		this.pi = pi;
 		this.client = client;
 		this.versions = versions;
 		this.header = new SessionHeader(versions);
 		this.root = root;
+		this.defaultSelectedAgentReference = normalizeAgentReference(selectedAgentReference);
+		this.selectedAgentReference = this.defaultSelectedAgentReference;
 	}
 
 	bind(context: ExtensionContext): void {
@@ -111,7 +122,9 @@ export class CloudThinkerRuntime {
 			])];
 			this.pi.setActiveTools(active.filter((name) => !CLOUD_TOOLS.includes(name)));
 		} else {
-			this.pi.setActiveTools([...new Set([...active, ...this.disabledCloudTools])]);
+			this.pi.setActiveTools(
+				[...new Set([...active, ...this.disabledCloudTools])],
+			);
 			this.disabledCloudTools = [];
 		}
 		this.cloudEnabled = enabled;
@@ -124,6 +137,11 @@ export class CloudThinkerRuntime {
 		this.context?.ui.setStatus(CLOUD_ENTRY_TYPE, enabled ? BOTH_TAG : LOCAL_TAG);
 		if (this.root) setMachineState({ cloudEnabled: enabled, ...(this.context?.cwd ? { cwd: this.context.cwd } : {}) });
 		if (persist) this.pi.appendEntry(CLOUD_ENTRY_TYPE, { enabled });
+	}
+
+
+	setSelectedAgentReference(reference: string | undefined): void {
+		this.selectedAgentReference = normalizeAgentReference(reference);
 	}
 
 	get connectedPrefixes(): string[] {
@@ -211,6 +229,7 @@ export class CloudThinkerRuntime {
 		this.linkFailure = undefined;
 		this.linkAttempts = 0;
 		this.session = undefined;
+		this.selectedAgentReference = this.defaultSelectedAgentReference;
 		this.autoMode = undefined;
 		this.askThread = undefined;
 		this.memory = undefined;

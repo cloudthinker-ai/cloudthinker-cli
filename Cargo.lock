@@ -500,7 +500,7 @@ dependencies = [
 
 [[package]]
 name = "cloudthinker-cli"
-version = "0.8.0-dev.3"
+version = "0.8.0"
 dependencies = [
  "assert_cmd",
  "axoupdater",

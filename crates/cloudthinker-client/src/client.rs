@@ -22,8 +22,12 @@ use crate::error::{CtError, CtResult, to_ct_error};
 use crate::retry::classify;
 use crate::review_url::{MrCoordinates, MrProvider};
 
+mod incidents;
 mod memory;
+mod recommendations;
+pub use incidents::{IncidentStatus, IncidentView};
 pub use memory::{CyberMemoryContextSource, CyberMemoryFile, CyberMemorySnapshot};
+pub use recommendations::{RecommendationStatus, RecommendationView};
 
 pub const DEFAULT_BASE_URL: &str = "https://app.cloudthinker.io";
 const REQUEST_TIMEOUT_SECS: u64 = 30;
@@ -1166,10 +1170,15 @@ impl CtClient {
         &self,
         prompt: &str,
         conversation_id: Option<Uuid>,
+        selected_agent_reference: Option<&str>,
     ) -> CtResult<SubmittedRun> {
         let prompt_field = prompt
             .parse::<cloudthinker_api::types::SubmitHeadlessRunRequestPrompt>()
             .map_err(|_| CtError::Usage("prompt must be 1–50000 characters".into()))?;
+        let selected_agent_reference = selected_agent_reference.map(str::trim);
+        if selected_agent_reference.is_some_and(str::is_empty) {
+            return Err(CtError::Usage("--agent must not be empty".into()));
+        }
         let body = cloudthinker_api::types::SubmitHeadlessRunRequest {
             conversation_id,
             idempotency_key: None,
@@ -1181,6 +1190,7 @@ impl CtClient {
                 thinking_effort: None,
             },
             source_conversation_id: None,
+            selected_agent_reference: selected_agent_reference.map(str::to_owned),
         };
         let submitted = self
             .authed(async |c: cloudthinker_api::Client| {
@@ -2816,7 +2826,7 @@ mod tests {
         )
         .unwrap();
         let err = client
-            .submit_run("here is my aws key", None)
+            .submit_run("here is my aws key", None, None)
             .await
             .unwrap_err();
         match err {
@@ -2847,7 +2857,7 @@ mod tests {
         )
         .unwrap();
         let err = client
-            .submit_run("here is my prompt", None)
+            .submit_run("here is my prompt", None, None)
             .await
             .unwrap_err();
         assert!(matches!(err, CtError::Protocol(_)), "got {err:?}");
@@ -2861,7 +2871,7 @@ mod tests {
             Arc::new(MockTokenStore::new(Some(stored("access", "r")))),
         )
         .unwrap();
-        let err = client.submit_run("", None).await.unwrap_err();
+        let err = client.submit_run("", None, None).await.unwrap_err();
         assert!(matches!(err, CtError::Usage(_)), "got {err:?}");
     }
 
@@ -3352,6 +3362,7 @@ mod tests {
         )
         .unwrap();
         let run_scope = cloudthinker_api::types::ScopeSpec {
+            browser_resource_origins: Vec::new(),
             include: vec!["/health".parse().unwrap()],
             exclude: vec!["/admin".parse().unwrap()],
         };

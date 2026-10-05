@@ -24,8 +24,9 @@ import { PromptSearch, pastPrompts } from "../src/prompt-search.ts";
 import { CLEAR_SCREEN, CLEAR_SCREEN_BUSY, MODEL_SELECT, applyClearScreenKey, clearScreen } from "../src/clear-screen.ts";
 import { applyQueuedMessagesUi } from "../src/queue-ui.ts";
 import { applyScrollPill, noteTranscriptUpdate } from "../src/scroll-pill.ts";
-import { TranscriptView, applyTranscriptUi, transcriptMarkdown } from "../src/transcript.ts";
+import { MAX_RESULT_LINES, TranscriptView, applyTranscriptUi, renderBlocks, transcriptBlocks, transcriptMarkdown } from "../src/transcript.ts";
 import { savedTuiMode, tuiModeArgs } from "../src/tui-mode.ts";
+import { diffStyle, setDiffStyle } from "../src/verbosity.ts";
 
 initTheme("dark");
 applyTranscriptUi();
@@ -106,7 +107,7 @@ test("Ctrl+O opens a searchable full transcript instead of expanding tool output
 	assert.equal(closed, true);
 
 	const edited = transcriptMarkdown([message("e", { role: "toolResult", toolCallId: "t2", toolName: "edit", isError: false, content: [{ type: "text", text: "Edited app.ts" }], details: { diff: "-2 const b = 2;\n+2 const b = 20;" } })]);
-	assert.match(edited, /Edited app\.ts\n\n-2 const b = 2;\n\+2 const b = 20;/);
+	assert.match(edited, /Edited app\.ts\n\n@@ line 2 @@\n2 - const b = 2;\n2 \+ const b = 20;/);
 	const markdown = transcriptMarkdown(conversation);
 	assert.match(markdown, /## bash\n\n```\nkubectl describe pod api\n```/);
 	assert.match(markdown, /event 0: OOMKilled[\s\S]*event 59: OOMKilled/);
@@ -118,6 +119,62 @@ test("Ctrl+O opens a searchable full transcript instead of expanding tool output
 	};
 	prototype.toggleToolOutputExpansion.call(empty);
 	assert.deepEqual(expanded, [true]);
+});
+
+test("the transcript draws a shell call as a command block and an edit result as a diff, and exports plain text", () => {
+	const entries = [
+		message("s1", { role: "assistant", content: [{ type: "toolCall", id: "t1", name: "bash", arguments: { command: "make build && make test | tee log.txt" } }], stopReason: "toolUse" }),
+		message("s2", { role: "toolResult", toolCallId: "t2", toolName: "edit", isError: false, content: [{ type: "text", text: "Edited app.ts" }], details: { diff: " 1 keep\n-2 const b = 2;\n+2 const b = 20;\n 3 keep" } }),
+	];
+	const text = (width: number) => renderBlocks(transcriptBlocks(entries), theme, width).map((line) => stripVTControlCharacters(line).trimEnd());
+	const narrow = text(80).join("\n");
+	assert.match(narrow, /\$ make build\n\s+│ && make test\n\s+│ \| tee log\.txt/);
+	assert.match(narrow, /Edited app\.ts\n\n\s+╌╌ line 1 ╌+\n\s+1   keep\n\s+2 - const b = 2;\n\s+2 \+ const b = 20;/);
+	assert.match(text(200).join("\n"), /2 - const b = 2;\s+│\s+2 \+ const b = 20;/);
+	const markdown = transcriptMarkdown(entries);
+	assert.match(markdown, /```\nmake build && make test \| tee log\.txt\n```/);
+	assert.match(markdown, /Edited app\.ts\n\n@@ line 1 @@\n1   keep\n2 - const b = 2;\n2 \+ const b = 20;\n3   keep/);
+	assert.doesNotMatch(markdown, /\x1b/);
+
+	const huge = Array.from({ length: 1000 }, (_, index) => `echo ${index}`).join("\n");
+	const hugeEntries = [message("h1", { role: "assistant", content: [{ type: "toolCall", id: "t9", name: "bash", arguments: { command: huge } }], stopReason: "toolUse" })];
+	const hugeLines = renderBlocks(transcriptBlocks(hugeEntries), theme, 120).map((line) => stripVTControlCharacters(line));
+	assert.ok(hugeLines.length < MAX_RESULT_LINES + 10);
+	assert.match(hugeLines.join("\n"), /… 600 more lines \(press e/);
+	assert.match(transcriptMarkdown(hugeEntries), /echo 999/);
+
+	const failed = [
+		message("f1", { role: "assistant", content: [{ type: "toolCall", id: "t3", name: "edit", arguments: { path: "app.ts", edits: [{ oldText: "const b = 2;", newText: "const b = 20;" }] } }], stopReason: "toolUse" }),
+		message("f2", { role: "toolResult", toolCallId: "t3", toolName: "edit", isError: true, content: [{ type: "text", text: "oldText not found" }] }),
+	];
+	assert.match(renderBlocks(transcriptBlocks(failed), theme, 120).map((line) => stripVTControlCharacters(line)).join("\n"), /app\.ts · 1 replacement[\s\S]*oldText not found[\s\S]*"oldText": "const b = 2;"/);
+	assert.match(transcriptMarkdown(failed), /"oldText": "const b = 2;"[\s\S]*"newText": "const b = 20;"/);
+
+	const injected = [
+		message("i1", { role: "assistant", content: [{ type: "toolCall", id: "t4", name: "write", arguments: { file_path: "notes\u001b]52;c;cGF5bG9hZA==\u0007.txt", content: "hi\n" } }], stopReason: "toolUse" }),
+		message("i2", { role: "toolResult", toolCallId: "t5", toolName: "read\u001b[2J", isError: false, content: [{ type: "text", text: "done\u001b]8;;https://example.com\u0007link" }] }),
+	];
+	const injectedScreen = renderBlocks(transcriptBlocks(injected), theme, 120).join("\n");
+	assert.doesNotMatch(injectedScreen, /\x1b\]|\x07|\x1b\[2J/);
+	assert.match(stripVTControlCharacters(injectedScreen), /notes.*\.txt/);
+
+	try {
+		const tui = { terminal: { rows: 30, columns: 200 }, requestRender: () => {} } as unknown as TUI;
+		const view = new TranscriptView({ entries: () => entries, theme, tui, onClose: () => {}, onOpenEditor: () => {}, onCopy: async () => {} });
+		const shown = (width: number) => stripVTControlCharacters(view.render(width).join("\n"));
+		assert.match(shown(200), /2 - const b = 2;\s+│\s+2 \+ const b = 20;/);
+		assert.match(shown(200), /s unified · e editor/);
+		view.handleInput("s");
+		assert.doesNotMatch(shown(200), /│\s+2 \+/);
+		assert.match(shown(200), /s split · e editor/);
+		view.handleInput("s");
+		assert.match(shown(200), /│\s+2 \+ const b = 20;/);
+		assert.doesNotMatch(shown(80), /s (split|unified) ·/);
+		view.handleInput("s");
+		assert.equal(diffStyle(), "split");
+	} finally {
+		setDiffStyle("auto");
+	}
 });
 
 test("queued messages sit above the editor in gray with when each one sends", () => {
@@ -436,7 +493,7 @@ test("edit and write collapse to +added −removed and open to the full diff on 
 		assert.match(screen(edit), /\[L\] edit app\.ts  \+2 −1/);
 		assert.doesNotMatch(screen(edit), /const d = 4/);
 		edit.setExpanded(true);
-		assert.match(screen(edit), /-\d+ const b = 2;[\s\S]*\+\d+ const d = 4;/);
+		assert.match(screen(edit), /\d+ - const b = 2;[\s\S]*\d+ \+ const d = 4;/);
 
 		const write = new ToolExecutionComponent(
 			"write",
@@ -452,7 +509,7 @@ test("edit and write collapse to +added −removed and open to the full diff on 
 		assert.match(screen(write), /\[L\] write new\.ts  \+3/);
 		assert.doesNotMatch(screen(write), /two/);
 		write.setExpanded(true);
-		assert.match(screen(write), /one\n\s*two\n\s*three/);
+		assert.match(screen(write), /1 \+ one\n\s*2 \+ two\n\s*3 \+ three/);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

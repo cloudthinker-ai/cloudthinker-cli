@@ -1,5 +1,5 @@
 import { InteractiveMode } from "@earendil-works/pi-coding-agent";
-import { Box, Text, type Component, sliceByColumn, visibleWidth } from "@earendil-works/pi-tui";
+import { Box, Container, Text, type Component, sliceByColumn, visibleWidth } from "@earendil-works/pi-tui";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import { LOCAL_TAG, LOCAL_TOOLS, sanitizeTerminalText, taggedComponent } from "@cloudthinker/cloud/src/awareness.ts";
@@ -7,7 +7,9 @@ import { formatElapsed } from "@cloudthinker/cloud/src/tools/render.ts";
 
 import { renderToolPath } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/tools/render-utils.js";
 import { staysInForeground } from "./background/shell.ts";
-import { toolOutputMode } from "./verbosity.ts";
+import { CommandBlock } from "./command-block.ts";
+import { DiffView, hunksFromContent, parsePiDiff, type Hunk } from "./diff-view.ts";
+import { diffStyle, toolOutputMode } from "./verbosity.ts";
 
 type RenderCall = (args: any, theme: any, context: any) => Component;
 type RenderResult = (result: any, options: any, theme: any, context: any) => Component;
@@ -46,6 +48,45 @@ function collapsedChange(toolName: string, args: any, theme: any, context: any, 
 	return box;
 }
 
+const DIFF_VIEW_CACHE = 64;
+const diffViews = new Map<string, { source: string; theme: unknown; view: DiffView | undefined }>();
+
+function detailedView(toolName: string, args: any, theme: any, context: any, tag: (component: Component) => Component): Component | undefined {
+	if (context.isError || (toolOutputMode() !== "preview" && !context.expanded)) return undefined;
+	if (SHELL_TOOLS.includes(toolName)) {
+		const command = typeof args?.command === "string" ? args.command : "";
+		if (!command.trim()) return undefined;
+		return tag(new CommandBlock(command, toolName === "powershell" ? "PS>" : "$", theme, { fold: !context.expanded, indent: visibleWidth(LOCAL_TAG) + 1 }));
+	}
+	if (!CHANGE_TOOLS.includes(toolName)) return undefined;
+	const diff = context.state?.callComponent?.preview?.diff;
+	const source = toolName === "edit" ? diff : args?.content;
+	if (typeof source !== "string") return undefined;
+	const path = typeof args?.file_path === "string" ? args.file_path : typeof args?.path === "string" ? args.path : undefined;
+	const key = `${String(context.toolCallId)}:${context.expanded ? "full" : "preview"}`;
+	let cached = diffViews.get(key);
+	if (cached?.source !== source || cached.theme !== theme) {
+		const hunks: Hunk[] = toolName === "edit" ? parsePiDiff(source) : hunksFromContent(source);
+		cached = { source, theme, view: hunks.length > 0 ? new DiffView(hunks, theme, { preview: !context.expanded, style: diffStyle, path, wholeFile: toolName === "write" }) : undefined };
+		diffViews.delete(key);
+		diffViews.set(key, cached);
+		if (diffViews.size > DIFF_VIEW_CACHE) diffViews.delete(diffViews.keys().next().value!);
+	}
+	const view = cached.view;
+	if (!view) return undefined;
+	const header = tag(new Text(changeLine(toolName, args, theme, context), 0, 0));
+	if (toolName !== "edit") {
+		const stack = new Container();
+		stack.addChild(header);
+		stack.addChild(view);
+		return stack;
+	}
+	const box = new Box(1, 1);
+	box.addChild(header);
+	box.addChild(view);
+	return box;
+}
+
 interface ToolRendererHost {
 	getRegisteredToolDefinition(toolName: string): ToolDefinition | undefined;
 }
@@ -66,7 +107,7 @@ export function tagLocalToolDefinition(
 			const inner = renderCall(args, theme, { ...context, lastComponent });
 			lastComponent = inner;
 			const tag = (component: Component) => taggedComponent(LOCAL_TAG, theme, component);
-			return collapsedChange(toolName, args, theme, context, tag) ?? tag(shortCommand(toolName, args, theme, context, commandLine) ?? clickToExpand(inner));
+			return collapsedChange(toolName, args, theme, context, tag) ?? detailedView(toolName, args, theme, context, tag) ?? tag(shortCommand(toolName, args, theme, context, commandLine) ?? clickToExpand(inner));
 		},
 		...(COMPACT_TOOLS.includes(toolName) && typeof definition.renderResult === "function"
 			? { renderResult: compactResult(definition.renderResult as RenderResult, toolName === "bash") }
