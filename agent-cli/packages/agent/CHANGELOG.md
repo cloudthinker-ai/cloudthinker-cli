@@ -1,3 +1,8 @@
+## [0.8.0-dev.5]
+
+- The agent's glob matching picks up brace-expansion 5.0.12, which fixes three denial-of-service issues (CPU and stack exhaustion on crafted brace patterns).
+- Select text in the prompt with the mouse in fullscreen mode: drag over it, double-click a word, or triple-click to select the whole prompt. Backspace or Delete removes the selection, typing replaces it, and a dragged selection still copies to the clipboard.
+
 ## [0.8.0-dev.4]
 
 - The agent introduces itself to the model as CloudThinker Agent instead of pi's coding assistant, and its messages name CloudThinker Agent the same way everywhere.

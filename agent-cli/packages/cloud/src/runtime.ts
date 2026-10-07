@@ -78,6 +78,7 @@ export class CloudThinkerRuntime {
 	linkFailure: CloudFailure | undefined;
 	linkAttempts = 0;
 	linking: Promise<SessionCreated> | undefined;
+	turnId: string | undefined;
 	closed = false;
 	private retryTimer: NodeJS.Timeout | undefined;
 
@@ -229,6 +230,7 @@ export class CloudThinkerRuntime {
 		this.linkFailure = undefined;
 		this.linkAttempts = 0;
 		this.session = undefined;
+		this.turnId = undefined;
 		this.selectedAgentReference = this.defaultSelectedAgentReference;
 		this.autoMode = undefined;
 		this.askThread = undefined;

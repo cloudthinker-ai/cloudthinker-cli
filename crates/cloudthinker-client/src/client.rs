@@ -198,7 +198,7 @@ impl RunView {
     }
 }
 
-/// Lifecycle of an AppSec run — running | success | failed | cancelled.
+/// Lifecycle of an Cyber run — running | success | failed | cancelled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CyberRunResult {
@@ -470,7 +470,7 @@ pub struct CyberDomain {
 }
 
 impl CyberDomain {
-    fn from_api(value: cloudthinker_api::types::AppSecDomainPublic) -> Self {
+    fn from_api(value: cloudthinker_api::types::CyberDomainPublic) -> Self {
         Self {
             domain_id: value.id,
             domain: value.domain,
@@ -533,7 +533,7 @@ pub struct CyberRunBrief {
     pub mode: String,
     pub intensity: String,
     pub scan_mode: String,
-    pub report_preferences: cloudthinker_api::types::AppSecReportPreferences,
+    pub report_preferences: cloudthinker_api::types::CyberReportPreferences,
     pub report_reference: Option<cloudthinker_api::types::LocalRunReportReferencePublic>,
     pub started_at: DateTime<Utc>,
     pub finished_at: Option<DateTime<Utc>>,
@@ -927,13 +927,17 @@ pub enum ReviewStatus {
     ReviewComplete,
     Filtered,
     Failed,
+    Stopped,
 }
 
 impl ReviewStatus {
     /// True once the review has reached a state that will not change on its
-    /// own (`review_complete`, `filtered`, or `failed`).
+    /// own (`review_complete`, `filtered`, `failed`, or `stopped`).
     pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::ReviewComplete | Self::Filtered | Self::Failed)
+        matches!(
+            self,
+            Self::ReviewComplete | Self::Filtered | Self::Failed | Self::Stopped
+        )
     }
 }
 
@@ -945,6 +949,7 @@ impl From<cloudthinker_api::types::ReviewStatus> for ReviewStatus {
             A::ReviewComplete => Self::ReviewComplete,
             A::Filtered => Self::Filtered,
             A::Failed => Self::Failed,
+            A::Stopped => Self::Stopped,
         }
     }
 }
@@ -959,6 +964,7 @@ pub enum ReviewVerdict {
     ReviewSuggested,
     ChangesRequested,
     Failed,
+    Stopped,
     Filtered,
 }
 
@@ -971,6 +977,7 @@ impl From<cloudthinker_api::types::CodeReviewOverviewVerdict> for ReviewVerdict 
             A::ReviewSuggested => Self::ReviewSuggested,
             A::ChangesRequested => Self::ChangesRequested,
             A::Failed => Self::Failed,
+            A::Stopped => Self::Stopped,
             A::Filtered => Self::Filtered,
         }
     }
@@ -1368,7 +1375,7 @@ impl CtClient {
     }
 
     pub async fn cyber_create_domain(&self, domain: &str) -> CtResult<CyberDomain> {
-        let body = cloudthinker_api::types::AppSecDomainCreate {
+        let body = cloudthinker_api::types::CyberDomainCreate {
             domain: domain
                 .parse()
                 .map_err(|error| CtError::Usage(format!("domain: {error}")))?,
@@ -2291,7 +2298,7 @@ mod tests {
             mode: "white".into(),
             intensity: "full".into(),
             scan_mode: "full".into(),
-            report_preferences: cloudthinker_api::types::AppSecReportPreferences::default(),
+            report_preferences: cloudthinker_api::types::CyberReportPreferences::default(),
             report_reference: Some(cloudthinker_api::types::LocalRunReportReferencePublic {
                 source_id: Uuid::from_u128(4),
                 name: "house-style.pdf".into(),
@@ -3218,41 +3225,61 @@ mod tests {
     // worst-severity first (the fixture lists "high" before "critical").
     #[tokio::test]
     async fn ca_rv_1_lookup_200_maps_fields() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/api/v1/code-review/merge-requests/lookup"))
-            .and(query_param("mr_iid", "42"))
-            .and(query_param("project_path", "group/my-repo"))
-            .and(query_param("provider", "gitlab"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(review_detail_json()))
-            .mount(&server)
-            .await;
+        for (status_wire, expected_status, verdict_wire, expected_verdict) in [
+            (
+                "review_complete",
+                ReviewStatus::ReviewComplete,
+                "changes_requested",
+                ReviewVerdict::ChangesRequested,
+            ),
+            (
+                "stopped",
+                ReviewStatus::Stopped,
+                "stopped",
+                ReviewVerdict::Stopped,
+            ),
+        ] {
+            let server = MockServer::start().await;
+            let mut payload = review_detail_json();
+            payload["review_status"] = status_wire.into();
+            payload["verdict"] = verdict_wire.into();
+            Mock::given(method("GET"))
+                .and(path("/api/v1/code-review/merge-requests/lookup"))
+                .and(query_param("mr_iid", "42"))
+                .and(query_param("project_path", "group/my-repo"))
+                .and(query_param("provider", "gitlab"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(payload))
+                .mount(&server)
+                .await;
 
-        let client = CtClient::new(
-            server.uri(),
-            Arc::new(MockTokenStore::new(Some(stored("access", "r")))),
-        )
-        .unwrap();
-        let coords = MrCoordinates {
-            provider: MrProvider::Gitlab,
-            project_path: "group/my-repo".to_string(),
-            mr_iid: 42,
-        };
-        let view = client.lookup_review(&coords).await.unwrap();
+            let client = CtClient::new(
+                server.uri(),
+                Arc::new(MockTokenStore::new(Some(stored("access", "r")))),
+            )
+            .unwrap();
+            let coords = MrCoordinates {
+                provider: MrProvider::Gitlab,
+                project_path: "group/my-repo".to_string(),
+                mr_iid: 42,
+            };
+            let view = client.lookup_review(&coords).await.unwrap();
 
-        assert_eq!(view.mr_iid, 42);
-        assert_eq!(view.status, ReviewStatus::ReviewComplete);
-        assert!(view.status.is_terminal());
-        assert_eq!(view.verdict, ReviewVerdict::ChangesRequested);
-        assert_eq!(view.findings_count, 2);
-        assert_eq!(view.title, "Fix the bug");
-        assert_eq!(view.provider, "gitlab");
-        assert_eq!(view.repository_path.as_deref(), Some("group/my-repo"));
-        assert_eq!(view.severity_counts.critical, 1);
-        assert_eq!(view.severity_counts.high, 2);
-        assert_eq!(view.findings.len(), 2);
-        assert_eq!(view.findings[0].severity, "critical", "worst-first");
-        assert_eq!(view.findings[1].severity, "high");
+            assert_eq!(view.mr_iid, 42);
+            assert_eq!(view.status, expected_status);
+            assert!(view.status.is_terminal());
+            assert_eq!(view.verdict, expected_verdict);
+            assert_eq!(view.findings_count, 2);
+            assert_eq!(view.title, "Fix the bug");
+            assert_eq!(view.provider, "gitlab");
+            assert_eq!(view.repository_path.as_deref(), Some("group/my-repo"));
+            assert_eq!(view.severity_counts.critical, 1);
+            assert_eq!(view.severity_counts.high, 2);
+            assert_eq!(view.findings.len(), 2);
+            assert_eq!(view.findings[0].severity, "critical", "worst-first");
+            assert_eq!(view.findings[1].severity, "high");
+            assert_eq!(serde_json::to_value(view.status).unwrap(), status_wire);
+            assert_eq!(serde_json::to_value(view.verdict).unwrap(), verdict_wire);
+        }
     }
 
     // CA-RV-SP4: a legacy unknown-coordinate response preserves its 404 status.

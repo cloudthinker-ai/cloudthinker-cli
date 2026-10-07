@@ -337,7 +337,7 @@ async fn run_or_reuse(
         identity_env.insert(OsString::from(child_env), OsString::from(auth));
     }
     identity_env.insert(
-        OsString::from("APPSEC_IDENTITIES_JSON"),
+        OsString::from("CYBER_IDENTITIES_JSON"),
         OsString::from(cyber_discovery_identity_manifest(&identity_refs)?),
     );
     let target = brief.targets[0].clone();
@@ -1113,8 +1113,8 @@ mod tests {
         let environment = child_environment("/pinned".into()).unwrap();
         for name in [
             "CLOUDTHINKER_TOKEN",
-            "APPSEC_IDENTITIES_JSON",
-            "APPSEC_SURFACE_ROOT",
+            "CYBER_IDENTITIES_JSON",
+            "CYBER_SURFACE_ROOT",
         ] {
             assert!(!environment.contains_key(OsStr::new(name)));
         }

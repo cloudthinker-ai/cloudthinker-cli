@@ -1,3 +1,11 @@
+## [0.8.0-dev.5]
+
+- Cyber uses canonical command, helper and profile names, `CYBER_*` settings and `cyber/` roots; retired runtime aliases are removed.
+- Review status and watch accept stopped reviews and finish waiting when a review stops.
+- Refresh the bundled Cyber discovery runtime after executor command consolidation. Discovery uses the canonical Cyber command for cloud surface publication; local discovery retains its existing supervisor and output contract.
+- Use canonical Cyber helper packages, `CYBER_*` executor variables and `cyber/` workspace roots; remove old-name runtime forwarding and fallback support.
+- Package shared Cyber observation identity and intake dependencies with the canonical discovery runtime. Preserve local issued-plan authority while cloud observations automatically reconcile coverage and retry incomplete assignments.
+
 ## [0.8.0-dev.4]
 
 - The CLI names its agent CloudThinker Agent everywhere: `agent` starts CloudThinker Agent in this folder, and `chat` asks CloudThinker Agent in the cloud.

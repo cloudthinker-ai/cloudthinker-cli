@@ -8,21 +8,96 @@ pub use progenitor_client::{ByteStream, ClientInfo, Error, ResponseValue};
 /// Types used as operation parameters and responses.
 #[allow(clippy::all)]
 pub mod types {
+    /// Error types.
+    pub mod error {
+        /// Error from a `TryFrom` or `FromStr` implementation.
+        pub struct ConversionError(::std::borrow::Cow<'static, str>);
+        impl ::std::error::Error for ConversionError {}
+        impl ::std::fmt::Display for ConversionError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> Result<(), ::std::fmt::Error> {
+                ::std::fmt::Display::fmt(&self.0, f)
+            }
+        }
+
+        impl ::std::fmt::Debug for ConversionError {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> Result<(), ::std::fmt::Error> {
+                ::std::fmt::Debug::fmt(&self.0, f)
+            }
+        }
+
+        impl From<&'static str> for ConversionError {
+            fn from(value: &'static str) -> Self {
+                Self(value.into())
+            }
+        }
+
+        impl From<String> for ConversionError {
+            fn from(value: String) -> Self {
+                Self(value.into())
+            }
+        }
+    }
+
     ///Service affected by an incident.
     ///
     ///Stores both external_id (ARN or cloud resource ID) and human-readable
     /// name. Used by RCA agents to identify affected infrastructure and
     /// external services.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AffectedService",
+    ///  "description": "Service affected by an incident.\n\nStores both external_id (ARN or cloud resource ID) and human-readable name.\nUsed by RCA agents to identify affected infrastructure and external services.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "name"
+    ///  ],
+    ///  "properties": {
+    ///    "external_id": {
+    ///      "title": "External Id",
+    ///      "description": "External resource ID (ARN for AWS, URL for external
+    /// services)",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "name": {
+    ///      "title": "AffectedService_name",
+    ///      "description": "Human-readable service name",
+    ///      "type": "string",
+    ///      "maxLength": 256,
+    ///      "minLength": 1
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AffectedService {
         ///External resource ID (ARN for AWS, URL for external services)
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub external_id: ::std::option::Option<::std::string::String>,
         ///Human-readable service name
         pub name: AffectedServiceName,
     }
 
     ///Human-readable service name
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AffectedService_name",
+    ///  "description": "Human-readable service name",
+    ///  "type": "string",
+    ///  "maxLength": 256,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct AffectedServiceName(::std::string::String);
@@ -59,6 +134,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AffectedServiceName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AffectedServiceName {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -82,6 +166,34 @@ pub mod types {
     }
 
     ///The workspace's Auto Mode as the terminal shows it at session start.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliAutoMode",
+    ///  "description": "The workspace's Auto Mode as the terminal shows it at
+    /// session start.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "can_edit",
+    ///    "enabled"
+    ///  ],
+    ///  "properties": {
+    ///    "can_edit": {
+    ///      "title": "Can Edit",
+    ///      "description": "Whether the caller may flip it through `PATCH
+    /// /workspaces/{workspace_id}/auto-mode`.",
+    ///      "type": "boolean"
+    ///    },
+    ///    "enabled": {
+    ///      "title": "Enabled",
+    ///      "type": "boolean"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliAutoMode {
         ///Whether the caller may flip it through `PATCH
@@ -95,6 +207,48 @@ pub mod types {
     ///Both fields come from one build of the workspace's connection scope, so
     /// the XML the local model reads and the allowlist the terminal checks
     ///`connection_list` against cannot disagree.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliConnectionsContext",
+    ///  "description": "200 response for `GET /agent-cli/connections`.\n\nBoth
+    /// fields come from one build of the workspace's connection scope, so
+    /// the\nXML the local model reads and the allowlist the terminal
+    /// checks\n`connection_list` against cannot disagree.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "prefixes",
+    ///    "xml"
+    ///  ],
+    ///  "properties": {
+    ///    "connections": {
+    ///      "title": "Connections",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/CloudConnectionEntry"
+    ///      }
+    ///    },
+    ///    "prefixes": {
+    ///      "title": "Prefixes",
+    ///      "description": "The connected Connection prefixes the terminal may
+    /// pass as `connection_list`.",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "xml": {
+    ///      "title": "Xml",
+    ///      "description": "The `<connections_context>` block CloudThinker
+    /// reads in chat, slim, or an empty string when nothing is connected.",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliConnectionsContext {
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
@@ -109,6 +263,32 @@ pub mod types {
 
     ///Response for an append: what landed, and the session's arrival
     /// high-water mark.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliEntriesAppended",
+    ///  "description": "Response for an append: what landed, and the session's
+    /// arrival high-water mark.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "last_seq",
+    ///    "stored"
+    ///  ],
+    ///  "properties": {
+    ///    "last_seq": {
+    ///      "title": "Last Seq",
+    ///      "type": "integer"
+    ///    },
+    ///    "stored": {
+    ///      "title": "Stored",
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliEntriesAppended {
         pub last_seq: i64,
@@ -116,6 +296,58 @@ pub mod types {
     }
 
     ///One pi JSONL entry the local agent mirrors.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliEntryInput",
+    ///  "description": "One pi JSONL entry the local agent mirrors.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "entry_id",
+    ///    "entry_type",
+    ///    "payload"
+    ///  ],
+    ///  "properties": {
+    ///    "entry_id": {
+    ///      "title": "AgentCliEntryInput_entry_id",
+    ///      "description": "pi's own `id` for this entry. Unique within the
+    /// session, and what makes a re-send idempotent.",
+    ///      "type": "string",
+    ///      "maxLength": 128,
+    ///      "minLength": 1
+    ///    },
+    ///    "entry_type": {
+    ///      "title": "AgentCliEntryInput_entry_type",
+    ///      "description": "pi's `type`: session_info, message, model_change,
+    /// thinking_level_change, compaction, branch_summary, custom,
+    /// custom_message, or label.",
+    ///      "type": "string",
+    ///      "maxLength": 64,
+    ///      "minLength": 1
+    ///    },
+    ///    "parent_id": {
+    ///      "title": "AgentCliEntryInput_parent_id",
+    ///      "description": "pi's `parentId`. The edge a reader walks to rebuild
+    /// the active path; null only for the session root.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 128
+    ///    },
+    ///    "payload": {
+    ///      "title": "Payload",
+    ///      "description": "The pi entry verbatim, stored as JSONB and never
+    /// rewritten.",
+    ///      "type": "object",
+    ///      "additionalProperties": true
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliEntryInput {
         ///pi's own `id` for this entry. Unique within the session, and what
@@ -127,7 +359,7 @@ pub mod types {
         pub entry_type: AgentCliEntryInputEntryType,
         ///pi's `parentId`. The edge a reader walks to rebuild the active path;
         /// null only for the session root.
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub parent_id: ::std::option::Option<AgentCliEntryInputParentId>,
         ///The pi entry verbatim, stored as JSONB and never rewritten.
         pub payload: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
@@ -135,6 +367,20 @@ pub mod types {
 
     ///pi's own `id` for this entry. Unique within the session, and what makes
     /// a re-send idempotent.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliEntryInput_entry_id",
+    ///  "description": "pi's own `id` for this entry. Unique within the
+    /// session, and what makes a re-send idempotent.",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct AgentCliEntryInputEntryId(::std::string::String);
@@ -171,6 +417,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AgentCliEntryInputEntryId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AgentCliEntryInputEntryId {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -195,6 +450,21 @@ pub mod types {
 
     ///pi's `type`: session_info, message, model_change, thinking_level_change,
     /// compaction, branch_summary, custom, custom_message, or label.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliEntryInput_entry_type",
+    ///  "description": "pi's `type`: session_info, message, model_change,
+    /// thinking_level_change, compaction, branch_summary, custom,
+    /// custom_message, or label.",
+    ///  "type": "string",
+    ///  "maxLength": 64,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct AgentCliEntryInputEntryType(::std::string::String);
@@ -231,6 +501,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AgentCliEntryInputEntryType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AgentCliEntryInputEntryType {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -255,6 +534,19 @@ pub mod types {
 
     ///pi's `parentId`. The edge a reader walks to rebuild the active path;
     /// null only for the session root.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliEntryInput_parent_id",
+    ///  "description": "pi's `parentId`. The edge a reader walks to rebuild the
+    /// active path; null only for the session root.",
+    ///  "type": "string",
+    ///  "maxLength": 128
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct AgentCliEntryInputParentId(::std::string::String);
@@ -288,6 +580,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AgentCliEntryInputParentId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AgentCliEntryInputParentId {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -315,6 +616,37 @@ pub mod types {
     ///`last_seq` is the cursor for the next page, not the session's high-water
     ///mark: pass it back as `after_seq`. An empty page returns the `after_seq`
     /// it was asked for.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliEntryPage",
+    ///  "description": "One ascending page of the mirror.\n\n`last_seq` is the
+    /// cursor for the next page, not the session's high-water\nmark: pass it
+    /// back as `after_seq`. An empty page returns the `after_seq` it\nwas asked
+    /// for.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "entries",
+    ///    "last_seq"
+    ///  ],
+    ///  "properties": {
+    ///    "entries": {
+    ///      "title": "Entries",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/AgentCliEntryPublic"
+    ///      }
+    ///    },
+    ///    "last_seq": {
+    ///      "title": "Last Seq",
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliEntryPage {
         pub entries: ::std::vec::Vec<AgentCliEntryPublic>,
@@ -322,11 +654,54 @@ pub mod types {
     }
 
     ///One mirrored entry as a reader gets it back.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliEntryPublic",
+    ///  "description": "One mirrored entry as a reader gets it back.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "entry_id",
+    ///    "entry_type",
+    ///    "parent_id",
+    ///    "payload",
+    ///    "seq"
+    ///  ],
+    ///  "properties": {
+    ///    "entry_id": {
+    ///      "title": "Entry Id",
+    ///      "type": "string"
+    ///    },
+    ///    "entry_type": {
+    ///      "title": "Entry Type",
+    ///      "type": "string"
+    ///    },
+    ///    "parent_id": {
+    ///      "title": "Parent Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "payload": {
+    ///      "title": "Payload",
+    ///      "type": "object",
+    ///      "additionalProperties": true
+    ///    },
+    ///    "seq": {
+    ///      "title": "Seq",
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliEntryPublic {
         pub entry_id: ::std::string::String,
         pub entry_type: ::std::string::String,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub parent_id: ::std::option::Option<::std::string::String>,
         pub payload: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
         pub seq: i64,
@@ -336,6 +711,46 @@ pub mod types {
     ///
     ///Every field is copied out of the Guardrails-protected carrier, so a
     ///credential value the script printed arrives here already tokenized.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliExecutionCompleted",
+    ///  "description": "200 for a synchronous execution.\n\nEvery field is
+    /// copied out of the Guardrails-protected carrier, so a\ncredential value
+    /// the script printed arrives here already tokenized.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "return_code",
+    ///    "stderr",
+    ///    "stdout"
+    ///  ],
+    ///  "properties": {
+    ///    "return_code": {
+    ///      "title": "Return Code",
+    ///      "type": "integer"
+    ///    },
+    ///    "status": {
+    ///      "title": "AgentCliExecutionCompleted_status",
+    ///      "default": "completed",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "completed"
+    ///      ]
+    ///    },
+    ///    "stderr": {
+    ///      "title": "Stderr",
+    ///      "type": "string"
+    ///    },
+    ///    "stdout": {
+    ///      "title": "Stdout",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliExecutionCompleted {
         pub return_code: i64,
@@ -346,6 +761,20 @@ pub mod types {
     }
 
     ///`AgentCliExecutionCompletedStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliExecutionCompleted_status",
+    ///  "default": "completed",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "completed"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -388,6 +817,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AgentCliExecutionCompletedStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AgentCliExecutionCompletedStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -409,19 +847,100 @@ pub mod types {
     /// of this conversation answers `unknown` with empty output rather than
     /// a 404, so the endpoint is not an existence oracle for another
     /// conversation's tasks.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliExecutionOutput",
+    ///  "description": "200 for `GET
+    /// /agent-cli/executions/{task_id}`.\n\n`next_cursor` is the `since` for
+    /// the next poll. An id that names no task of\nthis conversation answers
+    /// `unknown` with empty output rather than a 404, so\nthe endpoint is not
+    /// an existence oracle for another conversation's tasks.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "next_cursor",
+    ///    "output",
+    ///    "status",
+    ///    "truncated"
+    ///  ],
+    ///  "properties": {
+    ///    "exit_code": {
+    ///      "title": "Exit Code",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "next_cursor": {
+    ///      "title": "Next Cursor",
+    ///      "type": "integer"
+    ///    },
+    ///    "output": {
+    ///      "title": "Output",
+    ///      "type": "string"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/BgTaskStatus"
+    ///    },
+    ///    "termination_reason": {
+    ///      "title": "Termination Reason",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "truncated": {
+    ///      "title": "Truncated",
+    ///      "type": "boolean"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliExecutionOutput {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub exit_code: ::std::option::Option<i64>,
         pub next_cursor: i64,
         pub output: ::std::string::String,
         pub status: BgTaskStatus,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub termination_reason: ::std::option::Option<::std::string::String>,
         pub truncated: bool,
     }
 
     ///200 for `run_in_background=true`: nothing has run yet.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliExecutionStarted",
+    ///  "description": "200 for `run_in_background=true`: nothing has run
+    /// yet.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "task_id"
+    ///  ],
+    ///  "properties": {
+    ///    "status": {
+    ///      "title": "AgentCliExecutionStarted_status",
+    ///      "default": "running",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "running"
+    ///      ]
+    ///    },
+    ///    "task_id": {
+    ///      "title": "Task Id",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliExecutionStarted {
         #[serde(default = "defaults::agent_cli_execution_started_status")]
@@ -430,6 +949,20 @@ pub mod types {
     }
 
     ///`AgentCliExecutionStartedStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliExecutionStarted_status",
+    ///  "default": "running",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "running"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -472,6 +1005,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AgentCliExecutionStartedStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AgentCliExecutionStartedStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -488,13 +1030,59 @@ pub mod types {
     }
 
     ///201 response for a created agent CLI session.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliSessionCreated",
+    ///  "description": "201 response for a created agent CLI session.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "auto_mode",
+    ///    "conversation_id",
+    ///    "web_url",
+    ///    "workspace_id"
+    ///  ],
+    ///  "properties": {
+    ///    "auto_mode": {
+    ///      "$ref": "#/components/schemas/AgentCliAutoMode"
+    ///    },
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "selected_agent_reference": {
+    ///      "title": "Selected Agent Reference",
+    ///      "description": "The resolved custom-agent UUID carried by this
+    /// session, if one was selected.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "web_url": {
+    ///      "title": "Web Url",
+    ///      "type": "string"
+    ///    },
+    ///    "workspace_id": {
+    ///      "title": "Workspace Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliSessionCreated {
         pub auto_mode: AgentCliAutoMode,
         pub conversation_id: ::uuid::Uuid,
         ///The resolved custom-agent UUID carried by this session, if one was
         /// selected.
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub selected_agent_reference: ::std::option::Option<::uuid::Uuid>,
         pub web_url: ::std::string::String,
         pub workspace_id: ::uuid::Uuid,
@@ -502,14 +1090,68 @@ pub mod types {
 
     ///200 for a write request or a run: the record, plus the execution once it
     /// ran.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliWriteOutcome",
+    ///  "description": "200 for a write request or a run: the record, plus the
+    /// execution once it ran.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "write"
+    ///  ],
+    ///  "properties": {
+    ///    "execution": {
+    ///      "title": "Execution",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "$ref": "#/components/schemas/AgentCliExecutionCompleted"
+    ///            },
+    ///            {
+    ///              "$ref": "#/components/schemas/AgentCliExecutionStarted"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "write": {
+    ///      "$ref": "#/components/schemas/AgentCliWritePublic"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliWriteOutcome {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub execution: ::std::option::Option<AgentCliWriteOutcomeExecution>,
         pub write: AgentCliWritePublic,
     }
 
     ///`AgentCliWriteOutcomeExecution`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "$ref": "#/components/schemas/AgentCliExecutionCompleted"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/AgentCliExecutionStarted"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(untagged)]
     pub enum AgentCliWriteOutcomeExecution {
@@ -530,6 +1172,30 @@ pub mod types {
     }
 
     ///The newest writes of one session, live ones first among equals.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliWritePage",
+    ///  "description": "The newest writes of one session, live ones first among
+    /// equals.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "writes"
+    ///  ],
+    ///  "properties": {
+    ///    "writes": {
+    ///      "title": "Writes",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/AgentCliWritePublic"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliWritePage {
         pub writes: ::std::vec::Vec<AgentCliWritePublic>,
@@ -537,33 +1203,196 @@ pub mod types {
 
     ///One cloud write from a local session, as the terminal and the viewer
     /// read it.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliWritePublic",
+    ///  "description": "One cloud write from a local session, as the terminal
+    /// and the viewer read it.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "connection_list",
+    ///    "conversation_id",
+    ///    "created_at",
+    ///    "decided_at",
+    ///    "decided_by_name",
+    ///    "decided_by_user_id",
+    ///    "decline_reason",
+    ///    "executed_at",
+    ///    "expires_at",
+    ///    "id",
+    ///    "reasoning",
+    ///    "requested_by_user_id",
+    ///    "return_code",
+    ///    "run_in_background",
+    ///    "script",
+    ///    "status",
+    ///    "task_id",
+    ///    "timeout",
+    ///    "tool_call_id",
+    ///    "trusted",
+    ///    "verdict",
+    ///    "verdict_reason",
+    ///    "web_url"
+    ///  ],
+    ///  "properties": {
+    ///    "connection_list": {
+    ///      "title": "Connection List",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "decided_at": {
+    ///      "title": "Decided At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "decided_by_name": {
+    ///      "title": "Decided By Name",
+    ///      "description": "Display name of the approver, resolved for the
+    /// terminal and the card.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "decided_by_user_id": {
+    ///      "title": "Decided By User Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "decline_reason": {
+    ///      "title": "Decline Reason",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "executed_at": {
+    ///      "title": "Executed At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "expires_at": {
+    ///      "title": "Expires At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "reasoning": {
+    ///      "title": "Reasoning",
+    ///      "type": "string"
+    ///    },
+    ///    "requested_by_user_id": {
+    ///      "title": "Requested By User Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "return_code": {
+    ///      "title": "Return Code",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "run_in_background": {
+    ///      "title": "Run In Background",
+    ///      "type": "boolean"
+    ///    },
+    ///    "script": {
+    ///      "title": "Script",
+    ///      "type": "string"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/AgentCliWriteStatus"
+    ///    },
+    ///    "task_id": {
+    ///      "title": "Task Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "timeout": {
+    ///      "title": "Timeout",
+    ///      "type": "integer"
+    ///    },
+    ///    "tool_call_id": {
+    ///      "title": "Tool Call Id",
+    ///      "type": "string"
+    ///    },
+    ///    "trusted": {
+    ///      "title": "Trusted",
+    ///      "description": "Whether the approval also trusted the script on the
+    /// workspace default policy.",
+    ///      "type": "boolean"
+    ///    },
+    ///    "verdict": {
+    ///      "title": "Verdict",
+    ///      "description": "The Auto Mode gate's answer: `allow`,
+    /// `require_approval`, `escalate`, or `hard_deny`.",
+    ///      "type": "string"
+    ///    },
+    ///    "verdict_reason": {
+    ///      "title": "Verdict Reason",
+    ///      "type": "string"
+    ///    },
+    ///    "web_url": {
+    ///      "title": "Web Url",
+    ///      "description": "The session in the browser, where the write is
+    /// decided.",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliWritePublic {
         pub connection_list: ::std::vec::Vec<::std::string::String>,
         pub conversation_id: ::uuid::Uuid,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub decided_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         ///Display name of the approver, resolved for the terminal and the
         /// card.
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub decided_by_name: ::std::option::Option<::std::string::String>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub decided_by_user_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub decline_reason: ::std::option::Option<::std::string::String>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub executed_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub expires_at: ::chrono::DateTime<::chrono::offset::Utc>,
         pub id: ::uuid::Uuid,
         pub reasoning: ::std::string::String,
         pub requested_by_user_id: ::uuid::Uuid,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub return_code: ::std::option::Option<i64>,
         pub run_in_background: bool,
         pub script: ::std::string::String,
         pub status: AgentCliWriteStatus,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub task_id: ::std::option::Option<::std::string::String>,
         pub timeout: i64,
         pub tool_call_id: ::std::string::String,
@@ -579,6 +1408,25 @@ pub mod types {
     }
 
     ///`AgentCliWriteStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentCliWriteStatus",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "required_approval",
+    ///    "approved",
+    ///    "declined",
+    ///    "denied",
+    ///    "outcome_unknown",
+    ///    "executed",
+    ///    "failed"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -645,6 +1493,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AgentCliWriteStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AgentCliWriteStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -660,6 +1517,28 @@ pub mod types {
     /// (app/models/tasks.py) so AgentExecutionResult.status needs zero
     /// remapping when origins migrate onto AgentRun (plan decision,
     /// plans/product-cli-mr-c-agentrun.md).
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AgentRunStatus",
+    ///  "description": "Lifecycle state of a background agent run.\n\nValues
+    /// are deliberately identical to TaskScheduleStatus
+    /// (app/models/tasks.py)\nso AgentExecutionResult.status needs zero
+    /// remapping when origins migrate onto\nAgentRun (plan decision,
+    /// plans/product-cli-mr-c-agentrun.md).",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "pending",
+    ///    "running",
+    ///    "succeeded",
+    ///    "failed",
+    ///    "required_approval"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -718,6 +1597,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AgentRunStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AgentRunStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -728,6 +1616,17 @@ pub mod types {
     }
 
     ///`Alias`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Alias",
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct Alias(::std::string::String);
@@ -765,6 +1664,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for Alias {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for Alias {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -788,6 +1696,70 @@ pub mod types {
     }
 
     ///`AnnounceTargetConnection`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AnnounceTargetConnection",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "alias",
+    ///    "credential_generation",
+    ///    "expected_revision",
+    ///    "identity",
+    ///    "kind",
+    ///    "tools",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "alias": {
+    ///      "title": "AnnounceTargetConnection_alias",
+    ///      "type": "string",
+    ///      "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///    },
+    ///    "credential_generation": {
+    ///      "title": "Credential Generation",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "expected_revision": {
+    ///      "title": "Expected Revision",
+    ///      "type": "integer",
+    ///      "minimum": 0.0
+    ///    },
+    ///    "identity": {
+    ///      "title": "AnnounceTargetConnection_identity",
+    ///      "type": "string",
+    ///      "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///    },
+    ///    "kind": {
+    ///      "title": "AnnounceTargetConnection_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "builtin",
+    ///        "mcp"
+    ///      ]
+    ///    },
+    ///    "tools": {
+    ///      "title": "Tools",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/LocalToolAnnouncement"
+    ///      },
+    ///      "maxItems": 64,
+    ///      "minItems": 1
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct AnnounceTargetConnection {
@@ -801,6 +1773,17 @@ pub mod types {
     }
 
     ///`AnnounceTargetConnectionAlias`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AnnounceTargetConnection_alias",
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct AnnounceTargetConnectionAlias(::std::string::String);
@@ -838,6 +1821,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AnnounceTargetConnectionAlias {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AnnounceTargetConnectionAlias {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -861,6 +1853,17 @@ pub mod types {
     }
 
     ///`AnnounceTargetConnectionIdentity`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AnnounceTargetConnection_identity",
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct AnnounceTargetConnectionIdentity(::std::string::String);
@@ -898,6 +1901,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AnnounceTargetConnectionIdentity {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AnnounceTargetConnectionIdentity {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -921,6 +1933,20 @@ pub mod types {
     }
 
     ///`AnnounceTargetConnectionKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AnnounceTargetConnection_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "builtin",
+    ///    "mcp"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -967,6 +1993,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AnnounceTargetConnectionKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AnnounceTargetConnectionKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -977,21 +2012,78 @@ pub mod types {
     }
 
     ///Request body for POST /appsec/apps/.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AppCreate",
+    ///  "description": "Request body for POST /appsec/apps/.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "frameworks",
+    ///    "name",
+    ///    "target_ref"
+    ///  ],
+    ///  "properties": {
+    ///    "default_intensity": {
+    ///      "$ref": "#/components/schemas/Intensity"
+    ///    },
+    ///    "default_selection": {
+    ///      "$ref": "#/components/schemas/SavedSelection"
+    ///    },
+    ///    "frameworks": {
+    ///      "title": "Frameworks",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/OwaspFramework"
+    ///      }
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "setup_step": {
+    ///      "$ref": "#/components/schemas/AppSetupStep"
+    ///    },
+    ///    "target_ref": {
+    ///      "title": "AppCreate_target_ref",
+    ///      "type": "string",
+    ///      "maxLength": 512,
+    ///      "minLength": 1
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct AppCreate {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub default_intensity: ::std::option::Option<Intensity>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub default_selection: ::std::option::Option<SavedSelection>,
         pub frameworks: ::std::vec::Vec<OwaspFramework>,
         pub name: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub setup_step: ::std::option::Option<AppSetupStep>,
         pub target_ref: AppCreateTargetRef,
     }
 
     ///`AppCreateTargetRef`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AppCreate_target_ref",
+    ///  "type": "string",
+    ///  "maxLength": 512,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct AppCreateTargetRef(::std::string::String);
@@ -1028,6 +2120,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AppCreateTargetRef {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AppCreateTargetRef {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -1050,27 +2151,112 @@ pub mod types {
         }
     }
 
-    ///AppSec-owned workspace domain verification view.
+    ///Cyber-owned workspace domain verification view.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AppDomainVerificationPublic",
+    ///  "description": "Cyber-owned workspace domain verification view.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "status"
+    ///  ],
+    ///  "properties": {
+    ///    "blocked_reason": {
+    ///      "title": "Blocked Reason",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "can_manage": {
+    ///      "title": "Can Manage",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "dns_record_name": {
+    ///      "title": "Dns Record Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "dns_record_value": {
+    ///      "title": "Dns Record Value",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "domain_id": {
+    ///      "title": "Domain Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "matched_domain": {
+    ///      "title": "Matched Domain",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/AppDomainVerificationStatus"
+    ///    },
+    ///    "target_domain": {
+    ///      "title": "Target Domain",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AppDomainVerificationPublic {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub blocked_reason: ::std::option::Option<::std::string::String>,
         #[serde(default)]
         pub can_manage: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub dns_record_name: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub dns_record_value: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub domain_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub matched_domain: ::std::option::Option<::std::string::String>,
         pub status: AppDomainVerificationStatus,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub target_domain: ::std::option::Option<::std::string::String>,
     }
 
-    ///Domain verification state for an AppSec app target.
+    ///Domain verification state for an Cyber app target.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AppDomainVerificationStatus",
+    ///  "description": "Domain verification state for an Cyber app target.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "not_required",
+    ///    "unclaimed",
+    ///    "pending",
+    ///    "verified",
+    ///    "failed"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -1129,6 +2315,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AppDomainVerificationStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AppDomainVerificationStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -1139,6 +2334,34 @@ pub mod types {
     }
 
     ///Response shape for GET /appsec/apps/.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AppListResponse",
+    ///  "description": "Response shape for GET /appsec/apps/.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "data",
+    ///    "total"
+    ///  ],
+    ///  "properties": {
+    ///    "data": {
+    ///      "title": "Data",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/AppPublic"
+    ///      }
+    ///    },
+    ///    "total": {
+    ///      "title": "Total",
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AppListResponse {
         pub data: ::std::vec::Vec<AppPublic>,
@@ -1146,17 +2369,193 @@ pub mod types {
     }
 
     ///Response shape for a single App — only client-rendered fields.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AppPublic",
+    ///  "description": "Response shape for a single App — only client-rendered
+    /// fields.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "coverage_score",
+    ///    "created_at",
+    ///    "default_intensity",
+    ///    "default_selection",
+    ///    "domain_verification",
+    ///    "frameworks",
+    ///    "id",
+    ///    "name",
+    ///    "run_in_flight",
+    ///    "scope",
+    ///    "setup_status",
+    ///    "setup_step",
+    ///    "surface_mapped",
+    ///    "target_ref",
+    ///    "target_type",
+    ///    "targets"
+    ///  ],
+    ///  "properties": {
+    ///    "auth_configured": {
+    ///      "title": "Auth Configured",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "auth_kind": {
+    ///      "$ref": "#/components/schemas/AuthKind"
+    ///    },
+    ///    "auth_schedule_safe": {
+    ///      "title": "Auth Schedule Safe",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "auto_mode_run_now": {
+    ///      "$ref": "#/components/schemas/Mode"
+    ///    },
+    ///    "auto_mode_schedule": {
+    ///      "$ref": "#/components/schemas/Mode"
+    ///    },
+    ///    "available_modes": {
+    ///      "title": "Available Modes",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Mode"
+    ///      }
+    ///    },
+    ///    "coverage_score": {
+    ///      "title": "Coverage Score",
+    ///      "type": "number"
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "default_intensity": {
+    ///      "$ref": "#/components/schemas/Intensity"
+    ///    },
+    ///    "default_selection": {
+    ///      "$ref": "#/components/schemas/SavedSelection"
+    ///    },
+    ///    "domain_verification": {
+    ///      "$ref": "#/components/schemas/AppDomainVerificationPublic"
+    ///    },
+    ///    "frameworks": {
+    ///      "title": "Frameworks",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/OwaspFramework"
+    ///      }
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "in_flight_run_started_at": {
+    ///      "title": "In Flight Run Started At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "last_completed_run_at": {
+    ///      "title": "Last Completed Run At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "mode_capabilities": {
+    ///      "title": "Mode Capabilities",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ModeCapability"
+    ///      }
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "open_findings_count": {
+    ///      "title": "Open Findings Count",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "report_preferences": {
+    ///      "$ref": "#/components/schemas/CyberReportPreferences"
+    ///    },
+    ///    "run_in_flight": {
+    ///      "title": "Run In Flight",
+    ///      "type": "boolean"
+    ///    },
+    ///    "run_now_modes": {
+    ///      "title": "Run Now Modes",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Mode"
+    ///      }
+    ///    },
+    ///    "schedule_modes": {
+    ///      "title": "Schedule Modes",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Mode"
+    ///      }
+    ///    },
+    ///    "scope": {
+    ///      "$ref": "#/components/schemas/ScopeSpec"
+    ///    },
+    ///    "setup_status": {
+    ///      "$ref": "#/components/schemas/AppSetupStatus"
+    ///    },
+    ///    "setup_step": {
+    ///      "$ref": "#/components/schemas/AppSetupStep"
+    ///    },
+    ///    "severity_counts": {
+    ///      "$ref": "#/components/schemas/SeverityCounts"
+    ///    },
+    ///    "surface_mapped": {
+    ///      "title": "Surface Mapped",
+    ///      "type": "boolean"
+    ///    },
+    ///    "target_ref": {
+    ///      "title": "Target Ref",
+    ///      "type": "string"
+    ///    },
+    ///    "target_revision": {
+    ///      "title": "Target Revision",
+    ///      "default": 1,
+    ///      "type": "integer"
+    ///    },
+    ///    "target_type": {
+    ///      "$ref": "#/components/schemas/TargetType"
+    ///    },
+    ///    "targets": {
+    ///      "title": "Targets",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/AppTargetPublic"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AppPublic {
         #[serde(default)]
         pub auth_configured: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub auth_kind: ::std::option::Option<AuthKind>,
         #[serde(default)]
         pub auth_schedule_safe: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub auto_mode_run_now: ::std::option::Option<Mode>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub auto_mode_schedule: ::std::option::Option<Mode>,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub available_modes: ::std::vec::Vec<Mode>,
@@ -1167,18 +2566,18 @@ pub mod types {
         pub domain_verification: AppDomainVerificationPublic,
         pub frameworks: ::std::vec::Vec<OwaspFramework>,
         pub id: ::uuid::Uuid,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub in_flight_run_started_at:
             ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub last_completed_run_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub mode_capabilities: ::std::vec::Vec<ModeCapability>,
         pub name: ::std::string::String,
         #[serde(default)]
         pub open_findings_count: i64,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-        pub report_preferences: ::std::option::Option<AppSecReportPreferences>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub report_preferences: ::std::option::Option<CyberReportPreferences>,
         pub run_in_flight: bool,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub run_now_modes: ::std::vec::Vec<Mode>,
@@ -1187,7 +2586,7 @@ pub mod types {
         pub scope: ScopeSpec,
         pub setup_status: AppSetupStatus,
         pub setup_step: AppSetupStep,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub severity_counts: ::std::option::Option<SeverityCounts>,
         pub surface_mapped: bool,
         pub target_ref: ::std::string::String,
@@ -1197,302 +2596,21 @@ pub mod types {
         pub targets: ::std::vec::Vec<AppTargetPublic>,
     }
 
-    ///Request body for POST /appsec/domains.
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct AppSecDomainCreate {
-        pub domain: AppSecDomainCreateDomain,
-    }
-
-    ///`AppSecDomainCreateDomain`
-    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    #[serde(transparent)]
-    pub struct AppSecDomainCreateDomain(::std::string::String);
-    impl ::std::ops::Deref for AppSecDomainCreateDomain {
-        type Target = ::std::string::String;
-        fn deref(&self) -> &::std::string::String {
-            &self.0
-        }
-    }
-
-    impl ::std::convert::From<AppSecDomainCreateDomain> for ::std::string::String {
-        fn from(value: AppSecDomainCreateDomain) -> Self {
-            value.0
-        }
-    }
-
-    impl ::std::str::FromStr for AppSecDomainCreateDomain {
-        type Err = self::error::ConversionError;
-        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            if value.chars().count() > 255usize {
-                return Err("longer than 255 characters".into());
-            }
-            if value.chars().count() < 1usize {
-                return Err("shorter than 1 characters".into());
-            }
-            Ok(Self(value.to_string()))
-        }
-    }
-
-    impl ::std::convert::TryFrom<&str> for AppSecDomainCreateDomain {
-        type Error = self::error::ConversionError;
-        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<::std::string::String> for AppSecDomainCreateDomain {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: ::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl<'de> ::serde::Deserialize<'de> for AppSecDomainCreateDomain {
-        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-        where
-            D: ::serde::Deserializer<'de>,
-        {
-            ::std::string::String::deserialize(deserializer)?
-                .parse()
-                .map_err(|e: self::error::ConversionError| {
-                    <D::Error as ::serde::de::Error>::custom(e.to_string())
-                })
-        }
-    }
-
-    ///Response shape for GET /appsec/domains.
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct AppSecDomainListResponse {
-        pub data: ::std::vec::Vec<AppSecDomainPublic>,
-        pub total: i64,
-    }
-
-    ///Workspace-owned AppSec domain verification record.
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct AppSecDomainPublic {
-        #[serde(default)]
-        pub can_manage: bool,
-        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-        pub dns_record_name: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-        pub dns_record_value: ::std::option::Option<::std::string::String>,
-        pub domain: ::std::string::String,
-        pub id: ::uuid::Uuid,
-        pub status: AppDomainVerificationStatus,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-        pub verified_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-    }
-
-    ///Response shape for GET /appsec/apps/{app_id}/findings (paginated).
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct AppSecFindingListResponse {
-        pub data: ::std::vec::Vec<FindingPublic>,
-        pub meta: PaginationMeta,
-    }
-
-    ///`AppSecReportFormat`
-    #[derive(
-        :: serde :: Deserialize,
-        :: serde :: Serialize,
-        Clone,
-        Copy,
-        Debug,
-        Eq,
-        Hash,
-        Ord,
-        PartialEq,
-        PartialOrd,
-    )]
-    pub enum AppSecReportFormat {
-        #[serde(rename = "pdf")]
-        Pdf,
-        #[serde(rename = "docx")]
-        Docx,
-    }
-
-    impl ::std::fmt::Display for AppSecReportFormat {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            match *self {
-                Self::Pdf => f.write_str("pdf"),
-                Self::Docx => f.write_str("docx"),
-            }
-        }
-    }
-
-    impl ::std::str::FromStr for AppSecReportFormat {
-        type Err = self::error::ConversionError;
-        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            match value {
-                "pdf" => Ok(Self::Pdf),
-                "docx" => Ok(Self::Docx),
-                _ => Err("invalid value".into()),
-            }
-        }
-    }
-
-    impl ::std::convert::TryFrom<&str> for AppSecReportFormat {
-        type Error = self::error::ConversionError;
-        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<::std::string::String> for AppSecReportFormat {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: ::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    ///`AppSecReportPreferences`
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    #[serde(deny_unknown_fields)]
-    pub struct AppSecReportPreferences {
-        #[serde(default = "defaults::app_sec_report_preferences_instructions")]
-        pub instructions: AppSecReportPreferencesInstructions,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-        pub output_format: ::std::option::Option<AppSecReportFormat>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-        pub reference_source_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-        pub style: ::std::option::Option<AppSecReportStyle>,
-    }
-
-    impl ::std::default::Default for AppSecReportPreferences {
-        fn default() -> Self {
-            Self {
-                instructions: defaults::app_sec_report_preferences_instructions(),
-                output_format: Default::default(),
-                reference_source_id: Default::default(),
-                style: Default::default(),
-            }
-        }
-    }
-
-    ///`AppSecReportPreferencesInstructions`
-    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-    #[serde(transparent)]
-    pub struct AppSecReportPreferencesInstructions(::std::string::String);
-    impl ::std::ops::Deref for AppSecReportPreferencesInstructions {
-        type Target = ::std::string::String;
-        fn deref(&self) -> &::std::string::String {
-            &self.0
-        }
-    }
-
-    impl ::std::convert::From<AppSecReportPreferencesInstructions> for ::std::string::String {
-        fn from(value: AppSecReportPreferencesInstructions) -> Self {
-            value.0
-        }
-    }
-
-    impl ::std::default::Default for AppSecReportPreferencesInstructions {
-        fn default() -> Self {
-            AppSecReportPreferencesInstructions("".to_string())
-        }
-    }
-
-    impl ::std::str::FromStr for AppSecReportPreferencesInstructions {
-        type Err = self::error::ConversionError;
-        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            if value.chars().count() > 12000usize {
-                return Err("longer than 12000 characters".into());
-            }
-            Ok(Self(value.to_string()))
-        }
-    }
-
-    impl ::std::convert::TryFrom<&str> for AppSecReportPreferencesInstructions {
-        type Error = self::error::ConversionError;
-        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<::std::string::String> for AppSecReportPreferencesInstructions {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: ::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl<'de> ::serde::Deserialize<'de> for AppSecReportPreferencesInstructions {
-        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
-        where
-            D: ::serde::Deserializer<'de>,
-        {
-            ::std::string::String::deserialize(deserializer)?
-                .parse()
-                .map_err(|e: self::error::ConversionError| {
-                    <D::Error as ::serde::de::Error>::custom(e.to_string())
-                })
-        }
-    }
-
-    ///`AppSecReportStyle`
-    #[derive(
-        :: serde :: Deserialize,
-        :: serde :: Serialize,
-        Clone,
-        Copy,
-        Debug,
-        Eq,
-        Hash,
-        Ord,
-        PartialEq,
-        PartialOrd,
-    )]
-    pub enum AppSecReportStyle {
-        #[serde(rename = "standard")]
-        Standard,
-        #[serde(rename = "custom")]
-        Custom,
-    }
-
-    impl ::std::fmt::Display for AppSecReportStyle {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            match *self {
-                Self::Standard => f.write_str("standard"),
-                Self::Custom => f.write_str("custom"),
-            }
-        }
-    }
-
-    impl ::std::str::FromStr for AppSecReportStyle {
-        type Err = self::error::ConversionError;
-        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            match value {
-                "standard" => Ok(Self::Standard),
-                "custom" => Ok(Self::Custom),
-                _ => Err("invalid value".into()),
-            }
-        }
-    }
-
-    impl ::std::convert::TryFrom<&str> for AppSecReportStyle {
-        type Error = self::error::ConversionError;
-        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<::std::string::String> for AppSecReportStyle {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: ::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
     ///`AppSetupStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AppSetupStatus",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "draft",
+    ///    "complete"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -1539,6 +2657,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AppSetupStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AppSetupStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -1549,6 +2676,23 @@ pub mod types {
     }
 
     ///`AppSetupStep`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AppSetupStep",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "targets",
+    ///    "users",
+    ///    "context",
+    ///    "coverage",
+    ///    "review"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -1607,6 +2751,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AppSetupStep {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AppSetupStep {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -1617,6 +2770,44 @@ pub mod types {
     }
 
     ///`AppTargetPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AppTargetPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "id",
+    ///    "normalized_ref",
+    ///    "target_ref",
+    ///    "target_type",
+    ///    "verification"
+    ///  ],
+    ///  "properties": {
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "normalized_ref": {
+    ///      "title": "Normalized Ref",
+    ///      "type": "string"
+    ///    },
+    ///    "target_ref": {
+    ///      "title": "Target Ref",
+    ///      "type": "string"
+    ///    },
+    ///    "target_type": {
+    ///      "$ref": "#/components/schemas/TargetType"
+    ///    },
+    ///    "verification": {
+    ///      "$ref": "#/components/schemas/AppDomainVerificationPublic"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AppTargetPublic {
         pub id: ::uuid::Uuid,
@@ -1627,30 +2818,120 @@ pub mod types {
     }
 
     ///Request body for PATCH /appsec/apps/{app_id}.
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug, Default)]
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AppUpdate",
+    ///  "description": "Request body for PATCH /appsec/apps/{app_id}.",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "complete_setup": {
+    ///      "title": "Complete Setup",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "default_intensity": {
+    ///      "$ref": "#/components/schemas/Intensity"
+    ///    },
+    ///    "default_selection": {
+    ///      "$ref": "#/components/schemas/SavedSelection"
+    ///    },
+    ///    "frameworks": {
+    ///      "title": "Frameworks",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/OwaspFramework"
+    ///      }
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "report_preferences": {
+    ///      "$ref": "#/components/schemas/CyberReportPreferences"
+    ///    },
+    ///    "scope": {
+    ///      "$ref": "#/components/schemas/ScopeSpec"
+    ///    },
+    ///    "setup_step": {
+    ///      "$ref": "#/components/schemas/AppSetupStep"
+    ///    },
+    ///    "target_ref": {
+    ///      "title": "AppUpdate_target_ref",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 512,
+    ///      "minLength": 1
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct AppUpdate {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub complete_setup: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub default_intensity: ::std::option::Option<Intensity>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub default_selection: ::std::option::Option<SavedSelection>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub frameworks: ::std::option::Option<::std::vec::Vec<OwaspFramework>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub name: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-        pub report_preferences: ::std::option::Option<AppSecReportPreferences>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub report_preferences: ::std::option::Option<CyberReportPreferences>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub scope: ::std::option::Option<ScopeSpec>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub setup_step: ::std::option::Option<AppSetupStep>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub target_ref: ::std::option::Option<AppUpdateTargetRef>,
     }
 
+    impl ::std::default::Default for AppUpdate {
+        fn default() -> Self {
+            Self {
+                complete_setup: Default::default(),
+                default_intensity: Default::default(),
+                default_selection: Default::default(),
+                frameworks: Default::default(),
+                name: Default::default(),
+                report_preferences: Default::default(),
+                scope: Default::default(),
+                setup_step: Default::default(),
+                target_ref: Default::default(),
+            }
+        }
+    }
+
     ///`AppUpdateTargetRef`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AppUpdate_target_ref",
+    ///  "type": "string",
+    ///  "maxLength": 512,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct AppUpdateTargetRef(::std::string::String);
@@ -1687,6 +2968,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AppUpdateTargetRef {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AppUpdateTargetRef {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -1710,6 +3000,35 @@ pub mod types {
     }
 
     ///Body for `PUT /agent-cli/sessions/{conversation_id}/entries`.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AppendAgentCliEntriesRequest",
+    ///  "description": "Body for `PUT
+    /// /agent-cli/sessions/{conversation_id}/entries`.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "entries"
+    ///  ],
+    ///  "properties": {
+    ///    "entries": {
+    ///      "title": "Entries",
+    ///      "description": "The entries this session has not acknowledged yet,
+    /// oldest first. Re-sending a stored entry is free and changes no
+    /// sequence.",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/AgentCliEntryInput"
+    ///      },
+    ///      "maxItems": 200,
+    ///      "minItems": 1
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AppendAgentCliEntriesRequest {
         ///The entries this session has not acknowledged yet, oldest first.
@@ -1718,6 +3037,19 @@ pub mod types {
     }
 
     ///`ApplyFixDisabledReason`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ApplyFixDisabledReason",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "unsupported_provider"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -1760,6 +3092,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ApplyFixDisabledReason {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ApplyFixDisabledReason {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -1770,6 +3111,38 @@ pub mod types {
     }
 
     ///`ArtifactGrantPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ArtifactGrantPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "expires_at",
+    ///    "grant_id",
+    ///    "token"
+    ///  ],
+    ///  "properties": {
+    ///    "expires_at": {
+    ///      "title": "Expires At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "grant_id": {
+    ///      "title": "Grant Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "token": {
+    ///      "title": "Token",
+    ///      "type": "string"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct ArtifactGrantPublic {
@@ -1779,6 +3152,65 @@ pub mod types {
     }
 
     ///`AssignmentLease`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AssignmentLease",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "assignment_id",
+    ///    "fence_token",
+    ///    "lease_expires_at",
+    ///    "lease_token",
+    ///    "session_id",
+    ///    "state",
+    ///    "target_id",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "assignment_id": {
+    ///      "title": "Assignment Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer"
+    ///    },
+    ///    "lease_expires_at": {
+    ///      "title": "Lease Expires At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "type": "string"
+    ///    },
+    ///    "session_id": {
+    ///      "title": "Session Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "state": {
+    ///      "$ref": "#/components/schemas/AssignmentState"
+    ///    },
+    ///    "target_id": {
+    ///      "title": "Target Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct AssignmentLease {
@@ -1793,6 +3225,40 @@ pub mod types {
     }
 
     ///`AssignmentLeaseRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AssignmentLeaseRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct AssignmentLeaseRequest {
@@ -1802,6 +3268,26 @@ pub mod types {
     }
 
     ///`AssignmentState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AssignmentState",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "pending",
+    ///    "claimed",
+    ///    "starting",
+    ///    "active",
+    ///    "draining",
+    ///    "orphaned",
+    ///    "resolution_required",
+    ///    "closed"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -1872,6 +3358,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AssignmentState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AssignmentState {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -1881,12 +3376,33 @@ pub mod types {
         }
     }
 
-    ///Durability class for an AppSec gray-box credential.
+    ///Durability class for an Cyber gray-box credential.
     ///
     ///session — pasted browser session material from cURL; useful for
     /// immediate          run-now only because it may expire or logout
     /// before a schedule fires. durable — long-lived token/header material
     /// that may be reused by scheduled runs.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AuthKind",
+    ///  "description": "Durability class for an Cyber gray-box
+    /// credential.\n\nsession — pasted browser session material from cURL;
+    /// useful for immediate\n          run-now only because it may expire or
+    /// logout before a schedule fires.\ndurable — long-lived token/header
+    /// material that may be reused by scheduled runs.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "session",
+    ///    "durable",
+    ///    "password",
+    ///    "totp"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -1941,6 +3457,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AuthKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AuthKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -1959,6 +3484,30 @@ pub mod types {
     /// logged in successfully. degraded     — auth was attempted but
     /// failed/expired mid-run; the run               continued
     /// unauthenticated rather than aborting.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AuthStatus",
+    ///  "description": "Gray-box auth outcome for a pentest run: did the run
+    /// authenticate?\n\nnot_required — run launched in a mode that never
+    /// attempts auth (black-box).\nunverified   — gray/white-box run launched
+    /// but auth was never confirmed\n               (default until the agent
+    /// proves login succeeded).\nauthenticated — the agent confirmed the
+    /// credential logged in successfully.\ndegraded     — auth was attempted
+    /// but failed/expired mid-run; the run\n               continued
+    /// unauthenticated rather than aborting.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "not_required",
+    ///    "unverified",
+    ///    "authenticated",
+    ///    "degraded"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -2013,6 +3562,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AuthStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AuthStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -2023,6 +3581,21 @@ pub mod types {
     }
 
     ///`AutofixDisabledReason`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AutofixDisabledReason",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "merge_request_merged",
+    ///    "unsupported_provider",
+    ///    "no_unresolved_findings"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -2073,6 +3646,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for AutofixDisabledReason {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for AutofixDisabledReason {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -2083,6 +3665,22 @@ pub mod types {
     }
 
     ///`BackgroundAction`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "BackgroundAction",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "start",
+    ///    "tail",
+    ///    "cancel",
+    ///    "cleanup"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -2137,6 +3735,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for BackgroundAction {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for BackgroundAction {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -2147,31 +3754,142 @@ pub mod types {
     }
 
     ///`BackgroundOperation`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "BackgroundOperation",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "action",
+    ///    "kind",
+    ///    "task_id"
+    ///  ],
+    ///  "properties": {
+    ///    "action": {
+    ///      "$ref": "#/components/schemas/BackgroundAction"
+    ///    },
+    ///    "authorized_working_directory_root": {
+    ///      "title": "Authorized Working Directory Root",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "cmd": {
+    ///      "title": "Cmd",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "credential_ref": {
+    ///      "title": "Credential Ref",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "guarded_shell": {
+    ///      "title": "Guarded Shell",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "kind": {
+    ///      "title": "BackgroundOperation_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "background"
+    ///      ]
+    ///    },
+    ///    "offset": {
+    ///      "title": "Offset",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "stderr_offset": {
+    ///      "title": "Stderr Offset",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "task_id": {
+    ///      "title": "Task Id",
+    ///      "type": "string"
+    ///    },
+    ///    "timeout": {
+    ///      "title": "Timeout",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "wait_seconds": {
+    ///      "title": "Wait Seconds",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "maximum": 20.0,
+    ///      "minimum": 0.0
+    ///    },
+    ///    "working_directory": {
+    ///      "title": "Working Directory",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct BackgroundOperation {
         pub action: BackgroundAction,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub authorized_working_directory_root: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub cmd: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub credential_ref: ::std::option::Option<::uuid::Uuid>,
+        #[serde(default)]
+        pub guarded_shell: bool,
         pub kind: BackgroundOperationKind,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub offset: ::std::option::Option<i64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub stderr_offset: ::std::option::Option<i64>,
         pub task_id: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub timeout: ::std::option::Option<i64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub wait_seconds: ::std::option::Option<i64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub working_directory: ::std::option::Option<::std::string::String>,
     }
 
     ///`BackgroundOperationKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "BackgroundOperation_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "background"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -2214,6 +3932,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for BackgroundOperationKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for BackgroundOperationKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -2224,6 +3951,23 @@ pub mod types {
     }
 
     ///`BgTaskStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "BgTaskStatus",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "running",
+    ///    "done",
+    ///    "error",
+    ///    "cancelled",
+    ///    "unknown"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -2282,6 +4026,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for BgTaskStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for BgTaskStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -2292,6 +4045,17 @@ pub mod types {
     }
 
     ///`BrowserResourceOriginsItem`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "maxLength": 100,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct BrowserResourceOriginsItem(::std::string::String);
@@ -2324,6 +4088,15 @@ pub mod types {
     impl ::std::convert::TryFrom<&str> for BrowserResourceOriginsItem {
         type Error = self::error::ConversionError;
         fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for BrowserResourceOriginsItem {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
     }
@@ -2363,6 +4136,32 @@ pub mod types {
     ///  future producer; `_derive_diff_focus` does not emit this value today
     ///  (an unresolved HEAD omits the repo entirely rather than recording a
     /// row).
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ChangeFocusBaseState",
+    ///  "description": "WHY a target's `base_ref` is empty or set — resolves
+    /// the `base_ref==\"\"`\noverload into an explicit, observable state (Gap
+    /// #3).\n\n- `incremental`: `base_ref` is a real prior-run SHA; a diff is
+    /// rendered.\n- `first_run`: no prior successful run for this repo yet.\n-
+    /// `unchanged`: prior head SHA == current HEAD SHA (full scan, no wasted
+    /// diff).\n- `provider_unsupported`: the provider couldn't resolve a base
+    /// (e.g. branch\n  pagination cap in `ref_validation.branch_ref_exists`) —
+    /// reserved for a\n  future producer; `_derive_diff_focus` does not emit
+    /// this value today\n  (an unresolved HEAD omits the repo entirely rather
+    /// than recording a row).",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "incremental",
+    ///    "first_run",
+    ///    "unchanged",
+    ///    "provider_unsupported"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -2417,6 +4216,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ChangeFocusBaseState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ChangeFocusBaseState {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -2449,10 +4257,74 @@ pub mod types {
     ///rows persisted before this field existed still validate; `_change_focus_
     ///line` falls back to `repository_identity` when empty (legacy rows still
     ///render something, just not a worktree path).
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ChangeFocusTarget",
+    ///  "description": "One backend-derived change-focus target for one
+    /// attached repo.\n\nprovider/repository_identity name WHICH attached repo
+    /// (an App may attach\nseveral). `head_ref` is the commit SHA this run
+    /// scanned (the durable\nper-repo cursor the next run reads); `base_ref` is
+    /// the prior successful\nrun's `head_ref`, or \"\" on a first/unchanged
+    /// run. `base_state` co-carries\nWHY `base_ref` is empty (or not) —
+    /// `first_run`, `unchanged`, or\n`provider_unsupported` all render as
+    /// `base_ref==\"\"`, but only `base_state`\ndistinguishes them (Gap #3); it
+    /// defaults to `\"incremental\"` so rows stored\nbefore this field existed
+    /// still validate. The run clones a real git\nworktree per repo, so the
+    /// agent diffs these refs (`git diff\nbase...head`) — the backend only
+    /// resolves them. NOT a scope fence: it\nsteers, it never narrows
+    /// targets.\n\n`worktree_name` is the directory name the run's git worktree
+    /// clones to\n(same value
+    /// `app.shared.utils.repo_path_utils.worktree_dir_name`\nproduces for
+    /// `_repository_roots`) — `_change_focus_line`
+    /// renders\n`./<worktree_name>/`, not `repository_identity` (a GitLab
+    /// identity is a\nnumeric project ID, useless prose for the agent).
+    /// Defaults to `\"\"` so\nrows persisted before this field existed still
+    /// validate; `_change_focus_\nline` falls back to `repository_identity`
+    /// when empty (legacy rows still\nrender something, just not a worktree
+    /// path).",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "base_ref",
+    ///    "head_ref",
+    ///    "provider",
+    ///    "repository_identity"
+    ///  ],
+    ///  "properties": {
+    ///    "base_ref": {
+    ///      "title": "Base Ref",
+    ///      "type": "string"
+    ///    },
+    ///    "base_state": {
+    ///      "$ref": "#/components/schemas/ChangeFocusBaseState"
+    ///    },
+    ///    "head_ref": {
+    ///      "title": "Head Ref",
+    ///      "type": "string"
+    ///    },
+    ///    "provider": {
+    ///      "title": "Provider",
+    ///      "type": "string"
+    ///    },
+    ///    "repository_identity": {
+    ///      "title": "Repository Identity",
+    ///      "type": "string"
+    ///    },
+    ///    "worktree_name": {
+    ///      "title": "Worktree Name",
+    ///      "default": "",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ChangeFocusTarget {
         pub base_ref: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub base_state: ::std::option::Option<ChangeFocusBaseState>,
         pub head_ref: ::std::string::String,
         pub provider: ::std::string::String,
@@ -2462,7 +4334,45 @@ pub mod types {
     }
 
     ///Severity breakdown for child incidents.
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug, Default)]
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ChildrenSeverityBreakdown",
+    ///  "description": "Severity breakdown for child incidents.",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "critical": {
+    ///      "title": "Critical",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "high": {
+    ///      "title": "High",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "info": {
+    ///      "title": "Info",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "low": {
+    ///      "title": "Low",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "medium": {
+    ///      "title": "Medium",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ChildrenSeverityBreakdown {
         #[serde(default)]
         pub critical: i64,
@@ -2476,7 +4386,40 @@ pub mod types {
         pub medium: i64,
     }
 
+    impl ::std::default::Default for ChildrenSeverityBreakdown {
+        fn default() -> Self {
+            Self {
+                critical: Default::default(),
+                high: Default::default(),
+                info: Default::default(),
+                low: Default::default(),
+                medium: Default::default(),
+            }
+        }
+    }
+
     ///`ClaimAssignmentRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ClaimAssignmentRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct ClaimAssignmentRequest {
@@ -2484,6 +4427,47 @@ pub mod types {
     }
 
     ///Short user code plus the private device credential used for polling.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliDeviceAuthorizationResponse",
+    ///  "description": "Short user code plus the private device credential used
+    /// for polling.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "device_code",
+    ///    "expires_in",
+    ///    "interval",
+    ///    "user_code",
+    ///    "verification_uri"
+    ///  ],
+    ///  "properties": {
+    ///    "device_code": {
+    ///      "title": "Device Code",
+    ///      "type": "string"
+    ///    },
+    ///    "expires_in": {
+    ///      "title": "Expires In",
+    ///      "type": "integer"
+    ///    },
+    ///    "interval": {
+    ///      "title": "Interval",
+    ///      "type": "integer"
+    ///    },
+    ///    "user_code": {
+    ///      "title": "User Code",
+    ///      "type": "string"
+    ///    },
+    ///    "verification_uri": {
+    ///      "title": "Verification Uri",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CliDeviceAuthorizationResponse {
         pub device_code: ::std::string::String,
@@ -2494,14 +4478,56 @@ pub mod types {
     }
 
     ///`CliDeviceTokenError`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliDeviceTokenError",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "error"
+    ///  ],
+    ///  "properties": {
+    ///    "error": {
+    ///      "$ref": "#/components/schemas/CliDeviceTokenErrorCode"
+    ///    },
+    ///    "interval": {
+    ///      "title": "Interval",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CliDeviceTokenError {
         pub error: CliDeviceTokenErrorCode,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub interval: ::std::option::Option<i64>,
     }
 
     ///RFC 8628-shaped terminal and polling responses.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliDeviceTokenErrorCode",
+    ///  "description": "RFC 8628-shaped terminal and polling responses.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "authorization_pending",
+    ///    "slow_down",
+    ///    "access_denied",
+    ///    "expired_token"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -2556,6 +4582,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for CliDeviceTokenErrorCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for CliDeviceTokenErrorCode {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -2566,12 +4601,47 @@ pub mod types {
     }
 
     ///Poll a device authorization using its high-entropy private code.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliDeviceTokenRequest",
+    ///  "description": "Poll a device authorization using its high-entropy
+    /// private code.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "device_code"
+    ///  ],
+    ///  "properties": {
+    ///    "device_code": {
+    ///      "title": "CliDeviceTokenRequest_device_code",
+    ///      "type": "string",
+    ///      "maxLength": 128,
+    ///      "minLength": 43
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CliDeviceTokenRequest {
         pub device_code: CliDeviceTokenRequestDeviceCode,
     }
 
     ///`CliDeviceTokenRequestDeviceCode`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliDeviceTokenRequest_device_code",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 43
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct CliDeviceTokenRequestDeviceCode(::std::string::String);
@@ -2608,6 +4678,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for CliDeviceTokenRequestDeviceCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for CliDeviceTokenRequestDeviceCode {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -2631,6 +4710,36 @@ pub mod types {
     }
 
     ///Token-exchange request: the one-time code plus the PKCE verifier.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliTokenRequest",
+    ///  "description": "Token-exchange request: the one-time code plus the PKCE
+    /// verifier.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "code",
+    ///    "code_verifier"
+    ///  ],
+    ///  "properties": {
+    ///    "code": {
+    ///      "title": "CliTokenRequest_code",
+    ///      "type": "string",
+    ///      "maxLength": 64,
+    ///      "minLength": 1
+    ///    },
+    ///    "code_verifier": {
+    ///      "title": "CliTokenRequest_code_verifier",
+    ///      "type": "string",
+    ///      "maxLength": 128,
+    ///      "minLength": 43
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CliTokenRequest {
         pub code: CliTokenRequestCode,
@@ -2638,6 +4747,18 @@ pub mod types {
     }
 
     ///`CliTokenRequestCode`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliTokenRequest_code",
+    ///  "type": "string",
+    ///  "maxLength": 64,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct CliTokenRequestCode(::std::string::String);
@@ -2674,6 +4795,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for CliTokenRequestCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for CliTokenRequestCode {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -2697,6 +4827,18 @@ pub mod types {
     }
 
     ///`CliTokenRequestCodeVerifier`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliTokenRequest_code_verifier",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 43
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct CliTokenRequestCodeVerifier(::std::string::String);
@@ -2733,6 +4875,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for CliTokenRequestCodeVerifier {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for CliTokenRequestCodeVerifier {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -2756,9 +4907,56 @@ pub mod types {
     }
 
     ///Live identity resolved from the active CLI bearer credential.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliWhoAmIResponse",
+    ///  "description": "Live identity resolved from the active CLI bearer
+    /// credential.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "user_email",
+    ///    "user_id",
+    ///    "workspace_id",
+    ///    "workspace_name"
+    ///  ],
+    ///  "properties": {
+    ///    "organization_id": {
+    ///      "title": "Organization Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "user_email": {
+    ///      "title": "User Email",
+    ///      "type": "string",
+    ///      "format": "email"
+    ///    },
+    ///    "user_id": {
+    ///      "title": "User Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "workspace_id": {
+    ///      "title": "Workspace Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "workspace_name": {
+    ///      "title": "Workspace Name",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CliWhoAmIResponse {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub organization_id: ::std::option::Option<::uuid::Uuid>,
         pub user_email: ::std::string::String,
         pub user_id: ::uuid::Uuid,
@@ -2767,6 +4965,52 @@ pub mod types {
     }
 
     ///`CloudConnectionEntry`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CloudConnectionEntry",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "alias",
+    ///    "description",
+    ///    "execution_method",
+    ///    "prefix",
+    ///    "skills"
+    ///  ],
+    ///  "properties": {
+    ///    "alias": {
+    ///      "title": "Alias",
+    ///      "type": "string"
+    ///    },
+    ///    "description": {
+    ///      "title": "Description",
+    ///      "type": "string"
+    ///    },
+    ///    "execution_method": {
+    ///      "title": "CloudConnectionEntry_execution_method",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "cli",
+    ///        "sdk"
+    ///      ]
+    ///    },
+    ///    "prefix": {
+    ///      "title": "Prefix",
+    ///      "type": "string"
+    ///    },
+    ///    "skills": {
+    ///      "title": "Skills",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/CloudConnectionSkill"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CloudConnectionEntry {
         pub alias: ::std::string::String,
@@ -2777,6 +5021,20 @@ pub mod types {
     }
 
     ///`CloudConnectionEntryExecutionMethod`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CloudConnectionEntry_execution_method",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "cli",
+    ///    "sdk"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -2823,6 +5081,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for CloudConnectionEntryExecutionMethod {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for CloudConnectionEntryExecutionMethod {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -2833,6 +5100,30 @@ pub mod types {
     }
 
     ///`CloudConnectionSkill`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CloudConnectionSkill",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "description",
+    ///    "name"
+    ///  ],
+    ///  "properties": {
+    ///    "description": {
+    ///      "title": "Description",
+    ///      "type": "string"
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CloudConnectionSkill {
         pub description: ::std::string::String,
@@ -2840,6 +5131,35 @@ pub mod types {
     }
 
     ///`CloudToolPolicy`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CloudToolPolicy",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "enabled",
+    ///    "name",
+    ///    "requires_approval"
+    ///  ],
+    ///  "properties": {
+    ///    "enabled": {
+    ///      "title": "Enabled",
+    ///      "type": "boolean"
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "requires_approval": {
+    ///      "title": "Requires Approval",
+    ///      "type": "boolean"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CloudToolPolicy {
         pub enabled: bool,
@@ -2853,7 +5173,40 @@ pub mod types {
     /// only Learning-citing findings count here (mirrors the "Learnings
     /// cited" row, not "Findings"). Counts are UNRESOLVED only, matching
     /// `severity_counts` — a fixed finding is not work left to do.
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug, Default)]
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CodeReviewCategoryCounts",
+    ///  "description": "Unresolved findings per cited-Learning category in the review summary.\n\nA finding joins a category by citing a Learning of that category, so only\nLearning-citing findings count here (mirrors the \"Learnings cited\" row, not\n\"Findings\"). Counts are UNRESOLVED only, matching `severity_counts` —\na fixed finding is not work left to do.",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "correctness": {
+    ///      "title": "Correctness",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "patterns": {
+    ///      "title": "Patterns",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "performance": {
+    ///      "title": "Performance",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "security": {
+    ///      "title": "Security",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CodeReviewCategoryCounts {
         #[serde(default)]
         pub correctness: i64,
@@ -2865,10 +5218,50 @@ pub mod types {
         pub security: i64,
     }
 
+    impl ::std::default::Default for CodeReviewCategoryCounts {
+        fn default() -> Self {
+            Self {
+                correctness: Default::default(),
+                patterns: Default::default(),
+                performance: Default::default(),
+                security: Default::default(),
+            }
+        }
+    }
+
     ///A Learning a finding cited, surfaced as a "Cites <slug>" chip.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CodeReviewCitedRule",
+    ///  "description": "A Learning a finding cited, surfaced as a \"Cites
+    /// <slug>\" chip.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "name",
+    ///    "slug"
+    ///  ],
+    ///  "properties": {
+    ///    "category": {
+    ///      "$ref": "#/components/schemas/ConventionRuleCategory"
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "slug": {
+    ///      "title": "Slug",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CodeReviewCitedRule {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub category: ::std::option::Option<ConventionRuleCategory>,
         pub name: ::std::string::String,
         pub slug: ::std::string::String,
@@ -2885,6 +5278,302 @@ pub mod types {
     ///All three are absent together or present together — a finding anchored
     /// by `posting_range` has no snapshot row, and the card falls back to
     /// rendering the replacement alone.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CodeReviewDetailFinding",
+    ///  "description": "A finding plus the source it replaces, for the detail
+    /// page's diff.\n\nExtends rather than widening `CodeReviewFindingPublic`:
+    /// that schema also\nserves pipeline findings, which are not anchored to an
+    /// `old_string` and so\ncan never carry a snapshot. Adding the fields there
+    /// would hand every\nconsumer three columns that are permanently null on
+    /// half the rows.\n\nAll three are absent together or present together — a
+    /// finding anchored by\n`posting_range` has no snapshot row, and the card
+    /// falls back to rendering the\nreplacement alone.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "acknowledged",
+    ///    "comment_posted_at",
+    ///    "created_at",
+    ///    "external_comment_id",
+    ///    "external_note_id",
+    ///    "file_path",
+    ///    "finding_index",
+    ///    "id",
+    ///    "issue_description",
+    ///    "issue_title",
+    ///    "line_number",
+    ///    "provider",
+    ///    "resolved",
+    ///    "resolved_at",
+    ///    "resolved_by",
+    ///    "severity",
+    ///    "severity_emoji",
+    ///    "side",
+    ///    "specialist",
+    ///    "suggested_fix",
+    ///    "updated_at",
+    ///    "withdrawn"
+    ///  ],
+    ///  "properties": {
+    ///    "acknowledged": {
+    ///      "title": "Acknowledged",
+    ///      "description": "The developer accepted this finding and kept the
+    /// code as it is.\n\nDistinct from `withdrawn`: the finding was correct. A
+    /// client that showed\nboth as one \"closed without a fix\" state would be
+    /// telling the reader the\nreview made a mistake it did not make.",
+    ///      "readOnly": true,
+    ///      "type": "boolean"
+    ///    },
+    ///    "acknowledged_at": {
+    ///      "title": "Acknowledged At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "acknowledged_reason": {
+    ///      "title": "Acknowledged Reason",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "apply_fix_disabled_reason": {
+    ///      "$ref": "#/components/schemas/ApplyFixDisabledReason"
+    ///    },
+    ///    "can_apply_fix": {
+    ///      "title": "Can Apply Fix",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "category": {
+    ///      "title": "Category",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "code_review_merge_request_id": {
+    ///      "title": "Code Review Merge Request Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "code_review_pipeline_id": {
+    ///      "title": "Code Review Pipeline Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "comment_posted_at": {
+    ///      "title": "Comment Posted At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "context_after": {
+    ///      "title": "Context After",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "context_before": {
+    ///      "title": "Context Before",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "external_comment_id": {
+    ///      "title": "External Comment Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "external_note_id": {
+    ///      "title": "External Note Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "file_change_type": {
+    ///      "$ref": "#/components/schemas/SnapshotFileChangeType"
+    ///    },
+    ///    "file_path": {
+    ///      "title": "File Path",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "finding_index": {
+    ///      "title": "Finding Index",
+    ///      "type": "integer"
+    ///    },
+    ///    "finding_source": {
+    ///      "title": "Finding Source",
+    ///      "default": "code_review",
+    ///      "type": "string"
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "issue_description": {
+    ///      "title": "Issue Description",
+    ///      "type": "string"
+    ///    },
+    ///    "issue_title": {
+    ///      "title": "Issue Title",
+    ///      "type": "string"
+    ///    },
+    ///    "line_number": {
+    ///      "title": "Line Number",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "observed_head_sha": {
+    ///      "title": "Observed Head Sha",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "original_code": {
+    ///      "title": "Original Code",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "original_end_line": {
+    ///      "title": "Original End Line",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "original_start_line": {
+    ///      "title": "Original Start Line",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "provider": {
+    ///      "title": "Provider",
+    ///      "type": "string"
+    ///    },
+    ///    "publication_attempts": {
+    ///      "title": "Publication Attempts",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "publication_status": {
+    ///      "$ref": "#/components/schemas/FindingPublicationStatus"
+    ///    },
+    ///    "resolved": {
+    ///      "title": "Resolved",
+    ///      "type": "boolean"
+    ///    },
+    ///    "resolved_at": {
+    ///      "title": "Resolved At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "resolved_by": {
+    ///      "title": "Resolved By",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "severity": {
+    ///      "title": "Severity",
+    ///      "type": "string"
+    ///    },
+    ///    "severity_emoji": {
+    ///      "title": "Severity Emoji",
+    ///      "type": "string"
+    ///    },
+    ///    "side": {
+    ///      "title": "Side",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "specialist": {
+    ///      "title": "Specialist",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "suggested_fix": {
+    ///      "title": "Suggested Fix",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "updated_at": {
+    ///      "title": "Updated At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "withdrawn": {
+    ///      "title": "Withdrawn",
+    ///      "description": "The agent accepted a rebuttal and retracted this finding.\n\nDerived here so no client re-derives it from a timestamp.",
+    ///      "readOnly": true,
+    ///      "type": "boolean"
+    ///    },
+    ///    "withdrawn_at": {
+    ///      "title": "Withdrawn At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "withdrawn_reason": {
+    ///      "title": "Withdrawn Reason",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CodeReviewDetailFinding {
         ///The developer accepted this finding and kept the code as it is.
@@ -2894,34 +5583,30 @@ pub mod types {
         /// telling the reader the review made a mistake it did not
         /// make.
         pub acknowledged: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub acknowledged_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub acknowledged_reason: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub apply_fix_disabled_reason: ::std::option::Option<ApplyFixDisabledReason>,
         #[serde(default)]
         pub can_apply_fix: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub category: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub code_review_merge_request_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub code_review_pipeline_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub comment_posted_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub context_after: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub context_before: ::std::option::Option<::std::string::String>,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub external_comment_id: ::std::option::Option<::std::string::String>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub external_note_id: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub file_change_type: ::std::option::Option<SnapshotFileChangeType>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub file_path: ::std::option::Option<::std::string::String>,
         pub finding_index: i64,
         #[serde(default = "defaults::code_review_detail_finding_finding_source")]
@@ -2929,57 +5614,383 @@ pub mod types {
         pub id: ::uuid::Uuid,
         pub issue_description: ::std::string::String,
         pub issue_title: ::std::string::String,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub line_number: ::std::option::Option<i64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub observed_head_sha: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub original_code: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub original_end_line: ::std::option::Option<i64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub original_start_line: ::std::option::Option<i64>,
         pub provider: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub publication_attempts: ::std::option::Option<i64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub publication_status: ::std::option::Option<FindingPublicationStatus>,
         pub resolved: bool,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub resolved_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub resolved_by: ::std::option::Option<::uuid::Uuid>,
         pub severity: ::std::string::String,
         pub severity_emoji: ::std::string::String,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub side: ::std::option::Option<::std::string::String>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub specialist: ::std::option::Option<::std::string::String>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub suggested_fix: ::std::option::Option<::std::string::String>,
         pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
         ///The agent accepted a rebuttal and retracted this finding.
         ///
         ///Derived here so no client re-derives it from a timestamp.
         pub withdrawn: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub withdrawn_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub withdrawn_reason: ::std::option::Option<::std::string::String>,
     }
 
     ///Single merge-request review detail (header + stats + findings).
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CodeReviewMergeRequestDetail",
+    ///  "description": "Single merge-request review detail (header + stats +
+    /// findings).",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "created_at",
+    ///    "id",
+    ///    "mr_iid",
+    ///    "mr_state",
+    ///    "provider",
+    ///    "repository_name",
+    ///    "review_status",
+    ///    "severity_counts",
+    ///    "title",
+    ///    "updated_at",
+    ///    "verdict"
+    ///  ],
+    ///  "properties": {
+    ///    "ask_conversation_id": {
+    ///      "title": "Ask Conversation Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "author_avatar_url": {
+    ///      "title": "Author Avatar Url",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "author_name": {
+    ///      "title": "Author Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "author_username": {
+    ///      "title": "Author Username",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "autofix_disabled_reason": {
+    ///      "$ref": "#/components/schemas/AutofixDisabledReason"
+    ///    },
+    ///    "can_merge": {
+    ///      "title": "Can Merge",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "can_stop_review": {
+    ///      "title": "Can Stop Review",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "can_trigger_autofix": {
+    ///      "title": "Can Trigger Autofix",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "can_trigger_manual_review": {
+    ///      "title": "Can Trigger Manual Review",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "category_counts": {
+    ///      "$ref": "#/components/schemas/CodeReviewCategoryCounts"
+    ///    },
+    ///    "citations": {
+    ///      "title": "Citations",
+    ///      "type": "object",
+    ///      "additionalProperties": {
+    ///        "type": "array",
+    ///        "items": {
+    ///          "$ref": "#/components/schemas/CodeReviewCitedRule"
+    ///        }
+    ///      }
+    ///    },
+    ///    "commit_count": {
+    ///      "title": "Commit Count",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "files_changed": {
+    ///      "title": "Files Changed",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "findings": {
+    ///      "title": "Findings",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/CodeReviewDetailFinding"
+    ///      }
+    ///    },
+    ///    "findings_count": {
+    ///      "title": "Findings Count",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "follow_up_mr_url": {
+    ///      "title": "Follow Up Mr Url",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "has_conflicts": {
+    ///      "title": "Has Conflicts",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "layer_count": {
+    ///      "title": "Layer Count",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "lines_added": {
+    ///      "title": "Lines Added",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "lines_deleted": {
+    ///      "title": "Lines Deleted",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "manual_trigger_disabled_reason": {
+    ///      "$ref": "#/components/schemas/ManualTriggerDisabledReason"
+    ///    },
+    ///    "merge_disabled_reason": {
+    ///      "$ref": "#/components/schemas/MergeDisabledReason"
+    ///    },
+    ///    "merge_status": {
+    ///      "title": "Merge Status",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "mr_closed_at": {
+    ///      "title": "Mr Closed At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "mr_created_at": {
+    ///      "title": "Mr Created At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "mr_description": {
+    ///      "title": "Mr Description",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "mr_iid": {
+    ///      "title": "Mr Iid",
+    ///      "type": "integer"
+    ///    },
+    ///    "mr_merged_at": {
+    ///      "title": "Mr Merged At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "mr_state": {
+    ///      "$ref": "#/components/schemas/MRState"
+    ///    },
+    ///    "my_finding_feedback": {
+    ///      "title": "My Finding Feedback",
+    ///      "type": "object",
+    ///      "additionalProperties": {
+    ///        "type": "boolean"
+    ///      }
+    ///    },
+    ///    "my_review_stars": {
+    ///      "title": "My Review Stars",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "pipelines_supported": {
+    ///      "title": "Pipelines Supported",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "provider": {
+    ///      "$ref": "#/components/schemas/CodeReviewProvider"
+    ///    },
+    ///    "repository_name": {
+    ///      "title": "Repository Name",
+    ///      "type": "string"
+    ///    },
+    ///    "repository_path": {
+    ///      "title": "Repository Path",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "review_conversation_id": {
+    ///      "title": "Review Conversation Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "review_effort": {
+    ///      "$ref": "#/components/schemas/ReviewEffort"
+    ///    },
+    ///    "review_status": {
+    ///      "$ref": "#/components/schemas/ReviewStatus"
+    ///    },
+    ///    "review_summary": {
+    ///      "title": "Review Summary",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "rules_cited_count": {
+    ///      "title": "Rules Cited Count",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "score": {
+    ///      "title": "Score",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "severity_counts": {
+    ///      "$ref": "#/components/schemas/CodeReviewSeverityCounts"
+    ///    },
+    ///    "source_branch": {
+    ///      "title": "Source Branch",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "target_branch": {
+    ///      "title": "Target Branch",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "ticket_compliance": {
+    ///      "$ref": "#/components/schemas/TicketComplianceStatus"
+    ///    },
+    ///    "ticket_compliance_notes": {
+    ///      "title": "Ticket Compliance Notes",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "ticket_key": {
+    ///      "title": "Ticket Key",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "title": {
+    ///      "title": "Title",
+    ///      "type": "string"
+    ///    },
+    ///    "unresolved_findings_count": {
+    ///      "title": "Unresolved Findings Count",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "updated_at": {
+    ///      "title": "Updated At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "url": {
+    ///      "title": "Url",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "verdict": {
+    ///      "$ref": "#/components/schemas/CodeReviewOverviewVerdict"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CodeReviewMergeRequestDetail {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub ask_conversation_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub author_avatar_url: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub author_name: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub author_username: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub autofix_disabled_reason: ::std::option::Option<AutofixDisabledReason>,
         #[serde(default)]
         pub can_merge: bool,
@@ -2989,7 +6000,7 @@ pub mod types {
         pub can_trigger_autofix: bool,
         #[serde(default)]
         pub can_trigger_manual_review: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub category_counts: ::std::option::Option<CodeReviewCategoryCounts>,
         #[serde(
             default,
@@ -2999,7 +6010,7 @@ pub mod types {
             ::std::string::String,
             ::std::vec::Vec<CodeReviewCitedRule>,
         >,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub commit_count: ::std::option::Option<i64>,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
         #[serde(default)]
@@ -3008,31 +6019,31 @@ pub mod types {
         pub findings: ::std::vec::Vec<CodeReviewDetailFinding>,
         #[serde(default)]
         pub findings_count: i64,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub follow_up_mr_url: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub has_conflicts: ::std::option::Option<bool>,
         pub id: ::uuid::Uuid,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub layer_count: ::std::option::Option<i64>,
         #[serde(default)]
         pub lines_added: i64,
         #[serde(default)]
         pub lines_deleted: i64,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub manual_trigger_disabled_reason: ::std::option::Option<ManualTriggerDisabledReason>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub merge_disabled_reason: ::std::option::Option<MergeDisabledReason>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub merge_status: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub mr_closed_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub mr_created_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub mr_description: ::std::option::Option<::std::string::String>,
         pub mr_iid: i64,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub mr_merged_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub mr_state: MrState,
         #[serde(
@@ -3040,46 +6051,65 @@ pub mod types {
             skip_serializing_if = ":: std :: collections :: HashMap::is_empty"
         )]
         pub my_finding_feedback: ::std::collections::HashMap<::std::string::String, bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub my_review_stars: ::std::option::Option<i64>,
         #[serde(default)]
         pub pipelines_supported: bool,
         pub provider: CodeReviewProvider,
         pub repository_name: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub repository_path: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub review_conversation_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub review_effort: ::std::option::Option<ReviewEffort>,
         pub review_status: ReviewStatus,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub review_summary: ::std::option::Option<::std::string::String>,
         #[serde(default)]
         pub rules_cited_count: i64,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub score: ::std::option::Option<i64>,
         pub severity_counts: CodeReviewSeverityCounts,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub source_branch: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub target_branch: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub ticket_compliance: ::std::option::Option<TicketComplianceStatus>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub ticket_compliance_notes: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub ticket_key: ::std::option::Option<::std::string::String>,
         pub title: ::std::string::String,
         #[serde(default)]
         pub unresolved_findings_count: i64,
         pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub url: ::std::option::Option<::std::string::String>,
         pub verdict: CodeReviewOverviewVerdict,
     }
 
     ///`CodeReviewOverviewVerdict`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CodeReviewOverviewVerdict",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "in_review",
+    ///    "approved",
+    ///    "review_suggested",
+    ///    "changes_requested",
+    ///    "failed",
+    ///    "filtered",
+    ///    "stopped"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -3105,6 +6135,8 @@ pub mod types {
         Failed,
         #[serde(rename = "filtered")]
         Filtered,
+        #[serde(rename = "stopped")]
+        Stopped,
     }
 
     impl ::std::fmt::Display for CodeReviewOverviewVerdict {
@@ -3116,6 +6148,7 @@ pub mod types {
                 Self::ChangesRequested => f.write_str("changes_requested"),
                 Self::Failed => f.write_str("failed"),
                 Self::Filtered => f.write_str("filtered"),
+                Self::Stopped => f.write_str("stopped"),
             }
         }
     }
@@ -3130,6 +6163,7 @@ pub mod types {
                 "changes_requested" => Ok(Self::ChangesRequested),
                 "failed" => Ok(Self::Failed),
                 "filtered" => Ok(Self::Filtered),
+                "stopped" => Ok(Self::Stopped),
                 _ => Err("invalid value".into()),
             }
         }
@@ -3138,6 +6172,15 @@ pub mod types {
     impl ::std::convert::TryFrom<&str> for CodeReviewOverviewVerdict {
         type Error = self::error::ConversionError;
         fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CodeReviewOverviewVerdict {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
     }
@@ -3152,6 +6195,24 @@ pub mod types {
     }
 
     ///Supported code review providers
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CodeReviewProvider",
+    ///  "description": "Supported code review providers",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "gitlab",
+    ///    "github",
+    ///    "bitbucket",
+    ///    "azure_devops",
+    ///    "aws_codecommit"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -3210,6 +6271,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for CodeReviewProvider {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for CodeReviewProvider {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -3228,7 +6298,46 @@ pub mod types {
     ///
     ///Counts are UNRESOLVED only, matching `unresolved_findings_count` and the
     ///verdict rules — a fixed finding is not work left to do.
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug, Default)]
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CodeReviewSeverityCounts",
+    ///  "description": "Unresolved finding counts per severity, for the
+    /// review-summary panel.\n\nSeverity is chosen over specialist
+    /// deliberately: FAST reviews write\n`specialist='main_agent'` for every
+    /// finding, so a specialist breakdown reads\n100% \"other\" on them.
+    /// Severity is set on every finding in every review mode.\n\nCounts are
+    /// UNRESOLVED only, matching `unresolved_findings_count` and the\nverdict
+    /// rules — a fixed finding is not work left to do.",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "critical": {
+    ///      "title": "Critical",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "high": {
+    ///      "title": "High",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "low": {
+    ///      "title": "Low",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "medium": {
+    ///      "title": "Medium",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CodeReviewSeverityCounts {
         #[serde(default)]
         pub critical: i64,
@@ -3240,7 +6349,81 @@ pub mod types {
         pub medium: i64,
     }
 
+    impl ::std::default::Default for CodeReviewSeverityCounts {
+        fn default() -> Self {
+            Self {
+                critical: Default::default(),
+                high: Default::default(),
+                low: Default::default(),
+                medium: Default::default(),
+            }
+        }
+    }
+
     ///`CompleteWorkerOperationRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CompleteWorkerOperationRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "nonce",
+    ///    "operation_sequence",
+    ///    "request_digest",
+    ///    "result",
+    ///    "session_id",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "nonce": {
+    ///      "title": "Nonce",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "operation_sequence": {
+    ///      "title": "Operation Sequence",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "request_digest": {
+    ///      "title": "CompleteWorkerOperationRequest_request_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
+    ///    "result": {
+    ///      "$ref": "#/components/schemas/WorkerOperationResult"
+    ///    },
+    ///    "session_id": {
+    ///      "title": "Session Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct CompleteWorkerOperationRequest {
@@ -3255,6 +6438,17 @@ pub mod types {
     }
 
     ///`CompleteWorkerOperationRequestRequestDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CompleteWorkerOperationRequest_request_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[a-f0-9]{64}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct CompleteWorkerOperationRequestRequestDigest(::std::string::String);
@@ -3290,6 +6484,17 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String>
+        for CompleteWorkerOperationRequestRequestDigest
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String>
         for CompleteWorkerOperationRequestRequestDigest
     {
@@ -3321,6 +6526,46 @@ pub mod types {
     /// every context object is stored as ``application/octet-stream``, so
     /// the stored value tells the client nothing about how to preview the
     /// file.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ContextSourceContentUrl",
+    ///  "description": "A short-lived presigned GET for one context file, plus
+    /// what it renders as.\n\n``content_type`` is derived from the filename,
+    /// NOT read from storage — every\ncontext object is stored as
+    /// ``application/octet-stream``, so the stored value\ntells the client
+    /// nothing about how to preview the file.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "content_type",
+    ///    "content_url",
+    ///    "name",
+    ///    "source_id"
+    ///  ],
+    ///  "properties": {
+    ///    "content_type": {
+    ///      "title": "Content Type",
+    ///      "type": "string"
+    ///    },
+    ///    "content_url": {
+    ///      "title": "Content Url",
+    ///      "type": "string"
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "source_id": {
+    ///      "title": "Source Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ContextSourceContentUrl {
         pub content_type: ::std::string::String,
@@ -3330,6 +6575,34 @@ pub mod types {
     }
 
     ///Response shape for GET /appsec/apps/{app_id}/context.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ContextSourceListResponse",
+    ///  "description": "Response shape for GET /appsec/apps/{app_id}/context.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "data",
+    ///    "total"
+    ///  ],
+    ///  "properties": {
+    ///    "data": {
+    ///      "title": "Data",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ContextSourcePublic"
+    ///      }
+    ///    },
+    ///    "total": {
+    ///      "title": "Total",
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ContextSourceListResponse {
         pub data: ::std::vec::Vec<ContextSourcePublic>,
@@ -3337,6 +6610,54 @@ pub mod types {
     }
 
     ///Response shape for a single AppContextSource — storage_key is excluded.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ContextSourcePublic",
+    ///  "description": "Response shape for a single AppContextSource —
+    /// storage_key is excluded.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "app_id",
+    ///    "created_at",
+    ///    "id",
+    ///    "name",
+    ///    "status",
+    ///    "type"
+    ///  ],
+    ///  "properties": {
+    ///    "app_id": {
+    ///      "title": "App Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "status": {
+    ///      "title": "Status",
+    ///      "type": "string"
+    ///    },
+    ///    "type": {
+    ///      "$ref": "#/components/schemas/ContextType"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ContextSourcePublic {
         pub app_id: ::uuid::Uuid,
@@ -3349,6 +6670,26 @@ pub mod types {
     }
 
     ///App context source type for uploaded files and ENV auth links.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ContextType",
+    ///  "description": "App context source type for uploaded files and ENV auth
+    /// links.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "openapi",
+    ///    "postman",
+    ///    "runbook",
+    ///    "architecture",
+    ///    "document",
+    ///    "environment"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -3411,6 +6752,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ContextType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ContextType {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -3421,6 +6771,22 @@ pub mod types {
     }
 
     ///`ConventionRuleCategory`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConventionRuleCategory",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "security",
+    ///    "performance",
+    ///    "patterns",
+    ///    "correctness"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -3475,6 +6841,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ConventionRuleCategory {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ConventionRuleCategory {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -3485,6 +6860,34 @@ pub mod types {
     }
 
     ///`ConvertOfficePdf`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConvertOfficePdf",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind",
+    ///    "path"
+    ///  ],
+    ///  "properties": {
+    ///    "kind": {
+    ///      "title": "ConvertOfficePdf_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "convert_office_pdf"
+    ///      ]
+    ///    },
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": "string"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct ConvertOfficePdf {
@@ -3493,6 +6896,19 @@ pub mod types {
     }
 
     ///`ConvertOfficePdfKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConvertOfficePdf_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "convert_office_pdf"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -3535,6 +6951,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ConvertOfficePdfKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ConvertOfficePdfKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -3545,10 +6970,71 @@ pub mod types {
     }
 
     ///The run-completion gate over one plan's rows.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CoveragePublic",
+    ///  "description": "The run-completion gate over one plan's rows.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "blockers",
+    ///    "plan_id",
+    ///    "terminal",
+    ///    "total",
+    ///    "unresolved_candidates",
+    ///    "untested",
+    ///    "valid"
+    ///  ],
+    ///  "properties": {
+    ///    "blockers": {
+    ///      "title": "Blockers",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "plan_id": {
+    ///      "title": "Plan Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "terminal": {
+    ///      "title": "Terminal",
+    ///      "type": "integer"
+    ///    },
+    ///    "total": {
+    ///      "title": "Total",
+    ///      "type": "integer"
+    ///    },
+    ///    "unresolved_candidates": {
+    ///      "title": "Unresolved Candidates",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "untested": {
+    ///      "title": "Untested",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "valid": {
+    ///      "title": "Valid",
+    ///      "type": "boolean"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CoveragePublic {
         pub blockers: ::std::vec::Vec<::std::string::String>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub plan_id: ::std::option::Option<::std::string::String>,
         pub terminal: i64,
         pub total: i64,
@@ -3558,6 +7044,34 @@ pub mod types {
     }
 
     ///The gate plus every row, shared by the ingest and the coverage read.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CoverageReportPublic",
+    ///  "description": "The gate plus every row, shared by the ingest and the
+    /// coverage read.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "coverage",
+    ///    "rows"
+    ///  ],
+    ///  "properties": {
+    ///    "coverage": {
+    ///      "$ref": "#/components/schemas/CoveragePublic"
+    ///    },
+    ///    "rows": {
+    ///      "title": "Rows",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/CoverageRowPublic"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CoverageReportPublic {
         pub coverage: CoveragePublic,
@@ -3565,6 +7079,69 @@ pub mod types {
     }
 
     ///`CoverageRowPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CoverageRowPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "asset_type",
+    ///    "evidence_ref",
+    ///    "executable",
+    ///    "locator",
+    ///    "method",
+    ///    "reason",
+    ///    "row_id",
+    ///    "status",
+    ///    "url",
+    ///    "worker"
+    ///  ],
+    ///  "properties": {
+    ///    "asset_type": {
+    ///      "title": "Asset Type",
+    ///      "type": "string"
+    ///    },
+    ///    "evidence_ref": {
+    ///      "title": "Evidence Ref",
+    ///      "type": "string"
+    ///    },
+    ///    "executable": {
+    ///      "title": "Executable",
+    ///      "type": "boolean"
+    ///    },
+    ///    "locator": {
+    ///      "title": "Locator",
+    ///      "type": "string"
+    ///    },
+    ///    "method": {
+    ///      "title": "Method",
+    ///      "type": "string"
+    ///    },
+    ///    "reason": {
+    ///      "title": "Reason",
+    ///      "type": "string"
+    ///    },
+    ///    "row_id": {
+    ///      "title": "Row Id",
+    ///      "type": "string"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/CoverageStatus"
+    ///    },
+    ///    "url": {
+    ///      "title": "Url",
+    ///      "type": "string"
+    ///    },
+    ///    "worker": {
+    ///      "title": "Worker",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CoverageRowPublic {
         pub asset_type: ::std::string::String,
@@ -3580,6 +7157,29 @@ pub mod types {
     }
 
     ///Row status, byte-identical to the executor's ledger status set.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CoverageStatus",
+    ///  "description": "Row status, byte-identical to the executor's ledger
+    /// status set.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "untested",
+    ///    "assigned",
+    ///    "covered",
+    ///    "candidate",
+    ///    "candidate_promoted",
+    ///    "candidate_dismissed",
+    ///    "candidate_needs_verification",
+    ///    "blocked",
+    ///    "skipped_with_reason"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -3654,6 +7254,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for CoverageStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for CoverageStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -3664,6 +7273,67 @@ pub mod types {
     }
 
     ///Body for `POST /agent-cli/sessions`.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CreateAgentCliSessionRequest",
+    ///  "description": "Body for `POST /agent-cli/sessions`.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "cwd"
+    ///  ],
+    ///  "properties": {
+    ///    "cwd": {
+    ///      "title": "CreateAgentCliSessionRequest_cwd",
+    ///      "description": "Absolute directory the local agent session was
+    /// started in. Its last path segment becomes the conversation title when
+    /// `title` is omitted.",
+    ///      "type": "string",
+    ///      "maxLength": 4096,
+    ///      "minLength": 1
+    ///    },
+    ///    "selected_agent_reference": {
+    ///      "title": "Selected Agent Reference",
+    ///      "description": "Optional custom-agent UUID or alias. It is resolved
+    /// in the authenticated workspace before the session is created.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "skip_sandbox_warmup": {
+    ///      "title": "Skip Sandbox Warmup",
+    ///      "description": "Skip warming the workspace sandbox when the local
+    /// session does not use CloudThinker sandbox tools.",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "source_conversation_id": {
+    ///      "title": "Source Conversation Id",
+    ///      "description": "Optional. The conversation this session was forked
+    /// from (a pi `/fork`). Must belong to the authenticated workspace.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "title": {
+    ///      "title": "CreateAgentCliSessionRequest_title",
+    ///      "description": "Optional conversation title. Defaults to the last
+    /// path segment of `cwd`.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 255
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CreateAgentCliSessionRequest {
         ///Absolute directory the local agent session was started in. Its last
@@ -3671,7 +7341,7 @@ pub mod types {
         pub cwd: CreateAgentCliSessionRequestCwd,
         ///Optional custom-agent UUID or alias. It is resolved in the
         /// authenticated workspace before the session is created.
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub selected_agent_reference: ::std::option::Option<::std::string::String>,
         ///Skip warming the workspace sandbox when the local session does not
         /// use CloudThinker sandbox tools.
@@ -3679,16 +7349,31 @@ pub mod types {
         pub skip_sandbox_warmup: bool,
         ///Optional. The conversation this session was forked from (a pi
         /// `/fork`). Must belong to the authenticated workspace.
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub source_conversation_id: ::std::option::Option<::uuid::Uuid>,
         ///Optional conversation title. Defaults to the last path segment of
         /// `cwd`.
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub title: ::std::option::Option<CreateAgentCliSessionRequestTitle>,
     }
 
     ///Absolute directory the local agent session was started in. Its last path
     /// segment becomes the conversation title when `title` is omitted.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CreateAgentCliSessionRequest_cwd",
+    ///  "description": "Absolute directory the local agent session was started
+    /// in. Its last path segment becomes the conversation title when `title` is
+    /// omitted.",
+    ///  "type": "string",
+    ///  "maxLength": 4096,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct CreateAgentCliSessionRequestCwd(::std::string::String);
@@ -3725,6 +7410,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for CreateAgentCliSessionRequestCwd {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for CreateAgentCliSessionRequestCwd {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -3748,6 +7442,19 @@ pub mod types {
     }
 
     ///Optional conversation title. Defaults to the last path segment of `cwd`.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CreateAgentCliSessionRequest_title",
+    ///  "description": "Optional conversation title. Defaults to the last path
+    /// segment of `cwd`.",
+    ///  "type": "string",
+    ///  "maxLength": 255
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct CreateAgentCliSessionRequestTitle(::std::string::String);
@@ -3781,6 +7488,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for CreateAgentCliSessionRequestTitle {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for CreateAgentCliSessionRequestTitle {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -3804,6 +7520,34 @@ pub mod types {
     }
 
     ///`CreateOutpostRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CreateOutpostRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "name"
+    ///  ],
+    ///  "properties": {
+    ///    "name": {
+    ///      "title": "CreateOutpostRequest_name",
+    ///      "type": "string",
+    ///      "maxLength": 255,
+    ///      "minLength": 1,
+    ///      "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+    ///    },
+    ///    "shared": {
+    ///      "title": "Shared",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct CreateOutpostRequest {
@@ -3813,6 +7557,19 @@ pub mod types {
     }
 
     ///`CreateOutpostRequestName`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CreateOutpostRequest_name",
+    ///  "type": "string",
+    ///  "maxLength": 255,
+    ///  "minLength": 1,
+    ///  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct CreateOutpostRequestName(::std::string::String);
@@ -3856,6 +7613,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for CreateOutpostRequestName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for CreateOutpostRequestName {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -3879,6 +7645,39 @@ pub mod types {
     }
 
     ///`CyberDiscoveryTargetPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CyberDiscoveryTargetPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "run_scope",
+    ///    "safety_scope",
+    ///    "target_id",
+    ///    "target_ref"
+    ///  ],
+    ///  "properties": {
+    ///    "run_scope": {
+    ///      "$ref": "#/components/schemas/ScopeSpec"
+    ///    },
+    ///    "safety_scope": {
+    ///      "$ref": "#/components/schemas/ScopeSpec"
+    ///    },
+    ///    "target_id": {
+    ///      "title": "Target Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "target_ref": {
+    ///      "title": "Target Ref",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CyberDiscoveryTargetPublic {
         pub run_scope: ScopeSpec,
@@ -3887,7 +7686,578 @@ pub mod types {
         pub target_ref: ::std::string::String,
     }
 
+    ///Request body for POST /appsec/domains.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CyberDomainCreate",
+    ///  "description": "Request body for POST /appsec/domains.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "domain"
+    ///  ],
+    ///  "properties": {
+    ///    "domain": {
+    ///      "title": "CyberDomainCreate_domain",
+    ///      "type": "string",
+    ///      "maxLength": 255,
+    ///      "minLength": 1
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct CyberDomainCreate {
+        pub domain: CyberDomainCreateDomain,
+    }
+
+    ///`CyberDomainCreateDomain`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CyberDomainCreate_domain",
+    ///  "type": "string",
+    ///  "maxLength": 255,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct CyberDomainCreateDomain(::std::string::String);
+    impl ::std::ops::Deref for CyberDomainCreateDomain {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<CyberDomainCreateDomain> for ::std::string::String {
+        fn from(value: CyberDomainCreateDomain) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for CyberDomainCreateDomain {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 255usize {
+                return Err("longer than 255 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CyberDomainCreateDomain {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CyberDomainCreateDomain {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CyberDomainCreateDomain {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for CyberDomainCreateDomain {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///Response shape for GET /appsec/domains.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CyberDomainListResponse",
+    ///  "description": "Response shape for GET /appsec/domains.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "data",
+    ///    "total"
+    ///  ],
+    ///  "properties": {
+    ///    "data": {
+    ///      "title": "Data",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/CyberDomainPublic"
+    ///      }
+    ///    },
+    ///    "total": {
+    ///      "title": "Total",
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct CyberDomainListResponse {
+        pub data: ::std::vec::Vec<CyberDomainPublic>,
+        pub total: i64,
+    }
+
+    ///Workspace-owned Cyber domain verification record.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CyberDomainPublic",
+    ///  "description": "Workspace-owned Cyber domain verification record.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "created_at",
+    ///    "domain",
+    ///    "id",
+    ///    "status"
+    ///  ],
+    ///  "properties": {
+    ///    "can_manage": {
+    ///      "title": "Can Manage",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "dns_record_name": {
+    ///      "title": "Dns Record Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "dns_record_value": {
+    ///      "title": "Dns Record Value",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "domain": {
+    ///      "title": "Domain",
+    ///      "type": "string"
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/AppDomainVerificationStatus"
+    ///    },
+    ///    "verified_at": {
+    ///      "title": "Verified At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct CyberDomainPublic {
+        #[serde(default)]
+        pub can_manage: bool,
+        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub dns_record_name: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub dns_record_value: ::std::option::Option<::std::string::String>,
+        pub domain: ::std::string::String,
+        pub id: ::uuid::Uuid,
+        pub status: AppDomainVerificationStatus,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub verified_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+    }
+
+    ///Response shape for GET /appsec/apps/{app_id}/findings (paginated).
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CyberFindingListResponse",
+    ///  "description": "Response shape for GET /appsec/apps/{app_id}/findings
+    /// (paginated).",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "data",
+    ///    "meta"
+    ///  ],
+    ///  "properties": {
+    ///    "data": {
+    ///      "title": "Data",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/FindingPublic"
+    ///      }
+    ///    },
+    ///    "meta": {
+    ///      "$ref": "#/components/schemas/PaginationMeta"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct CyberFindingListResponse {
+        pub data: ::std::vec::Vec<FindingPublic>,
+        pub meta: PaginationMeta,
+    }
+
+    ///`CyberReportFormat`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CyberReportFormat",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "pdf",
+    ///    "docx"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum CyberReportFormat {
+        #[serde(rename = "pdf")]
+        Pdf,
+        #[serde(rename = "docx")]
+        Docx,
+    }
+
+    impl ::std::fmt::Display for CyberReportFormat {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Pdf => f.write_str("pdf"),
+                Self::Docx => f.write_str("docx"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for CyberReportFormat {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "pdf" => Ok(Self::Pdf),
+                "docx" => Ok(Self::Docx),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CyberReportFormat {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CyberReportFormat {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CyberReportFormat {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`CyberReportPreferences`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CyberReportPreferences",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "instructions": {
+    ///      "title": "CyberReportPreferences_instructions",
+    ///      "default": "",
+    ///      "type": "string",
+    ///      "maxLength": 12000
+    ///    },
+    ///    "output_format": {
+    ///      "$ref": "#/components/schemas/CyberReportFormat"
+    ///    },
+    ///    "reference_source_id": {
+    ///      "title": "Reference Source Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "style": {
+    ///      "$ref": "#/components/schemas/CyberReportStyle"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct CyberReportPreferences {
+        #[serde(default = "defaults::cyber_report_preferences_instructions")]
+        pub instructions: CyberReportPreferencesInstructions,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub output_format: ::std::option::Option<CyberReportFormat>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub reference_source_id: ::std::option::Option<::uuid::Uuid>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub style: ::std::option::Option<CyberReportStyle>,
+    }
+
+    impl ::std::default::Default for CyberReportPreferences {
+        fn default() -> Self {
+            Self {
+                instructions: defaults::cyber_report_preferences_instructions(),
+                output_format: Default::default(),
+                reference_source_id: Default::default(),
+                style: Default::default(),
+            }
+        }
+    }
+
+    ///`CyberReportPreferencesInstructions`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CyberReportPreferences_instructions",
+    ///  "default": "",
+    ///  "type": "string",
+    ///  "maxLength": 12000
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct CyberReportPreferencesInstructions(::std::string::String);
+    impl ::std::ops::Deref for CyberReportPreferencesInstructions {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<CyberReportPreferencesInstructions> for ::std::string::String {
+        fn from(value: CyberReportPreferencesInstructions) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::default::Default for CyberReportPreferencesInstructions {
+        fn default() -> Self {
+            CyberReportPreferencesInstructions("".to_string())
+        }
+    }
+
+    impl ::std::str::FromStr for CyberReportPreferencesInstructions {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 12000usize {
+                return Err("longer than 12000 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CyberReportPreferencesInstructions {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CyberReportPreferencesInstructions {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CyberReportPreferencesInstructions {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for CyberReportPreferencesInstructions {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`CyberReportStyle`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CyberReportStyle",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "standard",
+    ///    "custom"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum CyberReportStyle {
+        #[serde(rename = "standard")]
+        Standard,
+        #[serde(rename = "custom")]
+        Custom,
+    }
+
+    impl ::std::fmt::Display for CyberReportStyle {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Standard => f.write_str("standard"),
+                Self::Custom => f.write_str("custom"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for CyberReportStyle {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "standard" => Ok(Self::Standard),
+                "custom" => Ok(Self::Custom),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CyberReportStyle {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CyberReportStyle {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CyberReportStyle {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///`DeclarationMode`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "DeclarationMode",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "active_response",
+    ///    "retrospective"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -3934,6 +8304,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for DeclarationMode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for DeclarationMode {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -3944,6 +8323,22 @@ pub mod types {
     }
 
     ///Agent self-report of what backs the claim.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "EvidenceBasis",
+    ///  "description": "Agent self-report of what backs the claim.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "verified",
+    ///    "inferred",
+    ///    "assumed"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -3994,6 +8389,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for EvidenceBasis {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for EvidenceBasis {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4004,20 +8408,86 @@ pub mod types {
     }
 
     ///One bounded text or binary artifact of local evidence.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "EvidenceFileUpload",
+    ///  "description": "One bounded text or binary artifact of local
+    /// evidence.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "path"
+    ///  ],
+    ///  "properties": {
+    ///    "content": {
+    ///      "title": "Content",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "content_base64": {
+    ///      "title": "EvidenceFileUpload_content_base64",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 22000000
+    ///    },
+    ///    "mime_type": {
+    ///      "title": "EvidenceFileUpload_mime_type",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 255
+    ///    },
+    ///    "path": {
+    ///      "title": "EvidenceFileUpload_path",
+    ///      "type": "string",
+    ///      "maxLength": 512,
+    ///      "minLength": 1
+    ///    },
+    ///    "size_bytes": {
+    ///      "title": "Size Bytes",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "maximum": 16000000.0,
+    ///      "minimum": 0.0
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct EvidenceFileUpload {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub content: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub content_base64: ::std::option::Option<EvidenceFileUploadContentBase64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub mime_type: ::std::option::Option<EvidenceFileUploadMimeType>,
         pub path: EvidenceFileUploadPath,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub size_bytes: ::std::option::Option<i64>,
     }
 
     ///`EvidenceFileUploadContentBase64`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "EvidenceFileUpload_content_base64",
+    ///  "type": "string",
+    ///  "maxLength": 22000000
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct EvidenceFileUploadContentBase64(::std::string::String);
@@ -4051,6 +8521,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for EvidenceFileUploadContentBase64 {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for EvidenceFileUploadContentBase64 {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4074,6 +8553,17 @@ pub mod types {
     }
 
     ///`EvidenceFileUploadMimeType`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "EvidenceFileUpload_mime_type",
+    ///  "type": "string",
+    ///  "maxLength": 255
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct EvidenceFileUploadMimeType(::std::string::String);
@@ -4107,6 +8597,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for EvidenceFileUploadMimeType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for EvidenceFileUploadMimeType {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4130,6 +8629,18 @@ pub mod types {
     }
 
     ///`EvidenceFileUploadPath`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "EvidenceFileUpload_path",
+    ///  "type": "string",
+    ///  "maxLength": 512,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct EvidenceFileUploadPath(::std::string::String);
@@ -4166,6 +8677,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for EvidenceFileUploadPath {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for EvidenceFileUploadPath {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4189,6 +8709,36 @@ pub mod types {
     }
 
     ///`EvidenceReceiptPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "EvidenceReceiptPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "skipped",
+    ///    "written"
+    ///  ],
+    ///  "properties": {
+    ///    "skipped": {
+    ///      "title": "Skipped",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/EvidenceSkippedFile"
+    ///      }
+    ///    },
+    ///    "written": {
+    ///      "title": "Written",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct EvidenceReceiptPublic {
         pub skipped: ::std::vec::Vec<EvidenceSkippedFile>,
@@ -4196,6 +8746,30 @@ pub mod types {
     }
 
     ///`EvidenceSkippedFile`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "EvidenceSkippedFile",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "path",
+    ///    "reason"
+    ///  ],
+    ///  "properties": {
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": "string"
+    ///    },
+    ///    "reason": {
+    ///      "title": "Reason",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct EvidenceSkippedFile {
         pub path: ::std::string::String,
@@ -4203,12 +8777,57 @@ pub mod types {
     }
 
     ///`EvidenceSubmitRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "EvidenceSubmitRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "files"
+    ///  ],
+    ///  "properties": {
+    ///    "files": {
+    ///      "title": "Files",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/EvidenceFileUpload"
+    ///      },
+    ///      "maxItems": 100
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct EvidenceSubmitRequest {
         pub files: ::std::vec::Vec<EvidenceFileUpload>,
     }
 
     ///`ExchangeWorkerRegistrationRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ExchangeWorkerRegistrationRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "reference"
+    ///  ],
+    ///  "properties": {
+    ///    "reference": {
+    ///      "title": "Reference",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct ExchangeWorkerRegistrationRequest {
@@ -4216,6 +8835,17 @@ pub mod types {
     }
 
     ///`ExcludeItem`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "maxLength": 100,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct ExcludeItem(::std::string::String);
@@ -4252,6 +8882,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ExcludeItem {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ExcludeItem {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4275,6 +8914,68 @@ pub mod types {
     }
 
     ///Body for `POST /agent-cli/executions`.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ExecuteAgentCliReadRequest",
+    ///  "description": "Body for `POST /agent-cli/executions`.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "conversation_id",
+    ///    "script",
+    ///    "timeout"
+    ///  ],
+    ///  "properties": {
+    ///    "connection_list": {
+    ///      "title": "Connection List",
+    ///      "description": "Connection prefixes whose credentials the script
+    /// needs (`aws`, `k8s`, `github_acme`). Every prefix must be connected in
+    /// this workspace. Omit for a pure-sandbox command.",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "description": "The `AGENT_CLI` conversation this local session
+    /// mirrors. It scopes the sandbox working tree and the credential staging,
+    /// so it must exist in the authenticated workspace before the first
+    /// execution.",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "run_in_background": {
+    ///      "title": "Run In Background",
+    ///      "description": "Detach the script and answer with a `task_id` in
+    /// about a second. Poll `GET /agent-cli/executions/{task_id}` for its
+    /// output.",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "script": {
+    ///      "title": "ExecuteAgentCliReadRequest_script",
+    ///      "description": "A read-only shell command, or an inline TypeScript
+    /// program whose first statement is an ES `import`/`export`. State-changing
+    /// work goes through the CloudThinker session, not here.",
+    ///      "type": "string",
+    ///      "minLength": 1
+    ///    },
+    ///    "timeout": {
+    ///      "title": "Timeout",
+    ///      "description": "Seconds the executor may spend on the script. A
+    /// longer read belongs in `run_in_background`, which is not bound by this
+    /// cap.",
+    ///      "type": "integer",
+    ///      "maximum": 120.0,
+    ///      "minimum": 1.0
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ExecuteAgentCliReadRequest {
         ///Connection prefixes whose credentials the script needs (`aws`,
@@ -4302,6 +9003,20 @@ pub mod types {
     ///A read-only shell command, or an inline TypeScript program whose first
     /// statement is an ES `import`/`export`. State-changing work goes through
     /// the CloudThinker session, not here.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ExecuteAgentCliReadRequest_script",
+    ///  "description": "A read-only shell command, or an inline TypeScript
+    /// program whose first statement is an ES `import`/`export`. State-changing
+    /// work goes through the CloudThinker session, not here.",
+    ///  "type": "string",
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct ExecuteAgentCliReadRequestScript(::std::string::String);
@@ -4335,6 +9050,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ExecuteAgentCliReadRequestScript {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ExecuteAgentCliReadRequestScript {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4358,6 +9082,22 @@ pub mod types {
     }
 
     ///`ExecutorAvailability`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ExecutorAvailability",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "available",
+    ///    "pending",
+    ///    "incompatible",
+    ///    "offline"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -4412,6 +9152,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ExecutorAvailability {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ExecutorAvailability {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4422,6 +9171,25 @@ pub mod types {
     }
 
     ///`ExecutorCapability`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ExecutorCapability",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "files_read",
+    ///    "files_write",
+    ///    "shell",
+    ///    "artifacts",
+    ///    "connections",
+    ///    "mcp",
+    ///    "background_shell"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -4488,6 +9256,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ExecutorCapability {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ExecutorCapability {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4498,6 +9275,20 @@ pub mod types {
     }
 
     ///`ExecutorChoiceKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ExecutorChoiceKind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "managed",
+    ///    "outpost"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -4544,6 +9335,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ExecutorChoiceKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ExecutorChoiceKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4554,22 +9354,99 @@ pub mod types {
     }
 
     ///`ExecutorChoicePublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ExecutorChoicePublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "availability",
+    ///    "capabilities",
+    ///    "kind",
+    ///    "name",
+    ///    "scope",
+    ///    "target_id"
+    ///  ],
+    ///  "properties": {
+    ///    "availability": {
+    ///      "$ref": "#/components/schemas/ExecutorAvailability"
+    ///    },
+    ///    "capabilities": {
+    ///      "title": "Capabilities",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ExecutorCapability"
+    ///      }
+    ///    },
+    ///    "kind": {
+    ///      "$ref": "#/components/schemas/ExecutorChoiceKind"
+    ///    },
+    ///    "last_verified_at": {
+    ///      "title": "Last Verified At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "scope": {
+    ///      "$ref": "#/components/schemas/ExecutorScope"
+    ///    },
+    ///    "target_id": {
+    ///      "title": "Target Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "verification_error": {
+    ///      "title": "Verification Error",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ExecutorChoicePublic {
         pub availability: ExecutorAvailability,
         pub capabilities: ::std::vec::Vec<ExecutorCapability>,
         pub kind: ExecutorChoiceKind,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub last_verified_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub name: ::std::string::String,
         pub scope: ExecutorScope,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub target_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub verification_error: ::std::option::Option<::std::string::String>,
     }
 
     ///`ExecutorScope`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ExecutorScope",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "managed",
+    ///    "personal",
+    ///    "workspace"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -4620,6 +9497,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ExecutorScope {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ExecutorScope {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4630,6 +9516,31 @@ pub mod types {
     }
 
     ///`FileBatchEntry`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileBatchEntry",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "content",
+    ///    "file_path"
+    ///  ],
+    ///  "properties": {
+    ///    "content": {
+    ///      "title": "Content",
+    ///      "type": "string"
+    ///    },
+    ///    "file_path": {
+    ///      "title": "File Path",
+    ///      "type": "string"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct FileBatchEntry {
@@ -4638,16 +9549,64 @@ pub mod types {
     }
 
     ///`FileContent`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileContent",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind",
+    ///    "path"
+    ///  ],
+    ///  "properties": {
+    ///    "kind": {
+    ///      "title": "FileContent_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "file_content"
+    ///      ]
+    ///    },
+    ///    "max_bytes": {
+    ///      "title": "Max Bytes",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": "string"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct FileContent {
         pub kind: FileContentKind,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub max_bytes: ::std::option::Option<i64>,
         pub path: ::std::string::String,
     }
 
     ///`FileContentKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileContent_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "file_content"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -4690,6 +9649,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for FileContentKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for FileContentKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4700,6 +9668,34 @@ pub mod types {
     }
 
     ///`FileDownload`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileDownload",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind",
+    ///    "path"
+    ///  ],
+    ///  "properties": {
+    ///    "kind": {
+    ///      "title": "FileDownload_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "file_download"
+    ///      ]
+    ///    },
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": "string"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct FileDownload {
@@ -4708,6 +9704,19 @@ pub mod types {
     }
 
     ///`FileDownloadKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileDownload_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "file_download"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -4750,6 +9759,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for FileDownloadKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for FileDownloadKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4760,6 +9778,30 @@ pub mod types {
     }
 
     ///`FileEndpoint`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileEndpoint",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "read",
+    ///    "write",
+    ///    "edit",
+    ///    "list_directory",
+    ///    "glob",
+    ///    "grep",
+    ///    "write_binary",
+    ///    "rename",
+    ///    "conventions",
+    ///    "convention_chains",
+    ///    "glob_read",
+    ///    "write_batch"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -4846,6 +9888,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for FileEndpoint {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for FileEndpoint {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4856,6 +9907,37 @@ pub mod types {
     }
 
     ///`FileOperation`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileOperation",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "endpoint",
+    ///    "kind",
+    ///    "request"
+    ///  ],
+    ///  "properties": {
+    ///    "endpoint": {
+    ///      "$ref": "#/components/schemas/FileEndpoint"
+    ///    },
+    ///    "kind": {
+    ///      "title": "FileOperation_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "file_operation"
+    ///      ]
+    ///    },
+    ///    "request": {
+    ///      "$ref": "#/components/schemas/FileRequest"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct FileOperation {
@@ -4865,6 +9947,19 @@ pub mod types {
     }
 
     ///`FileOperationKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileOperation_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "file_operation"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -4907,6 +10002,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for FileOperationKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for FileOperationKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -4917,6 +10021,31 @@ pub mod types {
     }
 
     ///Presigned URL for a markdown file rendered to PDF.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FilePdfDownloadResponse",
+    ///  "description": "Presigned URL for a markdown file rendered to PDF.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "download_url",
+    ///    "filename"
+    ///  ],
+    ///  "properties": {
+    ///    "download_url": {
+    ///      "title": "Download Url",
+    ///      "type": "string"
+    ///    },
+    ///    "filename": {
+    ///      "title": "Filename",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct FilePdfDownloadResponse {
         pub download_url: ::std::string::String,
@@ -4924,92 +10053,546 @@ pub mod types {
     }
 
     ///`FileRequest`
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug, Default)]
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileRequest",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "auto_detect_binary": {
+    ///      "title": "Auto Detect Binary",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "binary": {
+    ///      "title": "Binary",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "case_insensitive": {
+    ///      "title": "Case Insensitive",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "content": {
+    ///      "title": "Content",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "content_base64": {
+    ///      "title": "Content Base64",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "context": {
+    ///      "title": "Context",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "integer"
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "context_after": {
+    ///      "title": "Context After",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "integer"
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "context_before": {
+    ///      "title": "Context Before",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "integer"
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "convention_filenames": {
+    ///      "title": "Convention Filenames",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "convention_patterns": {
+    ///      "title": "Convention Patterns",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "dst_path": {
+    ///      "title": "Dst Path",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "file_path": {
+    ///      "title": "File Path",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "file_paths": {
+    ///      "title": "File Paths",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "file_type": {
+    ///      "title": "File Type",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "files": {
+    ///      "title": "Files",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/FileBatchEntry"
+    ///      }
+    ///    },
+    ///    "follow_symlinks": {
+    ///      "title": "Follow Symlinks",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "glob": {
+    ///      "title": "Glob",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "head_limit": {
+    ///      "title": "Head Limit",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "integer"
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "ignore": {
+    ///      "title": "Ignore",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "array",
+    ///              "items": {
+    ///                "type": "string"
+    ///              }
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "include_content": {
+    ///      "title": "Include Content",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "include_memory_staleness": {
+    ///      "title": "Include Memory Staleness",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "limit": {
+    ///      "title": "Limit",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "integer"
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "line_limit": {
+    ///      "title": "Line Limit",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "line_numbers": {
+    ///      "title": "Line Numbers",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "max_bytes": {
+    ///      "title": "Max Bytes",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "multiline": {
+    ///      "title": "Multiline",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "new_string": {
+    ///      "title": "New String",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "offset": {
+    ///      "title": "Offset",
+    ///      "oneOf": [
+    ///        {
+    ///          "type": "null"
+    ///        },
+    ///        {
+    ///          "anyOf": [
+    ///            {
+    ///              "type": "integer"
+    ///            },
+    ///            {
+    ///              "type": "string"
+    ///            }
+    ///          ]
+    ///        }
+    ///      ]
+    ///    },
+    ///    "old_string": {
+    ///      "title": "Old String",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "output_mode": {
+    ///      "title": "Output Mode",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "overwrite": {
+    ///      "title": "Overwrite",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "pattern": {
+    ///      "title": "Pattern",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "raw": {
+    ///      "title": "Raw",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "replace_all": {
+    ///      "title": "Replace All",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "repository_root": {
+    ///      "title": "Repository Root",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "src_path": {
+    ///      "title": "Src Path",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "strip_memory_staleness": {
+    ///      "title": "Strip Memory Staleness",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "trusted_root": {
+    ///      "title": "FileRequest_trusted_root",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "enum": [
+    ///        "workspace_memory",
+    ///        "conversation_tmp",
+    ///        "review_rules",
+    ///        "conversation_research"
+    ///      ]
+    ///    },
+    ///    "trusted_root_name": {
+    ///      "title": "Trusted Root Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct FileRequest {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub auto_detect_binary: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub binary: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub case_insensitive: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub content: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub content_base64: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub context: ::std::option::Option<FileRequestContext>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub context_after: ::std::option::Option<FileRequestContextAfter>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub context_before: ::std::option::Option<FileRequestContextBefore>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub convention_filenames: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub convention_patterns: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub dst_path: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub file_path: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub file_paths: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub file_type: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub files: ::std::option::Option<::std::vec::Vec<FileBatchEntry>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub follow_symlinks: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub glob: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub head_limit: ::std::option::Option<FileRequestHeadLimit>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub ignore: ::std::option::Option<FileRequestIgnore>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub include_content: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub include_memory_staleness: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub limit: ::std::option::Option<FileRequestLimit>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub line_limit: ::std::option::Option<i64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub line_numbers: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub max_bytes: ::std::option::Option<i64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub multiline: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub new_string: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub offset: ::std::option::Option<FileRequestOffset>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub old_string: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub output_mode: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub overwrite: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub path: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub pattern: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub raw: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub replace_all: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub repository_root: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub src_path: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub strip_memory_staleness: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub trusted_root: ::std::option::Option<FileRequestTrustedRoot>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub trusted_root_name: ::std::option::Option<::std::string::String>,
     }
 
+    impl ::std::default::Default for FileRequest {
+        fn default() -> Self {
+            Self {
+                auto_detect_binary: Default::default(),
+                binary: Default::default(),
+                case_insensitive: Default::default(),
+                content: Default::default(),
+                content_base64: Default::default(),
+                context: Default::default(),
+                context_after: Default::default(),
+                context_before: Default::default(),
+                convention_filenames: Default::default(),
+                convention_patterns: Default::default(),
+                dst_path: Default::default(),
+                file_path: Default::default(),
+                file_paths: Default::default(),
+                file_type: Default::default(),
+                files: Default::default(),
+                follow_symlinks: Default::default(),
+                glob: Default::default(),
+                head_limit: Default::default(),
+                ignore: Default::default(),
+                include_content: Default::default(),
+                include_memory_staleness: Default::default(),
+                limit: Default::default(),
+                line_limit: Default::default(),
+                line_numbers: Default::default(),
+                max_bytes: Default::default(),
+                multiline: Default::default(),
+                new_string: Default::default(),
+                offset: Default::default(),
+                old_string: Default::default(),
+                output_mode: Default::default(),
+                overwrite: Default::default(),
+                path: Default::default(),
+                pattern: Default::default(),
+                raw: Default::default(),
+                replace_all: Default::default(),
+                repository_root: Default::default(),
+                src_path: Default::default(),
+                strip_memory_staleness: Default::default(),
+                trusted_root: Default::default(),
+                trusted_root_name: Default::default(),
+            }
+        }
+    }
+
     ///`FileRequestContext`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "integer"
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(untagged)]
     pub enum FileRequestContext {
@@ -5033,6 +10616,22 @@ pub mod types {
     }
 
     ///`FileRequestContextAfter`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "integer"
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(untagged)]
     pub enum FileRequestContextAfter {
@@ -5056,6 +10655,22 @@ pub mod types {
     }
 
     ///`FileRequestContextBefore`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "integer"
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(untagged)]
     pub enum FileRequestContextBefore {
@@ -5079,6 +10694,22 @@ pub mod types {
     }
 
     ///`FileRequestHeadLimit`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "integer"
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(untagged)]
     pub enum FileRequestHeadLimit {
@@ -5102,6 +10733,25 @@ pub mod types {
     }
 
     ///`FileRequestIgnore`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(untagged)]
     pub enum FileRequestIgnore {
@@ -5116,6 +10766,22 @@ pub mod types {
     }
 
     ///`FileRequestLimit`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "integer"
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(untagged)]
     pub enum FileRequestLimit {
@@ -5139,6 +10805,22 @@ pub mod types {
     }
 
     ///`FileRequestOffset`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "anyOf": [
+    ///    {
+    ///      "type": "integer"
+    ///    },
+    ///    {
+    ///      "type": "string"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(untagged)]
     pub enum FileRequestOffset {
@@ -5162,6 +10844,22 @@ pub mod types {
     }
 
     ///`FileRequestTrustedRoot`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FileRequest_trusted_root",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "workspace_memory",
+    ///    "conversation_tmp",
+    ///    "review_rules",
+    ///    "conversation_research"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -5216,6 +10914,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for FileRequestTrustedRoot {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for FileRequestTrustedRoot {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -5226,6 +10933,29 @@ pub mod types {
     }
 
     ///`FilesDeliverables`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FilesDeliverables",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind"
+    ///  ],
+    ///  "properties": {
+    ///    "kind": {
+    ///      "title": "FilesDeliverables_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "files_deliverables"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct FilesDeliverables {
@@ -5233,6 +10963,19 @@ pub mod types {
     }
 
     ///`FilesDeliverablesKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FilesDeliverables_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "files_deliverables"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -5275,6 +11018,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for FilesDeliverablesKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for FilesDeliverablesKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -5285,21 +11037,85 @@ pub mod types {
     }
 
     ///`FilesList`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FilesList",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind"
+    ///  ],
+    ///  "properties": {
+    ///    "kind": {
+    ///      "title": "FilesList_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "files_list"
+    ///      ]
+    ///    },
+    ///    "limit": {
+    ///      "title": "Limit",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "page": {
+    ///      "title": "Page",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "search": {
+    ///      "title": "Search",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct FilesList {
         pub kind: FilesListKind,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub limit: ::std::option::Option<i64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub page: ::std::option::Option<i64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub path: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub search: ::std::option::Option<::std::string::String>,
     }
 
     ///`FilesListKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FilesList_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "files_list"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -5342,6 +11158,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for FilesListKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for FilesListKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -5362,6 +11187,54 @@ pub mod types {
     /// ``request_truncated``/``response_truncated`` tell the renderer to
     /// mark an excerpt so a bounded field never reads as the whole
     /// exchange.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FindingApiCapturePublic",
+    ///  "description": "One redacted API request/response pair, derived from
+    /// metadata.evidence[].\n\nThe API counterpart of
+    /// ``FindingEvidencePublic``, and a different shape on\npurpose: a
+    /// screenshot is a presigned URL the client fetches, a capture is\nbounded
+    /// text the backend already redacted at sync. It therefore needs
+    /// no\n``url`` and no second request, and it renders identically in the UI
+    /// and in\nevery PDF export. ``request_truncated``/``response_truncated``
+    /// tell the\nrenderer to mark an excerpt so a bounded field never reads as
+    /// the whole\nexchange.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "caption",
+    ///    "request",
+    ///    "response"
+    ///  ],
+    ///  "properties": {
+    ///    "caption": {
+    ///      "title": "Caption",
+    ///      "type": "string"
+    ///    },
+    ///    "request": {
+    ///      "title": "Request",
+    ///      "type": "string"
+    ///    },
+    ///    "request_truncated": {
+    ///      "title": "Request Truncated",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "response": {
+    ///      "title": "Response",
+    ///      "type": "string"
+    ///    },
+    ///    "response_truncated": {
+    ///      "title": "Response Truncated",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct FindingApiCapturePublic {
         pub caption: ::std::string::String,
@@ -5374,6 +11247,21 @@ pub mod types {
     }
 
     ///`FindingDisposition`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FindingDisposition",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "expected",
+    ///    "snoozed",
+    ///    "disputed"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -5424,6 +11312,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for FindingDisposition {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for FindingDisposition {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -5442,22 +11339,115 @@ pub mod types {
     /// raw S3 key is never exposed. ``url`` is None only if the presign
     /// could not be minted (the FE hides that entry rather than
     /// showing a broken image).
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FindingEvidencePublic",
+    ///  "description": "One browser-captured evidence image, derived from
+    /// finding metadata.evidence[].\n\nA screenshot the agent saved via the
+    /// `evidence` browser verb and referenced in\nthe finding markdown; sync
+    /// uploaded the .png to S3. ``url`` is a short-lived\npresigned GET the FE
+    /// renders inline — the raw S3 key is never exposed. ``url`` is\nNone only
+    /// if the presign could not be minted (the FE hides that entry rather
+    /// than\nshowing a broken image).",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "caption",
+    ///    "file",
+    ///    "kind"
+    ///  ],
+    ///  "properties": {
+    ///    "caption": {
+    ///      "title": "Caption",
+    ///      "type": "string"
+    ///    },
+    ///    "file": {
+    ///      "title": "File",
+    ///      "type": "string"
+    ///    },
+    ///    "kind": {
+    ///      "title": "Kind",
+    ///      "type": "string"
+    ///    },
+    ///    "url": {
+    ///      "title": "Url",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct FindingEvidencePublic {
         pub caption: ::std::string::String,
         pub file: ::std::string::String,
         pub kind: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub url: ::std::option::Option<::std::string::String>,
     }
 
     ///Rendered fix PR link stored in finding metadata.fix_pr.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FindingFixPRPublic",
+    ///  "description": "Rendered fix PR link stored in finding
+    /// metadata.fix_pr.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "branch",
+    ///    "provider",
+    ///    "repository_name",
+    ///    "url"
+    ///  ],
+    ///  "properties": {
+    ///    "branch": {
+    ///      "title": "Branch",
+    ///      "type": "string"
+    ///    },
+    ///    "commit_sha": {
+    ///      "title": "Commit Sha",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "provider": {
+    ///      "title": "Provider",
+    ///      "type": "string"
+    ///    },
+    ///    "repository_name": {
+    ///      "title": "Repository Name",
+    ///      "type": "string"
+    ///    },
+    ///    "url": {
+    ///      "title": "Url",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct FindingFixPrPublic {
         pub branch: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub commit_sha: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub created_at: ::std::option::Option<::std::string::String>,
         pub provider: ::std::string::String,
         pub repository_name: ::std::string::String,
@@ -5483,44 +11473,220 @@ pub mod types {
     /// whether to offer Reopen without it. It is a derived bool, not the
     /// raw `manually_resolved_by` UUID, because the FE renders the choice,
     /// not the actor.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FindingPublic",
+    ///  "description": "Response shape for a single Finding — only
+    /// client-rendered fields.\n\nNEVER includes: signature (internal dedup
+    /// key), raw finding_metadata (the\nFE reads the derived owasp/cwe/cve
+    /// fields instead), or any raw internal\ncolumn not rendered by the
+    /// FE.\n\nTwo orthogonal axes, both rendered by the FE's triage rail:\n-
+    /// status — agent-owned, the 4-state model\n
+    /// (open/needs_verification/resolved/dismissed).\n- triage_state —
+    /// human-owned work tracking on an OPEN or NEEDS_VERIFICATION\n
+    /// finding.\n\n`manually_resolved` splits the one status the two axes
+    /// share. A RESOLVED\nfinding is either a scan's PoC-replay proof or a
+    /// human's own verdict, and\nonly the second one a human may undo — so the
+    /// FE cannot decide whether to\noffer Reopen without it. It is a derived
+    /// bool, not the raw\n`manually_resolved_by` UUID, because the FE renders
+    /// the choice, not the\nactor.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "app_id",
+    ///    "app_short_id",
+    ///    "created_at",
+    ///    "description_md",
+    ///    "display_id",
+    ///    "finding_type",
+    ///    "first_seen_run",
+    ///    "id",
+    ///    "last_confirmed_run",
+    ///    "severity",
+    ///    "status",
+    ///    "title"
+    ///  ],
+    ///  "properties": {
+    ///    "affected_surfaces": {
+    ///      "title": "Affected Surfaces",
+    ///      "default": [],
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/SurfaceItemPublic"
+    ///      }
+    ///    },
+    ///    "agent_confidence_score": {
+    ///      "title": "Agent Confidence Score",
+    ///      "type": [
+    ///        "number",
+    ///        "null"
+    ///      ],
+    ///      "maximum": 1.0,
+    ///      "minimum": 0.0
+    ///    },
+    ///    "api_captures": {
+    ///      "title": "Api Captures",
+    ///      "default": [],
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/FindingApiCapturePublic"
+    ///      }
+    ///    },
+    ///    "app_id": {
+    ///      "title": "App Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "app_short_id": {
+    ///      "title": "App Short Id",
+    ///      "type": "string"
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "cve": {
+    ///      "title": "Cve",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "cwe": {
+    ///      "title": "Cwe",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "description_md": {
+    ///      "title": "Description Md",
+    ///      "type": "string"
+    ///    },
+    ///    "display_id": {
+    ///      "title": "Display Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "evidence": {
+    ///      "title": "Evidence",
+    ///      "default": [],
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/FindingEvidencePublic"
+    ///      }
+    ///    },
+    ///    "finding_type": {
+    ///      "title": "Finding Type",
+    ///      "type": "string"
+    ///    },
+    ///    "first_seen_run": {
+    ///      "title": "First Seen Run",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "fix_pr": {
+    ///      "$ref": "#/components/schemas/FindingFixPRPublic"
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "last_confirmed_run": {
+    ///      "title": "Last Confirmed Run",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "manually_resolved": {
+    ///      "title": "Manually Resolved",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "owasp": {
+    ///      "title": "Owasp",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "severity": {
+    ///      "$ref": "#/components/schemas/Severity"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/FindingStatus"
+    ///    },
+    ///    "title": {
+    ///      "title": "Title",
+    ///      "type": "string"
+    ///    },
+    ///    "triage_state": {
+    ///      "$ref": "#/components/schemas/TriageState"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct FindingPublic {
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub affected_surfaces: ::std::vec::Vec<SurfaceItemPublic>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub agent_confidence_score: ::std::option::Option<f64>,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub api_captures: ::std::vec::Vec<FindingApiCapturePublic>,
         pub app_id: ::uuid::Uuid,
         pub app_short_id: ::std::string::String,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub cve: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub cwe: ::std::option::Option<::std::string::String>,
         pub description_md: ::std::string::String,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub display_id: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub evidence: ::std::vec::Vec<FindingEvidencePublic>,
         pub finding_type: ::std::string::String,
         pub first_seen_run: ::uuid::Uuid,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub fix_pr: ::std::option::Option<FindingFixPrPublic>,
         pub id: ::uuid::Uuid,
         pub last_confirmed_run: ::uuid::Uuid,
         #[serde(default)]
         pub manually_resolved: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub owasp: ::std::option::Option<::std::string::String>,
         pub severity: Severity,
         pub status: FindingStatus,
         pub title: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub triage_state: ::std::option::Option<TriageState>,
     }
 
     ///Provider publication state for the durable finding admission record.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FindingPublicationStatus",
+    ///  "description": "Provider publication state for the durable finding
+    /// admission record.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "pending",
+    ///    "posted",
+    ///    "failed",
+    ///    "unknown"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -5575,6 +11741,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for FindingPublicationStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for FindingPublicationStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -5585,6 +11760,22 @@ pub mod types {
     }
 
     ///Sortable columns for the findings list endpoint.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FindingSort",
+    ///  "description": "Sortable columns for the findings list endpoint.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "severity",
+    ///    "title",
+    ///    "created_at"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -5635,6 +11826,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for FindingSort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for FindingSort {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -5656,6 +11856,33 @@ pub mod types {
     /// it here for a human to reconfirm. It is NOT proven (never counted as
     /// an open finding) and NOT closed (never counted as
     /// resolved/dismissed).
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FindingStatus",
+    ///  "description": "Agent-owned finding lifecycle status — a 4-state
+    /// model.\n\nMirrored 1:1 from the finding's folder in app-memory/ at
+    /// sync()\n(open/ → open, resolved/ → resolved, dismissed/ →
+    /// dismissed,\nneeds-verification/ → needs_verification). A finding in
+    /// open/ is a\nreproduced, proven vulnerability — there is no
+    /// verified/regressed/stale\nnuance. NEEDS_VERIFICATION is a lead the agent
+    /// could not confirm\n(it needs a second tenant's session, an admin console
+    /// with no signup, or an\nunreachable state), so instead of silently
+    /// dropping it he parks it here for\na human to reconfirm. It is NOT proven
+    /// (never counted as an open finding)\nand NOT closed (never counted as
+    /// resolved/dismissed).",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "open",
+    ///    "resolved",
+    ///    "dismissed",
+    ///    "needs_verification"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -5710,6 +11937,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for FindingStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for FindingStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -5720,6 +11956,29 @@ pub mod types {
     }
 
     ///`FlushOutput`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FlushOutput",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind"
+    ///  ],
+    ///  "properties": {
+    ///    "kind": {
+    ///      "title": "FlushOutput_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "flush_output"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct FlushOutput {
@@ -5727,6 +11986,19 @@ pub mod types {
     }
 
     ///`FlushOutputKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FlushOutput_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "flush_output"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -5769,6 +12041,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for FlushOutputKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for FlushOutputKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -5779,16 +12060,70 @@ pub mod types {
     }
 
     ///One recent CLI run; deliberately omits answer and internal failure data.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "HeadlessRunListItem",
+    ///  "description": "One recent CLI run; deliberately omits answer and
+    /// internal failure data.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "conversation_id",
+    ///    "created_at",
+    ///    "prompt_preview",
+    ///    "run_id",
+    ///    "status",
+    ///    "web_url"
+    ///  ],
+    ///  "properties": {
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "prompt_preview": {
+    ///      "title": "Prompt Preview",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "run_id": {
+    ///      "title": "Run Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/AgentRunStatus"
+    ///    },
+    ///    "web_url": {
+    ///      "title": "Web Url",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct HeadlessRunListItem {
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub conversation_id: ::std::option::Option<::uuid::Uuid>,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub prompt_preview: ::std::option::Option<::std::string::String>,
         pub run_id: ::uuid::Uuid,
         pub status: AgentRunStatus,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub web_url: ::std::option::Option<::std::string::String>,
     }
 
@@ -5797,28 +12132,150 @@ pub mod types {
     ///`answer` carries the extracted final assistant text only once the run
     /// has SUCCEEDED; every other status leaves it null (the CLI keeps
     /// polling / reads `web_url` for REQUIRED_APPROVAL).
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "HeadlessRunStatus",
+    ///  "description": "200 response for polling a headless run.\n\n`answer`
+    /// carries the extracted final assistant text only once the run
+    /// has\nSUCCEEDED; every other status leaves it null (the CLI keeps polling
+    /// / reads\n`web_url` for REQUIRED_APPROVAL).",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "answer",
+    ///    "conversation_id",
+    ///    "created_at",
+    ///    "end_time",
+    ///    "failure_kind",
+    ///    "message",
+    ///    "run_id",
+    ///    "start_time",
+    ///    "status",
+    ///    "web_url"
+    ///  ],
+    ///  "properties": {
+    ///    "answer": {
+    ///      "title": "Answer",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "end_time": {
+    ///      "title": "End Time",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "failure_kind": {
+    ///      "title": "Failure Kind",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "message": {
+    ///      "title": "Message",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "run_id": {
+    ///      "title": "Run Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "start_time": {
+    ///      "title": "Start Time",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/AgentRunStatus"
+    ///    },
+    ///    "web_url": {
+    ///      "title": "Web Url",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct HeadlessRunStatus {
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub answer: ::std::option::Option<::std::string::String>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub conversation_id: ::std::option::Option<::uuid::Uuid>,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub end_time: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub failure_kind: ::std::option::Option<::std::string::String>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub message: ::std::option::Option<::std::string::String>,
         pub run_id: ::uuid::Uuid,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub start_time: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub status: AgentRunStatus,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub web_url: ::std::option::Option<::std::string::String>,
     }
 
     ///202 response for a submitted headless run.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "HeadlessRunSubmitted",
+    ///  "description": "202 response for a submitted headless run.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "conversation_id",
+    ///    "run_id",
+    ///    "status",
+    ///    "web_url"
+    ///  ],
+    ///  "properties": {
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "run_id": {
+    ///      "title": "Run Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/AgentRunStatus"
+    ///    },
+    ///    "web_url": {
+    ///      "title": "Web Url",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct HeadlessRunSubmitted {
         pub conversation_id: ::uuid::Uuid,
@@ -5828,6 +12285,50 @@ pub mod types {
     }
 
     ///`HeartbeatAssignmentRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "HeartbeatAssignmentRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "state",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "state": {
+    ///      "title": "HeartbeatAssignmentRequest_state",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "starting",
+    ///        "active",
+    ///        "draining"
+    ///      ]
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct HeartbeatAssignmentRequest {
@@ -5838,6 +12339,21 @@ pub mod types {
     }
 
     ///`HeartbeatAssignmentRequestState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "HeartbeatAssignmentRequest_state",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "starting",
+    ///    "active",
+    ///    "draining"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -5888,6 +12404,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for HeartbeatAssignmentRequestState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for HeartbeatAssignmentRequestState {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -5898,6 +12423,33 @@ pub mod types {
     }
 
     ///Paginated list of incidents.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IncidentListPublic",
+    ///  "description": "Paginated list of incidents.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "data",
+    ///    "meta"
+    ///  ],
+    ///  "properties": {
+    ///    "data": {
+    ///      "title": "Data",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/IncidentPublic"
+    ///      }
+    ///    },
+    ///    "meta": {
+    ///      "$ref": "#/components/schemas/PaginationMeta"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct IncidentListPublic {
         pub data: ::std::vec::Vec<IncidentPublic>,
@@ -5905,68 +12457,305 @@ pub mod types {
     }
 
     ///Full incident response schema.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IncidentPublic",
+    ///  "description": "Full incident response schema.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "affected_services",
+    ///    "created_at",
+    ///    "id",
+    ///    "is_deleted",
+    ///    "metadata",
+    ///    "occurred_at",
+    ///    "source",
+    ///    "status",
+    ///    "title",
+    ///    "updated_at",
+    ///    "workspace_id"
+    ///  ],
+    ///  "properties": {
+    ///    "affected_services": {
+    ///      "title": "Affected Services",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/AffectedService"
+    ///      }
+    ///    },
+    ///    "child_count": {
+    ///      "title": "Child Count",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "children_severity_breakdown": {
+    ///      "$ref": "#/components/schemas/ChildrenSeverityBreakdown"
+    ///    },
+    ///    "closed_at": {
+    ///      "title": "Closed At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "declaration_mode": {
+    ///      "$ref": "#/components/schemas/DeclarationMode"
+    ///    },
+    ///    "declaration_reason": {
+    ///      "title": "Declaration Reason",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "declared_at": {
+    ///      "title": "Declared At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "dedup_key": {
+    ///      "title": "Dedup Key",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "description": {
+    ///      "title": "Description",
+    ///      "description": "Detailed description",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "incident_connection_id": {
+    ///      "title": "Incident Connection Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "incident_room_id": {
+    ///      "title": "Incident Room Id",
+    ///      "description": "Native Incident Room bound to this incident, absent
+    /// when On-call never opened one or a responder deleted it",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "investigation_phase": {
+    ///      "$ref": "#/components/schemas/InvestigationPhase"
+    ///    },
+    ///    "is_child": {
+    ///      "title": "Is Child",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "is_deleted": {
+    ///      "title": "Is Deleted",
+    ///      "type": "boolean"
+    ///    },
+    ///    "last_webhook_at": {
+    ///      "title": "Last Webhook At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "metadata": {
+    ///      "title": "Metadata",
+    ///      "type": "object",
+    ///      "additionalProperties": true
+    ///    },
+    ///    "occurred_at": {
+    ///      "title": "Occurred At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "parent_incident_id": {
+    ///      "title": "Parent Incident Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "platform_type": {
+    ///      "title": "Platform Type",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "queue_state": {
+    ///      "$ref": "#/components/schemas/IncidentQueueStatePublic"
+    ///    },
+    ///    "resolved_at": {
+    ///      "title": "Resolved At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "response_level": {
+    ///      "$ref": "#/components/schemas/ResponseLevel"
+    ///    },
+    ///    "severity": {
+    ///      "$ref": "#/components/schemas/Severity"
+    ///    },
+    ///    "source": {
+    ///      "$ref": "#/components/schemas/IncidentSource"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/IncidentStatus"
+    ///    },
+    ///    "title": {
+    ///      "title": "IncidentPublic_title",
+    ///      "description": "Incident title",
+    ///      "type": "string",
+    ///      "maxLength": 512
+    ///    },
+    ///    "triage_assessed_at": {
+    ///      "title": "Triage Assessed At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "triage_assessment": {
+    ///      "$ref": "#/components/schemas/TriageAssessment"
+    ///    },
+    ///    "triage_next_action": {
+    ///      "title": "Triage Next Action",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "triage_reason": {
+    ///      "title": "Triage Reason",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "triage_version": {
+    ///      "title": "Triage Version",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "updated_at": {
+    ///      "title": "Updated At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "webhook_occurrence_count": {
+    ///      "title": "Webhook Occurrence Count",
+    ///      "default": 1,
+    ///      "type": "integer"
+    ///    },
+    ///    "workspace_id": {
+    ///      "title": "Workspace Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct IncidentPublic {
         pub affected_services: ::std::vec::Vec<AffectedService>,
         #[serde(default)]
         pub child_count: i64,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub children_severity_breakdown: ::std::option::Option<ChildrenSeverityBreakdown>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub closed_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub conversation_id: ::std::option::Option<::uuid::Uuid>,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub declaration_mode: ::std::option::Option<DeclarationMode>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub declaration_reason: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub declared_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub dedup_key: ::std::option::Option<::std::string::String>,
         ///Detailed description
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub description: ::std::option::Option<::std::string::String>,
         pub id: ::uuid::Uuid,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub incident_connection_id: ::std::option::Option<::uuid::Uuid>,
         ///Native Incident Room bound to this incident, absent when On-call
         /// never opened one or a responder deleted it
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub incident_room_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub investigation_phase: ::std::option::Option<InvestigationPhase>,
         #[serde(default)]
         pub is_child: bool,
         pub is_deleted: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub last_webhook_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub metadata: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
         pub occurred_at: ::chrono::DateTime<::chrono::offset::Utc>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub parent_incident_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub platform_type: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub queue_state: ::std::option::Option<IncidentQueueStatePublic>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub resolved_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub response_level: ::std::option::Option<ResponseLevel>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub severity: ::std::option::Option<Severity>,
         pub source: IncidentSource,
         pub status: IncidentStatus,
         ///Incident title
         pub title: IncidentPublicTitle,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub triage_assessed_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub triage_assessment: ::std::option::Option<TriageAssessment>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub triage_next_action: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub triage_reason: ::std::option::Option<::std::string::String>,
         #[serde(default)]
         pub triage_version: i64,
@@ -5977,6 +12766,18 @@ pub mod types {
     }
 
     ///Incident title
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IncidentPublic_title",
+    ///  "description": "Incident title",
+    ///  "type": "string",
+    ///  "maxLength": 512
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct IncidentPublicTitle(::std::string::String);
@@ -6010,6 +12811,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for IncidentPublicTitle {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for IncidentPublicTitle {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6033,6 +12843,25 @@ pub mod types {
     }
 
     ///The five mutually exclusive groups in the Investigation queue.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IncidentQueueBucket",
+    ///  "description": "The five mutually exclusive groups in the Investigation
+    /// queue.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "ai_handling",
+    ///    "needs_decision",
+    ///    "not_started",
+    ///    "resolved",
+    ///    "dismissed"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -6091,6 +12920,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for IncidentQueueBucket {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for IncidentQueueBucket {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6101,6 +12939,34 @@ pub mod types {
     }
 
     ///Why an incident is in its current queue bucket.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IncidentQueueReason",
+    ///  "description": "Why an incident is in its current queue bucket.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "no_action_needed",
+    ///    "issue",
+    ///    "inconclusive",
+    ///    "investigating",
+    ///    "verdict_ready",
+    ///    "human_input_required",
+    ///    "investigation_failed",
+    ///    "investigation_cancelled",
+    ///    "result_ready",
+    ///    "queued",
+    ///    "ready_to_investigate",
+    ///    "missing_run",
+    ///    "resolved",
+    ///    "auto_resolved",
+    ///    "false_alarm"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -6199,6 +13065,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for IncidentQueueReason {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for IncidentQueueReason {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6209,6 +13084,36 @@ pub mod types {
     }
 
     ///The server-owned Investigation queue state for one incident.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IncidentQueueStatePublic",
+    ///  "description": "The server-owned Investigation queue state for one
+    /// incident.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "bucket",
+    ///    "reason",
+    ///    "since_at"
+    ///  ],
+    ///  "properties": {
+    ///    "bucket": {
+    ///      "$ref": "#/components/schemas/IncidentQueueBucket"
+    ///    },
+    ///    "reason": {
+    ///      "$ref": "#/components/schemas/IncidentQueueReason"
+    ///    },
+    ///    "since_at": {
+    ///      "title": "Since At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct IncidentQueueStatePublic {
         pub bucket: IncidentQueueBucket,
@@ -6217,6 +13122,22 @@ pub mod types {
     }
 
     ///Source of incident creation.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IncidentSource",
+    ///  "description": "Source of incident creation.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "webhook",
+    ///    "manual",
+    ///    "api"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -6267,6 +13188,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for IncidentSource {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for IncidentSource {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6277,6 +13207,28 @@ pub mod types {
     }
 
     ///Incident lifecycle status.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IncidentStatus",
+    ///  "description": "Incident lifecycle status.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "OPEN",
+    ///    "ACKNOWLEDGED",
+    ///    "INVESTIGATING",
+    ///    "IDENTIFIED",
+    ///    "ON_HOLD",
+    ///    "NOT_FOUND",
+    ///    "FALSE_ALARM",
+    ///    "RESOLVED",
+    ///    "AUTO_RESOLVED"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -6351,6 +13303,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for IncidentStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for IncidentStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6361,6 +13322,17 @@ pub mod types {
     }
 
     ///`IncludeItem`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "maxLength": 100,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct IncludeItem(::std::string::String);
@@ -6397,6 +13369,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for IncludeItem {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for IncludeItem {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6424,9 +13405,32 @@ pub mod types {
     ///Consolidates two legacy flags into one: the dead PentestRun.safe_mode
     ///(hardcoded True, never varied) and the live App.allow_active_probing
     ///consent gate (destructive DELETE/data-changing probing). App carries a
-    ///default_intensity that seeds new runs; PentestRun and AppSecSchedule
-    /// each freeze their own chosen intensity at construction (a schedule's
-    /// frozen intensity survives a later change to the App's default).
+    ///default_intensity that seeds new runs; PentestRun and CyberSchedule each
+    ///freeze their own chosen intensity at construction (a schedule's frozen
+    ///intensity survives a later change to the App's default).
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Intensity",
+    ///  "description": "Per-run probing intensity:
+    /// safe|aggressive|full.\n\nConsolidates two legacy flags into one: the
+    /// dead PentestRun.safe_mode\n(hardcoded True, never varied) and the live
+    /// App.allow_active_probing\nconsent gate (destructive DELETE/data-changing
+    /// probing). App carries a\ndefault_intensity that seeds new runs;
+    /// PentestRun and CyberSchedule each\nfreeze their own chosen intensity at
+    /// construction (a schedule's frozen\nintensity survives a later change to
+    /// the App's default).",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "safe",
+    ///    "aggressive",
+    ///    "full"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -6477,6 +13481,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for Intensity {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for Intensity {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6487,6 +13500,21 @@ pub mod types {
     }
 
     ///`InvestigationPhase`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "InvestigationPhase",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "quiet",
+    ///    "active_response",
+    ///    "retrospective"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -6537,6 +13565,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for InvestigationPhase {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for InvestigationPhase {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6547,6 +13584,66 @@ pub mod types {
     }
 
     ///`IssueArtifactGrantRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IssueArtifactGrantRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "digest",
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "operation_id",
+    ///    "path",
+    ///    "size",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "digest": {
+    ///      "title": "IssueArtifactGrantRequest_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "operation_id": {
+    ///      "title": "Operation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "path": {
+    ///      "title": "IssueArtifactGrantRequest_path",
+    ///      "type": "string",
+    ///      "maxLength": 1024,
+    ///      "minLength": 1
+    ///    },
+    ///    "size": {
+    ///      "title": "Size",
+    ///      "type": "integer",
+    ///      "maximum": 1400000.0,
+    ///      "minimum": 0.0
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct IssueArtifactGrantRequest {
@@ -6560,6 +13657,17 @@ pub mod types {
     }
 
     ///`IssueArtifactGrantRequestDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IssueArtifactGrantRequest_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[a-f0-9]{64}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct IssueArtifactGrantRequestDigest(::std::string::String);
@@ -6595,6 +13703,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for IssueArtifactGrantRequestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for IssueArtifactGrantRequestDigest {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6618,6 +13735,18 @@ pub mod types {
     }
 
     ///`IssueArtifactGrantRequestPath`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "IssueArtifactGrantRequest_path",
+    ///  "type": "string",
+    ///  "maxLength": 1024,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct IssueArtifactGrantRequestPath(::std::string::String);
@@ -6654,6 +13783,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for IssueArtifactGrantRequestPath {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for IssueArtifactGrantRequestPath {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6677,6 +13815,42 @@ pub mod types {
     }
 
     ///`LoadConnectionSkillRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LoadConnectionSkillRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "connection_prefix",
+    ///    "conversation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "connection_prefix": {
+    ///      "title": "LoadConnectionSkillRequest_connection_prefix",
+    ///      "type": "string",
+    ///      "maxLength": 128,
+    ///      "minLength": 1,
+    ///      "pattern": "^[a-zA-Z0-9_-]+$"
+    ///    },
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "skill_names": {
+    ///      "title": "Skill Names",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      },
+    ///      "maxItems": 20
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct LoadConnectionSkillRequest {
         pub connection_prefix: LoadConnectionSkillRequestConnectionPrefix,
@@ -6686,6 +13860,19 @@ pub mod types {
     }
 
     ///`LoadConnectionSkillRequestConnectionPrefix`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LoadConnectionSkillRequest_connection_prefix",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 1,
+    ///  "pattern": "^[a-zA-Z0-9_-]+$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct LoadConnectionSkillRequestConnectionPrefix(::std::string::String);
@@ -6727,6 +13914,17 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String>
+        for LoadConnectionSkillRequestConnectionPrefix
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for LoadConnectionSkillRequestConnectionPrefix {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6750,6 +13948,44 @@ pub mod types {
     }
 
     ///`LoadConnectionToolsRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LoadConnectionToolsRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "connection_prefix",
+    ///    "conversation_id",
+    ///    "tools"
+    ///  ],
+    ///  "properties": {
+    ///    "connection_prefix": {
+    ///      "title": "LoadConnectionToolsRequest_connection_prefix",
+    ///      "type": "string",
+    ///      "maxLength": 128,
+    ///      "minLength": 1,
+    ///      "pattern": "^[a-zA-Z0-9_-]+$"
+    ///    },
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "tools": {
+    ///      "title": "Tools",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      },
+    ///      "maxItems": 20,
+    ///      "minItems": 1
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct LoadConnectionToolsRequest {
         pub connection_prefix: LoadConnectionToolsRequestConnectionPrefix,
@@ -6758,6 +13994,19 @@ pub mod types {
     }
 
     ///`LoadConnectionToolsRequestConnectionPrefix`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LoadConnectionToolsRequest_connection_prefix",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 1,
+    ///  "pattern": "^[a-zA-Z0-9_-]+$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct LoadConnectionToolsRequestConnectionPrefix(::std::string::String);
@@ -6799,6 +14048,17 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String>
+        for LoadConnectionToolsRequestConnectionPrefix
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for LoadConnectionToolsRequestConnectionPrefix {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6822,6 +14082,63 @@ pub mod types {
     }
 
     ///`LoadedConnectionContent`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LoadedConnectionContent",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "connection_prefix",
+    ///    "content",
+    ///    "conversation_id",
+    ///    "execution_method",
+    ///    "tools"
+    ///  ],
+    ///  "properties": {
+    ///    "cloud_root": {
+    ///      "title": "Cloud Root",
+    ///      "default": "/home/user",
+    ///      "type": "string"
+    ///    },
+    ///    "connection_prefix": {
+    ///      "title": "Connection Prefix",
+    ///      "type": "string"
+    ///    },
+    ///    "content": {
+    ///      "title": "Content",
+    ///      "type": "string"
+    ///    },
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "execution_method": {
+    ///      "title": "LoadedConnectionContent_execution_method",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "cli",
+    ///        "sdk"
+    ///      ]
+    ///    },
+    ///    "roster_only": {
+    ///      "title": "Roster Only",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "tools": {
+    ///      "title": "Tools",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/CloudToolPolicy"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct LoadedConnectionContent {
         #[serde(default = "defaults::loaded_connection_content_cloud_root")]
@@ -6836,6 +14153,20 @@ pub mod types {
     }
 
     ///`LoadedConnectionContentExecutionMethod`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LoadedConnectionContent_execution_method",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "cli",
+    ///    "sdk"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -6882,6 +14213,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for LoadedConnectionContentExecutionMethod {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for LoadedConnectionContentExecutionMethod {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6892,17 +14232,75 @@ pub mod types {
     }
 
     ///`LocalInputSchema`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LocalInputSchema",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "type"
+    ///  ],
+    ///  "properties": {
+    ///    "additionalProperties": {
+    ///      "title": "Additionalproperties",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "items": {
+    ///      "$ref": "#/components/schemas/LocalInputSchema"
+    ///    },
+    ///    "properties": {
+    ///      "title": "Properties",
+    ///      "type": [
+    ///        "object",
+    ///        "null"
+    ///      ],
+    ///      "maxProperties": 64
+    ///    },
+    ///    "required": {
+    ///      "title": "Required",
+    ///      "default": [],
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string",
+    ///        "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///      },
+    ///      "maxItems": 64
+    ///    },
+    ///    "type": {
+    ///      "title": "LocalInputSchema_type",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "object",
+    ///        "array",
+    ///        "string",
+    ///        "number",
+    ///        "integer",
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct LocalInputSchema {
         #[serde(
             rename = "additionalProperties",
+            default,
             skip_serializing_if = "::std::option::Option::is_none"
         )]
         pub additional_properties: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub items: ::std::option::Option<::std::boxed::Box<LocalInputSchema>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub properties:
             ::std::option::Option<::serde_json::Map<::std::string::String, ::serde_json::Value>>,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
@@ -6912,6 +14310,25 @@ pub mod types {
     }
 
     ///`LocalInputSchemaType`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LocalInputSchema_type",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "object",
+    ///    "array",
+    ///    "string",
+    ///    "number",
+    ///    "integer",
+    ///    "boolean",
+    ///    "null"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -6978,6 +14395,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for LocalInputSchemaType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for LocalInputSchemaType {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -6991,14 +14417,134 @@ pub mod types {
     ///
     ///`memory_root` is the canonical namespace evidence rel paths live under;
     ///a local run's rows are projected onto it by the evidence store.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LocalRunBriefPublic",
+    ///  "description": "The frozen launch state a local session drives
+    /// against.\n\n`memory_root` is the canonical namespace evidence rel paths
+    /// live under;\na local run's rows are projected onto it by the evidence
+    /// store.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "app_id",
+    ///    "app_name",
+    ///    "conversation_id",
+    ///    "execution_host",
+    ///    "frameworks",
+    ///    "intensity",
+    ///    "memory_root",
+    ///    "mode",
+    ///    "report_preferences",
+    ///    "result",
+    ///    "run_id",
+    ///    "run_scope",
+    ///    "scan_mode",
+    ///    "started_at",
+    ///    "target",
+    ///    "targets"
+    ///  ],
+    ///  "properties": {
+    ///    "app_id": {
+    ///      "title": "App Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "app_name": {
+    ///      "title": "App Name",
+    ///      "type": "string"
+    ///    },
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "execution_host": {
+    ///      "$ref": "#/components/schemas/RunExecutionHost"
+    ///    },
+    ///    "finished_at": {
+    ///      "title": "Finished At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "frameworks": {
+    ///      "title": "Frameworks",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/OwaspFramework"
+    ///      }
+    ///    },
+    ///    "intensity": {
+    ///      "title": "Intensity",
+    ///      "type": "string"
+    ///    },
+    ///    "memory_mount": {
+    ///      "title": "Memory Mount",
+    ///      "default": "./cyber/app-memory",
+    ///      "type": "string"
+    ///    },
+    ///    "memory_root": {
+    ///      "title": "Memory Root",
+    ///      "type": "string"
+    ///    },
+    ///    "mode": {
+    ///      "$ref": "#/components/schemas/Mode"
+    ///    },
+    ///    "report_preferences": {
+    ///      "$ref": "#/components/schemas/CyberReportPreferences"
+    ///    },
+    ///    "report_reference": {
+    ///      "$ref": "#/components/schemas/LocalRunReportReferencePublic"
+    ///    },
+    ///    "result": {
+    ///      "$ref": "#/components/schemas/RunResult"
+    ///    },
+    ///    "run_id": {
+    ///      "title": "Run Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "run_scope": {
+    ///      "$ref": "#/components/schemas/ScopeSpec"
+    ///    },
+    ///    "scan_mode": {
+    ///      "$ref": "#/components/schemas/ScanMode"
+    ///    },
+    ///    "started_at": {
+    ///      "title": "Started At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "target": {
+    ///      "title": "Target",
+    ///      "type": "string"
+    ///    },
+    ///    "targets": {
+    ///      "title": "Targets",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/CyberDiscoveryTargetPublic"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct LocalRunBriefPublic {
         pub app_id: ::uuid::Uuid,
         pub app_name: ::std::string::String,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub conversation_id: ::std::option::Option<::uuid::Uuid>,
         pub execution_host: RunExecutionHost,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub finished_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub frameworks: ::std::vec::Vec<OwaspFramework>,
         pub intensity: ::std::string::String,
@@ -7006,8 +14552,8 @@ pub mod types {
         pub memory_mount: ::std::string::String,
         pub memory_root: ::std::string::String,
         pub mode: Mode,
-        pub report_preferences: AppSecReportPreferences,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        pub report_preferences: CyberReportPreferences,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub report_reference: ::std::option::Option<LocalRunReportReferencePublic>,
         pub result: RunResult,
         pub run_id: ::uuid::Uuid,
@@ -7019,6 +14565,46 @@ pub mod types {
     }
 
     ///`LocalRunReportReferencePublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LocalRunReportReferencePublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "content_type",
+    ///    "download_url",
+    ///    "name",
+    ///    "sha256",
+    ///    "source_id"
+    ///  ],
+    ///  "properties": {
+    ///    "content_type": {
+    ///      "title": "Content Type",
+    ///      "type": "string"
+    ///    },
+    ///    "download_url": {
+    ///      "title": "Download Url",
+    ///      "type": "string"
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "sha256": {
+    ///      "title": "Sha256",
+    ///      "type": "string"
+    ///    },
+    ///    "source_id": {
+    ///      "title": "Source Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct LocalRunReportReferencePublic {
         pub content_type: ::std::string::String,
@@ -7029,6 +14615,29 @@ pub mod types {
     }
 
     ///`LocalToolAnnouncement`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LocalToolAnnouncement",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "input_schema",
+    ///    "mapping"
+    ///  ],
+    ///  "properties": {
+    ///    "input_schema": {
+    ///      "$ref": "#/components/schemas/LocalInputSchema"
+    ///    },
+    ///    "mapping": {
+    ///      "$ref": "#/components/schemas/TargetToolMapping"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct LocalToolAnnouncement {
@@ -7037,6 +14646,21 @@ pub mod types {
     }
 
     ///`ManualTriggerDisabledReason`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ManualTriggerDisabledReason",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "merge_request_merged",
+    ///    "unsupported_provider",
+    ///    "review_in_progress"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -7087,6 +14711,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ManualTriggerDisabledReason {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ManualTriggerDisabledReason {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -7097,6 +14730,24 @@ pub mod types {
     }
 
     ///`MergeDisabledReason`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "MergeDisabledReason",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "unsupported_provider",
+    ///    "not_open",
+    ///    "has_conflicts",
+    ///    "draft",
+    ///    "no_connection",
+    ///    "provider_blocked"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -7159,6 +14810,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for MergeDisabledReason {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for MergeDisabledReason {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -7169,6 +14829,22 @@ pub mod types {
     }
 
     ///Pentest run mode. §B: black|gray|white.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Mode",
+    ///  "description": "Pentest run mode. §B: black|gray|white.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "black",
+    ///    "gray",
+    ///    "white"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -7219,6 +14895,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for Mode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for Mode {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -7228,18 +14913,77 @@ pub mod types {
         }
     }
 
-    ///Availability of one AppSec mode for run-now and scheduled launches.
+    ///Availability of one Cyber mode for run-now and scheduled launches.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ModeCapability",
+    ///  "description": "Availability of one Cyber mode for run-now and
+    /// scheduled launches.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "available",
+    ///    "mode",
+    ///    "run_now",
+    ///    "schedule"
+    ///  ],
+    ///  "properties": {
+    ///    "available": {
+    ///      "title": "Available",
+    ///      "type": "boolean"
+    ///    },
+    ///    "mode": {
+    ///      "$ref": "#/components/schemas/Mode"
+    ///    },
+    ///    "reason": {
+    ///      "title": "Reason",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "run_now": {
+    ///      "title": "Run Now",
+    ///      "type": "boolean"
+    ///    },
+    ///    "schedule": {
+    ///      "title": "Schedule",
+    ///      "type": "boolean"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ModeCapability {
         pub available: bool,
         pub mode: Mode,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub reason: ::std::option::Option<::std::string::String>,
         pub run_now: bool,
         pub schedule: bool,
     }
 
     ///`MrState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "MRState",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "open",
+    ///    "merged",
+    ///    "closed",
+    ///    "locked",
+    ///    "unknown"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -7298,6 +15042,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for MrState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for MrState {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -7308,6 +15061,44 @@ pub mod types {
     }
 
     ///`ObservationIn`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ObservationIn",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "row_id",
+    ///    "status"
+    ///  ],
+    ///  "properties": {
+    ///    "evidence_ref": {
+    ///      "title": "Evidence Ref",
+    ///      "default": "",
+    ///      "type": "string"
+    ///    },
+    ///    "reason": {
+    ///      "title": "Reason",
+    ///      "default": "",
+    ///      "type": "string"
+    ///    },
+    ///    "row_id": {
+    ///      "title": "Row Id",
+    ///      "type": "string"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/CoverageStatus"
+    ///    },
+    ///    "worker": {
+    ///      "title": "Worker",
+    ///      "default": "",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ObservationIn {
         #[serde(default)]
@@ -7321,12 +15112,49 @@ pub mod types {
     }
 
     ///`ObservationsIngestRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ObservationsIngestRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "observations"
+    ///  ],
+    ///  "properties": {
+    ///    "observations": {
+    ///      "title": "Observations",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ObservationIn"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ObservationsIngestRequest {
         pub observations: ::std::vec::Vec<ObservationIn>,
     }
 
     ///`OperationEffect`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OperationEffect",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "read",
+    ///    "mutation",
+    ///    "idempotent_mutation"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -7377,6 +15205,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for OperationEffect {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for OperationEffect {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -7387,6 +15224,124 @@ pub mod types {
     }
 
     ///`OperationEnvelope`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OperationEnvelope",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "assignment_id",
+    ///    "deadline_at",
+    ///    "effect",
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "nonce",
+    ///    "operation_id",
+    ///    "operation_sequence",
+    ///    "payload",
+    ///    "request_digest",
+    ///    "session_id",
+    ///    "target_id"
+    ///  ],
+    ///  "properties": {
+    ///    "assignment_id": {
+    ///      "title": "Assignment Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "deadline_at": {
+    ///      "title": "Deadline At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "effect": {
+    ///      "$ref": "#/components/schemas/OperationEffect"
+    ///    },
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer"
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "type": "string"
+    ///    },
+    ///    "nonce": {
+    ///      "title": "Nonce",
+    ///      "type": "string"
+    ///    },
+    ///    "operation_id": {
+    ///      "title": "Operation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "operation_sequence": {
+    ///      "title": "Operation Sequence",
+    ///      "type": "integer"
+    ///    },
+    ///    "payload": {
+    ///      "title": "Payload",
+    ///      "oneOf": [
+    ///        {
+    ///          "$ref": "#/components/schemas/SkillBundleChunk"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/ScriptRun"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/FileOperation"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/FilesList"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/FileContent"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/FileDownload"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/FilesDeliverables"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/FlushOutput"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/ConvertOfficePdf"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/RepositoryOperation"
+    ///        },
+    ///        {
+    ///          "$ref": "#/components/schemas/BackgroundOperation"
+    ///        }
+    ///      ]
+    ///    },
+    ///    "protocol_version": {
+    ///      "title": "Protocol Version",
+    ///      "default": 1,
+    ///      "type": "integer"
+    ///    },
+    ///    "request_digest": {
+    ///      "title": "Request Digest",
+    ///      "type": "string"
+    ///    },
+    ///    "session_id": {
+    ///      "title": "Session Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "target_id": {
+    ///      "title": "Target Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct OperationEnvelope {
@@ -7407,6 +15362,64 @@ pub mod types {
     }
 
     ///`OperationReceiptPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OperationReceiptPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "assignment_id",
+    ///    "operation_id",
+    ///    "operation_sequence",
+    ///    "request_digest",
+    ///    "session_id",
+    ///    "state"
+    ///  ],
+    ///  "properties": {
+    ///    "assignment_complete": {
+    ///      "title": "Assignment Complete",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "assignment_id": {
+    ///      "title": "Assignment Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "operation_id": {
+    ///      "title": "Operation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "operation_sequence": {
+    ///      "title": "Operation Sequence",
+    ///      "type": "integer"
+    ///    },
+    ///    "request_digest": {
+    ///      "title": "Request Digest",
+    ///      "type": "string"
+    ///    },
+    ///    "resolution": {
+    ///      "$ref": "#/components/schemas/OperationResolution"
+    ///    },
+    ///    "result": {
+    ///      "$ref": "#/components/schemas/WorkerOperationResult"
+    ///    },
+    ///    "session_id": {
+    ///      "title": "Session Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "state": {
+    ///      "$ref": "#/components/schemas/OperationReceiptState"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct OperationReceiptPublic {
@@ -7416,15 +15429,34 @@ pub mod types {
         pub operation_id: ::uuid::Uuid,
         pub operation_sequence: i64,
         pub request_digest: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub resolution: ::std::option::Option<OperationResolution>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub result: ::std::option::Option<WorkerOperationResult>,
         pub session_id: ::uuid::Uuid,
         pub state: OperationReceiptState,
     }
 
     ///`OperationReceiptState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OperationReceiptState",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "prepared",
+    ///    "delivered",
+    ///    "running",
+    ///    "succeeded",
+    ///    "failed",
+    ///    "cancelled",
+    ///    "unknown"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -7491,6 +15523,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for OperationReceiptState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for OperationReceiptState {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -7501,6 +15542,21 @@ pub mod types {
     }
 
     ///`OperationResolution`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OperationResolution",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "succeeded",
+    ///    "failed",
+    ///    "abandoned_unverified"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -7551,6 +15607,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for OperationResolution {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for OperationResolution {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -7561,6 +15626,59 @@ pub mod types {
     }
 
     ///`OperationStartRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OperationStartRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "nonce",
+    ///    "operation_sequence",
+    ///    "request_digest",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "nonce": {
+    ///      "title": "Nonce",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "operation_sequence": {
+    ///      "title": "Operation Sequence",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "request_digest": {
+    ///      "title": "OperationStartRequest_request_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct OperationStartRequest {
@@ -7573,6 +15691,17 @@ pub mod types {
     }
 
     ///`OperationStartRequestRequestDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OperationStartRequest_request_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[a-f0-9]{64}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct OperationStartRequestRequestDigest(::std::string::String);
@@ -7608,6 +15737,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for OperationStartRequestRequestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for OperationStartRequestRequestDigest {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -7631,6 +15769,29 @@ pub mod types {
     }
 
     ///`OutpostCreatedPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OutpostCreatedPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "registration",
+    ///    "target"
+    ///  ],
+    ///  "properties": {
+    ///    "registration": {
+    ///      "$ref": "#/components/schemas/WorkerRegistrationReference"
+    ///    },
+    ///    "target": {
+    ///      "$ref": "#/components/schemas/ExecutorChoicePublic"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct OutpostCreatedPublic {
@@ -7639,6 +15800,17 @@ pub mod types {
     }
 
     ///`Owasp`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Owasp",
+    ///  "type": "string",
+    ///  "maxLength": 8
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct Owasp(::std::string::String);
@@ -7672,6 +15844,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for Owasp {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for Owasp {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -7695,6 +15876,20 @@ pub mod types {
     }
 
     ///`OwaspFramework`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "OwaspFramework",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "owasp_web",
+    ///    "owasp_api"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -7741,6 +15936,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for OwaspFramework {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for OwaspFramework {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -7751,6 +15955,74 @@ pub mod types {
     }
 
     ///`PaginationMeta`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "PaginationMeta",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "end_index",
+    ///    "has_next",
+    ///    "has_previous",
+    ///    "page",
+    ///    "start_index",
+    ///    "take",
+    ///    "total_items",
+    ///    "total_pages"
+    ///  ],
+    ///  "properties": {
+    ///    "end_index": {
+    ///      "title": "End Index",
+    ///      "description": "Ending index of current page items",
+    ///      "type": "integer"
+    ///    },
+    ///    "has_next": {
+    ///      "title": "Has Next",
+    ///      "description": "Whether there is a next page",
+    ///      "type": "boolean"
+    ///    },
+    ///    "has_previous": {
+    ///      "title": "Has Previous",
+    ///      "description": "Whether there is a previous page",
+    ///      "type": "boolean"
+    ///    },
+    ///    "page": {
+    ///      "title": "Page",
+    ///      "description": "Current page number (1-based)",
+    ///      "type": "integer"
+    ///    },
+    ///    "should_show_onboarding": {
+    ///      "title": "Should Show Onboarding",
+    ///      "description": "Whether to show onboarding page",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "start_index": {
+    ///      "title": "Start Index",
+    ///      "description": "Starting index of current page items",
+    ///      "type": "integer"
+    ///    },
+    ///    "take": {
+    ///      "title": "Take",
+    ///      "description": "Number of items per page",
+    ///      "type": "integer"
+    ///    },
+    ///    "total_items": {
+    ///      "title": "Total Items",
+    ///      "description": "Total number of items available",
+    ///      "type": "integer"
+    ///    },
+    ///    "total_pages": {
+    ///      "title": "Total Pages",
+    ///      "description": "Total number of pages",
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct PaginationMeta {
         ///Ending index of current page items
@@ -7775,6 +16047,63 @@ pub mod types {
     }
 
     ///The surface plus the theme lanes the run fans out to.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "PartitionPublic",
+    ///  "description": "The surface plus the theme lanes the run fans out to.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "axis",
+    ///    "notes",
+    ///    "plan_id",
+    ///    "shards",
+    ///    "surface",
+    ///    "unmatched",
+    ///    "unmatched_pct"
+    ///  ],
+    ///  "properties": {
+    ///    "axis": {
+    ///      "title": "Axis",
+    ///      "type": "string"
+    ///    },
+    ///    "notes": {
+    ///      "title": "Notes",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "plan_id": {
+    ///      "title": "Plan Id",
+    ///      "type": "string"
+    ///    },
+    ///    "shards": {
+    ///      "title": "Shards",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ShardPublic"
+    ///      }
+    ///    },
+    ///    "surface": {
+    ///      "title": "Surface",
+    ///      "type": "object",
+    ///      "additionalProperties": true
+    ///    },
+    ///    "unmatched": {
+    ///      "title": "Unmatched",
+    ///      "type": "integer"
+    ///    },
+    ///    "unmatched_pct": {
+    ///      "title": "Unmatched Pct",
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct PartitionPublic {
         pub axis: ::std::string::String,
@@ -7788,18 +16117,108 @@ pub mod types {
 
     ///The themes doc that carves the plan into lanes; null returns surface
     /// only.
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug, Default)]
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "PartitionRequest",
+    ///  "description": "The themes doc that carves the plan into lanes; null
+    /// returns surface only.",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "max_rows_per_shard": {
+    ///      "title": "Max Rows Per Shard",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "only_status": {
+    ///      "title": "Only Status",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "themes": {
+    ///      "title": "Themes",
+    ///      "type": [
+    ///        "object",
+    ///        "null"
+    ///      ],
+    ///      "additionalProperties": true
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct PartitionRequest {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub max_rows_per_shard: ::std::option::Option<i64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub only_status: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub themes:
             ::std::option::Option<::serde_json::Map<::std::string::String, ::serde_json::Value>>,
     }
 
+    impl ::std::default::Default for PartitionRequest {
+        fn default() -> Self {
+            Self {
+                max_rows_per_shard: Default::default(),
+                only_status: Default::default(),
+                themes: Default::default(),
+            }
+        }
+    }
+
     ///`Payload`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Payload",
+    ///  "oneOf": [
+    ///    {
+    ///      "$ref": "#/components/schemas/SkillBundleChunk"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/ScriptRun"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/FileOperation"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/FilesList"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/FileContent"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/FileDownload"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/FilesDeliverables"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/FlushOutput"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/ConvertOfficePdf"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/RepositoryOperation"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/BackgroundOperation"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(untagged)]
     pub enum Payload {
@@ -7883,6 +16302,33 @@ pub mod types {
     }
 
     ///`PendingAssignmentPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "PendingAssignmentPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "assignment_id",
+    ///    "session_id"
+    ///  ],
+    ///  "properties": {
+    ///    "assignment_id": {
+    ///      "title": "Assignment Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "session_id": {
+    ///      "title": "Session Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct PendingAssignmentPublic {
@@ -7891,6 +16337,24 @@ pub mod types {
     }
 
     ///`PillarId`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "PillarId",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "COST_OPTIMIZATION",
+    ///    "SECURITY",
+    ///    "OPERATIONAL_EXCELLENCE",
+    ///    "RELIABILITY",
+    ///    "PERFORMANCE_EFFICIENCY",
+    ///    "SUSTAINABILITY"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -7953,6 +16417,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for PillarId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for PillarId {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -7963,6 +16436,57 @@ pub mod types {
     }
 
     ///One in-scope row and the check a host executes for it.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "PlanCheckPublic",
+    ///  "description": "One in-scope row and the check a host executes for
+    /// it.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "asset_type",
+    ///    "executable",
+    ///    "locator",
+    ///    "method",
+    ///    "note",
+    ///    "row_id",
+    ///    "url"
+    ///  ],
+    ///  "properties": {
+    ///    "asset_type": {
+    ///      "title": "Asset Type",
+    ///      "type": "string"
+    ///    },
+    ///    "executable": {
+    ///      "title": "Executable",
+    ///      "type": "boolean"
+    ///    },
+    ///    "locator": {
+    ///      "title": "Locator",
+    ///      "type": "string"
+    ///    },
+    ///    "method": {
+    ///      "title": "Method",
+    ///      "type": "string"
+    ///    },
+    ///    "note": {
+    ///      "title": "Note",
+    ///      "type": "string"
+    ///    },
+    ///    "row_id": {
+    ///      "title": "Row Id",
+    ///      "type": "string"
+    ///    },
+    ///    "url": {
+    ///      "title": "Url",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct PlanCheckPublic {
         pub asset_type: ::std::string::String,
@@ -7975,6 +16499,21 @@ pub mod types {
     }
 
     ///`QuickWinClass`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "QuickWinClass",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "quick_win",
+    ///    "needs_review",
+    ///    "no_action"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -8025,6 +16564,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for QuickWinClass {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for QuickWinClass {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -8035,80 +16583,335 @@ pub mod types {
     }
 
     ///Lightweight schema for list endpoints — excludes heavy fields.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RecommendationListPublic",
+    ///  "description": "Lightweight schema for list endpoints — excludes heavy
+    /// fields.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "created_at",
+    ///    "created_by",
+    ///    "description",
+    ///    "effort",
+    ///    "id",
+    ///    "risk",
+    ///    "title",
+    ///    "type"
+    ///  ],
+    ///  "properties": {
+    ///    "assigned_to": {
+    ///      "title": "Assigned To",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "assignee_avatar_url": {
+    ///      "title": "Assignee Avatar Url",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "assignee_name": {
+    ///      "title": "Assignee Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "created_by": {
+    ///      "title": "Created By",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "description": {
+    ///      "title": "Description",
+    ///      "type": "string"
+    ///    },
+    ///    "discussion_count": {
+    ///      "title": "Discussion Count",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "disposition": {
+    ///      "$ref": "#/components/schemas/FindingDisposition"
+    ///    },
+    ///    "disposition_at": {
+    ///      "title": "Disposition At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "disposition_by": {
+    ///      "title": "Disposition By",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "disposition_by_name": {
+    ///      "title": "Disposition By Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "disposition_reason": {
+    ///      "title": "Disposition Reason",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "disposition_until": {
+    ///      "title": "Disposition Until",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date"
+    ///    },
+    ///    "effort": {
+    ///      "title": "RecommendationListPublic_effort",
+    ///      "type": "string",
+    ///      "maxLength": 50
+    ///    },
+    ///    "evidence_basis": {
+    ///      "$ref": "#/components/schemas/EvidenceBasis"
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "is_stale": {
+    ///      "title": "Is Stale",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "keeper_id": {
+    ///      "title": "Keeper Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "keeper_name": {
+    ///      "title": "Keeper Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "keeper_pillar": {
+    ///      "title": "Keeper Pillar",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "last_verified_at": {
+    ///      "title": "Last Verified At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "number": {
+    ///      "title": "Number",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "pillar_id": {
+    ///      "$ref": "#/components/schemas/PillarId"
+    ///    },
+    ///    "position": {
+    ///      "title": "Position",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "potential_savings": {
+    ///      "title": "Potential Savings",
+    ///      "type": [
+    ///        "number",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "quick_win_class": {
+    ///      "$ref": "#/components/schemas/QuickWinClass"
+    ///    },
+    ///    "resource_id": {
+    ///      "title": "Resource Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "resource_name": {
+    ///      "title": "Resource Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "resource_type": {
+    ///      "title": "Resource Type",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "reversible": {
+    ///      "title": "Reversible",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "risk": {
+    ///      "title": "RecommendationListPublic_risk",
+    ///      "type": "string",
+    ///      "maxLength": 50
+    ///    },
+    ///    "source_id": {
+    ///      "title": "Source Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "source_type": {
+    ///      "$ref": "#/components/schemas/RecommendationSourceType"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/RecommendationStatus"
+    ///    },
+    ///    "title": {
+    ///      "title": "RecommendationListPublic_title",
+    ///      "type": "string",
+    ///      "maxLength": 255
+    ///    },
+    ///    "type": {
+    ///      "title": "Type",
+    ///      "type": "string"
+    ///    },
+    ///    "visibility": {
+    ///      "$ref": "#/components/schemas/RecommendationVisibility"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct RecommendationListPublic {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub assigned_to: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub assignee_avatar_url: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub assignee_name: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub conversation_id: ::std::option::Option<::uuid::Uuid>,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
         pub created_by: ::uuid::Uuid,
         pub description: ::std::string::String,
         #[serde(default)]
         pub discussion_count: i64,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub disposition: ::std::option::Option<FindingDisposition>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub disposition_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub disposition_by: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub disposition_by_name: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub disposition_reason: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub disposition_until: ::std::option::Option<::chrono::naive::NaiveDate>,
         pub effort: RecommendationListPublicEffort,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub evidence_basis: ::std::option::Option<EvidenceBasis>,
         pub id: ::uuid::Uuid,
         #[serde(default)]
         pub is_stale: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub keeper_id: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub keeper_name: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub keeper_pillar: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub last_verified_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         #[serde(default)]
         pub number: i64,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub pillar_id: ::std::option::Option<PillarId>,
         #[serde(default)]
         pub position: i64,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub potential_savings: ::std::option::Option<f64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub quick_win_class: ::std::option::Option<QuickWinClass>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub resource_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub resource_name: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub resource_type: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub reversible: ::std::option::Option<bool>,
         pub risk: RecommendationListPublicRisk,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub source_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub source_type: ::std::option::Option<RecommendationSourceType>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub status: ::std::option::Option<RecommendationStatus>,
         pub title: RecommendationListPublicTitle,
         #[serde(rename = "type")]
         pub type_: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub visibility: ::std::option::Option<RecommendationVisibility>,
     }
 
     ///`RecommendationListPublicEffort`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RecommendationListPublic_effort",
+    ///  "type": "string",
+    ///  "maxLength": 50
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct RecommendationListPublicEffort(::std::string::String);
@@ -8142,6 +16945,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RecommendationListPublicEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RecommendationListPublicEffort {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -8165,6 +16977,17 @@ pub mod types {
     }
 
     ///`RecommendationListPublicRisk`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RecommendationListPublic_risk",
+    ///  "type": "string",
+    ///  "maxLength": 50
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct RecommendationListPublicRisk(::std::string::String);
@@ -8198,6 +17021,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RecommendationListPublicRisk {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RecommendationListPublicRisk {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -8221,6 +17053,17 @@ pub mod types {
     }
 
     ///`RecommendationListPublicTitle`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RecommendationListPublic_title",
+    ///  "type": "string",
+    ///  "maxLength": 255
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct RecommendationListPublicTitle(::std::string::String);
@@ -8254,6 +17097,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RecommendationListPublicTitle {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RecommendationListPublicTitle {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -8277,6 +17129,23 @@ pub mod types {
     }
 
     ///`RecommendationSourceType`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RecommendationSourceType",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "assessment",
+    ///    "conversation",
+    ///    "manual",
+    ///    "cloudkeepers",
+    ///    "costops"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -8335,6 +17204,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RecommendationSourceType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RecommendationSourceType {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -8345,6 +17223,22 @@ pub mod types {
     }
 
     ///`RecommendationStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RecommendationStatus",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "pending",
+    ///    "implemented",
+    ///    "ignored",
+    ///    "in_progress"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -8399,6 +17293,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RecommendationStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RecommendationStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -8409,6 +17312,21 @@ pub mod types {
     }
 
     ///`RecommendationVisibility`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RecommendationVisibility",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "draft",
+    ///    "active",
+    ///    "archived"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -8459,6 +17377,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RecommendationVisibility {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RecommendationVisibility {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -8469,10 +17396,37 @@ pub mod types {
     }
 
     ///Paginated list response wrapper using lightweight schema.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RecommendationsListPublic",
+    ///  "description": "Paginated list response wrapper using lightweight
+    /// schema.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "data"
+    ///  ],
+    ///  "properties": {
+    ///    "data": {
+    ///      "title": "Data",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/RecommendationListPublic"
+    ///      }
+    ///    },
+    ///    "meta": {
+    ///      "$ref": "#/components/schemas/PaginationMeta"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct RecommendationsListPublic {
         pub data: ::std::vec::Vec<RecommendationListPublic>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub meta: ::std::option::Option<PaginationMeta>,
     }
 
@@ -8484,15 +17438,122 @@ pub mod types {
     ///    workspace_id: Optional workspace context to include in new access
     /// token.        The organization_id is derived from the workspace's
     /// organization.
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug, Default)]
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RefreshTokenRequest",
+    ///  "description": "Request to refresh access token.\n\nAttributes:\n
+    /// refresh_token: The refresh token JWT. Optional — the cookie-auth flow\n
+    /// sends it as an httpOnly cookie and omits the body field.\n
+    /// workspace_id: Optional workspace context to include in new access
+    /// token.\n        The organization_id is derived from the workspace's
+    /// organization.",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "refresh_token": {
+    ///      "title": "Refresh Token",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "workspace_id": {
+    ///      "title": "Workspace Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct RefreshTokenRequest {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub refresh_token: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub workspace_id: ::std::option::Option<::uuid::Uuid>,
     }
 
+    impl ::std::default::Default for RefreshTokenRequest {
+        fn default() -> Self {
+            Self {
+                refresh_token: Default::default(),
+                workspace_id: Default::default(),
+            }
+        }
+    }
+
     ///`RegisterWorkerRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RegisterWorkerRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "capabilities",
+    ///    "max_assignments",
+    ///    "os_arch",
+    ///    "workdir_id",
+    ///    "worker_installation_id",
+    ///    "worker_instance_id"
+    ///  ],
+    ///  "properties": {
+    ///    "capabilities": {
+    ///      "title": "Capabilities",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ExecutorCapability"
+    ///      }
+    ///    },
+    ///    "max_assignments": {
+    ///      "title": "Max Assignments",
+    ///      "type": "integer",
+    ///      "maximum": 64.0,
+    ///      "minimum": 1.0
+    ///    },
+    ///    "os_arch": {
+    ///      "title": "RegisterWorkerRequest_os_arch",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "linux-x86_64",
+    ///        "linux-aarch64",
+    ///        "darwin-x86_64",
+    ///        "darwin-aarch64"
+    ///      ]
+    ///    },
+    ///    "protocol_version": {
+    ///      "title": "Protocol Version",
+    ///      "default": 1,
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "workdir_id": {
+    ///      "title": "Workdir Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "worker_installation_id": {
+    ///      "title": "Worker Installation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "worker_instance_id": {
+    ///      "title": "Worker Instance Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct RegisterWorkerRequest {
@@ -8507,6 +17568,22 @@ pub mod types {
     }
 
     ///`RegisterWorkerRequestOsArch`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RegisterWorkerRequest_os_arch",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "linux-x86_64",
+    ///    "linux-aarch64",
+    ///    "darwin-x86_64",
+    ///    "darwin-aarch64"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -8561,6 +17638,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RegisterWorkerRequestOsArch {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RegisterWorkerRequestOsArch {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -8571,6 +17657,31 @@ pub mod types {
     }
 
     ///`RepositoryAction`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RepositoryAction",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "create-worktree",
+    ///    "delete-worktree",
+    ///    "sync-repository",
+    ///    "initialize-symlinks",
+    ///    "initialize-links",
+    ///    "disk-cleanup",
+    ///    "delete-repositories",
+    ///    "clone-repository",
+    ///    "clone-github-repository",
+    ///    "clone-bitbucket-repository",
+    ///    "clone-azure-devops-repository",
+    ///    "clone-aws-codecommit-repository",
+    ///    "check-convention-files"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -8663,6 +17774,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RepositoryAction {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RepositoryAction {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -8673,42 +17793,215 @@ pub mod types {
     }
 
     ///`RepositoryOperation`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RepositoryOperation",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "action",
+    ///    "kind"
+    ///  ],
+    ///  "properties": {
+    ///    "action": {
+    ///      "$ref": "#/components/schemas/RepositoryAction"
+    ///    },
+    ///    "branch": {
+    ///      "title": "Branch",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "commit_sha": {
+    ///      "title": "Commit Sha",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "credential_ref": {
+    ///      "title": "Credential Ref",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "dir_patterns": {
+    ///      "title": "Dir Patterns",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "file_patterns": {
+    ///      "title": "File Patterns",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "kind": {
+    ///      "title": "RepositoryOperation_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "repository"
+    ///      ]
+    ///    },
+    ///    "lease_owner": {
+    ///      "title": "RepositoryOperation_lease_owner",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 255,
+    ///      "minLength": 1,
+    ///      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    ///    },
+    ///    "lease_seconds": {
+    ///      "title": "Lease Seconds",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "minimum": 60.0
+    ///    },
+    ///    "links": {
+    ///      "title": "Links",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ScopedWorkspaceLink"
+    ///      }
+    ///    },
+    ///    "pipeline_id": {
+    ///      "title": "Pipeline Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "pr_number": {
+    ///      "title": "Pr Number",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "provider": {
+    ///      "title": "Provider",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "repo_name": {
+    ///      "title": "Repo Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "repo_names": {
+    ///      "title": "Repo Names",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "repository_filter": {
+    ///      "title": "Repository Filter",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "seed_commit_sha": {
+    ///      "title": "Seed Commit Sha",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "source": {
+    ///      "title": "Source",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct RepositoryOperation {
         pub action: RepositoryAction,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub branch: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub commit_sha: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub credential_ref: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub dir_patterns: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub file_patterns: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
         pub kind: RepositoryOperationKind,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub lease_owner: ::std::option::Option<RepositoryOperationLeaseOwner>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub lease_seconds: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub links: ::std::option::Option<::std::vec::Vec<ScopedWorkspaceLink>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub pipeline_id: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub pr_number: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub provider: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub repo_name: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub repo_names: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub repository_filter: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub seed_commit_sha: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub source: ::std::option::Option<::std::string::String>,
     }
 
     ///`RepositoryOperationKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RepositoryOperation_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "repository"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -8751,6 +18044,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RepositoryOperationKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RepositoryOperationKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -8760,7 +18062,179 @@ pub mod types {
         }
     }
 
+    ///`RepositoryOperationLeaseOwner`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RepositoryOperation_lease_owner",
+    ///  "type": "string",
+    ///  "maxLength": 255,
+    ///  "minLength": 1,
+    ///  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct RepositoryOperationLeaseOwner(::std::string::String);
+    impl ::std::ops::Deref for RepositoryOperationLeaseOwner {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<RepositoryOperationLeaseOwner> for ::std::string::String {
+        fn from(value: RepositoryOperationLeaseOwner) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for RepositoryOperationLeaseOwner {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 255usize {
+                return Err("longer than 255 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[A-Za-z0-9][A-Za-z0-9._-]*$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[A-Za-z0-9][A-Za-z0-9._-]*$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RepositoryOperationLeaseOwner {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for RepositoryOperationLeaseOwner {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RepositoryOperationLeaseOwner {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for RepositoryOperationLeaseOwner {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
     ///Body for `POST /agent-cli/writes`.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RequestAgentCliWriteRequest",
+    ///  "description": "Body for `POST /agent-cli/writes`.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "conversation_id",
+    ///    "reasoning",
+    ///    "script",
+    ///    "timeout",
+    ///    "tool_call_id"
+    ///  ],
+    ///  "properties": {
+    ///    "connection_list": {
+    ///      "title": "Connection List",
+    ///      "description": "Connection prefixes whose credentials the script
+    /// needs. Every prefix must be connected in this workspace.",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "description": "The `AGENT_CLI` conversation this local session
+    /// mirrors. Only the session's own creator may ask it for a write.",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "reasoning": {
+    ///      "title": "RequestAgentCliWriteRequest_reasoning",
+    ///      "description": "Plain-language line for the human approver: what
+    /// this command changes and why it is needed right now.",
+    ///      "type": "string",
+    ///      "maxLength": 1000,
+    ///      "minLength": 1
+    ///    },
+    ///    "recent_user_messages": {
+    ///      "title": "Recent User Messages",
+    ///      "description": "The developer's latest prompts in this session,
+    /// newest last, so the Auto Mode classifier sees the intent a chat turn
+    /// would.",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      },
+    ///      "maxItems": 3
+    ///    },
+    ///    "run_in_background": {
+    ///      "title": "Run In Background",
+    ///      "description": "Detach the script once it may run and answer with a
+    /// `task_id` to poll on `GET /agent-cli/executions/{task_id}`.",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "script": {
+    ///      "title": "RequestAgentCliWriteRequest_script",
+    ///      "description": "The state-changing shell command. It is stored as
+    /// sent, and it is the only script an approval of this write will ever
+    /// run.",
+    ///      "type": "string",
+    ///      "minLength": 1
+    ///    },
+    ///    "timeout": {
+    ///      "title": "Timeout",
+    ///      "description": "Seconds the executor may spend on the script.",
+    ///      "type": "integer",
+    ///      "maximum": 120.0,
+    ///      "minimum": 1.0
+    ///    },
+    ///    "tool_call_id": {
+    ///      "title": "RequestAgentCliWriteRequest_tool_call_id",
+    ///      "description": "pi's id for this tool call. The Auto Mode gate keys its durable verdict on it, so a retried call replays the same verdict.",
+    ///      "type": "string",
+    ///      "maxLength": 128,
+    ///      "minLength": 1
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct RequestAgentCliWriteRequest {
         ///Connection prefixes whose credentials the script needs. Every prefix
@@ -8793,6 +18267,20 @@ pub mod types {
 
     ///Plain-language line for the human approver: what this command changes
     /// and why it is needed right now.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RequestAgentCliWriteRequest_reasoning",
+    ///  "description": "Plain-language line for the human approver: what this
+    /// command changes and why it is needed right now.",
+    ///  "type": "string",
+    ///  "maxLength": 1000,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct RequestAgentCliWriteRequestReasoning(::std::string::String);
@@ -8829,6 +18317,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RequestAgentCliWriteRequestReasoning {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RequestAgentCliWriteRequestReasoning {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -8853,6 +18350,19 @@ pub mod types {
 
     ///The state-changing shell command. It is stored as sent, and it is the
     /// only script an approval of this write will ever run.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RequestAgentCliWriteRequest_script",
+    ///  "description": "The state-changing shell command. It is stored as sent,
+    /// and it is the only script an approval of this write will ever run.",
+    ///  "type": "string",
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct RequestAgentCliWriteRequestScript(::std::string::String);
@@ -8886,6 +18396,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RequestAgentCliWriteRequestScript {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RequestAgentCliWriteRequestScript {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -8910,6 +18429,20 @@ pub mod types {
 
     ///pi's id for this tool call. The Auto Mode gate keys its durable verdict
     /// on it, so a retried call replays the same verdict.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RequestAgentCliWriteRequest_tool_call_id",
+    ///  "description": "pi's id for this tool call. The Auto Mode gate keys its
+    /// durable verdict on it, so a retried call replays the same verdict.",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct RequestAgentCliWriteRequestToolCallId(::std::string::String);
@@ -8946,6 +18479,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RequestAgentCliWriteRequestToolCallId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RequestAgentCliWriteRequestToolCallId {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -8969,6 +18511,16 @@ pub mod types {
     }
 
     ///`RequiredItem`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct RequiredItem(::std::string::String);
@@ -9006,6 +18558,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RequiredItem {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RequiredItem {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -9029,6 +18590,23 @@ pub mod types {
     }
 
     ///`ResponseAgentCliExecuteAgentCliRead`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Response Agent-Cli-Execute Agent Cli Read",
+    ///  "anyOf": [
+    ///    {
+    ///      "$ref": "#/components/schemas/AgentCliExecutionCompleted"
+    ///    },
+    ///    {
+    ///      "$ref": "#/components/schemas/AgentCliExecutionStarted"
+    ///    }
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(untagged)]
     pub enum ResponseAgentCliExecuteAgentCliRead {
@@ -9049,6 +18627,20 @@ pub mod types {
     }
 
     ///`ResponseLevel`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ResponseLevel",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "page_responders",
+    ///    "track_only"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -9095,6 +18687,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ResponseLevel {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ResponseLevel {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -9115,6 +18716,29 @@ pub mod types {
     ///Absent (NULL on the detail) when no diff-stats were ever recorded, so
     /// the badge stays hidden rather than mislabelling an unmeasured MR as
     /// LIGHT.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ReviewEffort",
+    ///  "description": "How much reviewer attention a change likely demands, as
+    /// a triage badge.\n\nA single glance signal next to the verdict: LIGHT
+    /// changes can be skimmed,\nHEAVY ones deserve a careful pass. Derived from
+    /// diff size (files + lines) in\n`domain/review_effort.py`, NOT the AI
+    /// quality `score` — a small change can be\nlow-quality and a huge one
+    /// clean, so effort and score are orthogonal axes.\n\nAbsent (NULL on the
+    /// detail) when no diff-stats were ever recorded, so the\nbadge stays
+    /// hidden rather than mislabelling an unmeasured MR as LIGHT.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "light",
+    ///    "moderate",
+    ///    "heavy"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -9165,6 +18789,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ReviewEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ReviewEffort {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -9175,6 +18808,23 @@ pub mod types {
     }
 
     ///`ReviewStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ReviewStatus",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "in_review",
+    ///    "review_complete",
+    ///    "filtered",
+    ///    "failed",
+    ///    "stopped"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -9196,6 +18846,8 @@ pub mod types {
         Filtered,
         #[serde(rename = "failed")]
         Failed,
+        #[serde(rename = "stopped")]
+        Stopped,
     }
 
     impl ::std::fmt::Display for ReviewStatus {
@@ -9205,6 +18857,7 @@ pub mod types {
                 Self::ReviewComplete => f.write_str("review_complete"),
                 Self::Filtered => f.write_str("filtered"),
                 Self::Failed => f.write_str("failed"),
+                Self::Stopped => f.write_str("stopped"),
             }
         }
     }
@@ -9217,6 +18870,7 @@ pub mod types {
                 "review_complete" => Ok(Self::ReviewComplete),
                 "filtered" => Ok(Self::Filtered),
                 "failed" => Ok(Self::Failed),
+                "stopped" => Ok(Self::Stopped),
                 _ => Err("invalid value".into()),
             }
         }
@@ -9225,6 +18879,15 @@ pub mod types {
     impl ::std::convert::TryFrom<&str> for ReviewStatus {
         type Error = self::error::ConversionError;
         fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ReviewStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
     }
@@ -9239,13 +18902,62 @@ pub mod types {
     }
 
     ///`RevokeTokenRequest`
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug, Default)]
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RevokeTokenRequest",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "refresh_token": {
+    ///      "title": "Refresh Token",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct RevokeTokenRequest {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub refresh_token: ::std::option::Option<::std::string::String>,
     }
 
+    impl ::std::default::Default for RevokeTokenRequest {
+        fn default() -> Self {
+            Self {
+                refresh_token: Default::default(),
+            }
+        }
+    }
+
     ///Bind the calling agent CLI session's conversation onto a local run.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RunBindRequest",
+    ///  "description": "Bind the calling agent CLI session's conversation onto
+    /// a local run.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "conversation_id"
+    ///  ],
+    ///  "properties": {
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct RunBindRequest {
         pub conversation_id: ::uuid::Uuid,
@@ -9259,6 +18971,26 @@ pub mod types {
     /// scan task for a local row, and the local session settles it through
     /// the same ``finalize_run`` CAS. Exactly one host is live per run;
     /// there is no failover between them.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RunExecutionHost",
+    ///  "description": "The machine where the run executes.\n\n``cloud`` — the
+    /// worker + OpenSandbox pipeline (``run_pentest_scan_task``).\n``local`` —
+    /// the developer's Mac through a bound ``cloudthinker agent``\nsession; the
+    /// backend never enqueues a scan task for a local row, and the\nlocal
+    /// session settles it through the same ``finalize_run`` CAS. Exactly
+    /// one\nhost is live per run; there is no failover between them.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "cloud",
+    ///    "local"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -9305,6 +19037,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RunExecutionHost {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RunExecutionHost {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -9315,15 +19056,66 @@ pub mod types {
     }
 
     ///`RunGeneratedAccountPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RunGeneratedAccountPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "created",
+    ///    "generator_name",
+    ///    "id",
+    ///    "login_proven",
+    ///    "reason",
+    ///    "role"
+    ///  ],
+    ///  "properties": {
+    ///    "created": {
+    ///      "title": "Created",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "generator_name": {
+    ///      "title": "Generator Name",
+    ///      "type": "string"
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "login_proven": {
+    ///      "title": "Login Proven",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "reason": {
+    ///      "title": "Reason",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "role": {
+    ///      "title": "Role",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct RunGeneratedAccountPublic {
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub created: ::std::option::Option<bool>,
         pub generator_name: ::std::string::String,
         pub id: ::uuid::Uuid,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub login_proven: ::std::option::Option<bool>,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub reason: ::std::option::Option<::std::string::String>,
         pub role: ::std::string::String,
     }
@@ -9341,25 +19133,100 @@ pub mod types {
     ///Note an App with NO prior SUCCESS run always runs "full": the use case
     ///coerces scan_mode on a first run, so an explicit "incremental" here is
     ///honoured only once a successful run exists to diff against.
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug, Default)]
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RunLaunchRequest",
+    ///  "description": "Request body for POST
+    /// /appsec/apps/{app_id}/runs.\n\nrun_scope narrows the App's scope for
+    /// this run — MUST be ⊆ app.scope.\nOmit or pass null for a full-scope run.
+    /// mode and intensity are\noptional — when omitted (None), the use case
+    /// applies the backend default\n(Mode.BLACK / app.default_intensity). The
+    /// default lives in\nlaunch_run only, not here. scan_mode is optional too —
+    /// omitted (None)\ncoalesces to incremental in the use case (the single
+    /// default source); pass\n\"full\" for a deep whole-worktree sweep (moot
+    /// for gray/black).\n\nNote an App with NO prior SUCCESS run always runs
+    /// \"full\": the use case\ncoerces scan_mode on a first run, so an explicit
+    /// \"incremental\" here is\nhonoured only once a successful run exists to
+    /// diff against.",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "execution_host": {
+    ///      "$ref": "#/components/schemas/RunExecutionHost"
+    ///    },
+    ///    "intensity": {
+    ///      "$ref": "#/components/schemas/Intensity"
+    ///    },
+    ///    "mode": {
+    ///      "$ref": "#/components/schemas/Mode"
+    ///    },
+    ///    "run_directives": {
+    ///      "title": "RunLaunchRequest_run_directives",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 2000
+    ///    },
+    ///    "run_scope": {
+    ///      "$ref": "#/components/schemas/ScopeSpec"
+    ///    },
+    ///    "scan_mode": {
+    ///      "$ref": "#/components/schemas/ScanMode"
+    ///    },
+    ///    "selection": {
+    ///      "$ref": "#/components/schemas/SavedSelection"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct RunLaunchRequest {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub execution_host: ::std::option::Option<RunExecutionHost>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub intensity: ::std::option::Option<Intensity>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub mode: ::std::option::Option<Mode>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub run_directives: ::std::option::Option<RunLaunchRequestRunDirectives>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub run_scope: ::std::option::Option<ScopeSpec>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub scan_mode: ::std::option::Option<ScanMode>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub selection: ::std::option::Option<SavedSelection>,
     }
 
+    impl ::std::default::Default for RunLaunchRequest {
+        fn default() -> Self {
+            Self {
+                execution_host: Default::default(),
+                intensity: Default::default(),
+                mode: Default::default(),
+                run_directives: Default::default(),
+                run_scope: Default::default(),
+                scan_mode: Default::default(),
+                selection: Default::default(),
+            }
+        }
+    }
+
     ///`RunLaunchRequestRunDirectives`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RunLaunchRequest_run_directives",
+    ///  "type": "string",
+    ///  "maxLength": 2000
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct RunLaunchRequestRunDirectives(::std::string::String);
@@ -9393,6 +19260,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RunLaunchRequestRunDirectives {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RunLaunchRequestRunDirectives {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -9416,6 +19292,34 @@ pub mod types {
     }
 
     ///Response shape for GET /appsec/apps/{app_id}/runs.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RunListResponse",
+    ///  "description": "Response shape for GET /appsec/apps/{app_id}/runs.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "data",
+    ///    "total"
+    ///  ],
+    ///  "properties": {
+    ///    "data": {
+    ///      "title": "Data",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/RunPublic"
+    ///      }
+    ///    },
+    ///    "total": {
+    ///      "title": "Total",
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct RunListResponse {
         pub data: ::std::vec::Vec<RunPublic>,
@@ -9423,17 +19327,179 @@ pub mod types {
     }
 
     ///Response shape for a single PentestRun — only client-rendered fields.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RunPublic",
+    ///  "description": "Response shape for a single PentestRun — only
+    /// client-rendered fields.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "app_id",
+    ///    "auth_status",
+    ///    "counts",
+    ///    "created_at",
+    ///    "finished_at",
+    ///    "frameworks",
+    ///    "id",
+    ///    "intensity",
+    ///    "mode",
+    ///    "result",
+    ///    "run_scope",
+    ///    "scan_mode",
+    ///    "selection",
+    ///    "started_at",
+    ///    "surface_delta"
+    ///  ],
+    ///  "properties": {
+    ///    "app_id": {
+    ///      "title": "App Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "auth_status": {
+    ///      "$ref": "#/components/schemas/AuthStatus"
+    ///    },
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "counts": {
+    ///      "title": "Counts",
+    ///      "type": "object",
+    ///      "additionalProperties": true
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "diff_focus": {
+    ///      "title": "Diff Focus",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ChangeFocusTarget"
+    ///      }
+    ///    },
+    ///    "execution_host": {
+    ///      "$ref": "#/components/schemas/RunExecutionHost"
+    ///    },
+    ///    "findings_confirmed": {
+    ///      "title": "Findings Confirmed",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "findings_confirmed_critical": {
+    ///      "title": "Findings Confirmed Critical",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "findings_critical": {
+    ///      "title": "Findings Critical",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "findings_discovered": {
+    ///      "title": "Findings Discovered",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "findings_resolved": {
+    ///      "title": "Findings Resolved",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "finished_at": {
+    ///      "title": "Finished At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "frameworks": {
+    ///      "title": "Frameworks",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/OwaspFramework"
+    ///      }
+    ///    },
+    ///    "generated_accounts": {
+    ///      "title": "Generated Accounts",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/RunGeneratedAccountPublic"
+    ///      }
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "intensity": {
+    ///      "title": "Intensity",
+    ///      "type": "string"
+    ///    },
+    ///    "mode": {
+    ///      "$ref": "#/components/schemas/Mode"
+    ///    },
+    ///    "report_preferences": {
+    ///      "$ref": "#/components/schemas/CyberReportPreferences"
+    ///    },
+    ///    "report_revision_conversation_id": {
+    ///      "title": "Report Revision Conversation Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "result": {
+    ///      "$ref": "#/components/schemas/RunResult"
+    ///    },
+    ///    "run_scope": {
+    ///      "$ref": "#/components/schemas/ScopeSpec"
+    ///    },
+    ///    "scan_mode": {
+    ///      "$ref": "#/components/schemas/ScanMode"
+    ///    },
+    ///    "selection": {
+    ///      "$ref": "#/components/schemas/SavedSelection"
+    ///    },
+    ///    "started_at": {
+    ///      "title": "Started At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "surface_delta": {
+    ///      "title": "Surface Delta",
+    ///      "type": "object",
+    ///      "additionalProperties": true
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct RunPublic {
         pub app_id: ::uuid::Uuid,
         pub auth_status: AuthStatus,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub conversation_id: ::std::option::Option<::uuid::Uuid>,
         pub counts: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub diff_focus: ::std::option::Option<::std::vec::Vec<ChangeFocusTarget>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub execution_host: ::std::option::Option<RunExecutionHost>,
         #[serde(default)]
         pub findings_confirmed: i64,
@@ -9445,7 +19511,6 @@ pub mod types {
         pub findings_discovered: i64,
         #[serde(default)]
         pub findings_resolved: i64,
-        #[serde(deserialize_with = "::std::option::Option::deserialize")]
         pub finished_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub frameworks: ::std::vec::Vec<OwaspFramework>,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
@@ -9453,9 +19518,9 @@ pub mod types {
         pub id: ::uuid::Uuid,
         pub intensity: ::std::string::String,
         pub mode: Mode,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
-        pub report_preferences: ::std::option::Option<AppSecReportPreferences>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub report_preferences: ::std::option::Option<CyberReportPreferences>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub report_revision_conversation_id: ::std::option::Option<::uuid::Uuid>,
         pub result: RunResult,
         pub run_scope: ScopeSpec,
@@ -9473,6 +19538,29 @@ pub mod types {
     /// value. FAILED means the run could not complete honestly (sync
     /// failure, missing owner, unexpected error) — its findings may be
     /// unwritten, so it must not read SUCCESS.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RunResult",
+    ///  "description": "Pentest run lifecycle result: running | success |
+    /// failed | cancelled.\n\nLifecycle only — NOT a verdict. A finished run is
+    /// SUCCESS whether or not it\nfound vulnerabilities; the \"found
+    /// something\" signal lives in the run's\nfinding counts (FE colors the
+    /// count), never a distinct result value. FAILED\nmeans the run could not
+    /// complete honestly (sync failure, missing owner,\nunexpected error) — its
+    /// findings may be unwritten, so it must not read SUCCESS.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "running",
+    ///    "success",
+    ///    "failed",
+    ///    "cancelled"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -9527,6 +19615,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for RunResult {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for RunResult {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -9537,15 +19634,57 @@ pub mod types {
     }
 
     ///`SavedSelection`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SavedSelection",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "option_id"
+    ///  ],
+    ///  "properties": {
+    ///    "option_id": {
+    ///      "title": "SavedSelection_option_id",
+    ///      "type": "string",
+    ///      "maxLength": 128,
+    ///      "minLength": 1
+    ///    },
+    ///    "thinking_effort": {
+    ///      "title": "SavedSelection_thinking_effort",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 64
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct SavedSelection {
         pub option_id: SavedSelectionOptionId,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub thinking_effort: ::std::option::Option<SavedSelectionThinkingEffort>,
     }
 
     ///`SavedSelectionOptionId`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SavedSelection_option_id",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct SavedSelectionOptionId(::std::string::String);
@@ -9582,6 +19721,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for SavedSelectionOptionId {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for SavedSelectionOptionId {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -9605,6 +19753,17 @@ pub mod types {
     }
 
     ///`SavedSelectionThinkingEffort`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SavedSelection_thinking_effort",
+    ///  "type": "string",
+    ///  "maxLength": 64
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct SavedSelectionThinkingEffort(::std::string::String);
@@ -9634,6 +19793,15 @@ pub mod types {
     impl ::std::convert::TryFrom<&str> for SavedSelectionThinkingEffort {
         type Error = self::error::ConversionError;
         fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for SavedSelectionThinkingEffort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
     }
@@ -9684,6 +19852,41 @@ pub mod types {
     /// schedule's frozen INCREMENTAL is therefore honoured only from its
     /// first post-success fire onward; the schedule row itself is never
     /// rewritten.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ScanMode",
+    ///  "description": "Per-run change-focus policy:
+    /// incremental|full.\n\nincremental — focus on the git diff between the
+    /// prior SUCCESSFUL run's HEAD\n              and this run's HEAD (the
+    /// historic always-on white-box\n              behaviour).
+    /// `_derive_diff_focus` keeps each repo's `base_ref`\n              so the
+    /// agent diffs `base...head`.\nfull        — a deep sweep:
+    /// `_derive_diff_focus` FORCES `base_ref=\"\"` on\n              every
+    /// target so no diff is rendered and the whole worktree is\n
+    /// scanned. The cursor `head_ref` is still recorded so the NEXT\n
+    /// incremental run has a base to diff from.\n\nDEFAULT for both manual and
+    /// scheduled runs is INCREMENTAL (the use case, not\nthe column, is the
+    /// source of that default). MOOT for gray/black-box runs:\nthey clone no
+    /// worktree, so there is nothing to diff and scan_mode is
+    /// inert.\n\nINVARIANT (first run): on an App with NO prior SUCCESS
+    /// run,\n`launch_run_with_outcome` COERCES this column to FULL regardless
+    /// of what the\ncaller asked for — interactive or scheduled. INCREMENTAL
+    /// means \"diff since\nthe last successful run\"; with no prior success
+    /// there is no base, so the\nvalue would lie to both the user and the
+    /// agent. A schedule's frozen\nINCREMENTAL is therefore honoured only from
+    /// its first post-success fire\nonward; the schedule row itself is never
+    /// rewritten.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "incremental",
+    ///    "full"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -9730,6 +19933,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ScanMode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ScanMode {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -9741,7 +19953,52 @@ pub mod types {
 
     ///Strict include/exclude safety fence shared by App, run, and schedule
     /// APIs.
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug, Default)]
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ScopeSpec",
+    ///  "description": "Strict include/exclude safety fence shared by App, run,
+    /// and schedule APIs.",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "browser_resource_origins": {
+    ///      "title": "Browser Resource Origins",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string",
+    ///        "maxLength": 100,
+    ///        "minLength": 1
+    ///      },
+    ///      "maxItems": 100
+    ///    },
+    ///    "exclude": {
+    ///      "title": "Exclude",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string",
+    ///        "maxLength": 100,
+    ///        "minLength": 1
+    ///      },
+    ///      "maxItems": 100
+    ///    },
+    ///    "include": {
+    ///      "title": "Include",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string",
+    ///        "maxLength": 100,
+    ///        "minLength": 1
+    ///      },
+    ///      "maxItems": 100
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct ScopeSpec {
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
@@ -9752,7 +20009,46 @@ pub mod types {
         pub include: ::std::vec::Vec<IncludeItem>,
     }
 
+    impl ::std::default::Default for ScopeSpec {
+        fn default() -> Self {
+            Self {
+                browser_resource_origins: Default::default(),
+                exclude: Default::default(),
+                include: Default::default(),
+            }
+        }
+    }
+
     ///`ScopedWorkspaceLink`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ScopedWorkspaceLink",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "name",
+    ///    "relative_target"
+    ///  ],
+    ///  "properties": {
+    ///    "name": {
+    ///      "title": "ScopedWorkspaceLink_name",
+    ///      "type": "string",
+    ///      "maxLength": 128,
+    ///      "minLength": 1
+    ///    },
+    ///    "relative_target": {
+    ///      "title": "ScopedWorkspaceLink_relative_target",
+    ///      "type": "string",
+    ///      "maxLength": 512,
+    ///      "minLength": 1
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct ScopedWorkspaceLink {
@@ -9761,6 +20057,18 @@ pub mod types {
     }
 
     ///`ScopedWorkspaceLinkName`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ScopedWorkspaceLink_name",
+    ///  "type": "string",
+    ///  "maxLength": 128,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct ScopedWorkspaceLinkName(::std::string::String);
@@ -9797,6 +20105,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ScopedWorkspaceLinkName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ScopedWorkspaceLinkName {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -9820,6 +20137,18 @@ pub mod types {
     }
 
     ///`ScopedWorkspaceLinkRelativeTarget`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ScopedWorkspaceLink_relative_target",
+    ///  "type": "string",
+    ///  "maxLength": 512,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct ScopedWorkspaceLinkRelativeTarget(::std::string::String);
@@ -9856,6 +20185,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ScopedWorkspaceLinkRelativeTarget {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ScopedWorkspaceLinkRelativeTarget {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -9879,28 +20217,133 @@ pub mod types {
     }
 
     ///`ScriptRun`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ScriptRun",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind",
+    ///    "script"
+    ///  ],
+    ///  "properties": {
+    ///    "authorized_working_directory_root": {
+    ///      "title": "Authorized Working Directory Root",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "credential_ref": {
+    ///      "title": "Credential Ref",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "existing_only": {
+    ///      "title": "Existing Only",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "guarded_shell": {
+    ///      "title": "Guarded Shell",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "kind": {
+    ///      "title": "ScriptRun_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "script"
+    ///      ]
+    ///    },
+    ///    "needs_skills": {
+    ///      "title": "Needs Skills",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "renew_idle_timer": {
+    ///      "title": "Renew Idle Timer",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "script": {
+    ///      "title": "Script",
+    ///      "type": "string"
+    ///    },
+    ///    "task_id": {
+    ///      "title": "Task Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "timeout": {
+    ///      "title": "Timeout",
+    ///      "type": [
+    ///        "number",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "working_directory": {
+    ///      "title": "Working Directory",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct ScriptRun {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub authorized_working_directory_root: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub credential_ref: ::std::option::Option<::uuid::Uuid>,
+        #[serde(default)]
+        pub existing_only: bool,
+        #[serde(default)]
+        pub guarded_shell: bool,
         pub kind: ScriptRunKind,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub needs_skills: ::std::option::Option<bool>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub renew_idle_timer: ::std::option::Option<bool>,
         pub script: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub task_id: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub timeout: ::std::option::Option<f64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub working_directory: ::std::option::Option<::std::string::String>,
     }
 
     ///`ScriptRunKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ScriptRun_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "script"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -9943,6 +20386,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for ScriptRunKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for ScriptRunKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -9953,6 +20405,17 @@ pub mod types {
     }
 
     ///`Search`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Search",
+    ///  "type": "string",
+    ///  "maxLength": 200
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct Search(::std::string::String);
@@ -9986,6 +20449,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for Search {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for Search {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10009,14 +20481,54 @@ pub mod types {
     }
 
     ///Terminal claim from the owning session; the finalize CAS decides.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SettleLocalRunRequest",
+    ///  "description": "Terminal claim from the owning session; the finalize
+    /// CAS decides.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "agent_succeeded"
+    ///  ],
+    ///  "properties": {
+    ///    "agent_succeeded": {
+    ///      "title": "Agent Succeeded",
+    ///      "type": "boolean"
+    ///    },
+    ///    "result_message": {
+    ///      "title": "SettleLocalRunRequest_result_message",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 2000
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SettleLocalRunRequest {
         pub agent_succeeded: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub result_message: ::std::option::Option<SettleLocalRunRequestResultMessage>,
     }
 
     ///`SettleLocalRunRequestResultMessage`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SettleLocalRunRequest_result_message",
+    ///  "type": "string",
+    ///  "maxLength": 2000
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct SettleLocalRunRequestResultMessage(::std::string::String);
@@ -10050,6 +20562,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for SettleLocalRunRequestResultMessage {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for SettleLocalRunRequestResultMessage {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10073,6 +20594,25 @@ pub mod types {
     }
 
     ///`SettleLocalRunResult`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SettleLocalRunResult",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "settled"
+    ///  ],
+    ///  "properties": {
+    ///    "settled": {
+    ///      "title": "Settled",
+    ///      "type": "boolean"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SettleLocalRunResult {
         pub settled: bool,
@@ -10085,6 +20625,29 @@ pub mod types {
     /// Collectors without ground-truth severity (for example, external
     /// messaging channels) emit ``None`` and let the LLM classifier
     /// populate this field asynchronously.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Severity",
+    ///  "description": "Canonical operational severity bucket.\n\nFive-value
+    /// ladder ordered from most to least urgent. Used by Pulse
+    /// signals,\nIncidents, notifications, analytics, and the frontend.
+    /// Collectors without\nground-truth severity (for example, external
+    /// messaging channels) emit\n``None`` and let the LLM classifier populate
+    /// this field asynchronously.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "critical",
+    ///    "high",
+    ///    "medium",
+    ///    "low",
+    ///    "info"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -10143,6 +20706,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for Severity {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for Severity {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10154,7 +20726,46 @@ pub mod types {
 
     ///Open-finding counts per severity. Field set mirrors the shared Severity
     /// enum.
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug, Default)]
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SeverityCounts",
+    ///  "description": "Open-finding counts per severity. Field set mirrors the
+    /// shared Severity enum.",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "critical": {
+    ///      "title": "Critical",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "high": {
+    ///      "title": "High",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "info": {
+    ///      "title": "Info",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "low": {
+    ///      "title": "Low",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "medium": {
+    ///      "title": "Medium",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SeverityCounts {
         #[serde(default)]
         pub critical: i64,
@@ -10168,7 +20779,79 @@ pub mod types {
         pub medium: i64,
     }
 
+    impl ::std::default::Default for SeverityCounts {
+        fn default() -> Self {
+            Self {
+                critical: Default::default(),
+                high: Default::default(),
+                info: Default::default(),
+                low: Default::default(),
+                medium: Default::default(),
+            }
+        }
+    }
+
     ///One theme lane: the disjoint rows a single scout owns for the run.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ShardPublic",
+    ///  "description": "One theme lane: the disjoint rows a single scout owns
+    /// for the run.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "auth_context_ref",
+    ///    "auth_context_refs",
+    ///    "focus",
+    ///    "locators",
+    ///    "row_ids",
+    ///    "shard_id",
+    ///    "shard_key"
+    ///  ],
+    ///  "properties": {
+    ///    "auth_context_ref": {
+    ///      "title": "Auth Context Ref",
+    ///      "type": "string"
+    ///    },
+    ///    "auth_context_refs": {
+    ///      "title": "Auth Context Refs",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "focus": {
+    ///      "title": "Focus",
+    ///      "type": "string"
+    ///    },
+    ///    "locators": {
+    ///      "title": "Locators",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "row_ids": {
+    ///      "title": "Row Ids",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "shard_id": {
+    ///      "title": "Shard Id",
+    ///      "type": "string"
+    ///    },
+    ///    "shard_key": {
+    ///      "title": "Shard Key",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ShardPublic {
         pub auth_context_ref: ::std::string::String,
@@ -10181,12 +20864,88 @@ pub mod types {
     }
 
     ///Simple message response schema.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SimpleMessage",
+    ///  "description": "Simple message response schema.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "message"
+    ///  ],
+    ///  "properties": {
+    ///    "message": {
+    ///      "title": "Message",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SimpleMessage {
         pub message: ::std::string::String,
     }
 
     ///`SkillBundleChunk`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SkillBundleChunk",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "archive_size",
+    ///    "chunk_count",
+    ///    "chunk_index",
+    ///    "content_base64",
+    ///    "digest",
+    ///    "kind"
+    ///  ],
+    ///  "properties": {
+    ///    "archive_size": {
+    ///      "title": "Archive Size",
+    ///      "type": "integer",
+    ///      "maximum": 8388608.0,
+    ///      "exclusiveMinimum": 0.0
+    ///    },
+    ///    "chunk_count": {
+    ///      "title": "Chunk Count",
+    ///      "type": "integer",
+    ///      "maximum": 64.0,
+    ///      "exclusiveMinimum": 0.0
+    ///    },
+    ///    "chunk_index": {
+    ///      "title": "Chunk Index",
+    ///      "type": "integer",
+    ///      "exclusiveMaximum": 64.0,
+    ///      "minimum": 0.0
+    ///    },
+    ///    "content_base64": {
+    ///      "title": "SkillBundleChunk_content_base64",
+    ///      "type": "string",
+    ///      "maxLength": 174764
+    ///    },
+    ///    "digest": {
+    ///      "title": "SkillBundleChunk_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[0-9a-f]{64}$"
+    ///    },
+    ///    "kind": {
+    ///      "title": "SkillBundleChunk_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "skill_bundle_chunk"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct SkillBundleChunk {
@@ -10199,6 +20958,17 @@ pub mod types {
     }
 
     ///`SkillBundleChunkContentBase64`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SkillBundleChunk_content_base64",
+    ///  "type": "string",
+    ///  "maxLength": 174764
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct SkillBundleChunkContentBase64(::std::string::String);
@@ -10232,6 +21002,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for SkillBundleChunkContentBase64 {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for SkillBundleChunkContentBase64 {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10255,6 +21034,17 @@ pub mod types {
     }
 
     ///`SkillBundleChunkDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SkillBundleChunk_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[0-9a-f]{64}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct SkillBundleChunkDigest(::std::string::String);
@@ -10290,6 +21080,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for SkillBundleChunkDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for SkillBundleChunkDigest {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10313,6 +21112,19 @@ pub mod types {
     }
 
     ///`SkillBundleChunkKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SkillBundleChunk_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "skill_bundle_chunk"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -10355,6 +21167,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for SkillBundleChunkKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for SkillBundleChunkKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10376,6 +21197,29 @@ pub mod types {
     ///Absent (NULL) when the file's status could not be determined at review
     /// time, or for a `posting_range` finding that has no snapshot row at
     /// all.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SnapshotFileChangeType",
+    ///  "description": "Whether the file the finding sits in was added or
+    /// modified by the MR.\n\nDrives how the detail page tints the finding's
+    /// lines: a newly-added file\nreads as green (its lines are additions,
+    /// matching the provider's own diff),\na modified file reads as a red
+    /// \"current\" line the fix replaces. Stored as its\nstring value in a
+    /// VARCHAR column, never a native Postgres enum, so\nUPPER()/LOWER() and
+    /// enum-type migrations (DB-02) never enter the picture.\n\nAbsent (NULL)
+    /// when the file's status could not be determined at review time,\nor for a
+    /// `posting_range` finding that has no snapshot row at all.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "added",
+    ///    "modified"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -10422,6 +21266,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for SnapshotFileChangeType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for SnapshotFileChangeType {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10432,6 +21285,20 @@ pub mod types {
     }
 
     ///`SortOrder`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SortOrder",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "asc",
+    ///    "desc"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -10478,6 +21345,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for SortOrder {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for SortOrder {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10488,6 +21364,27 @@ pub mod types {
     }
 
     ///`StartWorkerConformanceRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "StartWorkerConformanceRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct StartWorkerConformanceRequest {
@@ -10498,34 +21395,117 @@ pub mod types {
     ///
     ///The selected custom agent is an identity reference and is independent
     /// from the model selection.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SubmitHeadlessRunRequest",
+    ///  "description": "Body for `POST /cli/runs`.\n\nThe selected custom agent is an identity reference and is independent from\nthe model selection.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "prompt",
+    ///    "selection"
+    ///  ],
+    ///  "properties": {
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "description": "Optional. Continue this existing conversation (a
+    /// run is attached to it) instead of creating a new one. Must belong to the
+    /// authenticated workspace and be a chat-type conversation (HEADLESS or
+    /// CHAT).",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "idempotency_key": {
+    ///      "title": "SubmitHeadlessRunRequest_idempotency_key",
+    ///      "description": "Optional caller-supplied key (workspace-scoped). A
+    /// retried submit with the same key returns the original run instead of
+    /// creating a duplicate. Omit for at-least-once submit.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 255
+    ///    },
+    ///    "prompt": {
+    ///      "title": "SubmitHeadlessRunRequest_prompt",
+    ///      "type": "string",
+    ///      "maxLength": 50000,
+    ///      "minLength": 1
+    ///    },
+    ///    "selected_agent_reference": {
+    ///      "title": "Selected Agent Reference",
+    ///      "description": "Optional custom-agent UUID or alias. It is resolved
+    /// in the authenticated workspace before the run is reserved.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "selection": {
+    ///      "$ref": "#/components/schemas/SavedSelection"
+    ///    },
+    ///    "source_conversation_id": {
+    ///      "title": "Source Conversation Id",
+    ///      "description": "Optional. The AGENT_CLI conversation whose terminal
+    /// watches this run. Only for a new run: it cannot be combined with
+    /// `conversation_id`. Must belong to the authenticated workspace.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SubmitHeadlessRunRequest {
         ///Optional. Continue this existing conversation (a run is attached to
         /// it) instead of creating a new one. Must belong to the authenticated
         /// workspace and be a chat-type conversation (HEADLESS or CHAT).
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub conversation_id: ::std::option::Option<::uuid::Uuid>,
         ///Optional caller-supplied key (workspace-scoped). A retried submit
         /// with the same key returns the original run instead of creating a
         /// duplicate. Omit for at-least-once submit.
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub idempotency_key: ::std::option::Option<SubmitHeadlessRunRequestIdempotencyKey>,
         pub prompt: SubmitHeadlessRunRequestPrompt,
         ///Optional custom-agent UUID or alias. It is resolved in the
         /// authenticated workspace before the run is reserved.
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub selected_agent_reference: ::std::option::Option<::std::string::String>,
         pub selection: SavedSelection,
         ///Optional. The AGENT_CLI conversation whose terminal watches this
         /// run. Only for a new run: it cannot be combined with
         /// `conversation_id`. Must belong to the authenticated workspace.
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub source_conversation_id: ::std::option::Option<::uuid::Uuid>,
     }
 
     ///Optional caller-supplied key (workspace-scoped). A retried submit with
     /// the same key returns the original run instead of creating a duplicate.
     /// Omit for at-least-once submit.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SubmitHeadlessRunRequest_idempotency_key",
+    ///  "description": "Optional caller-supplied key (workspace-scoped). A
+    /// retried submit with the same key returns the original run instead of
+    /// creating a duplicate. Omit for at-least-once submit.",
+    ///  "type": "string",
+    ///  "maxLength": 255
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct SubmitHeadlessRunRequestIdempotencyKey(::std::string::String);
@@ -10559,6 +21539,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for SubmitHeadlessRunRequestIdempotencyKey {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for SubmitHeadlessRunRequestIdempotencyKey {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10582,6 +21571,18 @@ pub mod types {
     }
 
     ///`SubmitHeadlessRunRequestPrompt`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SubmitHeadlessRunRequest_prompt",
+    ///  "type": "string",
+    ///  "maxLength": 50000,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct SubmitHeadlessRunRequestPrompt(::std::string::String);
@@ -10618,6 +21619,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for SubmitHeadlessRunRequestPrompt {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for SubmitHeadlessRunRequestPrompt {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10641,6 +21651,32 @@ pub mod types {
     }
 
     ///Active surface-item count for one asset type, for the summary chips.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SurfaceAssetTypeCount",
+    ///  "description": "Active surface-item count for one asset type, for the
+    /// summary chips.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "active_count",
+    ///    "asset_type"
+    ///  ],
+    ///  "properties": {
+    ///    "active_count": {
+    ///      "title": "Active Count",
+    ///      "type": "integer"
+    ///    },
+    ///    "asset_type": {
+    ///      "title": "Asset Type",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SurfaceAssetTypeCount {
         pub active_count: i64,
@@ -10652,6 +21688,49 @@ pub mod types {
     ///`data`/`meta` describe the current page of ACTIVE surface items;
     /// `counts` carries the full per-asset-type active totals (independent
     /// of pagination) so the summary chips stay accurate across pages.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SurfaceItemListResponse",
+    ///  "description": "Response shape for GET
+    /// /appsec/apps/{app_id}/surface.\n\n`data`/`meta` describe the current
+    /// page of ACTIVE surface items; `counts`\ncarries the full per-asset-type
+    /// active totals (independent of pagination) so\nthe summary chips stay
+    /// accurate across pages.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "counts",
+    ///    "data",
+    ///    "meta",
+    ///    "summary"
+    ///  ],
+    ///  "properties": {
+    ///    "counts": {
+    ///      "title": "Counts",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/SurfaceAssetTypeCount"
+    ///      }
+    ///    },
+    ///    "data": {
+    ///      "title": "Data",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/SurfaceItemPublic"
+    ///      }
+    ///    },
+    ///    "meta": {
+    ///      "$ref": "#/components/schemas/PaginationMeta"
+    ///    },
+    ///    "summary": {
+    ///      "$ref": "#/components/schemas/SurfaceSummary"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SurfaceItemListResponse {
         pub counts: ::std::vec::Vec<SurfaceAssetTypeCount>,
@@ -10660,7 +21739,81 @@ pub mod types {
         pub summary: SurfaceSummary,
     }
 
-    ///Response shape for one backend-backed AppSec surface item.
+    ///Response shape for one backend-backed Cyber surface item.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SurfaceItemPublic",
+    ///  "description": "Response shape for one backend-backed Cyber surface
+    /// item.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "app_id",
+    ///    "asset_type",
+    ///    "created_at",
+    ///    "first_seen_run",
+    ///    "id",
+    ///    "last_seen_run",
+    ///    "locator",
+    ///    "properties",
+    ///    "source"
+    ///  ],
+    ///  "properties": {
+    ///    "app_id": {
+    ///      "title": "App Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "asset_type": {
+    ///      "title": "Asset Type",
+    ///      "type": "string"
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "first_seen_run": {
+    ///      "title": "First Seen Run",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "last_seen_run": {
+    ///      "title": "Last Seen Run",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "locator": {
+    ///      "title": "Locator",
+    ///      "type": "string"
+    ///    },
+    ///    "open_finding_count": {
+    ///      "title": "Open Finding Count",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "properties": {
+    ///      "title": "Properties",
+    ///      "type": "object",
+    ///      "additionalProperties": true
+    ///    },
+    ///    "source": {
+    ///      "$ref": "#/components/schemas/SurfaceSource"
+    ///    },
+    ///    "surface_status": {
+    ///      "$ref": "#/components/schemas/SurfaceStatus"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SurfaceItemPublic {
         pub app_id: ::uuid::Uuid,
@@ -10674,11 +21827,38 @@ pub mod types {
         pub open_finding_count: i64,
         pub properties: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
         pub source: SurfaceSource,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub surface_status: ::std::option::Option<SurfaceStatus>,
     }
 
     ///The OWASP attack-surface overview an agent authors themes against.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SurfacePublic",
+    ///  "description": "The OWASP attack-surface overview an agent authors
+    /// themes against.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "plan_id",
+    ///    "surface"
+    ///  ],
+    ///  "properties": {
+    ///    "plan_id": {
+    ///      "title": "Plan Id",
+    ///      "type": "string"
+    ///    },
+    ///    "surface": {
+    ///      "title": "Surface",
+    ///      "type": "object",
+    ///      "additionalProperties": true
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SurfacePublic {
         pub plan_id: ::std::string::String,
@@ -10686,6 +21866,21 @@ pub mod types {
     }
 
     ///Sortable columns for the surface list endpoint.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SurfaceSort",
+    ///  "description": "Sortable columns for the surface list endpoint.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "locator",
+    ///    "created_at"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -10732,6 +21927,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for SurfaceSort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for SurfaceSort {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10758,6 +21962,33 @@ pub mod types {
     ///`last_seen_run` stamp plus the agent's free-text notes in `properties`;
     /// it is deliberately NOT a stored state (absence from a run proves
     /// nothing).
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SurfaceSource",
+    ///  "description": "Where a surface item came from — its PROVENANCE, not
+    /// its liveness.\n\nLiveness (\"is it still there?\") is unknowable to a
+    /// black-box probe, so we\ndo NOT encode it as a status. We encode the one
+    /// thing that IS provable and\nthat carries real risk — where the endpoint
+    /// was found (matches how ASM /\nAPI-discovery tools model shadow vs
+    /// documented surface):\n\n- DOCUMENTED — declared in the app's
+    /// spec/context (OpenAPI, runbook, links).\n               The expected,
+    /// known surface.\n- SHADOW     — discovered by the agent probing/crawling
+    /// but ABSENT from the\n               docs. Undocumented attack surface —
+    /// the high-value signal.\n\nA row is never deleted, never hidden, never
+    /// downgraded. Freshness is the\n`last_seen_run` stamp plus the agent's
+    /// free-text notes in `properties`; it\nis deliberately NOT a stored state
+    /// (absence from a run proves nothing).",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "documented",
+    ///    "shadow"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -10804,6 +22035,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for SurfaceSource {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for SurfaceSource {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10814,6 +22054,22 @@ pub mod types {
     }
 
     ///Rendered test posture for one surface row.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SurfaceStatus",
+    ///  "description": "Rendered test posture for one surface row.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "findings",
+    ///    "tested_clean",
+    ///    "untested"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -10864,6 +22120,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for SurfaceStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for SurfaceStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10874,7 +22139,41 @@ pub mod types {
     }
 
     ///Backend-owned summary for the search-filtered attack surface.
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug, Default)]
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SurfaceSummary",
+    ///  "description": "Backend-owned summary for the search-filtered attack
+    /// surface.",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "open_findings": {
+    ///      "title": "Open Findings",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "tested_clean": {
+    ///      "title": "Tested Clean",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "total": {
+    ///      "title": "Total",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "untested": {
+    ///      "title": "Untested",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SurfaceSummary {
         #[serde(default)]
         pub open_findings: i64,
@@ -10886,7 +22185,68 @@ pub mod types {
         pub untested: i64,
     }
 
+    impl ::std::default::Default for SurfaceSummary {
+        fn default() -> Self {
+            Self {
+                open_findings: Default::default(),
+                tested_clean: Default::default(),
+                total: Default::default(),
+                untested: Default::default(),
+            }
+        }
+    }
+
     ///`TargetConnectionHealth`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionHealth",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "credential_generation",
+    ///    "manifest_digest",
+    ///    "manifest_revision",
+    ///    "state",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "credential_generation": {
+    ///      "title": "Credential Generation",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "manifest_digest": {
+    ///      "title": "TargetConnectionHealth_manifest_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
+    ///    "manifest_revision": {
+    ///      "title": "Manifest Revision",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "state": {
+    ///      "title": "TargetConnectionHealth_state",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "ready",
+    ///        "offline",
+    ///        "missing",
+    ///        "invalid"
+    ///      ]
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct TargetConnectionHealth {
@@ -10898,6 +22258,17 @@ pub mod types {
     }
 
     ///`TargetConnectionHealthManifestDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionHealth_manifest_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[a-f0-9]{64}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct TargetConnectionHealthManifestDigest(::std::string::String);
@@ -10933,6 +22304,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionHealthManifestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionHealthManifestDigest {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -10956,6 +22336,22 @@ pub mod types {
     }
 
     ///`TargetConnectionHealthState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionHealth_state",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "ready",
+    ///    "offline",
+    ///    "missing",
+    ///    "invalid"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -11010,6 +22406,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionHealthState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionHealthState {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11020,6 +22425,77 @@ pub mod types {
     }
 
     ///`TargetConnectionPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "alias",
+    ///    "approved",
+    ///    "credential_generation",
+    ///    "identity",
+    ///    "kind",
+    ///    "manifest_digest",
+    ///    "manifest_revision",
+    ///    "state",
+    ///    "tools"
+    ///  ],
+    ///  "properties": {
+    ///    "alias": {
+    ///      "title": "TargetConnectionPublic_alias",
+    ///      "type": "string",
+    ///      "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///    },
+    ///    "approved": {
+    ///      "title": "Approved",
+    ///      "type": "boolean"
+    ///    },
+    ///    "credential_generation": {
+    ///      "title": "Credential Generation",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "identity": {
+    ///      "title": "TargetConnectionPublic_identity",
+    ///      "type": "string",
+    ///      "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///    },
+    ///    "kind": {
+    ///      "title": "TargetConnectionPublic_kind",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "builtin",
+    ///        "mcp"
+    ///      ]
+    ///    },
+    ///    "manifest_digest": {
+    ///      "title": "TargetConnectionPublic_manifest_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
+    ///    "manifest_revision": {
+    ///      "title": "Manifest Revision",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "state": {
+    ///      "$ref": "#/components/schemas/TargetConnectionState"
+    ///    },
+    ///    "tools": {
+    ///      "title": "Tools",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/TargetToolMapping"
+    ///      }
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct TargetConnectionPublic {
@@ -11035,6 +22511,17 @@ pub mod types {
     }
 
     ///`TargetConnectionPublicAlias`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionPublic_alias",
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct TargetConnectionPublicAlias(::std::string::String);
@@ -11072,6 +22559,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionPublicAlias {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionPublicAlias {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11095,6 +22591,17 @@ pub mod types {
     }
 
     ///`TargetConnectionPublicIdentity`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionPublic_identity",
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct TargetConnectionPublicIdentity(::std::string::String);
@@ -11132,6 +22639,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionPublicIdentity {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionPublicIdentity {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11155,6 +22671,20 @@ pub mod types {
     }
 
     ///`TargetConnectionPublicKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionPublic_kind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "builtin",
+    ///    "mcp"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -11201,6 +22731,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionPublicKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionPublicKind {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11211,6 +22750,17 @@ pub mod types {
     }
 
     ///`TargetConnectionPublicManifestDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionPublic_manifest_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[a-f0-9]{64}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct TargetConnectionPublicManifestDigest(::std::string::String);
@@ -11246,6 +22796,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionPublicManifestDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionPublicManifestDigest {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11269,6 +22828,24 @@ pub mod types {
     }
 
     ///`TargetConnectionState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetConnectionState",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "pending",
+    ///    "ready",
+    ///    "rotation_required",
+    ///    "revoked",
+    ///    "schema_mismatch",
+    ///    "offline"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -11331,6 +22908,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetConnectionState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TargetConnectionState {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11341,6 +22927,62 @@ pub mod types {
     }
 
     ///`TargetToolMapping`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetToolMapping",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "canonical_skill",
+    ///    "effect",
+    ///    "input_schema_digest",
+    ///    "provider_name",
+    ///    "requires_user_approval",
+    ///    "tool_key"
+    ///  ],
+    ///  "properties": {
+    ///    "canonical_skill": {
+    ///      "title": "TargetToolMapping_canonical_skill",
+    ///      "type": "string",
+    ///      "pattern": "^[a-z][a-z0-9_.-]{0,63}/[a-z][a-z0-9_.-]{0,63}$"
+    ///    },
+    ///    "effect": {
+    ///      "title": "TargetToolMapping_effect",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "read",
+    ///        "write"
+    ///      ]
+    ///    },
+    ///    "input_schema_digest": {
+    ///      "title": "TargetToolMapping_input_schema_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
+    ///    "provider_name": {
+    ///      "title": "TargetToolMapping_provider_name",
+    ///      "type": "string",
+    ///      "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///    },
+    ///    "requires_user_approval": {
+    ///      "title": "Requires User Approval",
+    ///      "type": "boolean"
+    ///    },
+    ///    "tool_key": {
+    ///      "title": "TargetToolMapping_tool_key",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "computer_cli_read",
+    ///        "computer_cli_write"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct TargetToolMapping {
@@ -11353,6 +22995,17 @@ pub mod types {
     }
 
     ///`TargetToolMappingCanonicalSkill`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetToolMapping_canonical_skill",
+    ///  "type": "string",
+    ///  "pattern": "^[a-z][a-z0-9_.-]{0,63}/[a-z][a-z0-9_.-]{0,63}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct TargetToolMappingCanonicalSkill(::std::string::String);
@@ -11394,6 +23047,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetToolMappingCanonicalSkill {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TargetToolMappingCanonicalSkill {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11417,6 +23079,20 @@ pub mod types {
     }
 
     ///`TargetToolMappingEffect`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetToolMapping_effect",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "read",
+    ///    "write"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -11463,6 +23139,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetToolMappingEffect {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TargetToolMappingEffect {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11473,6 +23158,17 @@ pub mod types {
     }
 
     ///`TargetToolMappingInputSchemaDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetToolMapping_input_schema_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[a-f0-9]{64}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct TargetToolMappingInputSchemaDigest(::std::string::String);
@@ -11508,6 +23204,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetToolMappingInputSchemaDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TargetToolMappingInputSchemaDigest {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11531,6 +23236,17 @@ pub mod types {
     }
 
     ///`TargetToolMappingProviderName`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetToolMapping_provider_name",
+    ///  "type": "string",
+    ///  "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]{0,95}$"
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct TargetToolMappingProviderName(::std::string::String);
@@ -11568,6 +23284,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetToolMappingProviderName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TargetToolMappingProviderName {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11591,6 +23316,20 @@ pub mod types {
     }
 
     ///`TargetToolMappingToolKey`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetToolMapping_tool_key",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "computer_cli_read",
+    ///    "computer_cli_write"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -11637,6 +23376,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetToolMappingToolKey {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TargetToolMappingToolKey {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11651,6 +23399,26 @@ pub mod types {
     ///V1 ships domain|ip|cidr. connection (cloud/k8s/db) is included in the
     /// enum so the per-target tool-binding seam can branch on it when infra
     /// audits land — zero migration when that happens.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TargetType",
+    ///  "description": "Target type. The one open plugin axis (§A/§B).\n\nV1
+    /// ships domain|ip|cidr. connection (cloud/k8s/db) is included in the
+    /// enum\nso the per-target tool-binding seam can branch on it when infra
+    /// audits land\n— zero migration when that happens.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "domain",
+    ///    "ip",
+    ///    "cidr",
+    ///    "connection"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -11705,6 +23473,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TargetType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TargetType {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11731,6 +23508,36 @@ pub mod types {
     /// tool declares the same value set as an inline Literal (the repo
     /// prefers inline Literals in model-visible schemas over $ref/$defs); a
     /// parity test pins the two equal.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TicketComplianceStatus",
+    ///  "description": "How well the MR satisfies its linked ticket's
+    /// acceptance criteria.\n\nOnly meaningful when the review found a linked
+    /// Jira/Linear ticket and read\nits acceptance criteria (the reviewer
+    /// already fetches these via the\nreviewing-jira / reviewing-linear skill).
+    /// Absent (NULL) when no ticket was\nlinked — the detail's compliance card
+    /// then hides rather than claiming\ncoverage it never assessed.\n\nStored
+    /// as its string value in a VARCHAR column, never a native Postgres\nenum,
+    /// so UPPER()/LOWER() and enum-type migrations (DB-02) never enter
+    /// the\npicture — same treatment as the sibling SnapshotFileChangeType.
+    /// Lives here\n(data/models) rather than in api/schemas so the column can
+    /// be typed with it\nand the write path stops passing bare strings;
+    /// api/schemas re-exports it for\nthe response model. The agent-facing tool
+    /// declares the same value set as an\ninline Literal (the repo prefers
+    /// inline Literals in model-visible schemas\nover $ref/$defs); a parity
+    /// test pins the two equal.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "fully",
+    ///    "partially",
+    ///    "not_compliant"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -11781,6 +23588,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TicketComplianceStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TicketComplianceStatus {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11791,43 +23607,184 @@ pub mod types {
     }
 
     ///`Token`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Token",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "access_token",
+    ///    "refresh_token"
+    ///  ],
+    ///  "properties": {
+    ///    "access_token": {
+    ///      "title": "Access Token",
+    ///      "type": "string"
+    ///    },
+    ///    "app_id": {
+    ///      "title": "App Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "backup_codes_remaining": {
+    ///      "title": "Backup Codes Remaining",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "device_trust_token": {
+    ///      "title": "Device Trust Token",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "expires_at": {
+    ///      "title": "Expires At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "invitation_accepted": {
+    ///      "title": "Invitation Accepted",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "is_first_login": {
+    ///      "title": "Is First Login",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "mfa_session_token": {
+    ///      "title": "Mfa Session Token",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "organization_id": {
+    ///      "title": "Organization Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "organizations": {
+    ///      "title": "Organizations",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/UserOrganizationMinimal"
+    ///      }
+    ///    },
+    ///    "refresh_token": {
+    ///      "title": "Refresh Token",
+    ///      "type": "string"
+    ///    },
+    ///    "slack_oauth": {
+    ///      "title": "Slack Oauth",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "team_id": {
+    ///      "title": "Team Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "token_type": {
+    ///      "title": "Token Type",
+    ///      "default": "bearer",
+    ///      "type": "string"
+    ///    },
+    ///    "warnings": {
+    ///      "title": "Warnings",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "object",
+    ///        "additionalProperties": true
+    ///      }
+    ///    },
+    ///    "workspace_id": {
+    ///      "title": "Workspace Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct Token {
         pub access_token: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub app_id: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub backup_codes_remaining: ::std::option::Option<i64>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub device_trust_token: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub expires_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         #[serde(default)]
         pub invitation_accepted: bool,
         #[serde(default)]
         pub is_first_login: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub mfa_session_token: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub organization_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub organizations: ::std::option::Option<::std::vec::Vec<UserOrganizationMinimal>>,
         pub refresh_token: ::std::string::String,
         #[serde(default)]
         pub slack_oauth: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub team_id: ::std::option::Option<::std::string::String>,
         #[serde(default = "defaults::token_token_type")]
         pub token_type: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub warnings: ::std::option::Option<
             ::std::vec::Vec<::serde_json::Map<::std::string::String, ::serde_json::Value>>,
         >,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub workspace_id: ::std::option::Option<::uuid::Uuid>,
     }
 
     ///`TriageAssessment`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TriageAssessment",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "pending",
+    ///    "no_action_needed",
+    ///    "issue",
+    ///    "incident_warranted",
+    ///    "inconclusive"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -11886,6 +23843,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TriageAssessment {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TriageAssessment {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11914,6 +23880,36 @@ pub mod types {
     ///
     ///Cleared to NONE by sync() when the agent resolves the finding — the
     /// question this was tracking is settled.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "TriageState",
+    ///  "description": "Human work-tracking on an open finding — NOT a finding
+    /// status.\n\nAnswers \"is a person working this?\", which `FindingStatus`
+    /// cannot: a finding\nis equally OPEN whether nobody has looked at it or an
+    /// engineer has been\nfixing it all week. The two axes compose into the
+    /// UI's triage rail\n(open+NONE = \"needs triage\", open+IN_PROGRESS,
+    /// open+AWAITING_RETEST,\nresolved = \"verified fixed\"). A human
+    /// reconfirming a NEEDS_VERIFICATION\nlead reuses AWAITING_RETEST — it
+    /// flags the finding for the next scan, no new\nTriageState value is minted
+    /// for it.\n\nOwnership is strictly split: the agent owns `status`
+    /// (mirrored from the\napp-memory folder at sync()), a human owns this. A
+    /// human value can never sit\nin `status` — sync() rewrites that column
+    /// from the tree every run and would\ndestroy it. AWAITING_RETEST is a
+    /// LABEL, not a trigger: it flags the finding\nfor the next scan, it does
+    /// not launch one.\n\nCleared to NONE by sync() when the agent resolves the
+    /// finding — the question\nthis was tracking is settled.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "none",
+    ///    "in_progress",
+    ///    "awaiting_retest"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -11964,6 +23960,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for TriageState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for TriageState {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -11974,6 +23979,53 @@ pub mod types {
     }
 
     ///`UploadWorkerArtifactRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "UploadWorkerArtifactRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "content_base64",
+    ///    "fence_token",
+    ///    "lease_token",
+    ///    "token",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "content_base64": {
+    ///      "title": "UploadWorkerArtifactRequest_content_base64",
+    ///      "type": "string",
+    ///      "maxLength": 1866672
+    ///    },
+    ///    "fence_token": {
+    ///      "title": "Fence Token",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "lease_token": {
+    ///      "title": "Lease Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "token": {
+    ///      "title": "Token",
+    ///      "writeOnly": true,
+    ///      "type": "string",
+    ///      "format": "password"
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct UploadWorkerArtifactRequest {
@@ -11985,6 +24037,17 @@ pub mod types {
     }
 
     ///`UploadWorkerArtifactRequestContentBase64`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "UploadWorkerArtifactRequest_content_base64",
+    ///  "type": "string",
+    ///  "maxLength": 1866672
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct UploadWorkerArtifactRequestContentBase64(::std::string::String);
@@ -12018,6 +24081,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for UploadWorkerArtifactRequestContentBase64 {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for UploadWorkerArtifactRequestContentBase64 {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -12041,6 +24113,38 @@ pub mod types {
     }
 
     ///Minimal organization info for user's organization list
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "UserOrganizationMinimal",
+    ///  "description": "Minimal organization info for user's organization
+    /// list",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "id",
+    ///    "is_owner",
+    ///    "name"
+    ///  ],
+    ///  "properties": {
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "is_owner": {
+    ///      "title": "Is Owner",
+    ///      "type": "boolean"
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct UserOrganizationMinimal {
         pub id: ::uuid::Uuid,
@@ -12049,6 +24153,51 @@ pub mod types {
     }
 
     ///A bounded plan: the host's whole to-do list for one run.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkPlanPublic",
+    ///  "description": "A bounded plan: the host's whole to-do list for one
+    /// run.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "plan_id",
+    ///    "rows",
+    ///    "run_id",
+    ///    "schema_version",
+    ///    "target_ref"
+    ///  ],
+    ///  "properties": {
+    ///    "plan_id": {
+    ///      "title": "Plan Id",
+    ///      "type": "string"
+    ///    },
+    ///    "rows": {
+    ///      "title": "Rows",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/PlanCheckPublic"
+    ///      }
+    ///    },
+    ///    "run_id": {
+    ///      "title": "Run Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "schema_version": {
+    ///      "title": "Schema Version",
+    ///      "type": "integer"
+    ///    },
+    ///    "target_ref": {
+    ///      "title": "Target Ref",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct WorkPlanPublic {
         pub plan_id: ::std::string::String,
@@ -12059,6 +24208,36 @@ pub mod types {
     }
 
     ///`WorkerArtifactPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerArtifactPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "digest",
+    ///    "path",
+    ///    "size"
+    ///  ],
+    ///  "properties": {
+    ///    "digest": {
+    ///      "title": "Digest",
+    ///      "type": "string"
+    ///    },
+    ///    "path": {
+    ///      "title": "Path",
+    ///      "type": "string"
+    ///    },
+    ///    "size": {
+    ///      "title": "Size",
+    ///      "type": "integer"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct WorkerArtifactPublic {
@@ -12068,6 +24247,43 @@ pub mod types {
     }
 
     ///`WorkerBootstrap`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerBootstrap",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "credential",
+    ///    "credential_generation",
+    ///    "expires_at",
+    ///    "target_id"
+    ///  ],
+    ///  "properties": {
+    ///    "credential": {
+    ///      "title": "Credential",
+    ///      "type": "string"
+    ///    },
+    ///    "credential_generation": {
+    ///      "title": "Credential Generation",
+    ///      "type": "integer"
+    ///    },
+    ///    "expires_at": {
+    ///      "title": "Expires At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "target_id": {
+    ///      "title": "Target Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct WorkerBootstrap {
@@ -12078,6 +24294,32 @@ pub mod types {
     }
 
     ///`WorkerConformancePublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerConformancePublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "complete",
+    ///    "session_id"
+    ///  ],
+    ///  "properties": {
+    ///    "complete": {
+    ///      "title": "Complete",
+    ///      "type": "boolean"
+    ///    },
+    ///    "session_id": {
+    ///      "title": "Session Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct WorkerConformancePublic {
@@ -12086,6 +24328,36 @@ pub mod types {
     }
 
     ///`WorkerHeartbeatRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerHeartbeatRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "state",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "state": {
+    ///      "title": "WorkerHeartbeatRequest_state",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "online",
+    ///        "draining"
+    ///      ]
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct WorkerHeartbeatRequest {
@@ -12094,6 +24366,20 @@ pub mod types {
     }
 
     ///`WorkerHeartbeatRequestState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerHeartbeatRequest_state",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "online",
+    ///    "draining"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -12140,6 +24426,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkerHeartbeatRequestState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for WorkerHeartbeatRequestState {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -12150,6 +24445,55 @@ pub mod types {
     }
 
     ///`WorkerOperationResult`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerOperationResult",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "content_base64",
+    ///    "state",
+    ///    "status_code"
+    ///  ],
+    ///  "properties": {
+    ///    "content_base64": {
+    ///      "title": "WorkerOperationResult_content_base64",
+    ///      "type": "string",
+    ///      "maxLength": 2796204
+    ///    },
+    ///    "content_type": {
+    ///      "title": "WorkerOperationResult_content_type",
+    ///      "default": "application/json",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "application/json",
+    ///        "text/plain",
+    ///        "application/octet-stream",
+    ///        "application/pdf"
+    ///      ]
+    ///    },
+    ///    "state": {
+    ///      "title": "WorkerOperationResult_state",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "succeeded",
+    ///        "failed",
+    ///        "cancelled"
+    ///      ]
+    ///    },
+    ///    "status_code": {
+    ///      "title": "Status Code",
+    ///      "type": "integer",
+    ///      "maximum": 599.0,
+    ///      "minimum": 100.0
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct WorkerOperationResult {
@@ -12161,6 +24505,17 @@ pub mod types {
     }
 
     ///`WorkerOperationResultContentBase64`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerOperationResult_content_base64",
+    ///  "type": "string",
+    ///  "maxLength": 2796204
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct WorkerOperationResultContentBase64(::std::string::String);
@@ -12194,6 +24549,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkerOperationResultContentBase64 {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for WorkerOperationResultContentBase64 {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -12217,6 +24581,23 @@ pub mod types {
     }
 
     ///`WorkerOperationResultContentType`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerOperationResult_content_type",
+    ///  "default": "application/json",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "application/json",
+    ///    "text/plain",
+    ///    "application/octet-stream",
+    ///    "application/pdf"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -12271,6 +24652,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkerOperationResultContentType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for WorkerOperationResultContentType {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -12287,6 +24677,21 @@ pub mod types {
     }
 
     ///`WorkerOperationResultState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerOperationResult_state",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "succeeded",
+    ///    "failed",
+    ///    "cancelled"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -12337,6 +24742,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkerOperationResultState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for WorkerOperationResultState {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -12347,6 +24761,42 @@ pub mod types {
     }
 
     ///`WorkerPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "max_assignments",
+    ///    "state",
+    ///    "target_id",
+    ///    "worker_id"
+    ///  ],
+    ///  "properties": {
+    ///    "max_assignments": {
+    ///      "title": "Max Assignments",
+    ///      "type": "integer"
+    ///    },
+    ///    "state": {
+    ///      "$ref": "#/components/schemas/WorkerState"
+    ///    },
+    ///    "target_id": {
+    ///      "title": "Target Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "worker_id": {
+    ///      "title": "Worker Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct WorkerPublic {
@@ -12357,6 +24807,26 @@ pub mod types {
     }
 
     ///`WorkerRegistrationIssue`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerRegistrationIssue",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "max_assignments": {
+    ///      "title": "Max Assignments",
+    ///      "default": 1,
+    ///      "type": "integer",
+    ///      "maximum": 64.0,
+    ///      "minimum": 1.0
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct WorkerRegistrationIssue {
@@ -12373,6 +24843,32 @@ pub mod types {
     }
 
     ///`WorkerRegistrationReference`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerRegistrationReference",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "expires_at",
+    ///    "reference"
+    ///  ],
+    ///  "properties": {
+    ///    "expires_at": {
+    ///      "title": "Expires At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "reference": {
+    ///      "title": "Reference",
+    ///      "type": "string"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct WorkerRegistrationReference {
@@ -12381,6 +24877,22 @@ pub mod types {
     }
 
     ///`WorkerState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerState",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "registered",
+    ///    "online",
+    ///    "draining",
+    ///    "offline"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -12435,6 +24947,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkerState {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for WorkerState {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -12445,31 +24966,203 @@ pub mod types {
     }
 
     ///`WorkspaceCreate`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspaceCreate",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "name"
+    ///  ],
+    ///  "properties": {
+    ///    "description": {
+    ///      "title": "Description",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "organization_name": {
+    ///      "title": "Organization Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct WorkspaceCreate {
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub description: ::std::option::Option<::std::string::String>,
         pub name: ::std::string::String,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub organization_name: ::std::option::Option<::std::string::String>,
     }
 
     ///`WorkspacePublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspacePublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "id",
+    ///    "is_default",
+    ///    "name"
+    ///  ],
+    ///  "properties": {
+    ///    "auto_mode_enabled": {
+    ///      "title": "Auto Mode Enabled",
+    ///      "default": true,
+    ///      "type": "boolean"
+    ///    },
+    ///    "brand_chart_colors": {
+    ///      "title": "Brand Chart Colors",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "brand_company_name": {
+    ///      "title": "Brand Company Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "brand_logo_storage_key": {
+    ///      "title": "Brand Logo Storage Key",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "brand_primary_color": {
+    ///      "title": "Brand Primary Color",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "description": {
+    ///      "title": "WorkspacePublic_description",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 1000
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "interrupt_approver_ids": {
+    ///      "title": "Interrupt Approver Ids",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string",
+    ///        "format": "uuid"
+    ///      }
+    ///    },
+    ///    "is_default": {
+    ///      "title": "Is Default",
+    ///      "type": "boolean"
+    ///    },
+    ///    "is_deleted": {
+    ///      "title": "Is Deleted",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "member_count": {
+    ///      "title": "Member Count",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "name": {
+    ///      "title": "WorkspacePublic_name",
+    ///      "type": "string",
+    ///      "maxLength": 255,
+    ///      "minLength": 1
+    ///    },
+    ///    "notification_additional_emails": {
+    ///      "title": "Notification Additional Emails",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "organization_id": {
+    ///      "title": "Organization Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "organization_name": {
+    ///      "title": "Organization Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "owner_id": {
+    ///      "title": "Owner Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "pulse_auto_subscribe": {
+    ///      "title": "Pulse Auto Subscribe",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "updated_at": {
+    ///      "title": "Updated At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct WorkspacePublic {
         #[serde(default = "defaults::default_bool::<true>")]
         pub auto_mode_enabled: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub brand_chart_colors: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub brand_company_name: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub brand_logo_storage_key: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub brand_primary_color: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub created_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub description: ::std::option::Option<WorkspacePublicDescription>,
         pub id: ::uuid::Uuid,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
@@ -12482,19 +25175,30 @@ pub mod types {
         pub name: WorkspacePublicName,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub notification_additional_emails: ::std::vec::Vec<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub organization_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub organization_name: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub owner_id: ::std::option::Option<::uuid::Uuid>,
         #[serde(default)]
         pub pulse_auto_subscribe: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub updated_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
     }
 
     ///`WorkspacePublicDescription`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspacePublic_description",
+    ///  "type": "string",
+    ///  "maxLength": 1000
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct WorkspacePublicDescription(::std::string::String);
@@ -12528,6 +25232,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkspacePublicDescription {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for WorkspacePublicDescription {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -12551,6 +25264,18 @@ pub mod types {
     }
 
     ///`WorkspacePublicName`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspacePublic_name",
+    ///  "type": "string",
+    ///  "maxLength": 255,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct WorkspacePublicName(::std::string::String);
@@ -12583,6 +25308,15 @@ pub mod types {
     impl ::std::convert::TryFrom<&str> for WorkspacePublicName {
         type Error = self::error::ConversionError;
         fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkspacePublicName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
     }
@@ -12622,6 +25356,31 @@ pub mod types {
     /// - ORG_OWNER/ORG_ADMIN inherit to ADMIN in all workspaces
     /// - ORG_DEVELOPER inherits to DEVELOPER in all workspaces
     /// - ORG_VIEWER inherits to VIEWER in all workspaces
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspaceRole",
+    ///  "description": "Workspace-level roles for RBAC.\n\nRole hierarchy
+    /// (highest to lowest):\n- ADMIN: Full control within workspace\n-
+    /// DEVELOPER: Can use chat, view resources, manage recommendations\n-
+    /// VIEWER: Read-only access\n- SYSTEM: The workspace's own non-login actor
+    /// for background work; never assignable\n\nNote: OWNER is deprecated. Use
+    /// organization-level roles instead:\n- ORG_OWNER/ORG_ADMIN inherit to
+    /// ADMIN in all workspaces\n- ORG_DEVELOPER inherits to DEVELOPER in all
+    /// workspaces\n- ORG_VIEWER inherits to VIEWER in all workspaces",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "OWNER",
+    ///    "ADMIN",
+    ///    "DEVELOPER",
+    ///    "VIEWER",
+    ///    "SYSTEM"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
     #[derive(
         :: serde :: Deserialize,
         :: serde :: Serialize,
@@ -12680,6 +25439,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkspaceRole {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for WorkspaceRole {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -12690,24 +25458,176 @@ pub mod types {
     }
 
     ///WorkspacePublic with the current user's role in the workspace.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspaceWithRolePublic",
+    ///  "description": "WorkspacePublic with the current user's role in the
+    /// workspace.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "current_user_role",
+    ///    "id",
+    ///    "is_default",
+    ///    "name"
+    ///  ],
+    ///  "properties": {
+    ///    "auto_mode_enabled": {
+    ///      "title": "Auto Mode Enabled",
+    ///      "default": true,
+    ///      "type": "boolean"
+    ///    },
+    ///    "brand_chart_colors": {
+    ///      "title": "Brand Chart Colors",
+    ///      "type": [
+    ///        "array",
+    ///        "null"
+    ///      ],
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "brand_company_name": {
+    ///      "title": "Brand Company Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "brand_logo_storage_key": {
+    ///      "title": "Brand Logo Storage Key",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "brand_primary_color": {
+    ///      "title": "Brand Primary Color",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "cloud_connection_prefixes": {
+    ///      "title": "Cloud Connection Prefixes",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "current_user_role": {
+    ///      "$ref": "#/components/schemas/WorkspaceRole"
+    ///    },
+    ///    "description": {
+    ///      "title": "WorkspaceWithRolePublic_description",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 1000
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "interrupt_approver_ids": {
+    ///      "title": "Interrupt Approver Ids",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string",
+    ///        "format": "uuid"
+    ///      }
+    ///    },
+    ///    "is_default": {
+    ///      "title": "Is Default",
+    ///      "type": "boolean"
+    ///    },
+    ///    "is_deleted": {
+    ///      "title": "Is Deleted",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "member_count": {
+    ///      "title": "Member Count",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "name": {
+    ///      "title": "WorkspaceWithRolePublic_name",
+    ///      "type": "string",
+    ///      "maxLength": 255,
+    ///      "minLength": 1
+    ///    },
+    ///    "notification_additional_emails": {
+    ///      "title": "Notification Additional Emails",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "organization_id": {
+    ///      "title": "Organization Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "organization_name": {
+    ///      "title": "Organization Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "owner_id": {
+    ///      "title": "Owner Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "pulse_auto_subscribe": {
+    ///      "title": "Pulse Auto Subscribe",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "updated_at": {
+    ///      "title": "Updated At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct WorkspaceWithRolePublic {
         #[serde(default = "defaults::default_bool::<true>")]
         pub auto_mode_enabled: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub brand_chart_colors: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub brand_company_name: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub brand_logo_storage_key: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub brand_primary_color: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub cloud_connection_prefixes: ::std::vec::Vec<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub created_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub current_user_role: WorkspaceRole,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub description: ::std::option::Option<WorkspaceWithRolePublicDescription>,
         pub id: ::uuid::Uuid,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
@@ -12720,19 +25640,30 @@ pub mod types {
         pub name: WorkspaceWithRolePublicName,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub notification_additional_emails: ::std::vec::Vec<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub organization_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub organization_name: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub owner_id: ::std::option::Option<::uuid::Uuid>,
         #[serde(default)]
         pub pulse_auto_subscribe: bool,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none")]
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub updated_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
     }
 
     ///`WorkspaceWithRolePublicDescription`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspaceWithRolePublic_description",
+    ///  "type": "string",
+    ///  "maxLength": 1000
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct WorkspaceWithRolePublicDescription(::std::string::String);
@@ -12766,6 +25697,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkspaceWithRolePublicDescription {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for WorkspaceWithRolePublicDescription {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -12789,6 +25729,18 @@ pub mod types {
     }
 
     ///`WorkspaceWithRolePublicName`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspaceWithRolePublic_name",
+    ///  "type": "string",
+    ///  "maxLength": 255,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     #[serde(transparent)]
     pub struct WorkspaceWithRolePublicName(::std::string::String);
@@ -12825,6 +25777,15 @@ pub mod types {
         }
     }
 
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkspaceWithRolePublicName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     impl ::std::convert::TryFrom<::std::string::String> for WorkspaceWithRolePublicName {
         type Error = self::error::ConversionError;
         fn try_from(
@@ -12848,6 +25809,34 @@ pub mod types {
     }
 
     ///List of workspaces with the current user's role.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspacesWithRolePublic",
+    ///  "description": "List of workspaces with the current user's role.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "count",
+    ///    "data"
+    ///  ],
+    ///  "properties": {
+    ///    "count": {
+    ///      "title": "Count",
+    ///      "type": "integer"
+    ///    },
+    ///    "data": {
+    ///      "title": "Data",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/WorkspaceWithRolePublic"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct WorkspacesWithRolePublic {
         pub count: i64,
@@ -12886,13 +25875,13 @@ pub mod types {
             super::AgentCliExecutionStartedStatus::Running
         }
 
-        pub(super) fn app_sec_report_preferences_instructions(
-        ) -> super::AppSecReportPreferencesInstructions {
-            super::AppSecReportPreferencesInstructions("".to_string())
-        }
-
         pub(super) fn code_review_detail_finding_finding_source() -> ::std::string::String {
             "code_review".to_string()
+        }
+
+        pub(super) fn cyber_report_preferences_instructions(
+        ) -> super::CyberReportPreferencesInstructions {
+            super::CyberReportPreferencesInstructions("".to_string())
         }
 
         pub(super) fn loaded_connection_content_cloud_root() -> ::std::string::String {
@@ -12900,7 +25889,7 @@ pub mod types {
         }
 
         pub(super) fn local_run_brief_public_memory_mount() -> ::std::string::String {
-            "./appsec/app-memory".to_string()
+            "./cyber/app-memory".to_string()
         }
 
         pub(super) fn token_token_type() -> ::std::string::String {
@@ -12910,36 +25899,6 @@ pub mod types {
         pub(super) fn worker_operation_result_content_type(
         ) -> super::WorkerOperationResultContentType {
             super::WorkerOperationResultContentType::ApplicationJson
-        }
-    }
-
-    /// Error types.
-    pub mod error {
-        /// Error from a `TryFrom` or `FromStr` implementation.
-        pub struct ConversionError(::std::borrow::Cow<'static, str>);
-        impl ::std::error::Error for ConversionError {}
-        impl ::std::fmt::Display for ConversionError {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> Result<(), ::std::fmt::Error> {
-                ::std::fmt::Display::fmt(&self.0, f)
-            }
-        }
-
-        impl ::std::fmt::Debug for ConversionError {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> Result<(), ::std::fmt::Error> {
-                ::std::fmt::Debug::fmt(&self.0, f)
-            }
-        }
-
-        impl From<&'static str> for ConversionError {
-            fn from(value: &'static str) -> Self {
-                Self(value.into())
-            }
-        }
-
-        impl From<String> for ConversionError {
-            fn from(value: String) -> Self {
-                Self(value.into())
-            }
         }
     }
 }
@@ -13946,7 +26905,7 @@ impl Client {
         take: Option<::std::num::NonZeroU64>,
         triage_state: Option<types::TriageState>,
         workspace_id: Option<&'a ::serde_json::Value>,
-    ) -> Result<ResponseValue<types::AppSecFindingListResponse>, Error<()>> {
+    ) -> Result<ResponseValue<types::CyberFindingListResponse>, Error<()>> {
         let url = format!(
             "{}/api/v1/appsec/apps/{}/findings",
             self.baseurl,
@@ -14229,7 +27188,7 @@ impl Client {
     pub async fn appsec_list_domains<'a>(
         &'a self,
         workspace_id: Option<&'a ::serde_json::Value>,
-    ) -> Result<ResponseValue<types::AppSecDomainListResponse>, Error<()>> {
+    ) -> Result<ResponseValue<types::CyberDomainListResponse>, Error<()>> {
         let url = format!("{}/api/v1/appsec/domains", self.baseurl,);
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(
@@ -14269,8 +27228,8 @@ impl Client {
     pub async fn appsec_create_domain<'a>(
         &'a self,
         workspace_id: Option<&'a ::serde_json::Value>,
-        body: &'a types::AppSecDomainCreate,
-    ) -> Result<ResponseValue<types::AppSecDomainPublic>, Error<()>> {
+        body: &'a types::CyberDomainCreate,
+    ) -> Result<ResponseValue<types::CyberDomainPublic>, Error<()>> {
         let url = format!("{}/api/v1/appsec/domains", self.baseurl,);
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(
@@ -14312,7 +27271,7 @@ impl Client {
         &'a self,
         domain_id: &'a ::uuid::Uuid,
         workspace_id: Option<&'a ::serde_json::Value>,
-    ) -> Result<ResponseValue<types::AppSecDomainPublic>, Error<()>> {
+    ) -> Result<ResponseValue<types::CyberDomainPublic>, Error<()>> {
         let url = format!(
             "{}/api/v1/appsec/domains/{}/check",
             self.baseurl,

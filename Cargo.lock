@@ -500,7 +500,7 @@ dependencies = [
 
 [[package]]
 name = "cloudthinker-cli"
-version = "0.8.0-dev.4"
+version = "0.8.0"
 dependencies = [
  "assert_cmd",
  "axoupdater",
@@ -1904,9 +1904,9 @@ dependencies = [
 
 [[package]]
 name = "progenitor-client"
-version = "0.15.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53034c7e99439e366d243ed9847977d349243a862284d2e509a2abba7d003654"
+checksum = "4e8a874cf25a33cac7a01b9c1de87bcfbc8aea93f3156d09dcc3bee516a78926"
 dependencies = [
  "bytes",
  "futures-core",

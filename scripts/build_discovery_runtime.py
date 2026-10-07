@@ -17,22 +17,22 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI_ROOT = REPO_ROOT / "cli"
 EXECUTOR_SCRIPTS = (
     REPO_ROOT
-    / "executor/app/skills/public/appsec/scan/scripts"
+    / "executor/app/skills/public/cyber/scan/scripts"
 )
 RUNTIME_SOURCE = CLI_ROOT / "crates/cloudthinker-cli/runtime/__main__.py"
 RUNTIME_ASSET = CLI_ROOT / "crates/cloudthinker-cli/runtime/cyber-discovery.pyz"
-BACKEND_PACKAGE = REPO_ROOT / "backend/app/features/appsec/domain/discovery_contract"
-SCHEMA_SOURCE = EXECUTOR_SCRIPTS / "discovery_schema.py"
-LIMITS_SOURCE = EXECUTOR_SCRIPTS / "discovery_limits.py"
+BACKEND_PACKAGE = REPO_ROOT / "backend/app/features/cyber/domain/discovery_contract"
+SCHEMA_SOURCE = EXECUTOR_SCRIPTS / "cyber_discovery_schema.py"
+LIMITS_SOURCE = EXECUTOR_SCRIPTS / "cyber_discovery_limits.py"
 LOCKFILE = REPO_ROOT / "executor/uv.lock"
 COMMON_MODULES = (
-    "appsec_auth.py",
-    "appsec_curl.py",
-    "appsec_routes.py",
-    "appsec_scope.py",
-    "appsec_source_routes.py",
-    "discovery_limits.py",
-    "discovery_schema.py",
+    "cyber_auth.py",
+    "cyber_curl.py",
+    "cyber_routes.py",
+    "cyber_scope.py",
+    "cyber_source_routes.py",
+    "cyber_discovery_limits.py",
+    "cyber_discovery_schema.py",
     "http_methods.py",
 )
 PYTHON_VERSION = (3, 10)
@@ -68,7 +68,7 @@ BACKEND_INIT = (
     "    \"validate_report_gate\",\n"
     "]\n"
 )
-SCHEMA_IMPORT = "from discovery_limits import MODEL_DIGEST_TOKEN_LIMIT"
+SCHEMA_IMPORT = "from cyber_discovery_limits import MODEL_DIGEST_TOKEN_LIMIT"
 SCHEMA_GENERATED_IMPORT = "from .limits import MODEL_DIGEST_TOKEN_LIMIT"
 
 
@@ -169,7 +169,7 @@ def _runtime_sources() -> dict[str, bytes]:
     sources: dict[str, bytes] = {
         "__main__.py": RUNTIME_SOURCE.read_bytes(),
     }
-    package_root = EXECUTOR_SCRIPTS / "appsec_discovery"
+    package_root = EXECUTOR_SCRIPTS / "cyber_discovery"
     for source in sorted(package_root.rglob("*.py")):
         if "__pycache__" in source.parts:
             continue
@@ -178,11 +178,30 @@ def _runtime_sources() -> dict[str, bytes]:
     for name in COMMON_MODULES:
         path = EXECUTOR_SCRIPTS / name
         sources[name] = path.read_bytes()
-    sources["ledger_lib/__init__.py"] = b""
-    sources["ledger_lib/shared.py"] = (
-        EXECUTOR_SCRIPTS / "ledger_lib/shared.py"
+    sources["cyber_state/__init__.py"] = b""
+    sources["cyber_state/shared.py"] = (
+        EXECUTOR_SCRIPTS / "cyber_state/shared.py"
     ).read_bytes()
-    return sources
+    while True:
+        modules = {
+            filename.removesuffix(".py").removesuffix("/__init__").replace("/", ".")
+            for filename in sources
+        }
+        imports = set().union(*(
+            _local_imports(source, filename.removesuffix(".py").removesuffix("/__init__").replace("/", "."))
+            for filename, source in sources.items()
+        ))
+        added = False
+        for module in sorted(imports - modules):
+            module_path = EXECUTOR_SCRIPTS.joinpath(*module.split("."))
+            path = module_path.with_suffix(".py")
+            if not path.is_file():
+                path = module_path / "__init__.py"
+            if path.is_file():
+                sources[path.relative_to(EXECUTOR_SCRIPTS).as_posix()] = path.read_bytes()
+                added = True
+        if not added:
+            return sources
 
 
 def _local_imports(source: bytes, module_name: str) -> set[str]:

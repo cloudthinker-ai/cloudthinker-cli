@@ -7,13 +7,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from appsec_discovery.reporting import _load_report
-from appsec_discovery.runner import run_discovery
-from discovery_limits import (
+from cyber_discovery.reporting import _load_report
+from cyber_discovery.runner import run_discovery
+from cyber_discovery_limits import (
     DEFAULT_DISCOVERY_TIMEOUT_SECONDS,
     DEFAULT_NORMALIZED_CANDIDATES,
 )
-from discovery_schema import VERSION, validate_report
+from cyber_discovery_schema import VERSION, validate_report
 
 
 def build_parser() -> argparse.ArgumentParser:

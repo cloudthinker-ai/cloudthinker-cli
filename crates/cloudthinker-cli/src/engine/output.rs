@@ -975,6 +975,7 @@ fn review_status_label(status: ReviewStatus) -> &'static str {
         ReviewStatus::ReviewComplete => "review complete",
         ReviewStatus::Filtered => "filtered",
         ReviewStatus::Failed => "failed",
+        ReviewStatus::Stopped => "stopped",
     }
 }
 
@@ -985,6 +986,7 @@ fn review_verdict_label(verdict: ReviewVerdict) -> &'static str {
         ReviewVerdict::ReviewSuggested => "review suggested",
         ReviewVerdict::ChangesRequested => "changes requested",
         ReviewVerdict::Failed => "failed",
+        ReviewVerdict::Stopped => "stopped",
         ReviewVerdict::Filtered => "filtered",
     }
 }
@@ -1517,7 +1519,7 @@ mod tests {
             mode: "white".into(),
             intensity: "full".into(),
             scan_mode: "incremental".into(),
-            report_preferences: cloudthinker_client::worker_types::AppSecReportPreferences::default(
+            report_preferences: cloudthinker_client::worker_types::CyberReportPreferences::default(
             ),
             report_reference: None,
             started_at: chrono::DateTime::from_timestamp(0, 0).unwrap(),

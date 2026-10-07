@@ -29,9 +29,9 @@ class DiscoveryRuntimeResourcesTest(unittest.TestCase):
         with zipfile.ZipFile(RUNTIME) as archive:
             names = archive.namelist()
             self.assertIn("__main__.py", names)
-            self.assertIn("appsec_discovery/runner.py", names)
-            self.assertIn("appsec_curl.py", names)
-            self.assertIn("appsec_auth.py", names)
+            self.assertIn("cyber_discovery/runner.py", names)
+            self.assertIn("cyber_curl.py", names)
+            self.assertIn("cyber_auth.py", names)
             self.assertIn("vendor/PyYAML-LICENSE", names)
             self.assertTrue(
                 any(name.startswith("yaml/") and name.endswith(".py") for name in names)

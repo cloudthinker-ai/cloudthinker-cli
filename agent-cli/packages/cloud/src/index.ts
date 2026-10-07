@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 
 import { SettingsManager, getAgentDir } from "@earendil-works/pi-coding-agent";
@@ -217,11 +218,13 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 			event.headers,
 			ctx.model?.provider,
 			runtime.session?.conversation_id,
+			runtime.turnId,
 		);
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		runtime.bind(ctx);
+		runtime.turnId = randomUUID();
 		if (localReview) {
 			if (!runtime.session) throw new Error("CloudThinker local review session is unavailable");
 			return { systemPrompt: event.systemPrompt };
@@ -246,7 +249,9 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 		sync(ctx);
 		detach(() => locations.record(ctx.cwd), silent);
 	});
-	if (!localReview) pi.on("agent_end", (_event, ctx) => {
+	pi.on("agent_end", (_event, ctx) => {
+		runtime.turnId = undefined;
+		if (localReview) return;
 		sync(ctx);
 		credits.refresh();
 	});

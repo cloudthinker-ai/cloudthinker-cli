@@ -1,3 +1,7 @@
+## [0.8.0-dev.5]
+
+- Name each prompt's turn in `X-CloudThinker-Turn` on every model call, so Langfuse shows one trace per turn instead of one per model call.
+
 ## [0.8.0-dev.4]
 
 - Messages and tool descriptions name CloudThinker Agent the same way everywhere; the cloud agent behind `ct_ask` is CloudThinker Agent in the cloud.

@@ -8,6 +8,7 @@ import { applyClearScreenKey } from "./clear-screen.ts";
 import { applyFilePicker } from "./file-picker.ts";
 import { applyMentionPicker } from "./mention-picker.ts";
 import { applyMentionHighlight } from "./mention-highlight.ts";
+import { applyEditorSelection } from "./editor-selection.ts";
 import { applyCompletionRows } from "./background/index.ts";
 import { applyPromptSearchKey } from "./prompt-search.ts";
 import { applyCodeBlockNumbers, COPY_USAGE, copyCodeBlock, copyCommandIndex, type CopyHost } from "./code-blocks.ts";
@@ -195,6 +196,7 @@ export function applyGuard(): void {
 	applyFilePicker();
 	applyMentionPicker();
 	applyMentionHighlight();
+	applyEditorSelection();
 	applyCompletionRows();
 	applyToolGroups();
 	applyCloudOnlyModels();

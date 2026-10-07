@@ -632,7 +632,7 @@
         "type": "object"
       },
       "AppDomainVerificationPublic": {
-        "description": "AppSec-owned workspace domain verification view.",
+        "description": "Cyber-owned workspace domain verification view.",
         "properties": {
           "blocked_reason": {
             "nullable": true,
@@ -681,7 +681,7 @@
         "type": "object"
       },
       "AppDomainVerificationStatus": {
-        "description": "Domain verification state for an AppSec app target.",
+        "description": "Domain verification state for an Cyber app target.",
         "enum": [
           "not_required",
           "unclaimed",
@@ -803,7 +803,7 @@
             "type": "integer"
           },
           "report_preferences": {
-            "$ref": "#/components/schemas/AppSecReportPreferences"
+            "$ref": "#/components/schemas/CyberReportPreferences"
           },
           "run_in_flight": {
             "title": "Run In Flight",
@@ -879,157 +879,6 @@
         ],
         "title": "AppPublic",
         "type": "object"
-      },
-      "AppSecDomainCreate": {
-        "description": "Request body for POST /appsec/domains.",
-        "properties": {
-          "domain": {
-            "maxLength": 255,
-            "minLength": 1,
-            "title": "AppSecDomainCreate_domain",
-            "type": "string"
-          }
-        },
-        "required": [
-          "domain"
-        ],
-        "title": "AppSecDomainCreate",
-        "type": "object"
-      },
-      "AppSecDomainListResponse": {
-        "description": "Response shape for GET /appsec/domains.",
-        "properties": {
-          "data": {
-            "items": {
-              "$ref": "#/components/schemas/AppSecDomainPublic"
-            },
-            "title": "Data",
-            "type": "array"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "total",
-          "data"
-        ],
-        "title": "AppSecDomainListResponse",
-        "type": "object"
-      },
-      "AppSecDomainPublic": {
-        "description": "Workspace-owned AppSec domain verification record.",
-        "properties": {
-          "can_manage": {
-            "default": false,
-            "title": "Can Manage",
-            "type": "boolean"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "dns_record_name": {
-            "nullable": true,
-            "title": "Dns Record Name",
-            "type": "string"
-          },
-          "dns_record_value": {
-            "nullable": true,
-            "title": "Dns Record Value",
-            "type": "string"
-          },
-          "domain": {
-            "title": "Domain",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/AppDomainVerificationStatus"
-          },
-          "verified_at": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "Verified At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "domain",
-          "status",
-          "created_at"
-        ],
-        "title": "AppSecDomainPublic",
-        "type": "object"
-      },
-      "AppSecFindingListResponse": {
-        "description": "Response shape for GET /appsec/apps/{app_id}/findings (paginated).",
-        "properties": {
-          "data": {
-            "items": {
-              "$ref": "#/components/schemas/FindingPublic"
-            },
-            "title": "Data",
-            "type": "array"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/PaginationMeta"
-          }
-        },
-        "required": [
-          "data",
-          "meta"
-        ],
-        "title": "AppSecFindingListResponse",
-        "type": "object"
-      },
-      "AppSecReportFormat": {
-        "enum": [
-          "pdf",
-          "docx"
-        ],
-        "title": "AppSecReportFormat",
-        "type": "string"
-      },
-      "AppSecReportPreferences": {
-        "additionalProperties": false,
-        "properties": {
-          "instructions": {
-            "default": "",
-            "maxLength": 12000,
-            "title": "AppSecReportPreferences_instructions",
-            "type": "string"
-          },
-          "output_format": {
-            "$ref": "#/components/schemas/AppSecReportFormat"
-          },
-          "reference_source_id": {
-            "format": "uuid",
-            "nullable": true,
-            "title": "Reference Source Id",
-            "type": "string"
-          },
-          "style": {
-            "$ref": "#/components/schemas/AppSecReportStyle"
-          }
-        },
-        "title": "AppSecReportPreferences",
-        "type": "object"
-      },
-      "AppSecReportStyle": {
-        "enum": [
-          "standard",
-          "custom"
-        ],
-        "title": "AppSecReportStyle",
-        "type": "string"
       },
       "AppSetupStatus": {
         "enum": [
@@ -1113,7 +962,7 @@
             "type": "string"
           },
           "report_preferences": {
-            "$ref": "#/components/schemas/AppSecReportPreferences",
+            "$ref": "#/components/schemas/CyberReportPreferences",
             "nullable": true
           },
           "scope": {
@@ -1284,7 +1133,7 @@
         "type": "string"
       },
       "AuthKind": {
-        "description": "Durability class for an AppSec gray-box credential.\n\nsession \u2014 pasted browser session material from cURL; useful for immediate\n          run-now only because it may expire or logout before a schedule fires.\ndurable \u2014 long-lived token/header material that may be reused by scheduled runs.",
+        "description": "Durability class for an Cyber gray-box credential.\n\nsession \u2014 pasted browser session material from cURL; useful for immediate\n          run-now only because it may expire or logout before a schedule fires.\ndurable \u2014 long-lived token/header material that may be reused by scheduled runs.",
         "enum": [
           "session",
           "durable",
@@ -1345,6 +1194,11 @@
             "nullable": true,
             "title": "Credential Ref",
             "type": "string"
+          },
+          "guarded_shell": {
+            "default": false,
+            "title": "Guarded Shell",
+            "type": "boolean"
           },
           "kind": {
             "enum": [
@@ -2295,7 +2149,8 @@
           "review_suggested",
           "changes_requested",
           "failed",
-          "filtered"
+          "filtered",
+          "stopped"
         ],
         "title": "CodeReviewOverviewVerdict",
         "type": "string"
@@ -2774,6 +2629,157 @@
         ],
         "title": "CyberDiscoveryTargetPublic",
         "type": "object"
+      },
+      "CyberDomainCreate": {
+        "description": "Request body for POST /appsec/domains.",
+        "properties": {
+          "domain": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "CyberDomainCreate_domain",
+            "type": "string"
+          }
+        },
+        "required": [
+          "domain"
+        ],
+        "title": "CyberDomainCreate",
+        "type": "object"
+      },
+      "CyberDomainListResponse": {
+        "description": "Response shape for GET /appsec/domains.",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/CyberDomainPublic"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "data"
+        ],
+        "title": "CyberDomainListResponse",
+        "type": "object"
+      },
+      "CyberDomainPublic": {
+        "description": "Workspace-owned Cyber domain verification record.",
+        "properties": {
+          "can_manage": {
+            "default": false,
+            "title": "Can Manage",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dns_record_name": {
+            "nullable": true,
+            "title": "Dns Record Name",
+            "type": "string"
+          },
+          "dns_record_value": {
+            "nullable": true,
+            "title": "Dns Record Value",
+            "type": "string"
+          },
+          "domain": {
+            "title": "Domain",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AppDomainVerificationStatus"
+          },
+          "verified_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Verified At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "domain",
+          "status",
+          "created_at"
+        ],
+        "title": "CyberDomainPublic",
+        "type": "object"
+      },
+      "CyberFindingListResponse": {
+        "description": "Response shape for GET /appsec/apps/{app_id}/findings (paginated).",
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/FindingPublic"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "CyberFindingListResponse",
+        "type": "object"
+      },
+      "CyberReportFormat": {
+        "enum": [
+          "pdf",
+          "docx"
+        ],
+        "title": "CyberReportFormat",
+        "type": "string"
+      },
+      "CyberReportPreferences": {
+        "additionalProperties": false,
+        "properties": {
+          "instructions": {
+            "default": "",
+            "maxLength": 12000,
+            "title": "CyberReportPreferences_instructions",
+            "type": "string"
+          },
+          "output_format": {
+            "$ref": "#/components/schemas/CyberReportFormat"
+          },
+          "reference_source_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Reference Source Id",
+            "type": "string"
+          },
+          "style": {
+            "$ref": "#/components/schemas/CyberReportStyle"
+          }
+        },
+        "title": "CyberReportPreferences",
+        "type": "object"
+      },
+      "CyberReportStyle": {
+        "enum": [
+          "standard",
+          "custom"
+        ],
+        "title": "CyberReportStyle",
+        "type": "string"
       },
       "DeclarationMode": {
         "enum": [
@@ -4286,7 +4292,7 @@
         "type": "string"
       },
       "Intensity": {
-        "description": "Per-run probing intensity: safe|aggressive|full.\n\nConsolidates two legacy flags into one: the dead PentestRun.safe_mode\n(hardcoded True, never varied) and the live App.allow_active_probing\nconsent gate (destructive DELETE/data-changing probing). App carries a\ndefault_intensity that seeds new runs; PentestRun and AppSecSchedule each\nfreeze their own chosen intensity at construction (a schedule's frozen\nintensity survives a later change to the App's default).",
+        "description": "Per-run probing intensity: safe|aggressive|full.\n\nConsolidates two legacy flags into one: the dead PentestRun.safe_mode\n(hardcoded True, never varied) and the live App.allow_active_probing\nconsent gate (destructive DELETE/data-changing probing). App carries a\ndefault_intensity that seeds new runs; PentestRun and CyberSchedule each\nfreeze their own chosen intensity at construction (a schedule's frozen\nintensity survives a later change to the App's default).",
         "enum": [
           "safe",
           "aggressive",
@@ -4559,7 +4565,7 @@
             "type": "string"
           },
           "memory_mount": {
-            "default": "./appsec/app-memory",
+            "default": "./cyber/app-memory",
             "title": "Memory Mount",
             "type": "string"
           },
@@ -4571,7 +4577,7 @@
             "$ref": "#/components/schemas/Mode"
           },
           "report_preferences": {
-            "$ref": "#/components/schemas/AppSecReportPreferences"
+            "$ref": "#/components/schemas/CyberReportPreferences"
           },
           "report_reference": {
             "$ref": "#/components/schemas/LocalRunReportReferencePublic",
@@ -4723,7 +4729,7 @@
         "type": "string"
       },
       "ModeCapability": {
-        "description": "Availability of one AppSec mode for run-now and scheduled launches.",
+        "description": "Availability of one Cyber mode for run-now and scheduled launches.",
         "properties": {
           "available": {
             "title": "Available",
@@ -5705,6 +5711,20 @@
             "title": "RepositoryOperation_kind",
             "type": "string"
           },
+          "lease_owner": {
+            "maxLength": 255,
+            "minLength": 1,
+            "nullable": true,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "title": "RepositoryOperation_lease_owner",
+            "type": "string"
+          },
+          "lease_seconds": {
+            "minimum": 60,
+            "nullable": true,
+            "title": "Lease Seconds",
+            "type": "integer"
+          },
           "links": {
             "items": {
               "$ref": "#/components/schemas/ScopedWorkspaceLink"
@@ -5857,7 +5877,8 @@
           "in_review",
           "review_complete",
           "filtered",
-          "failed"
+          "failed",
+          "stopped"
         ],
         "title": "ReviewStatus",
         "type": "string"
@@ -6094,7 +6115,7 @@
             "$ref": "#/components/schemas/Mode"
           },
           "report_preferences": {
-            "$ref": "#/components/schemas/AppSecReportPreferences"
+            "$ref": "#/components/schemas/CyberReportPreferences"
           },
           "report_revision_conversation_id": {
             "format": "uuid",
@@ -6261,6 +6282,16 @@
             "nullable": true,
             "title": "Credential Ref",
             "type": "string"
+          },
+          "existing_only": {
+            "default": false,
+            "title": "Existing Only",
+            "type": "boolean"
+          },
+          "guarded_shell": {
+            "default": false,
+            "title": "Guarded Shell",
+            "type": "boolean"
           },
           "kind": {
             "enum": [
@@ -6635,7 +6666,7 @@
         "type": "object"
       },
       "SurfaceItemPublic": {
-        "description": "Response shape for one backend-backed AppSec surface item.",
+        "description": "Response shape for one backend-backed Cyber surface item.",
         "properties": {
           "app_id": {
             "format": "uuid",
@@ -8769,7 +8800,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AppSecFindingListResponse"
+                  "$ref": "#/components/schemas/CyberFindingListResponse"
                 }
               }
             },
@@ -9109,7 +9140,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AppSecDomainListResponse"
+                  "$ref": "#/components/schemas/CyberDomainListResponse"
                 }
               }
             },
@@ -9138,7 +9169,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AppSecDomainCreate"
+                "$ref": "#/components/schemas/CyberDomainCreate"
               }
             }
           },
@@ -9149,7 +9180,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AppSecDomainPublic"
+                  "$ref": "#/components/schemas/CyberDomainPublic"
                 }
               }
             },
@@ -9191,7 +9222,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AppSecDomainPublic"
+                  "$ref": "#/components/schemas/CyberDomainPublic"
                 }
               }
             },

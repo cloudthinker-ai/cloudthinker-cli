@@ -8,7 +8,7 @@ import { loadSkills, type ExtensionAPI, type ExtensionContext } from "@earendil-
 
 import { CLOUD_ENTRY_TYPE, CloudThinkerRuntime, SESSION_ENTRY_TYPE } from "../src/runtime.ts";
 import { machineBarLines } from "../src/awareness.ts";
-import { CONVERSATION_HEADER } from "../src/provider.ts";
+import { CONVERSATION_HEADER, TURN_HEADER } from "../src/provider.ts";
 import type { CloudThinkerClient } from "../src/client.ts";
 import { CLOUD_TOOLS } from "../src/tools/names.ts";
 import cloudthinker, { LINKING_STATUS } from "../src/index.ts";
@@ -394,9 +394,18 @@ test("CA-CLOUD-11: a Cloud-off session links lazily on its first turn, once, and
 		await handlers.get("before_provider_headers")?.({ headers }, sessionContext(root, [], { provider: "cloudthinker" }));
 		assert.equal(headers[CONVERSATION_HEADER], CONVERSATION,
 			"the first turn must carry the conversation the gateway needs");
+		const sameTurn: Record<string, string | null> = {};
+		await handlers.get("before_provider_headers")?.({ headers: sameTurn }, sessionContext(root, [], { provider: "cloudthinker" }));
+		assert.ok(headers[TURN_HEADER], "every model call names its turn");
+		assert.equal(sameTurn[TURN_HEADER], headers[TURN_HEADER], "the model calls of one turn share one trace");
+		await handlers.get("agent_end")?.({ type: "agent_end" }, sessionContext(root, [], { provider: "cloudthinker" }));
 		await handlers.get("before_agent_start")?.({ systemPrompt: "base" }, sessionContext(root, [], { provider: "cloudthinker" }));
 		await settle();
 		assert.equal(created().length, 1, "the lazy link runs once");
+		const nextTurn: Record<string, string | null> = {};
+		await handlers.get("before_provider_headers")?.({ headers: nextTurn }, sessionContext(root, [], { provider: "cloudthinker" }));
+		assert.ok(nextTurn[TURN_HEADER]);
+		assert.notEqual(nextTurn[TURN_HEADER], headers[TURN_HEADER], "the next prompt opens its own trace");
 
 		const resumed = sessionContext(root, [sessionEntry], { provider: "cloudthinker" });
 		await handlers.get("session_start")?.({ type: "session_start", reason: "resume" }, resumed);
