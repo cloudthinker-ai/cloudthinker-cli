@@ -1,3 +1,7 @@
+## [0.7.8]
+
+- Code blocks in answers are easier to read and copy. The `▎` bar beside each line is gone, so selecting a query or command with the mouse copies only the code. A line that fits the terminal stays on one row, and a longer line wraps under a two-space indent instead of restarting at the left edge.
+
 ## [0.7.7]
 
 - Render completed Mermaid flowcharts as themed terminal diagrams with authored node border colors; keep interiors and text in terminal theme colors. Preserve source while streaming and when a preview cannot fit or uses unsupported syntax.

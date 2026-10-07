@@ -48,9 +48,24 @@ test("numeric columns align without Markdown alignment markers", () => {
 	assert.equal(lines[2]!.indexOf("-14.1%") + 6, lines[4]!.indexOf("+100.0%") + 7);
 });
 
-test("code blocks draw a language label and a bar instead of fences", () => {
+test("code blocks draw a language label and copy-safe rows instead of fences", () => {
 	const source = "Output:\n\n```text\nrun 1\nall done\n```\n\n```\nplain\n```\n\nAfter";
 	const lines = new Markdown(source, 0, 0, getMarkdownTheme()).render(60)
 		.map(stripVTControlCharacters).map((line) => line.trimEnd());
-	assert.deepEqual(lines, ["Output:", "", "text", "▎ run 1", "▎ all done", "", "▎ plain", "", "After"]);
+	assert.deepEqual(lines, ["Output:", "", "text", "run 1", "all done", "", "plain", "", "After"]);
+});
+
+test("a long code line wraps under a hanging indent and keeps its own indent", () => {
+	const source = "```python\ndef f():\n    return [x for x in range(100) if x % 3 == 0 and x % 5 == 0 and x > 10]\n```";
+	const lines = new Markdown(source, 0, 0, getMarkdownTheme()).render(40)
+		.map(stripVTControlCharacters).map((line) => line.trimEnd());
+	assert.equal(lines[0], "python");
+	assert.equal(lines[1], "def f():");
+	assert.match(lines[2]!, /^    return \[x for x in range\(100\)/);
+	assert.ok(lines.length > 3);
+	assert.ok(lines.slice(3).every((line) => /^  \S/.test(line)));
+	assert.ok(lines.every((line) => visibleWidth(line) <= 40 && !line.includes("▎")));
+	assert.equal(lines.slice(2).map((line) => line.trim()).join(" "), "return [x for x in range(100) if x % 3 == 0 and x % 5 == 0 and x > 10]");
+	const fits = "y".repeat(40);
+	assert.deepEqual(new Markdown(`\`\`\`\n${fits}\n\`\`\``, 0, 0, getMarkdownTheme()).render(40).map(stripVTControlCharacters).map((line) => line.trimEnd()), [fits]);
 });
