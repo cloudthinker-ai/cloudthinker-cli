@@ -1,3 +1,10 @@
+## [0.8.1]
+
+- First stable release since 0.7.8. It ships every change listed under 0.8.0 and 0.8.0-dev.3 to 0.8.0-dev.5 below, plus these:
+- Package stable Cyber discovery in the local CLI runtime. Fence each browser redirect to the frozen scope, and report `PARTIAL` when Playwright is unavailable or a redirect cannot be completed safely.
+- Keep the generated CLI API client aligned with the current backend request and response schemas.
+- Build again against the latest generated API client (Cyber JEV and Pentest advisor fields, App list sort, selected-finding export); the CLI sends none of them, so the server defaults apply.
+
 ## [0.8.0-dev.5]
 
 - Cyber uses canonical command, helper and profile names, `CYBER_*` settings and `cyber/` roots; retired runtime aliases are removed.

@@ -102,6 +102,7 @@ impl CtClient {
                             Some(cloudthinker_api::types::FindingSort::Severity),
                             Some(cloudthinker_api::types::SortOrder::Asc),
                             None,
+                            None,
                             Some(take),
                             None,
                             None,

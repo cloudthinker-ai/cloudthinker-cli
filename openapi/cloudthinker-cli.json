@@ -598,6 +598,11 @@
             "$ref": "#/components/schemas/Intensity",
             "nullable": true
           },
+          "default_jev_enabled": {
+            "nullable": true,
+            "title": "Default Jev Enabled",
+            "type": "boolean"
+          },
           "default_selection": {
             "$ref": "#/components/schemas/SavedSelection",
             "nullable": true
@@ -695,6 +700,13 @@
       "AppListResponse": {
         "description": "Response shape for GET /appsec/apps/.",
         "properties": {
+          "available_target_types": {
+            "items": {
+              "$ref": "#/components/schemas/TargetType"
+            },
+            "title": "Available Target Types",
+            "type": "array"
+          },
           "data": {
             "items": {
               "$ref": "#/components/schemas/AppPublic"
@@ -713,6 +725,15 @@
         ],
         "title": "AppListResponse",
         "type": "object"
+      },
+      "AppListSort": {
+        "description": "Orderings for the App list endpoint.",
+        "enum": [
+          "newest",
+          "risk"
+        ],
+        "title": "AppListSort",
+        "type": "string"
       },
       "AppPublic": {
         "description": "Response shape for a single App \u2014 only client-rendered fields.",
@@ -756,6 +777,11 @@
           "default_intensity": {
             "$ref": "#/components/schemas/Intensity"
           },
+          "default_jev_enabled": {
+            "default": true,
+            "title": "Default Jev Enabled",
+            "type": "boolean"
+          },
           "default_selection": {
             "$ref": "#/components/schemas/SavedSelection"
           },
@@ -779,6 +805,11 @@
             "nullable": true,
             "title": "In Flight Run Started At",
             "type": "string"
+          },
+          "jev_available": {
+            "default": false,
+            "title": "Jev Available",
+            "type": "boolean"
           },
           "last_completed_run_at": {
             "format": "date-time",
@@ -943,6 +974,11 @@
           "default_intensity": {
             "$ref": "#/components/schemas/Intensity",
             "nullable": true
+          },
+          "default_jev_enabled": {
+            "nullable": true,
+            "title": "Default Jev Enabled",
+            "type": "boolean"
           },
           "default_selection": {
             "$ref": "#/components/schemas/SavedSelection",
@@ -2156,7 +2192,7 @@
         "type": "string"
       },
       "CodeReviewProvider": {
-        "description": "Supported code review providers",
+        "description": "The code hosts CloudThinker connects to; the one provider vocabulary.",
         "enum": [
           "gitlab",
           "github",
@@ -2722,6 +2758,10 @@
       "CyberFindingListResponse": {
         "description": "Response shape for GET /appsec/apps/{app_id}/findings (paginated).",
         "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/FindingTabCounts",
+            "nullable": true
+          },
           "data": {
             "items": {
               "$ref": "#/components/schemas/FindingPublic"
@@ -3785,6 +3825,50 @@
         "title": "FindingStatus",
         "type": "string"
       },
+      "FindingTab": {
+        "description": "Action tabs on an App's findings list.",
+        "enum": [
+          "confirmed",
+          "needs_verification",
+          "in_progress",
+          "fixed",
+          "all"
+        ],
+        "title": "FindingTab",
+        "type": "string"
+      },
+      "FindingTabCounts": {
+        "description": "Findings per action tab under the active non-tab filters.",
+        "properties": {
+          "all": {
+            "default": 0,
+            "title": "All",
+            "type": "integer"
+          },
+          "confirmed": {
+            "default": 0,
+            "title": "Confirmed",
+            "type": "integer"
+          },
+          "fixed": {
+            "default": 0,
+            "title": "Fixed",
+            "type": "integer"
+          },
+          "in_progress": {
+            "default": 0,
+            "title": "In Progress",
+            "type": "integer"
+          },
+          "needs_verification": {
+            "default": 0,
+            "title": "Needs Verification",
+            "type": "integer"
+          }
+        },
+        "title": "FindingTabCounts",
+        "type": "object"
+      },
       "FlushOutput": {
         "additionalProperties": false,
         "properties": {
@@ -4705,6 +4789,80 @@
         ],
         "title": "ManualTriggerDisabledReason",
         "type": "string"
+      },
+      "MemoryRevisionPolicy": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "max_file_bytes": {
+            "title": "Max File Bytes",
+            "type": "integer"
+          },
+          "max_revisions": {
+            "title": "Max Revisions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "max_revisions",
+          "max_file_bytes"
+        ],
+        "title": "MemoryRevisionPolicy",
+        "type": "object"
+      },
+      "MemoryWriteContext": {
+        "additionalProperties": false,
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/MemoryRevisionPolicy"
+          },
+          "writer": {
+            "$ref": "#/components/schemas/MemoryWriter"
+          }
+        },
+        "required": [
+          "writer",
+          "policy"
+        ],
+        "title": "MemoryWriteContext",
+        "type": "object"
+      },
+      "MemoryWriter": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_name": {
+            "title": "Agent Name",
+            "type": "string"
+          },
+          "conversation_id": {
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "user_name": {
+            "nullable": true,
+            "title": "User Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "agent_id",
+          "agent_name",
+          "conversation_id"
+        ],
+        "title": "MemoryWriter",
+        "type": "object"
       },
       "MergeDisabledReason": {
         "enum": [
@@ -5963,6 +6121,12 @@
       "RunLaunchRequest": {
         "description": "Request body for POST /appsec/apps/{app_id}/runs.\n\nrun_scope narrows the App's scope for this run \u2014 MUST be \u2286 app.scope.\nOmit or pass null for a full-scope run. mode and intensity are\noptional \u2014 when omitted (None), the use case applies the backend default\n(Mode.BLACK / app.default_intensity). The default lives in\nlaunch_run only, not here. scan_mode is optional too \u2014 omitted (None)\ncoalesces to incremental in the use case (the single default source); pass\n\"full\" for a deep whole-worktree sweep (moot for gray/black).\n\nNote an App with NO prior SUCCESS run always runs \"full\": the use case\ncoerces scan_mode on a first run, so an explicit \"incremental\" here is\nhonoured only once a successful run exists to diff against.",
         "properties": {
+          "advisor_enabled": {
+            "description": "Local/dev-only opt-out for this run's background Pentest advisor; true cannot bypass the instance-level PENTEST_ADVISOR_ENABLED setting.",
+            "nullable": true,
+            "title": "Advisor Enabled",
+            "type": "boolean"
+          },
           "execution_host": {
             "$ref": "#/components/schemas/RunExecutionHost",
             "nullable": true
@@ -5970,6 +6134,11 @@
           "intensity": {
             "$ref": "#/components/schemas/Intensity",
             "nullable": true
+          },
+          "jev_enabled": {
+            "nullable": true,
+            "title": "Jev Enabled",
+            "type": "boolean"
           },
           "mode": {
             "$ref": "#/components/schemas/Mode",
@@ -6110,6 +6279,11 @@
           "intensity": {
             "title": "Intensity",
             "type": "string"
+          },
+          "jev_enabled": {
+            "default": true,
+            "title": "Jev Enabled",
+            "type": "boolean"
           },
           "mode": {
             "$ref": "#/components/schemas/Mode"
@@ -6299,6 +6473,10 @@
             ],
             "title": "ScriptRun_kind",
             "type": "string"
+          },
+          "memory_write_context": {
+            "$ref": "#/components/schemas/MemoryWriteContext",
+            "nullable": true
           },
           "needs_skills": {
             "nullable": true,
@@ -8349,6 +8527,14 @@
         "parameters": [
           {
             "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AppListSort"
+            }
+          },
+          {
+            "in": "query",
             "name": "workspace_id",
             "required": false,
             "schema": {
@@ -8787,6 +8973,16 @@
           },
           {
             "in": "query",
+            "name": "tab",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/FindingTab",
+              "nullable": true,
+              "title": "Tab"
+            }
+          },
+          {
+            "in": "query",
             "name": "workspace_id",
             "required": false,
             "schema": {
@@ -8815,7 +9011,7 @@
     },
     "/api/v1/appsec/apps/{app_id}/findings/export-pdf": {
       "post": {
-        "description": "Export every finding matching the caller's list filters as one PDF.\n\nDeliberately takes no `page`/`take`: the export covers the whole filtered\nset, not the page the client happens to have loaded. Board view omits\n`status` (each board column IS a status set), which reads here as \"all\".\n\n`status` is repeatable, matching the list endpoint exactly. The table sends\nthe one status it is filtered by; keeping the two endpoints on the same\nshape is what lets the workspace hand its list filters straight to the\nexport without translating them.",
+        "description": "Export matching findings, or an exact selected subset, as one PDF.\n\nDeliberately takes no `page`/`take`: the export covers the whole filtered\nset, not the page the client happens to have loaded. Board view omits\n`status` (each board column IS a status set), which reads here as \"all\".\n\n`status` is repeatable, matching the list endpoint exactly. The table sends\nthe one status it is filtered by; keeping the two endpoints on the same\nshape is what lets the workspace hand its list filters straight to the\nexport without translating them.\n\nOptional finding_ids intersect those filters before paging. Every selected\nID must belong to this App and match the filters, or the export is refused.",
         "operationId": "appsec-export_findings_pdf",
         "parameters": [
           {
@@ -8897,6 +9093,22 @@
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/SortOrder"
+            }
+          },
+          {
+            "in": "query",
+            "name": "finding_ids",
+            "required": false,
+            "schema": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "maxItems": 200,
+              "minItems": 1,
+              "nullable": true,
+              "title": "Finding Ids",
+              "type": "array"
             }
           },
           {
@@ -11282,6 +11494,7 @@
             "required": false,
             "schema": {
               "default": 0,
+              "minimum": 0,
               "title": "Skip",
               "type": "integer"
             }

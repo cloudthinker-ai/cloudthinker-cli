@@ -1275,8 +1275,10 @@ impl CtClient {
         run_scope: Option<cloudthinker_api::types::ScopeSpec>,
     ) -> CtResult<CyberRun> {
         let body = cloudthinker_api::types::RunLaunchRequest {
+            advisor_enabled: None,
             execution_host: Some(cloudthinker_api::types::RunExecutionHost::Local),
             intensity: intensity.map(CyberIntensity::into_api),
+            jev_enabled: None,
             mode: mode.map(CyberMode::into_api),
             run_directives: None,
             run_scope,
@@ -1302,7 +1304,7 @@ impl CtClient {
     /// List the workspace Apps used by the setup flow.
     pub async fn cyber_list_apps(&self) -> CtResult<Vec<CyberApp>> {
         let response = self
-            .authed(async |c: cloudthinker_api::Client| c.appsec_list_apps(None).await)
+            .authed(async |c: cloudthinker_api::Client| c.appsec_list_apps(None, None).await)
             .await?;
         Ok(response.data.into_iter().map(CyberApp::from_api).collect())
     }
@@ -1322,6 +1324,7 @@ impl CtClient {
         };
         let body = cloudthinker_api::types::AppCreate {
             default_intensity: None,
+            default_jev_enabled: None,
             default_selection: None,
             frameworks: vec![framework],
             name: name.to_string(),
@@ -1425,6 +1428,7 @@ impl CtClient {
                     Some(cloudthinker_api::types::FindingSort::Severity),
                     Some(cloudthinker_api::types::SortOrder::Asc),
                     (!status.is_empty()).then_some(&status),
+                    None,
                     Some(take),
                     triage_state,
                     None,
@@ -1462,6 +1466,7 @@ impl CtClient {
             .authed(async |c: cloudthinker_api::Client| {
                 c.appsec_export_findings_pdf(
                     &app_id,
+                    None,
                     None,
                     None,
                     None,

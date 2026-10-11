@@ -237,7 +237,7 @@ def _check_runtime_closure(sources: dict[str, bytes]) -> None:
             parts.pop()
         modules.add(".".join(parts))
     missing: set[tuple[str, str]] = set()
-    external = set(sys.stdlib_module_names) | {"yaml"}
+    external = set(sys.stdlib_module_names) | {"yaml", "playwright"}
     for filename, source in sources.items():
         if not filename.endswith(".py"):
             continue

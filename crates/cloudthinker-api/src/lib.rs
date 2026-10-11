@@ -2029,6 +2029,13 @@ pub mod types {
     ///    "default_intensity": {
     ///      "$ref": "#/components/schemas/Intensity"
     ///    },
+    ///    "default_jev_enabled": {
+    ///      "title": "Default Jev Enabled",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "default_selection": {
     ///      "$ref": "#/components/schemas/SavedSelection"
     ///    },
@@ -2062,6 +2069,8 @@ pub mod types {
     pub struct AppCreate {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub default_intensity: ::std::option::Option<Intensity>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub default_jev_enabled: ::std::option::Option<bool>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub default_selection: ::std::option::Option<SavedSelection>,
         pub frameworks: ::std::vec::Vec<OwaspFramework>,
@@ -2347,6 +2356,13 @@ pub mod types {
     ///    "total"
     ///  ],
     ///  "properties": {
+    ///    "available_target_types": {
+    ///      "title": "Available Target Types",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/TargetType"
+    ///      }
+    ///    },
     ///    "data": {
     ///      "title": "Data",
     ///      "type": "array",
@@ -2364,8 +2380,90 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AppListResponse {
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub available_target_types: ::std::vec::Vec<TargetType>,
         pub data: ::std::vec::Vec<AppPublic>,
         pub total: i64,
+    }
+
+    ///Orderings for the App list endpoint.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AppListSort",
+    ///  "description": "Orderings for the App list endpoint.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "newest",
+    ///    "risk"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum AppListSort {
+        #[serde(rename = "newest")]
+        Newest,
+        #[serde(rename = "risk")]
+        Risk,
+    }
+
+    impl ::std::fmt::Display for AppListSort {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Newest => f.write_str("newest"),
+                Self::Risk => f.write_str("risk"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for AppListSort {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "newest" => Ok(Self::Newest),
+                "risk" => Ok(Self::Risk),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for AppListSort {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for AppListSort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for AppListSort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
     }
 
     ///Response shape for a single App — only client-rendered fields.
@@ -2435,6 +2533,11 @@ pub mod types {
     ///    "default_intensity": {
     ///      "$ref": "#/components/schemas/Intensity"
     ///    },
+    ///    "default_jev_enabled": {
+    ///      "title": "Default Jev Enabled",
+    ///      "default": true,
+    ///      "type": "boolean"
+    ///    },
     ///    "default_selection": {
     ///      "$ref": "#/components/schemas/SavedSelection"
     ///    },
@@ -2460,6 +2563,11 @@ pub mod types {
     ///        "null"
     ///      ],
     ///      "format": "date-time"
+    ///    },
+    ///    "jev_available": {
+    ///      "title": "Jev Available",
+    ///      "default": false,
+    ///      "type": "boolean"
     ///    },
     ///    "last_completed_run_at": {
     ///      "title": "Last Completed Run At",
@@ -2562,6 +2670,8 @@ pub mod types {
         pub coverage_score: f64,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
         pub default_intensity: Intensity,
+        #[serde(default = "defaults::default_bool::<true>")]
+        pub default_jev_enabled: bool,
         pub default_selection: SavedSelection,
         pub domain_verification: AppDomainVerificationPublic,
         pub frameworks: ::std::vec::Vec<OwaspFramework>,
@@ -2569,6 +2679,8 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub in_flight_run_started_at:
             ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default)]
+        pub jev_available: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub last_completed_run_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
@@ -2837,6 +2949,13 @@ pub mod types {
     ///    "default_intensity": {
     ///      "$ref": "#/components/schemas/Intensity"
     ///    },
+    ///    "default_jev_enabled": {
+    ///      "title": "Default Jev Enabled",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "default_selection": {
     ///      "$ref": "#/components/schemas/SavedSelection"
     ///    },
@@ -2888,6 +3007,8 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub default_intensity: ::std::option::Option<Intensity>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub default_jev_enabled: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub default_selection: ::std::option::Option<SavedSelection>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub frameworks: ::std::option::Option<::std::vec::Vec<OwaspFramework>>,
@@ -2908,6 +3029,7 @@ pub mod types {
             Self {
                 complete_setup: Default::default(),
                 default_intensity: Default::default(),
+                default_jev_enabled: Default::default(),
                 default_selection: Default::default(),
                 frameworks: Default::default(),
                 name: Default::default(),
@@ -6194,14 +6316,15 @@ pub mod types {
         }
     }
 
-    ///Supported code review providers
+    ///The code hosts CloudThinker connects to; the one provider vocabulary.
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
     ///  "title": "CodeReviewProvider",
-    ///  "description": "Supported code review providers",
+    ///  "description": "The code hosts CloudThinker connects to; the one
+    /// provider vocabulary.",
     ///  "type": "string",
     ///  "enum": [
     ///    "gitlab",
@@ -7924,6 +8047,9 @@ pub mod types {
     ///    "meta"
     ///  ],
     ///  "properties": {
+    ///    "counts": {
+    ///      "$ref": "#/components/schemas/FindingTabCounts"
+    ///    },
     ///    "data": {
     ///      "title": "Data",
     ///      "type": "array",
@@ -7940,6 +8066,8 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CyberFindingListResponse {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub counts: ::std::option::Option<FindingTabCounts>,
         pub data: ::std::vec::Vec<FindingPublic>,
         pub meta: PaginationMeta,
     }
@@ -11955,6 +12083,167 @@ pub mod types {
         }
     }
 
+    ///Action tabs on an App's findings list.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FindingTab",
+    ///  "description": "Action tabs on an App's findings list.",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "confirmed",
+    ///    "needs_verification",
+    ///    "in_progress",
+    ///    "fixed",
+    ///    "all"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum FindingTab {
+        #[serde(rename = "confirmed")]
+        Confirmed,
+        #[serde(rename = "needs_verification")]
+        NeedsVerification,
+        #[serde(rename = "in_progress")]
+        InProgress,
+        #[serde(rename = "fixed")]
+        Fixed,
+        #[serde(rename = "all")]
+        All,
+    }
+
+    impl ::std::fmt::Display for FindingTab {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Confirmed => f.write_str("confirmed"),
+                Self::NeedsVerification => f.write_str("needs_verification"),
+                Self::InProgress => f.write_str("in_progress"),
+                Self::Fixed => f.write_str("fixed"),
+                Self::All => f.write_str("all"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for FindingTab {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "confirmed" => Ok(Self::Confirmed),
+                "needs_verification" => Ok(Self::NeedsVerification),
+                "in_progress" => Ok(Self::InProgress),
+                "fixed" => Ok(Self::Fixed),
+                "all" => Ok(Self::All),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for FindingTab {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for FindingTab {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for FindingTab {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///Findings per action tab under the active non-tab filters.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FindingTabCounts",
+    ///  "description": "Findings per action tab under the active non-tab
+    /// filters.",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "all": {
+    ///      "title": "All",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "confirmed": {
+    ///      "title": "Confirmed",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "fixed": {
+    ///      "title": "Fixed",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "in_progress": {
+    ///      "title": "In Progress",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "needs_verification": {
+    ///      "title": "Needs Verification",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct FindingTabCounts {
+        #[serde(default)]
+        pub all: i64,
+        #[serde(default)]
+        pub confirmed: i64,
+        #[serde(default)]
+        pub fixed: i64,
+        #[serde(default)]
+        pub in_progress: i64,
+        #[serde(default)]
+        pub needs_verification: i64,
+    }
+
+    impl ::std::default::Default for FindingTabCounts {
+        fn default() -> Self {
+            Self {
+                all: Default::default(),
+                confirmed: Default::default(),
+                fixed: Default::default(),
+                in_progress: Default::default(),
+                needs_verification: Default::default(),
+            }
+        }
+    }
+
     ///`FlushOutput`
     ///
     /// <details><summary>JSON schema</summary>
@@ -14727,6 +15016,128 @@ pub mod types {
         ) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
+    }
+
+    ///`MemoryRevisionPolicy`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "MemoryRevisionPolicy",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "enabled",
+    ///    "max_file_bytes",
+    ///    "max_revisions"
+    ///  ],
+    ///  "properties": {
+    ///    "enabled": {
+    ///      "title": "Enabled",
+    ///      "type": "boolean"
+    ///    },
+    ///    "max_file_bytes": {
+    ///      "title": "Max File Bytes",
+    ///      "type": "integer"
+    ///    },
+    ///    "max_revisions": {
+    ///      "title": "Max Revisions",
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct MemoryRevisionPolicy {
+        pub enabled: bool,
+        pub max_file_bytes: i64,
+        pub max_revisions: i64,
+    }
+
+    ///`MemoryWriteContext`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "MemoryWriteContext",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "policy",
+    ///    "writer"
+    ///  ],
+    ///  "properties": {
+    ///    "policy": {
+    ///      "$ref": "#/components/schemas/MemoryRevisionPolicy"
+    ///    },
+    ///    "writer": {
+    ///      "$ref": "#/components/schemas/MemoryWriter"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct MemoryWriteContext {
+        pub policy: MemoryRevisionPolicy,
+        pub writer: MemoryWriter,
+    }
+
+    ///`MemoryWriter`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "MemoryWriter",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "agent_id",
+    ///    "agent_name",
+    ///    "conversation_id",
+    ///    "user_id"
+    ///  ],
+    ///  "properties": {
+    ///    "agent_id": {
+    ///      "title": "Agent Id",
+    ///      "type": "string"
+    ///    },
+    ///    "agent_name": {
+    ///      "title": "Agent Name",
+    ///      "type": "string"
+    ///    },
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": "string"
+    ///    },
+    ///    "user_id": {
+    ///      "title": "User Id",
+    ///      "type": "string"
+    ///    },
+    ///    "user_name": {
+    ///      "title": "User Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct MemoryWriter {
+        pub agent_id: ::std::string::String,
+        pub agent_name: ::std::string::String,
+        pub conversation_id: ::std::string::String,
+        pub user_id: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub user_name: ::std::option::Option<::std::string::String>,
     }
 
     ///`MergeDisabledReason`
@@ -19153,11 +19564,28 @@ pub mod types {
     /// diff against.",
     ///  "type": "object",
     ///  "properties": {
+    ///    "advisor_enabled": {
+    ///      "title": "Advisor Enabled",
+    ///      "description": "Local/dev-only opt-out for this run's background
+    /// Pentest advisor; true cannot bypass the instance-level
+    /// PENTEST_ADVISOR_ENABLED setting.",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "execution_host": {
     ///      "$ref": "#/components/schemas/RunExecutionHost"
     ///    },
     ///    "intensity": {
     ///      "$ref": "#/components/schemas/Intensity"
+    ///    },
+    ///    "jev_enabled": {
+    ///      "title": "Jev Enabled",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
     ///    },
     ///    "mode": {
     ///      "$ref": "#/components/schemas/Mode"
@@ -19185,10 +19613,17 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct RunLaunchRequest {
+        ///Local/dev-only opt-out for this run's background Pentest advisor;
+        /// true cannot bypass the instance-level PENTEST_ADVISOR_ENABLED
+        /// setting.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub advisor_enabled: ::std::option::Option<bool>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub execution_host: ::std::option::Option<RunExecutionHost>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub intensity: ::std::option::Option<Intensity>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub jev_enabled: ::std::option::Option<bool>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub mode: ::std::option::Option<Mode>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -19204,8 +19639,10 @@ pub mod types {
     impl ::std::default::Default for RunLaunchRequest {
         fn default() -> Self {
             Self {
+                advisor_enabled: Default::default(),
                 execution_host: Default::default(),
                 intensity: Default::default(),
+                jev_enabled: Default::default(),
                 mode: Default::default(),
                 run_directives: Default::default(),
                 run_scope: Default::default(),
@@ -19449,6 +19886,11 @@ pub mod types {
     ///      "title": "Intensity",
     ///      "type": "string"
     ///    },
+    ///    "jev_enabled": {
+    ///      "title": "Jev Enabled",
+    ///      "default": true,
+    ///      "type": "boolean"
+    ///    },
     ///    "mode": {
     ///      "$ref": "#/components/schemas/Mode"
     ///    },
@@ -19517,6 +19959,8 @@ pub mod types {
         pub generated_accounts: ::std::vec::Vec<RunGeneratedAccountPublic>,
         pub id: ::uuid::Uuid,
         pub intensity: ::std::string::String,
+        #[serde(default = "defaults::default_bool::<true>")]
+        pub jev_enabled: bool,
         pub mode: Mode,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub report_preferences: ::std::option::Option<CyberReportPreferences>,
@@ -20261,6 +20705,9 @@ pub mod types {
     ///        "script"
     ///      ]
     ///    },
+    ///    "memory_write_context": {
+    ///      "$ref": "#/components/schemas/MemoryWriteContext"
+    ///    },
     ///    "needs_skills": {
     ///      "title": "Needs Skills",
     ///      "type": [
@@ -20317,6 +20764,8 @@ pub mod types {
         #[serde(default)]
         pub guarded_shell: bool,
         pub kind: ScriptRunKind,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub memory_write_context: ::std::option::Option<MemoryWriteContext>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub needs_skills: ::std::option::Option<bool>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -26532,6 +26981,7 @@ impl Client {
     ///Sends a `GET` request to `/api/v1/appsec/apps/`
     pub async fn appsec_list_apps<'a>(
         &'a self,
+        sort: Option<types::AppListSort>,
         workspace_id: Option<&'a ::serde_json::Value>,
     ) -> Result<ResponseValue<types::AppListResponse>, Error<()>> {
         let url = format!("{}/api/v1/appsec/apps/", self.baseurl,);
@@ -26548,6 +26998,7 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new("sort", &sort))
             .query(&progenitor_client::QueryParam::new(
                 "workspace_id",
                 &workspace_id,
@@ -26902,6 +27353,7 @@ impl Client {
         sort: Option<types::FindingSort>,
         sort_dir: Option<types::SortOrder>,
         status: Option<&'a ::std::vec::Vec<types::FindingStatus>>,
+        tab: Option<types::FindingTab>,
         take: Option<::std::num::NonZeroU64>,
         triage_state: Option<types::TriageState>,
         workspace_id: Option<&'a ::serde_json::Value>,
@@ -26931,6 +27383,7 @@ impl Client {
             .query(&progenitor_client::QueryParam::new("sort", &sort))
             .query(&progenitor_client::QueryParam::new("sort_dir", &sort_dir))
             .query(&progenitor_client::QueryParam::new("status", &status))
+            .query(&progenitor_client::QueryParam::new("tab", &tab))
             .query(&progenitor_client::QueryParam::new("take", &take))
             .query(&progenitor_client::QueryParam::new(
                 "triage_state",
@@ -26957,7 +27410,7 @@ impl Client {
 
     ///Export Findings Pdf
     ///
-    ///Export every finding matching the caller's list filters as one PDF.
+    ///Export matching findings, or an exact selected subset, as one PDF.
     ///
     ///Deliberately takes no `page`/`take`: the export covers the whole
     /// filtered set, not the page the client happens to have loaded. Board
@@ -26969,11 +27422,16 @@ impl Client {
     /// the same shape is what lets the workspace hand its list filters
     /// straight to the export without translating them.
     ///
+    ///Optional finding_ids intersect those filters before paging. Every
+    /// selected ID must belong to this App and match the filters, or the
+    /// export is refused.
+    ///
     ///Sends a `POST` request to
     /// `/api/v1/appsec/apps/{app_id}/findings/export-pdf`
     pub async fn appsec_export_findings_pdf<'a>(
         &'a self,
         app_id: &'a ::uuid::Uuid,
+        finding_ids: Option<&'a ::std::vec::Vec<::uuid::Uuid>>,
         owasp: Option<&'a types::Owasp>,
         search: Option<&'a types::Search>,
         severity: Option<types::Severity>,
@@ -27001,6 +27459,10 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new(
+                "finding_ids",
+                &finding_ids,
+            ))
             .query(&progenitor_client::QueryParam::new("owasp", &owasp))
             .query(&progenitor_client::QueryParam::new("search", &search))
             .query(&progenitor_client::QueryParam::new("severity", &severity))
@@ -29298,7 +29760,7 @@ impl Client {
         resource_name: Option<&'a ::std::vec::Vec<::std::string::String>>,
         resource_type: Option<&'a ::std::vec::Vec<::std::string::String>>,
         search: Option<&'a str>,
-        skip: Option<i64>,
+        skip: Option<u64>,
         source_type: Option<&'a ::std::vec::Vec<::std::string::String>>,
         start_date: Option<&'a ::chrono::DateTime<::chrono::offset::Utc>>,
         status: Option<&'a ::std::vec::Vec<::std::string::String>>,
