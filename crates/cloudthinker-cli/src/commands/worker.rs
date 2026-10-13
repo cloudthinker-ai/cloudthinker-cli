@@ -13,6 +13,8 @@ use crate::engine::{
     output,
 };
 
+const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(Debug, Args)]
 pub struct WorkerArgs {
     #[command(subcommand)]
@@ -154,7 +156,9 @@ async fn execute(base_url: &str, workspace: Option<&str>, args: WorkerArgs) -> C
             let store = WorkerStore::open_default(base_url)?;
             let client = build_client(base_url, workspace)?;
             let created = client.create_outpost(&name, shared).await?;
-            let boot = WorkerClient::exchange(base_url, &created.registration.reference).await?;
+            let boot =
+                WorkerClient::exchange(base_url, &created.registration.reference, CLI_VERSION)
+                    .await?;
             if created.target.target_id != Some(boot.target_id) {
                 return Err(CtError::Protocol(
                     "worker registration target mismatch".into(),
@@ -309,7 +313,7 @@ async fn resolve_credential(
     )?;
     match source {
         CredentialSource::Register(reference) => {
-            let boot = WorkerClient::exchange(base_url, &reference).await?;
+            let boot = WorkerClient::exchange(base_url, &reference, CLI_VERSION).await?;
             let credential = registered_credential(args.outpost.as_deref(), boot)?;
             store.save(&credential)?;
             Ok(credential)
@@ -387,7 +391,7 @@ async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
     )?);
     let environment = shell::environment(&args.env, args.inherit_env)
         .map_err(|code| CtError::Usage(code.into()))?;
-    let client = WorkerClient::new(base_url, &credential.token)?;
+    let client = WorkerClient::new(base_url, &credential.token, CLI_VERSION)?;
     let registration = build_registration(&identity, args.concurrency)?;
     let shim = match std::env::current_exe() {
         Ok(path) => ShimImage::open(path, &environment).await,

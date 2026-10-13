@@ -11,6 +11,10 @@ use crate::{CtError, CtResult, origin_of, worker_types as api};
 
 const MIN_CLOCK_SKEW_MS: i64 = 2_000;
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(30);
+const CLI_VERSION_HEADER: &str = "x-cloudthinker-cli-version";
+const OUTDATED_CODE: &str = "EXECUTOR_WORKER_OUTDATED";
+const OUTDATED_FALLBACK: &str =
+    "Your CLI is out of date. Run `cloudthinker update`, then run a new command.";
 
 #[derive(Clone)]
 pub struct WorkerClient {
@@ -19,8 +23,8 @@ pub struct WorkerClient {
 }
 
 impl WorkerClient {
-    pub fn new(base_url: &str, credential: &str) -> CtResult<Self> {
-        let mut headers = reqwest::header::HeaderMap::new();
+    pub fn new(base_url: &str, credential: &str, cli_version: &str) -> CtResult<Self> {
+        let mut headers = version_headers(cli_version)?;
         let mut bearer = reqwest::header::HeaderValue::from_str(&format!("Bearer {credential}"))
             .map_err(|_| CtError::Auth("invalid worker credential".into()))?;
         bearer.set_sensitive(true);
@@ -31,8 +35,12 @@ impl WorkerClient {
         })
     }
 
-    pub async fn exchange(base_url: &str, reference: &str) -> CtResult<api::WorkerBootstrap> {
-        let client = client(base_url, reqwest::header::HeaderMap::new())?;
+    pub async fn exchange(
+        base_url: &str,
+        reference: &str,
+        cli_version: &str,
+    ) -> CtResult<api::WorkerBootstrap> {
+        let client = client(base_url, version_headers(cli_version)?)?;
         let skew = AtomicI64::new(0);
         response(
             &skew,
@@ -289,6 +297,16 @@ impl WorkerClient {
     }
 }
 
+fn version_headers(cli_version: &str) -> CtResult<HeaderMap> {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        CLI_VERSION_HEADER,
+        reqwest::header::HeaderValue::from_str(cli_version)
+            .map_err(|_| CtError::Usage("invalid CLI version".into()))?,
+    );
+    Ok(headers)
+}
+
 fn client(
     base_url: &str,
     headers: reqwest::header::HeaderMap,
@@ -367,9 +385,10 @@ fn is_retryable(status: u16) -> bool {
 
 async fn worker_error(skew_ms: &AtomicI64, error: cloudthinker_api::Error<()>) -> CtError {
     match error {
-        cloudthinker_api::Error::InvalidResponsePayload(_, _) => {
-            CtError::Protocol("worker response does not match the protocol".into())
-        }
+        cloudthinker_api::Error::InvalidResponsePayload(_, _) => CtError::Protocol(
+            "worker response does not match the protocol; run `cloudthinker update` and try again"
+                .into(),
+        ),
         cloudthinker_api::Error::ErrorResponse(value) => {
             observe_clock(skew_ms, value.headers());
             let wait = retry_after(value.headers());
@@ -380,6 +399,9 @@ async fn worker_error(skew_ms: &AtomicI64, error: cloudthinker_api::Error<()>) -
             let status = response.status().as_u16();
             let wait = retry_after(response.headers());
             let body = response.text().await.ok();
+            if let Some(message) = body.as_deref().and_then(outdated) {
+                return CtError::Usage(message);
+            }
             status_error(status, body.as_deref().and_then(rejection), wait).await
         }
         other => match other.status().map(|status| status.as_u16()) {
@@ -406,6 +428,16 @@ async fn status_error(status: u16, rejection: Option<String>, wait: Option<Durat
         status,
         detail: Some(detail),
     }
+}
+
+fn outdated(body: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    let code = value
+        .pointer("/error/code")
+        .and_then(serde_json::Value::as_str)?;
+    (code == OUTDATED_CODE).then(|| {
+        crate::error::parse_error_message(body).unwrap_or_else(|| OUTDATED_FALLBACK.into())
+    })
 }
 
 fn rejection(body: &str) -> Option<String> {
@@ -446,11 +478,11 @@ fn invalid_envelope() -> CtError {
 mod tests {
     use super::*;
 
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn worker(base_url: &str) -> WorkerClient {
-        WorkerClient::new(base_url, "worker-token").unwrap()
+        WorkerClient::new(base_url, "worker-token", "0.8.0").unwrap()
     }
 
     fn registration() -> api::RegisterWorkerRequest {
@@ -469,6 +501,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/api/v1/executor-workers/register"))
+            .and(header("X-CloudThinker-CLI-Version", "0.8.0"))
             .respond_with(
                 ResponseTemplate::new(status).set_body_raw(body.to_owned(), "application/json"),
             )
@@ -543,6 +576,22 @@ mod tests {
         .await;
         assert!(
             matches!(&error, CtError::Api { status: 409, detail: Some(detail) } if detail == "EXECUTOR_FILESYSTEM_UNAVAILABLE: The folder is unavailable. (request req-9)"),
+            "got {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_outdated_cli_gets_the_server_message_and_stops() {
+        let message = "Your CLI is out of date (unknown; minimum 0.8.0). Run `cloudthinker update`, then run a new command.";
+        let error = register_error(
+            409,
+            &format!(
+                r#"{{"error":{{"code":"EXECUTOR_WORKER_OUTDATED","message":"{message}"}},"request_id":"req-3"}}"#
+            ),
+        )
+        .await;
+        assert!(
+            matches!(&error, CtError::Usage(text) if text == message),
             "got {error:?}"
         );
     }

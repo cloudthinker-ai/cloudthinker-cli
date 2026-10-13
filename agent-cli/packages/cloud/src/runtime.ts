@@ -25,7 +25,7 @@ export const STATUS_KEY = "cloudthinker";
 export const APPROVAL_KEY = "cloudthinker.approval";
 export const CREDITS_KEY = "cloudthinker.credits";
 
-export const NOTIFY_HINT = `/${PRODUCT_NAME} notify tells the approvers`;
+export const NOTIFY_HINT = `/${PRODUCT_NAME}:notify tells the approvers`;
 export const AUTO_MODE_OFF_REASON = "auto_mode_disabled";
 
 export function approvalWidgetLine(

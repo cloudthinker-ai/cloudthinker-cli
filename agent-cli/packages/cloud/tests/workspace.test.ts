@@ -26,7 +26,7 @@ const REMOTE: AgentCliWorkspace[] = [
 	{ workspace_id: MINE, workspace_name: "Mine", organization_id: null, organization_name: null, current: false },
 ];
 
-function harness(selections: string[], remote: AgentCliWorkspace[] | undefined) {
+function harness(selections: string[], remote: AgentCliWorkspace[] | undefined, status: { stdout: string } = { stdout: STATUS }) {
 	const registered: { apiKey?: string }[] = [];
 	const commands: string[][] = [];
 	const notices: string[] = [];
@@ -52,6 +52,7 @@ function harness(selections: string[], remote: AgentCliWorkspace[] | undefined) 
 			picks.push(options);
 			return queue.shift();
 		},
+		confirm: async () => true,
 	};
 	const ctx = {
 		ui,
@@ -64,7 +65,7 @@ function harness(selections: string[], remote: AgentCliWorkspace[] | undefined) 
 	} as unknown as ExtensionCommandContext;
 	const run = async (_command: string, args: string[]) => {
 		commands.push(args);
-		return { status: 0, stdout: args.includes("status") ? STATUS : "" };
+		return { status: 0, stdout: args.includes("status") ? status.stdout : "" };
 	};
 	return { runtime, ctx, run, registered, commands, notices, picks, newSessions: () => newSessions };
 }
@@ -121,6 +122,40 @@ test("a workspace without a login points at cloudthinker login and changes nothi
 		const old = harness([], undefined);
 		await workspaceCommand(old.runtime, old.ctx, "", { run: old.run, env });
 		assert.deepEqual(old.picks[0], ["Logged in", "  Prod  (current)", "  Staging"]);
+	});
+});
+
+test("a workspace without a login signs in from the agent and switches; a sign-in to another workspace keeps the old default", async () => {
+	const withDev = JSON.stringify({
+		host: "https://app.cloudthinker.io",
+		workspaces: [
+			{ workspace_id: ACME, workspace_name: "Prod", active: false },
+			{ workspace_id: BETA, workspace_name: "Staging", active: false },
+			{ workspace_id: GAMMA, workspace_name: "Dev", active: true },
+		],
+	});
+	await withEnv({ ...APP, CLOUDTHINKER_WORKSPACE: ACME }, async (env) => {
+		const status = { stdout: STATUS };
+		const h = harness(["  Dev  · login needed"], REMOTE, status);
+		const origins: string[] = [];
+		const signIn = async (origin: string) => {
+			origins.push(origin);
+			status.stdout = withDev;
+			return "signed-in" as const;
+		};
+		await workspaceCommand(h.runtime, h.ctx, "", { run: h.run, env, signIn });
+		assert.deepEqual(origins, ["https://app.cloudthinker.io"]);
+		assert.equal(env.CLOUDTHINKER_WORKSPACE, GAMMA);
+		assert.deepEqual(h.commands.at(-1), ["--url", "https://app.cloudthinker.io", "auth", "switch", GAMMA]);
+		assert.equal(h.newSessions(), 1);
+	});
+	await withEnv({ ...APP, CLOUDTHINKER_WORKSPACE: ACME }, async (env) => {
+		const elsewhere = harness(["  Dev  · login needed"], REMOTE);
+		await workspaceCommand(elsewhere.runtime, elsewhere.ctx, "", { run: elsewhere.run, env, signIn: async () => "signed-in" });
+		assert.deepEqual(elsewhere.commands.at(-1), ["--url", "https://app.cloudthinker.io", "auth", "switch", ACME]);
+		assert.match(elsewhere.notices.at(-1) ?? "", /another workspace.*Dev in Beta Inc/);
+		assert.equal(env.CLOUDTHINKER_WORKSPACE, ACME);
+		assert.equal(elsewhere.newSessions(), 0);
 	});
 });
 

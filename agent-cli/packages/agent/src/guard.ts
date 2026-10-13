@@ -36,7 +36,7 @@ export const CLOUD_COMMANDS = [
 ] as const;
 export const COPY_DESCRIPTION = "Copy the last answer, or its code block N (/copy 2)";
 export const SESSION_COMMAND = "/session";
-export const SESSION_REPLACEMENT = `/${PRODUCT_NAME} session`;
+export const SESSION_REPLACEMENT = `/${PRODUCT_NAME}:session`;
 export const COMMAND_ALIASES = [
 	{ alias: "exit", target: "quit" },
 	{ alias: "clear", target: "new" },
@@ -66,7 +66,7 @@ export function rewrittenCommand(text: string): string | undefined {
 	if (trimmed === SESSION_COMMAND) return SESSION_REPLACEMENT;
 	const [head = "", ...rest] = trimmed.split(/\s+/);
 	const cloud = CLOUD_COMMANDS.find((command) => head === `/${command.name}`);
-	if (cloud) return [`/${PRODUCT_NAME}`, cloud.name, ...(cloud.name === "bug" ? rest : [])].join(" ");
+	if (cloud) return [`/${PRODUCT_NAME}:${cloud.name}`, ...(cloud.name === "bug" ? rest : [])].join(" ");
 	const alias = COMMAND_ALIASES.find((entry) => trimmed === `/${entry.alias}`);
 	return alias ? `/${alias.target}` : undefined;
 }

@@ -465,7 +465,7 @@
             "type": "boolean"
           },
           "verdict": {
-            "description": "The Auto Mode gate's answer: `allow`, `require_approval`, `escalate`, or `hard_deny`.",
+            "description": "The Auto Mode gate's answer: `allow`, `require_approval`, or `hard_deny`.",
             "title": "Verdict",
             "type": "string"
           },
@@ -7840,6 +7840,11 @@
           "is_deleted": {
             "default": false,
             "title": "Is Deleted",
+            "type": "boolean"
+          },
+          "is_interrupt_approver": {
+            "nullable": true,
+            "title": "Is Interrupt Approver",
             "type": "boolean"
           },
           "member_count": {

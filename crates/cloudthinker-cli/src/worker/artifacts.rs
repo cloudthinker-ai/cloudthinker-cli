@@ -319,7 +319,7 @@ mod tests {
     }
 
     fn client(stub: &Stub) -> WorkerClient {
-        WorkerClient::new(&format!("http://{}", stub.address), "test-token").unwrap()
+        WorkerClient::new(&format!("http://{}", stub.address), "test-token", "0.8.0").unwrap()
     }
 
     fn later() -> chrono::DateTime<Utc> {

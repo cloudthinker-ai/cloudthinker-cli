@@ -1,3 +1,8 @@
+## [0.8.2-dev.1]
+
+- `cloudthinker worker` sends its CLI version in the `X-CloudThinker-CLI-Version` header on every worker request. A server that sets a minimum CLI version rejects an older worker at registration and heartbeat, and the worker prints the server message and exits instead of retrying; run `cloudthinker update`, then start the worker again.
+- A worker response that does not match the protocol now tells you to run `cloudthinker update`.
+
 ## [0.8.1]
 
 - First stable release since 0.7.8. It ships every change listed under 0.8.0 and 0.8.0-dev.3 to 0.8.0-dev.5 below, plus these:

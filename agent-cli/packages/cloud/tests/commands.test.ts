@@ -49,7 +49,7 @@ test("auto with no argument prints the mode and who can change it", async () => 
 		{
 			message: [
 				"Approval mode: Manual — every cloud write waits for a human",
-				"change it with /cloudthinker auto on|off",
+				"change it with /cloudthinker:auto on|off",
 			].join("\n"),
 			type: "info",
 		},

@@ -1,3 +1,8 @@
+## [0.8.2-dev.1]
+
+- Each CloudThinker command is now its own slash command: `/cloudthinker:workspace`, `/cloudthinker:auto`, `/cloudthinker:notify`, `/cloudthinker:session`, and the rest show in the slash picker with a description. `/cloudthinker workspace` and the other spaced forms still work.
+- `/cloudthinker:workspace` on a workspace you have not signed in to asks to sign in from the agent and then switches, instead of sending you to a shell. A CLI login covers one workspace, so each new workspace still needs one browser approval.
+
 ## [0.8.0-dev.5]
 
 - Name each prompt's turn in `X-CloudThinker-Turn` on every model call, so Langfuse shows one trace per turn instead of one per model call.

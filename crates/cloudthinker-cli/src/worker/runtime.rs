@@ -847,7 +847,8 @@ mod tests {
                 stream.write_all(response.as_bytes()).await.unwrap();
             }
         });
-        let client = WorkerClient::new(&format!("http://{address}"), "test-token").unwrap();
+        let client =
+            WorkerClient::new(&format!("http://{address}"), "test-token", "0.8.0").unwrap();
 
         let renewed = retry_transport_until(lease_retry_deadline(&lease), {
             let lease = lease.clone();
@@ -1012,7 +1013,8 @@ mod tests {
                 }
             }
         });
-        let client = WorkerClient::new(&format!("http://{address}"), "test-token").unwrap();
+        let client =
+            WorkerClient::new(&format!("http://{address}"), "test-token", "0.8.0").unwrap();
         let config = WatchConfig {
             base_delay: Duration::from_millis(1),
             max_delay: Duration::from_millis(2),

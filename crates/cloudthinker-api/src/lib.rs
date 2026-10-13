@@ -1356,7 +1356,7 @@ pub mod types {
     ///    "verdict": {
     ///      "title": "Verdict",
     ///      "description": "The Auto Mode gate's answer: `allow`,
-    /// `require_approval`, `escalate`, or `hard_deny`.",
+    /// `require_approval`, or `hard_deny`.",
     ///      "type": "string"
     ///    },
     ///    "verdict_reason": {
@@ -1399,8 +1399,8 @@ pub mod types {
         ///Whether the approval also trusted the script on the workspace
         /// default policy.
         pub trusted: bool,
-        ///The Auto Mode gate's answer: `allow`, `require_approval`,
-        /// `escalate`, or `hard_deny`.
+        ///The Auto Mode gate's answer: `allow`, `require_approval`, or
+        /// `hard_deny`.
         pub verdict: ::std::string::String,
         pub verdict_reason: ::std::string::String,
         ///The session in the browser, where the write is decided.
@@ -26004,6 +26004,13 @@ pub mod types {
     ///      "default": false,
     ///      "type": "boolean"
     ///    },
+    ///    "is_interrupt_approver": {
+    ///      "title": "Is Interrupt Approver",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "member_count": {
     ///      "title": "Member Count",
     ///      "default": 0,
@@ -26084,6 +26091,8 @@ pub mod types {
         pub is_default: bool,
         #[serde(default)]
         pub is_deleted: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub is_interrupt_approver: ::std::option::Option<bool>,
         #[serde(default)]
         pub member_count: i64,
         pub name: WorkspaceWithRolePublicName,

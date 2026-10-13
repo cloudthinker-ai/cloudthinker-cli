@@ -10,10 +10,27 @@ import { sanitizeTerminalText, setMachineState } from "./awareness.ts";
 import { type AutoMode, type CloudThinkerRuntime, describeError } from "./runtime.ts";
 import { newSessionEvent, refreshIdentity, restoreModels, retryLink, startSession } from "./session.ts";
 import { sessionPanelLines, sessionTotals } from "./usage.ts";
-import { workspaceCommand } from "./workspace.ts";
+import { workspaceCommand, workspaceDeps } from "./workspace.ts";
 import { attributionLine, type HostVersions } from "./versions.ts";
 
-export const SUBCOMMANDS = ["about", "session", "notify", "auto", "workspace", "share", "login", "logout", "changelog", "bug"] as const;
+export const SUBCOMMANDS = [
+	{ name: "workspace", description: "Switch to another CloudThinker workspace" },
+	{ name: "auto", description: "Show or change the workspace approval mode (on|off)" },
+	{ name: "notify", description: "Tell the approvers a cloud write is waiting" },
+	{ name: "share", description: "Copy this conversation's CloudThinker link" },
+	{ name: "session", description: "Show this session's messages, tokens, and credits" },
+	{ name: "login", description: "Sign in to CloudThinker" },
+	{ name: "logout", description: "Sign out of CloudThinker" },
+	{ name: "changelog", description: "Show what's new in this CloudThinker Agent" },
+	{ name: "bug", description: "Report a bug on the CloudThinker CLI GitHub" },
+	{ name: "about", description: "Show versions, the config folder, and the session link" },
+] as const;
+
+export type Subcommand = (typeof SUBCOMMANDS)[number]["name"];
+
+export function subcommandName(name: Subcommand): string {
+	return `${PRODUCT_NAME}:${name}`;
+}
 
 export const BUG_URL = "https://github.com/cloudthinker-ai/cloudthinker-cli/issues/new";
 export const CHANGELOG_URL = "https://docs.cloudthinker.io/changelog";
@@ -34,7 +51,7 @@ export function approvalModeSentence(enabled: boolean): string {
 export function autoModeLines(mode: AutoMode): string[] {
 	return [
 		approvalModeSentence(mode.enabled),
-		mode.canEdit ? `change it with /${PRODUCT_NAME} auto on|off` : AUTO_MODE_EDITOR_HINT,
+		mode.canEdit ? `change it with /${subcommandName("auto")} on|off` : AUTO_MODE_EDITOR_HINT,
 	];
 }
 
@@ -105,7 +122,7 @@ export async function autoCommand(
 		return;
 	}
 	if (argument !== "on" && argument !== "off") {
-		ui.notify(`Usage: /${PRODUCT_NAME} auto [on|off]`, "warning");
+		ui.notify(`Usage: /${subcommandName("auto")} [on|off]`, "warning");
 		return;
 	}
 	try {
@@ -234,11 +251,9 @@ async function shareCommand(runtime: CloudThinkerRuntime, ctx: ExtensionCommandC
 	ctx.ui.notify(shareLines(session.web_url, runtime.identity?.workspace_name, copied).join("\n"), "info");
 }
 
-async function loginCommand(runtime: CloudThinkerRuntime, ctx: ExtensionCommandContext): Promise<void> {
-	if (!ctx.isIdle()) {
-		ctx.ui.notify("Wait for this turn to finish or stop it before signing in.", "warning");
-		return;
-	}
+export type SignInResult = "signed-in" | "cancelled" | "failed";
+
+export async function signIn(ctx: ExtensionCommandContext, args: string[] = ["login"]): Promise<SignInResult> {
 	const lines = ["Signing in to CloudThinker… (Esc cancels)"];
 	ctx.ui.notify(lines[0]!, "info");
 	const cancel = new AbortController();
@@ -249,18 +264,28 @@ async function loginCommand(runtime: CloudThinkerRuntime, ctx: ExtensionCommandC
 	});
 	let code: number;
 	try {
-		code = await runCli(["login"], (line) => {
+		code = await runCli(args, (line) => {
 			lines.push(line);
 			ctx.ui.notify(lines.join("\n"), "info");
 		}, cancel.signal);
 	} finally {
 		stopListening();
 	}
-	if (cancel.signal.aborted) {
+	if (cancel.signal.aborted) return "cancelled";
+	return code === 0 ? "signed-in" : "failed";
+}
+
+async function loginCommand(runtime: CloudThinkerRuntime, ctx: ExtensionCommandContext): Promise<void> {
+	if (!ctx.isIdle()) {
+		ctx.ui.notify("Wait for this turn to finish or stop it before signing in.", "warning");
+		return;
+	}
+	const result = await signIn(ctx);
+	if (result === "cancelled") {
 		ctx.ui.notify("Sign-in cancelled; run /login to try again.", "info");
 		return;
 	}
-	if (code !== 0) {
+	if (result === "failed") {
 		ctx.ui.notify("Sign-in did not finish; run /login to try again.", "warning");
 		return;
 	}
@@ -308,6 +333,52 @@ async function bugCommand(runtime: CloudThinkerRuntime, ctx: ExtensionCommandCon
 export interface CommandOptions {
 	changelogPath?: string;
 }
+
+async function runSubcommand(
+	runtime: CloudThinkerRuntime,
+	ctx: ExtensionCommandContext,
+	name: Subcommand,
+	rest: string,
+	options: CommandOptions,
+): Promise<void> {
+	switch (name) {
+		case "notify":
+			return notifyApprovers(runtime, ctx.ui);
+		case "auto":
+			return autoCommand(runtime, ctx.ui, rest);
+		case "workspace":
+			return workspaceCommand(runtime, ctx, rest, { ...workspaceDeps(), signIn: (origin) => signIn(ctx, ["--url", origin, "login"]) });
+		case "share":
+			return shareCommand(runtime, ctx);
+		case "login":
+			return loginCommand(runtime, ctx);
+		case "logout":
+			return logoutCommand(runtime, ctx);
+		case "changelog":
+			return changelogCommand(ctx, options.changelogPath);
+		case "bug":
+			return bugCommand(runtime, ctx, rest);
+		case "about":
+			ctx.ui.notify(aboutLines(runtime.versions, getAgentDir(), runtime.session?.web_url).join("\n"), "info");
+			return;
+		case "session":
+			ctx.ui.notify(
+				sessionPanelLines(
+					{
+						file: ctx.sessionManager.getSessionFile(),
+						id: ctx.sessionManager.getSessionId(),
+						name: ctx.sessionManager.getSessionName(),
+						webUrl: runtime.session?.web_url,
+					},
+					sessionTotals(ctx.sessionManager.getEntries()),
+					runtime.credits,
+				).join("\n"),
+				"info",
+			);
+			return;
+	}
+}
+
 
 export function registerCommands(runtime: CloudThinkerRuntime, options: CommandOptions = {}): void {
 	runtime.pi.registerCommand("open", {
@@ -403,73 +474,28 @@ export function registerCommands(runtime: CloudThinkerRuntime, options: CommandO
 		},
 	});
 
+	const run = (name: Subcommand, rest: string, ctx: ExtensionCommandContext) => runSubcommand(runtime, ctx, name, rest, options);
+	for (const { name, description } of SUBCOMMANDS) {
+		runtime.pi.registerCommand(subcommandName(name), {
+			description,
+			handler: async (args, ctx) => run(name, args.trim(), ctx),
+		});
+	}
 	runtime.pi.registerCommand(PRODUCT_NAME, {
-		description: `CloudThinker Agent subcommands: ${SUBCOMMANDS.join(", ")}`,
+		description: `CloudThinker Agent commands; type /${PRODUCT_NAME}: to list them`,
 		getArgumentCompletions: (prefix) =>
-			SUBCOMMANDS.filter((name) => name.startsWith(prefix)).map((name) => ({
+			SUBCOMMANDS.filter(({ name }) => name.startsWith(prefix)).map(({ name }) => ({
 				value: name,
 				label: name,
 			})),
 		handler: async (args, ctx) => {
 			const [subcommand = "", ...rest] = args.trim().split(/\s+/);
-			if (subcommand === "notify") {
-				await notifyApprovers(runtime, ctx.ui);
+			const match = SUBCOMMANDS.find(({ name }) => name === subcommand);
+			if (!match) {
+				ctx.ui.notify(`Usage: ${SUBCOMMANDS.map(({ name }) => `/${subcommandName(name)}`).join(" | ")}`, "warning");
 				return;
 			}
-			if (subcommand === "auto") {
-				await autoCommand(runtime, ctx.ui, rest.join(" "));
-				return;
-			}
-			if (subcommand === "workspace") {
-				await workspaceCommand(runtime, ctx, rest.join(" "));
-				return;
-			}
-			if (subcommand === "share") {
-				await shareCommand(runtime, ctx);
-				return;
-			}
-			if (subcommand === "login") {
-				await loginCommand(runtime, ctx);
-				return;
-			}
-			if (subcommand === "logout") {
-				await logoutCommand(runtime, ctx);
-				return;
-			}
-			if (subcommand === "changelog") {
-				await changelogCommand(ctx, options.changelogPath);
-				return;
-			}
-			if (subcommand === "bug") {
-				await bugCommand(runtime, ctx, rest.join(" "));
-				return;
-			}
-			if (subcommand === "about") {
-				ctx.ui.notify(
-					aboutLines(runtime.versions, getAgentDir(), runtime.session?.web_url).join(
-						"\n",
-					),
-					"info",
-				);
-				return;
-			}
-			if (subcommand === "session") {
-				ctx.ui.notify(
-					sessionPanelLines(
-						{
-							file: ctx.sessionManager.getSessionFile(),
-							id: ctx.sessionManager.getSessionId(),
-							name: ctx.sessionManager.getSessionName(),
-							webUrl: runtime.session?.web_url,
-						},
-						sessionTotals(ctx.sessionManager.getEntries()),
-						runtime.credits,
-					).join("\n"),
-					"info",
-				);
-				return;
-			}
-			ctx.ui.notify(`Usage: /${PRODUCT_NAME} ${SUBCOMMANDS.join("|")}`, "warning");
+			await run(match.name, rest.join(" "), ctx);
 		},
 	});
 }

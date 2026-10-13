@@ -9,7 +9,7 @@ export const WORKSPACE_ENV_VAR = "CLOUDTHINKER_WORKSPACE";
 export const TOKEN_PINS_WORKSPACE =
 	"CLOUDTHINKER_TOKEN pins this session to one workspace. Unset it to switch workspaces.";
 export const ONLY_ONE_WORKSPACE =
-	"You have only one workspace, or only one is logged in. Run `cloudthinker login` to add another, then use /cloudthinker workspace.";
+	"You have only one workspace, or only one is logged in. Run `cloudthinker login` to add another, then use /cloudthinker:workspace.";
 
 export interface StoredWorkspace {
 	id: string;
@@ -20,9 +20,10 @@ export interface StoredWorkspace {
 export interface WorkspaceDeps {
 	run: CommandRunner;
 	env: NodeJS.ProcessEnv;
+	signIn?: (origin: string) => Promise<"signed-in" | "cancelled" | "failed">;
 }
 
-const defaultDeps = (): WorkspaceDeps => ({ run: runCommand, env: process.env });
+export const workspaceDeps = (): WorkspaceDeps => ({ run: runCommand, env: process.env });
 
 function cliArgs(env: NodeJS.ProcessEnv, ...rest: string[]): string[] {
 	return ["--url", resolveBaseUrl(env), ...rest];
@@ -119,19 +120,56 @@ export function matchWorkspace(entries: WorkspaceEntry[], query: string): Worksp
 	const byName = entries.filter((entry) => entry.name.toLowerCase() === query.toLowerCase());
 	if (byName.length === 1) return byName[0] as WorkspaceEntry;
 	if (byName.length > 1) return `More than one workspace is named "${sanitizeTerminalText(query)}". Pick it from the list or pass its id.`;
-	return `No workspace matches "${sanitizeTerminalText(query)}". Run /cloudthinker workspace to pick from the list.`;
+	return `No workspace matches "${sanitizeTerminalText(query)}". Run /cloudthinker:workspace to pick from the list.`;
+}
+
+function placeName(entry: WorkspaceEntry): string {
+	return entry.organizationName ? `${sanitizeTerminalText(entry.name)} in ${sanitizeTerminalText(entry.organizationName)}` : sanitizeTerminalText(entry.name);
 }
 
 export function loginNeeded(entry: WorkspaceEntry, origin: string): string {
-	const where = entry.organizationName ? `${sanitizeTerminalText(entry.name)} in ${sanitizeTerminalText(entry.organizationName)}` : sanitizeTerminalText(entry.name);
-	return `You are not logged in to ${where} yet. Run \`cloudthinker login --url ${origin}\`, choose it in the browser, then run /cloudthinker workspace again.`;
+	return `You are not logged in to ${placeName(entry)} yet. Run \`cloudthinker login --url ${origin}\`, choose it in the browser, then run /cloudthinker:workspace again.`;
+}
+
+export const SIGN_IN_REASON =
+	"Each CloudThinker CLI login covers one workspace, so this one needs its own sign-in. Choose it in the browser.";
+
+async function signInTo(
+	target: WorkspaceEntry,
+	stored: StoredWorkspace[],
+	ctx: ExtensionCommandContext,
+	deps: WorkspaceDeps,
+): Promise<boolean> {
+	const { ui } = ctx;
+	const origin = resolveBaseUrl(deps.env);
+	if (!deps.signIn || !(await ui.confirm(`Sign in to ${placeName(target)}?`, SIGN_IN_REASON))) {
+		ui.notify(loginNeeded(target, origin), "warning");
+		return false;
+	}
+	const result = await deps.signIn(origin);
+	if (result !== "signed-in") {
+		ui.notify(result === "cancelled" ? "Sign-in cancelled; you are still in this workspace." : loginNeeded(target, origin), "warning");
+		return false;
+	}
+	let after: StoredWorkspace[];
+	try {
+		after = await listStoredWorkspaces(deps);
+	} catch (error) {
+		ui.notify(describeError(error), "error");
+		return false;
+	}
+	if (after.some((workspace) => workspace.id === target.id)) return true;
+	const active = stored.find((workspace) => workspace.active);
+	if (active) await deps.run(tokenBinary(deps.env), cliArgs(deps.env, "auth", "switch", active.id));
+	ui.notify(`That sign-in was for another workspace. Run /cloudthinker:workspace again and choose ${placeName(target)} in the browser.`, "warning");
+	return false;
 }
 
 export async function workspaceCommand(
 	runtime: CloudThinkerRuntime,
 	ctx: ExtensionCommandContext,
 	argument: string,
-	deps: WorkspaceDeps = defaultDeps(),
+	deps: WorkspaceDeps = workspaceDeps(),
 ): Promise<void> {
 	const { ui } = ctx;
 	if (deps.env.CLOUDTHINKER_TOKEN?.trim()) {
@@ -187,10 +225,7 @@ export async function workspaceCommand(
 		ui.notify(`Already in ${sanitizeTerminalText(target.name)}.`, "info");
 		return;
 	}
-	if (!target.loggedIn) {
-		ui.notify(loginNeeded(target, resolveBaseUrl(deps.env)), "warning");
-		return;
-	}
+	if (!target.loggedIn && !(await signInTo(target, stored, ctx, deps))) return;
 
 	const previous = deps.env[WORKSPACE_ENV_VAR];
 	deps.env[WORKSPACE_ENV_VAR] = target.id;

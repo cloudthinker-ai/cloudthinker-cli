@@ -92,13 +92,13 @@ test("pi's share, login, logout, changelog, and bug commands reach the CloudThin
 	submit("/bug footer overlaps the prompt");
 
 	assert.deepEqual(host.delivered, [
-		"/cloudthinker share",
-		"/cloudthinker login",
-		"/cloudthinker logout",
-		"/cloudthinker changelog",
-		"/cloudthinker bug",
-		"/cloudthinker login",
-		"/cloudthinker bug footer overlaps the prompt",
+		"/cloudthinker:share",
+		"/cloudthinker:login",
+		"/cloudthinker:logout",
+		"/cloudthinker:changelog",
+		"/cloudthinker:bug",
+		"/cloudthinker:login",
+		"/cloudthinker:bug footer overlaps the prompt",
 	]);
 });
 

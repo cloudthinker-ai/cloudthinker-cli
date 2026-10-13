@@ -1,3 +1,7 @@
+## [0.8.2-dev.1]
+
+- `/share`, `/login`, `/logout`, `/changelog`, `/bug`, and `/session` run the matching `/cloudthinker:<name>` command.
+
 ## [0.8.0-dev.5]
 
 - The agent's glob matching picks up brace-expansion 5.0.12, which fixes three denial-of-service issues (CPU and stack exhaustion on crafted brace patterns).

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionToolContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { CloudThinkerClient } from "../src/client.ts";
-import { registerCommands } from "../src/commands.ts";
+import { registerCommands, SUBCOMMANDS } from "../src/commands.ts";
 import { buildPromptBlock } from "../src/prompt.ts";
 import { CLOUD_ENTRY_TYPE, CloudThinkerRuntime } from "../src/runtime.ts";
 import { CLOUD_TOOLS, CT_ASK } from "../src/tools/names.ts";
@@ -16,7 +16,7 @@ function harness() {
 	let active = ["bash", "read", "write", "edit", ...CLOUD_TOOLS];
 	const entries: { customType: string; data: unknown }[] = [];
 	const tools = new Map<string, ToolDefinition>();
-	const commands = new Map<string, { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> }>();
+	const commands = new Map<string, { description?: string; handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> }>();
 	const messages: string[] = [];
 	const statuses: string[] = [];
 	let idle = true;
@@ -25,7 +25,7 @@ function harness() {
 		setActiveTools: (names: string[]) => { active = names; },
 		appendEntry: (customType: string, data: unknown) => entries.push({ customType, data }),
 		registerTool: (tool: ToolDefinition) => tools.set(tool.name, tool),
-		registerCommand: (name: string, command: { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> }) => commands.set(name, command),
+		registerCommand: (name: string, command: { description?: string; handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> }) => commands.set(name, command),
 	} as unknown as ExtensionAPI;
 	const clientCalls: string[] = [];
 	const client = {
@@ -49,7 +49,7 @@ function harness() {
 		ui: { notify: (message: string) => messages.push(message), setStatus: (_key: string, text?: string) => { if (text) statuses.push(text); } },
 	} as unknown as ExtensionCommandContext & ExtensionToolContext;
 	registerCommands(runtime);
-	return { runtime, tools, entries, messages, statuses, clientCalls, active: () => active, setIdle: (value: boolean) => { idle = value; }, command: (args: string) => commands.get("cloud")!.handler(args, ctx), ctx };
+	return { commands, runtime, tools, entries, messages, statuses, clientCalls, active: () => active, setIdle: (value: boolean) => { idle = value; }, command: (args: string) => commands.get("cloud")!.handler(args, ctx), ctx };
 }
 
 test("CA-CLOUD-1 off hides cloud tools and on preserves local tool changes", async () => {
@@ -100,4 +100,15 @@ test("CA-CLOUD-4 all five tools refuse execution while Off before calling the ba
 		);
 	}
 	assert.equal(h.tools.size, 5);
+});
+
+test("each CloudThinker subcommand is its own /cloudthinker:<name> command, and the spaced form still runs it", async () => {
+	const h = harness();
+	for (const { name, description } of SUBCOMMANDS) assert.equal(h.commands.get(`cloudthinker:${name}`)?.description, description);
+	await h.commands.get("cloudthinker:share")!.handler("", h.ctx);
+	await h.commands.get("cloudthinker")!.handler("share", h.ctx);
+	await h.commands.get("cloudthinker")!.handler("nope", h.ctx);
+	assert.equal(h.messages[0], h.messages[1]);
+	assert.match(h.messages[0] ?? "", /not linked/);
+	assert.match(h.messages[2] ?? "", /^Usage: \/cloudthinker:workspace \| \/cloudthinker:auto/);
 });

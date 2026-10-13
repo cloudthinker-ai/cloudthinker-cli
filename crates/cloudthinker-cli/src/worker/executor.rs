@@ -310,7 +310,7 @@ mod tests {
         Fixture {
             _temporary: temporary,
             executor: WorkdirExecutor::new(identity, BTreeMap::new(), Vec::new(), shim),
-            client: WorkerClient::new("http://127.0.0.1:1", "test-token").unwrap(),
+            client: WorkerClient::new("http://127.0.0.1:1", "test-token", "0.8.0").unwrap(),
         }
     }
 
