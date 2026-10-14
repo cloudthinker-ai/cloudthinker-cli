@@ -7,3 +7,5 @@ pub mod journal;
 pub mod runtime;
 pub mod shell;
 pub mod skill_bundles;
+pub mod telemetry;
+pub mod worktree;

@@ -1,6 +1,6 @@
 [package]
 name = "cloudthinker-cli"
-version = "0.8.2-dev.1"
+version = "0.8.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -38,6 +38,7 @@ chrono.workspace = true
 fs2 = "0.4"
 
 [target.'cfg(unix)'.dependencies]
+axum = { version = "0.8", default-features = false, features = ["tokio", "http1"] }
 base64.workspace = true
 flate2.workspace = true
 tar.workspace = true

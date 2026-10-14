@@ -100,9 +100,12 @@ pub fn remove_abandoned(state: &Path, now: std::time::SystemTime, max_age: std::
             .and_then(|modified| now.duration_since(modified).ok())
             .is_some_and(|age| age >= max_age);
         if abandoned && let Err(error) = std::fs::remove_dir_all(&path) {
-            crate::engine::output::warn(&format!(
-                "Could not remove the abandoned receipt journal {name}: {error}"
-            ));
+            super::telemetry::emit(
+                super::telemetry::Level::Warn,
+                "journal_cleanup_failed",
+                super::telemetry::Fields::default(),
+                &format!("Could not remove the abandoned receipt journal {name}: {error}"),
+            );
         }
     }
 }

@@ -12,7 +12,7 @@ use crate::engine::local_review::LocalReviewResult;
 use cloudthinker_client::{
     CliIdentity, CoverageReport, CoverageStatus, CyberApp, CyberDomain, CyberExecutionHost,
     CyberExport, CyberFinding, CyberRun, CyberRunBrief, CyberRunResult, CyberSessionEntry,
-    EvidenceReceipt, IncidentView, Partition, RecommendationView, ReviewFinding,
+    EvidenceReceipt, IncidentView, OutpostStatus, Partition, RecommendationView, ReviewFinding,
     ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView, RunListItem, RunStatus, RunView,
     SettleResult, StoredWorkspace, SubmittedRun, Surface, WorkPlan,
     worker_types::ExecutorChoicePublic,
@@ -1131,6 +1131,24 @@ pub fn outpost_status_line(choice: &ExecutorChoicePublic) -> String {
     format!("{}: {}", terminal_text(&choice.name), choice.availability)
 }
 
+pub fn outpost_status_text(status: &OutpostStatus) -> String {
+    let line = outpost_status_line(&status.choice);
+    let version = status.cli_version.as_deref().map(terminal_text);
+    let badge = match status.cli_version_status.as_deref() {
+        Some("update_available") => Some("Update available"),
+        Some("outdated") => Some("Outdated"),
+        _ => None,
+    };
+    match (badge, version) {
+        (Some(badge), Some(version)) => {
+            format!("{line}; {badge} (CLI {version}). Run `cloudthinker update`.")
+        }
+        (Some(badge), None) => format!("{line}; {badge}. Run `cloudthinker update`."),
+        (None, Some(version)) => format!("{line}; CLI {version}"),
+        (None, None) => line,
+    }
+}
+
 pub fn outpost_list_text(choices: &[ExecutorChoicePublic]) -> String {
     choices
         .iter()
@@ -1437,6 +1455,13 @@ mod tests {
             scope: ExecutorScope::Personal,
             target_id: Some(Uuid::from_u128(3)),
             verification_error: None,
+            git: false,
+            head_branch: None,
+            branches: Vec::new(),
+            worktree_supported: false,
+            cli_version: None,
+            cli_version_status: None,
+            workers_disabled: None,
         }
     }
 

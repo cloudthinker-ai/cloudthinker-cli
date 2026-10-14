@@ -19,14 +19,14 @@ mod worker_service_descriptor;
 use worker_service_descriptor::{
     descriptor_path, path_text, render_descriptor, render_previous_descriptor, require_descriptor,
     sync_directory, validate_descriptor_metadata, validate_label, validate_service_text,
-    write_descriptor,
+    validate_unix_user, write_descriptor,
 };
 
 const SERVICE_NAMESPACE: &str = "io.cloudthinker.worker";
 
 #[derive(Debug, Subcommand)]
 pub enum ServiceCommand {
-    /// Register the worker with this user's service manager, without starting it.
+    /// Register the worker with the service manager, without starting it.
     Install(ServiceInstallArgs),
     /// Stop the service and remove its descriptor, keeping the credential.
     Uninstall(ServiceTargetArgs),
@@ -56,9 +56,27 @@ pub struct ServiceInstallArgs {
     #[arg(long)]
     pub label: Option<String>,
 
+    /// On Linux, turn on lingering for your account so the service runs after logout and at boot.
+    #[arg(long, conflicts_with = "system")]
+    pub enable_linger: bool,
+
+    #[command(flatten)]
+    pub scope: ServiceScopeArgs,
+
     /// Print JSON on stdout instead of text.
     #[arg(long)]
     pub json: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct ServiceScopeArgs {
+    /// Manage a machine-wide service (systemd system unit or macOS LaunchDaemon); run as root with --user.
+    #[arg(long, requires = "user")]
+    pub system: bool,
+
+    /// With --system, the account that runs the worker and keeps its credential.
+    #[arg(long, requires = "system")]
+    pub user: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -70,6 +88,9 @@ pub struct ServiceTargetArgs {
     /// The served folder that identifies the service.
     #[arg(long, default_value = ".")]
     pub workdir: PathBuf,
+
+    #[command(flatten)]
+    pub scope: ServiceScopeArgs,
 
     /// Print JSON on stdout instead of text.
     #[arg(long)]
@@ -101,8 +122,35 @@ impl ServicePlatform {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ServiceScope {
+    User,
+    System(SystemUser),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SystemUser {
+    name: String,
+    uid: u32,
+    home: PathBuf,
+}
+
+impl ServiceScope {
+    fn is_system(&self) -> bool {
+        matches!(self, Self::System(_))
+    }
+
+    fn system_user(&self) -> Option<&SystemUser> {
+        match self {
+            Self::System(user) => Some(user),
+            Self::User => None,
+        }
+    }
+}
+
 struct ServiceTarget {
     platform: ServicePlatform,
+    scope: ServiceScope,
     target_id: Uuid,
     workdir: PathBuf,
     service_name: String,
@@ -124,6 +172,8 @@ struct ServiceOutput {
     logs: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     last_exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    linger: Option<&'static str>,
 }
 
 pub fn execute(base_url: &str, workspace: Option<&str>, command: ServiceCommand) -> CtResult<()> {
@@ -138,8 +188,16 @@ pub fn execute(base_url: &str, workspace: Option<&str>, command: ServiceCommand)
 
 fn install(base_url: &str, workspace: Option<&str>, args: ServiceInstallArgs) -> CtResult<()> {
     let origin = origin_of(base_url)?;
-    let target = target(&origin, args.outpost.as_deref(), &args.workdir)?;
-    require_stored_credential(&origin, target.target_id)?;
+    let scope = scope_of(&args.scope)?;
+    if args.enable_linger && ServicePlatform::current()? != ServicePlatform::Systemd {
+        return Err(CtError::Usage(
+            "--enable-linger applies only to a Linux user service".into(),
+        ));
+    }
+    let target = target(&origin, args.outpost.as_deref(), &args.workdir, &scope)?;
+    if !scope.is_system() {
+        require_stored_credential(&origin, target.target_id)?;
+    }
     validate_service_text(&origin, "host")?;
     if let Some(workspace) = workspace {
         validate_service_text(workspace, "workspace")?;
@@ -172,6 +230,7 @@ fn install(base_url: &str, workspace: Option<&str>, args: ServiceInstallArgs) ->
         argv.extend(["--label".into(), label]);
     }
     if target.platform == ServicePlatform::Launchd
+        && !scope.is_system()
         && let Some(logs) = target.log_path.parent()
     {
         private_directory(logs)?;
@@ -182,24 +241,114 @@ fn install(base_url: &str, workspace: Option<&str>, args: ServiceInstallArgs) ->
         &argv,
         &target.workdir,
         &target.log_path,
+        &target.scope,
     )?;
-    let previous = render_previous_descriptor(
-        target.platform,
-        &target.service_name,
-        &argv,
-        &target.workdir,
-    )?;
+    let previous = if scope.is_system() {
+        descriptor.clone()
+    } else {
+        render_previous_descriptor(
+            target.platform,
+            &target.service_name,
+            &argv,
+            &target.workdir,
+        )?
+    };
     let spec = ServiceSpec { target, descriptor };
     let state = apply_descriptor(&spec, &previous)?;
-    emit(
-        &spec.target.output(state),
-        &format!(
-            "Worker service {state}; start it with cloudthinker worker service start --outpost {} --workdir {}",
-            spec.target.target_id,
-            spec.target.workdir.display()
-        ),
-        args.json,
-    )
+    let linger = if scope.is_system() || spec.target.platform != ServicePlatform::Systemd {
+        None
+    } else {
+        Some(ensure_linger(args.enable_linger))
+    };
+    let mut output = spec.target.output(state);
+    output.linger = linger.as_ref().map(|report| report.state);
+    let flags = spec.target.scope_flags();
+    let mut human = format!(
+        "Worker service {state}; start it with cloudthinker worker service start --outpost {} --workdir {}{flags}",
+        spec.target.target_id,
+        spec.target.workdir.display()
+    );
+    if let Some(hint) = linger.and_then(|report| report.hint) {
+        human.push('\n');
+        human.push_str(&hint);
+    }
+    emit(&output, &human, args.json)
+}
+
+struct LingerReport {
+    state: &'static str,
+    hint: Option<String>,
+}
+
+fn ensure_linger(enable: bool) -> LingerReport {
+    let account = linger_account();
+    let enable_command = format!("loginctl enable-linger {account}");
+    match query_linger(&account) {
+        Some(true) => LingerReport {
+            state: "enabled",
+            hint: None,
+        },
+        Some(false) if enable => match run_manager("loginctl", &["enable-linger", &account]) {
+            Ok(()) => LingerReport {
+                state: "enabled",
+                hint: None,
+            },
+            Err(error) => LingerReport {
+                state: "disabled",
+                hint: Some(format!(
+                    "Lingering could not be turned on ({error}). The service stops at logout. Run: sudo {enable_command}"
+                )),
+            },
+        },
+        Some(false) => LingerReport {
+            state: "disabled",
+            hint: Some(format!(
+                "Lingering is off, so the service stops at logout and does not start at boot. Run: {enable_command}   (or install again with --enable-linger)"
+            )),
+        },
+        None => LingerReport {
+            state: "unknown",
+            hint: Some(format!(
+                "Could not read the lingering setting. To keep the service after logout and reboot, run: {enable_command}"
+            )),
+        },
+    }
+}
+
+fn linger_account() -> String {
+    env::var("USER")
+        .ok()
+        .filter(|name| validate_unix_user(name).is_ok())
+        .unwrap_or_else(linger_uid)
+}
+
+fn linger_uid() -> String {
+    #[cfg(unix)]
+    {
+        rustix::process::geteuid().as_raw().to_string()
+    }
+    #[cfg(not(unix))]
+    {
+        String::new()
+    }
+}
+
+fn query_linger(account: &str) -> Option<bool> {
+    let output = manager_output("loginctl", &["show-user", account, "--property=Linger"]).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_linger(&String::from_utf8_lossy(&output.stdout))
+}
+
+fn parse_linger(text: &str) -> Option<bool> {
+    text.lines()
+        .find_map(|line| line.trim().strip_prefix("Linger="))
+        .and_then(|value| match value.trim() {
+            "yes" => Some(true),
+            "no" => Some(false),
+            _ => None,
+        })
 }
 
 fn apply_descriptor(spec: &ServiceSpec, previous: &str) -> CtResult<&'static str> {
@@ -246,7 +395,7 @@ fn manager_reload(target: &ServiceTarget) -> CtResult<()> {
                 return Ok(());
             }
             launchd_bootout(target)?;
-            let domain = launchd_domain()?;
+            let domain = launchd_domain(target)?;
             let path = target.descriptor_path.display().to_string();
             run_manager("launchctl", &["bootstrap", &domain, &path])
         }
@@ -254,7 +403,8 @@ fn manager_reload(target: &ServiceTarget) -> CtResult<()> {
 }
 
 fn uninstall(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
-    let target = target(base_url, args.outpost.as_deref(), &args.workdir)?;
+    let scope = scope_of(&args.scope)?;
+    let target = target(base_url, args.outpost.as_deref(), &args.workdir, &scope)?;
     require_descriptor(&target)?;
     manager_uninstall(&target)?;
     fs::remove_file(&target.descriptor_path)
@@ -273,7 +423,8 @@ fn uninstall(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
 }
 
 fn status(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
-    let target = target(base_url, args.outpost.as_deref(), &args.workdir)?;
+    let scope = scope_of(&args.scope)?;
+    let target = target(base_url, args.outpost.as_deref(), &args.workdir, &scope)?;
     match fs::symlink_metadata(&target.descriptor_path) {
         Ok(metadata) => validate_descriptor_metadata(&metadata)?,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -302,10 +453,64 @@ fn status(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
     emit(&output, &human, args.json)
 }
 
+#[derive(Debug)]
+pub struct ServiceHealth {
+    pub manager: &'static str,
+    pub state: &'static str,
+    pub linger: Option<bool>,
+}
+
+pub fn health(base_url: &str, target_id: Uuid, workdir: &Path) -> CtResult<ServiceHealth> {
+    let target = target(
+        base_url,
+        Some(&target_id.to_string()),
+        workdir,
+        &ServiceScope::User,
+    )?;
+    let linger = if target.platform == ServicePlatform::Systemd {
+        user_linger()
+    } else {
+        None
+    };
+    let state = match fs::symlink_metadata(&target.descriptor_path) {
+        Ok(metadata) => {
+            validate_descriptor_metadata(&metadata)?;
+            manager_status(&target)?
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => "absent",
+        Err(_) => {
+            return Err(CtError::Store(
+                "worker service descriptor unavailable".into(),
+            ));
+        }
+    };
+    Ok(ServiceHealth {
+        manager: target.platform.name(),
+        state,
+        linger,
+    })
+}
+
+fn user_linger() -> Option<bool> {
+    let user = env::var("USER").or_else(|_| env::var("LOGNAME")).ok()?;
+    let output = manager_output("loginctl", &["show-user", &user, "--property=Linger"]).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    match String::from_utf8_lossy(&output.stdout).trim() {
+        "Linger=yes" => Some(true),
+        "Linger=no" => Some(false),
+        _ => None,
+    }
+}
+
 fn start(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
-    let target = target(base_url, args.outpost.as_deref(), &args.workdir)?;
+    let scope = scope_of(&args.scope)?;
+    let target = target(base_url, args.outpost.as_deref(), &args.workdir, &scope)?;
     require_descriptor(&target)?;
-    require_stored_credential(base_url, target.target_id)?;
+    if !scope.is_system() {
+        require_stored_credential(base_url, target.target_id)?;
+    }
     manager_start(&target)?;
     emit(
         &target.output("started"),
@@ -315,7 +520,8 @@ fn start(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
 }
 
 fn stop(base_url: &str, args: ServiceTargetArgs) -> CtResult<()> {
-    let target = target(base_url, args.outpost.as_deref(), &args.workdir)?;
+    let scope = scope_of(&args.scope)?;
+    let target = target(base_url, args.outpost.as_deref(), &args.workdir, &scope)?;
     require_descriptor(&target)?;
     manager_stop(&target)?;
     emit(
@@ -330,19 +536,176 @@ fn require_stored_credential(origin: &str, target_id: Uuid) -> CtResult<()> {
     Ok(())
 }
 
-fn target(base_url: &str, selector: Option<&str>, workdir: &Path) -> CtResult<ServiceTarget> {
+fn scope_of(args: &ServiceScopeArgs) -> CtResult<ServiceScope> {
+    if !args.system {
+        return Ok(ServiceScope::User);
+    }
+    let name = args
+        .user
+        .as_deref()
+        .ok_or_else(|| CtError::Usage("--system needs --user <account>".into()))?;
+    require_root()?;
+    Ok(ServiceScope::System(lookup_user(name)?))
+}
+
+fn require_root() -> CtResult<()> {
+    #[cfg(unix)]
+    if rustix::process::geteuid().as_raw() != 0 {
+        return Err(CtError::Usage(
+            "--system must run as root; run it with sudo".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn lookup_user(name: &str) -> CtResult<SystemUser> {
+    validate_unix_user(name)?;
+    let platform = ServicePlatform::current()?;
+    let record = match platform {
+        ServicePlatform::Systemd => Command::new("getent")
+            .args(["passwd", name])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| parse_passwd(&String::from_utf8_lossy(&output.stdout), name)),
+        ServicePlatform::Launchd => Command::new("dscl")
+            .args([
+                ".",
+                "-read",
+                &format!("/Users/{name}"),
+                "UniqueID",
+                "NFSHomeDirectory",
+            ])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| parse_dscl(&String::from_utf8_lossy(&output.stdout), name)),
+    };
+    record.ok_or_else(|| CtError::Usage(format!("--user {name} is not an account on this machine")))
+}
+
+fn parse_passwd(text: &str, name: &str) -> Option<SystemUser> {
+    let mut fields = text.lines().next()?.split(':');
+    if fields.next()? != name {
+        return None;
+    }
+    let uid = fields.nth(1)?.parse().ok()?;
+    let home = PathBuf::from(fields.nth(2)?);
+    home.is_absolute().then(|| SystemUser {
+        name: name.to_owned(),
+        uid,
+        home,
+    })
+}
+
+fn parse_dscl(text: &str, name: &str) -> Option<SystemUser> {
+    let mut uid = None;
+    let mut home = None;
+    for line in text.lines() {
+        if let Some(value) = line.strip_prefix("UniqueID:") {
+            uid = value.trim().parse().ok();
+        } else if let Some(value) = line.strip_prefix("NFSHomeDirectory:") {
+            home = Some(PathBuf::from(value.trim()));
+        }
+    }
+    let home = home.filter(|path| path.is_absolute())?;
+    Some(SystemUser {
+        name: name.to_owned(),
+        uid: uid?,
+        home,
+    })
+}
+
+fn system_state_root(user: &SystemUser, origin: &str) -> PathBuf {
+    let config = if cfg!(target_os = "macos") {
+        user.home.join("Library/Application Support")
+    } else {
+        user.home.join(".config")
+    };
+    config
+        .join("cloudthinker/worker-state")
+        .join(format!("{:x}", Sha256::digest(origin.as_bytes())))
+}
+
+fn system_target_id(user: &SystemUser, origin: &str, selector: Option<&str>) -> CtResult<Uuid> {
+    let root = system_state_root(user, origin);
+    let target_id = match selector {
+        Some(selector) => Uuid::parse_str(selector).map_err(|_| {
+            CtError::Usage("with --system, pass the outpost id (a UUID) to --outpost".into())
+        })?,
+        None => only_credential(&root, user)?,
+    };
+    require_user_credential(&root, target_id, user)?;
+    Ok(target_id)
+}
+
+fn missing_user_credential(user: &SystemUser, path: &Path) -> CtError {
+    CtError::Auth(format!(
+        "no stored worker credential at {}; as {}, run cloudthinker worker start --register <reference> --workdir <folder> once, then install the service again",
+        path.display(),
+        user.name
+    ))
+}
+
+fn only_credential(root: &Path, user: &SystemUser) -> CtResult<Uuid> {
+    let entries = fs::read_dir(root)
+        .map_err(|_| missing_user_credential(user, &root.join("<outpost>.json")))?;
+    let mut found = entries
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            Uuid::parse_str(name.strip_suffix(".json")?).ok()
+        })
+        .collect::<Vec<_>>();
+    match found.len() {
+        0 => Err(missing_user_credential(user, &root.join("<outpost>.json"))),
+        1 => Ok(found.remove(0)),
+        _ => Err(CtError::Usage(
+            "this account has more than one outpost; pass --outpost <id>".into(),
+        )),
+    }
+}
+
+fn require_user_credential(root: &Path, target_id: Uuid, user: &SystemUser) -> CtResult<()> {
+    let path = root.join(format!("{target_id}.json"));
+    let metadata = fs::symlink_metadata(&path).map_err(|_| missing_user_credential(user, &path))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if !metadata.is_file() || metadata.uid() != user.uid || metadata.mode() & 0o077 != 0 {
+            let shown = path.display();
+            return Err(CtError::Store(format!(
+                "worker credential {shown} must be a private file owned by {}; run: chown {} '{shown}' && chmod 600 '{shown}'",
+                user.name, user.name
+            )));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = metadata;
+    Ok(())
+}
+
+fn target(
+    base_url: &str,
+    selector: Option<&str>,
+    workdir: &Path,
+    scope: &ServiceScope,
+) -> CtResult<ServiceTarget> {
     let platform = ServicePlatform::current()?;
     let origin = origin_of(base_url)?;
-    let target_id = match selector {
-        Some(selector) => match Uuid::parse_str(selector) {
-            Ok(id) => id,
-            Err(_) => {
-                WorkerStore::open_default(&origin)?
-                    .load(selector)?
-                    .target_id
-            }
+    let target_id = match scope {
+        ServiceScope::System(user) => system_target_id(user, &origin, selector)?,
+        ServiceScope::User => match selector {
+            Some(selector) => match Uuid::parse_str(selector) {
+                Ok(id) => id,
+                Err(_) => {
+                    WorkerStore::open_default(&origin)?
+                        .load(selector)?
+                        .target_id
+                }
+            },
+            None => WorkerStore::open_default(&origin)?.only()?.target_id,
         },
-        None => WorkerStore::open_default(&origin)?.only()?.target_id,
     };
     let workdir = workdir
         .canonicalize()
@@ -354,13 +717,17 @@ fn target(base_url: &str, selector: Option<&str>, workdir: &Path) -> CtResult<Se
     }
     let service_id = service_id(&origin, target_id, &workdir)?;
     let service_name = format!("{SERVICE_NAMESPACE}.{service_id}");
-    let descriptor_path = descriptor_path(platform, &service_name)?;
-    let log_path = WorkerStore::open_default(&origin)?
-        .state_root()
-        .join("logs")
-        .join(format!("{service_name}.log"));
+    let descriptor_path = descriptor_path(platform, scope, &service_name)?;
+    let log_path = match scope {
+        ServiceScope::User => WorkerStore::open_default(&origin)?
+            .state_root()
+            .join("logs")
+            .join(format!("{service_name}.log")),
+        ServiceScope::System(_) => PathBuf::from(format!("/var/log/{service_name}.log")),
+    };
     Ok(ServiceTarget {
         platform,
+        scope: scope.clone(),
         target_id,
         workdir,
         service_name,
@@ -379,8 +746,8 @@ fn manager_install(target: &ServiceTarget) -> CtResult<()> {
     match target.platform {
         ServicePlatform::Systemd => {
             let unit = target.unit_name();
-            run_manager("systemctl", &["--user", "daemon-reload"])?;
-            run_manager("systemctl", &["--user", "enable", &unit])
+            run_systemctl(target, &["daemon-reload"])?;
+            run_systemctl(target, &["enable", &unit])
         }
         ServicePlatform::Launchd => Ok(()),
     }
@@ -390,7 +757,7 @@ fn manager_uninstall(target: &ServiceTarget) -> CtResult<()> {
     match target.platform {
         ServicePlatform::Systemd => {
             let unit = target.unit_name();
-            run_manager("systemctl", &["--user", "disable", "--now", &unit])
+            run_systemctl(target, &["disable", "--now", &unit])
         }
         ServicePlatform::Launchd => launchd_bootout(target),
     }
@@ -400,7 +767,7 @@ fn manager_status(target: &ServiceTarget) -> CtResult<&'static str> {
     match target.platform {
         ServicePlatform::Systemd => {
             let unit = target.unit_name();
-            let output = manager_output("systemctl", &["--user", "is-active", &unit])?;
+            let output = systemctl_output(target, &["is-active", &unit])?;
             if output.status.success() {
                 Ok("active")
             } else {
@@ -434,10 +801,9 @@ fn manager_last_exit(target: &ServiceTarget) -> Option<i32> {
     match target.platform {
         ServicePlatform::Systemd => {
             let unit = target.unit_name();
-            let output = manager_output(
-                "systemctl",
+            let output = systemctl_output(
+                target,
                 &[
-                    "--user",
                     "show",
                     &unit,
                     "--property=ExecMainStatus",
@@ -473,11 +839,11 @@ fn manager_start(target: &ServiceTarget) -> CtResult<()> {
     match target.platform {
         ServicePlatform::Systemd => {
             let unit = target.unit_name();
-            run_manager("systemctl", &["--user", "start", &unit])
+            run_systemctl(target, &["start", &unit])
         }
         ServicePlatform::Launchd => {
             if !launchd_loaded(target)? {
-                let domain = launchd_domain()?;
+                let domain = launchd_domain(target)?;
                 let path = target.descriptor_path.display().to_string();
                 run_manager("launchctl", &["bootstrap", &domain, &path])?;
             }
@@ -490,10 +856,28 @@ fn manager_stop(target: &ServiceTarget) -> CtResult<()> {
     match target.platform {
         ServicePlatform::Systemd => {
             let unit = target.unit_name();
-            run_manager("systemctl", &["--user", "stop", &unit])
+            run_systemctl(target, &["stop", &unit])
         }
         ServicePlatform::Launchd => launchd_bootout(target),
     }
+}
+
+fn systemctl_args<'a>(target: &ServiceTarget, args: &[&'a str]) -> Vec<&'a str> {
+    let mut full = if target.scope.is_system() {
+        Vec::new()
+    } else {
+        vec!["--user"]
+    };
+    full.extend_from_slice(args);
+    full
+}
+
+fn run_systemctl(target: &ServiceTarget, args: &[&str]) -> CtResult<()> {
+    run_manager("systemctl", &systemctl_args(target, args))
+}
+
+fn systemctl_output(target: &ServiceTarget, args: &[&str]) -> CtResult<Output> {
+    manager_output("systemctl", &systemctl_args(target, args))
 }
 
 fn manager_output(program: &str, args: &[&str]) -> CtResult<Output> {
@@ -595,7 +979,10 @@ fn run_manager(program: &str, args: &[&str]) -> CtResult<()> {
     }))
 }
 
-fn launchd_domain() -> CtResult<String> {
+fn launchd_domain(target: &ServiceTarget) -> CtResult<String> {
+    if target.scope.is_system() {
+        return Ok("system".into());
+    }
     #[cfg(test)]
     if let Some(uid) = TEST_LAUNCHD_UID
         .get()
@@ -617,7 +1004,11 @@ fn launchd_user_domain() -> CtResult<String> {
 }
 
 fn launchd_service(target: &ServiceTarget) -> CtResult<String> {
-    Ok(format!("{}/{}", launchd_domain()?, target.service_name))
+    Ok(format!(
+        "{}/{}",
+        launchd_domain(target)?,
+        target.service_name
+    ))
 }
 
 fn launchd_bootout(target: &ServiceTarget) -> CtResult<()> {
@@ -628,7 +1019,7 @@ fn launchd_bootout(target: &ServiceTarget) -> CtResult<()> {
 }
 
 fn launchd_loaded(target: &ServiceTarget) -> CtResult<bool> {
-    let domain_output = manager_output("launchctl", &["print", &launchd_domain()?])?;
+    let domain_output = manager_output("launchctl", &["print", &launchd_domain(target)?])?;
     if !domain_output.status.success() {
         return Err(CtError::Store("launchd user domain is unavailable".into()));
     }
@@ -655,19 +1046,38 @@ impl ServiceTarget {
         format!("{}.service", self.service_name)
     }
 
+    fn manager_name(&self) -> &'static str {
+        match (self.scope.is_system(), self.platform) {
+            (true, ServicePlatform::Systemd) => "systemd",
+            (true, ServicePlatform::Launchd) => "launchd (system)",
+            (false, platform) => platform.name(),
+        }
+    }
+
+    fn scope_flags(&self) -> String {
+        match self.scope.system_user() {
+            Some(user) => format!(" --system --user {}", user.name),
+            None => String::new(),
+        }
+    }
+
     fn output(&self, state: &'static str) -> ServiceOutput {
         ServiceOutput {
-            manager: self.platform.name(),
+            manager: self.manager_name(),
             service: self.service_name.clone(),
             path: self.descriptor_path.display().to_string(),
             state,
             logs: self.logs(),
             last_exit_code: None,
+            linger: None,
         }
     }
 
     fn logs(&self) -> String {
         match self.platform {
+            ServicePlatform::Systemd if self.scope.is_system() => {
+                format!("journalctl -u {}", self.unit_name())
+            }
             ServicePlatform::Systemd => format!("journalctl --user -u {}", self.unit_name()),
             ServicePlatform::Launchd => self.log_path.display().to_string(),
         }

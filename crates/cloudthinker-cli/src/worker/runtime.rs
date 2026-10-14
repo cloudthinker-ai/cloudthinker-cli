@@ -1,10 +1,15 @@
 use std::collections::HashSet;
 use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use chrono::Utc;
-use cloudthinker_client::{CtError, CtResult, worker_api::WorkerClient, worker_types as api};
+use cloudthinker_client::{
+    CtError, CtResult,
+    worker_api::{WorkerClient, outposts_disabled_message},
+    worker_types as api,
+};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
@@ -14,6 +19,8 @@ use uuid::Uuid;
 use super::background;
 use super::executor::WorkdirExecutor;
 use super::journal::{self, Delivery, Journal, JournalState};
+use super::telemetry::{self, Fields, Level, WorkerState};
+use super::worktree::{self, Workspace};
 use crate::engine::output;
 use crate::engine::watch::{Poll, WatchConfig, watch};
 
@@ -23,6 +30,7 @@ const WORKER_LEASE_SAFETY_MARGIN: Duration = Duration::from_secs(5);
 const GC_EVERY_HEARTBEATS: u32 = 4;
 const RECONNECT_MIN_DELAY: Duration = Duration::from_secs(1);
 const RECONNECT_MAX_DELAY: Duration = Duration::from_secs(60);
+const OUTPOSTS_DISABLED_POLL: Duration = Duration::from_secs(60);
 const RECONNECT_STABLE_AFTER: Duration = Duration::from_secs(300);
 const ABANDONED_JOURNAL_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 
@@ -32,28 +40,49 @@ pub struct Signals {
     pub abort: CancellationToken,
 }
 
+pub type RotationFuture = Pin<Box<dyn Future<Output = CtResult<()>> + Send>>;
+pub type RotationHook = Arc<dyn Fn() -> RotationFuture + Send + Sync>;
+
+#[derive(Default)]
+struct SessionFlags {
+    verified: std::sync::atomic::AtomicBool,
+    paused: std::sync::atomic::AtomicBool,
+}
+
 pub async fn run(
     client: WorkerClient,
     executor: Arc<WorkdirExecutor>,
     registration: api::RegisterWorkerRequest,
     signals: Signals,
     expected_target_id: Uuid,
+    rotation: Option<RotationHook>,
 ) -> CtResult<()> {
-    let verified = std::sync::atomic::AtomicBool::new(false);
-    reconnect(&signals.drain, || {
-        session(
-            &client,
-            &executor,
-            &registration,
-            &signals,
-            expected_target_id,
-            &verified,
-        )
-    })
+    let flags = SessionFlags::default();
+    reconnect(
+        &signals.drain,
+        &flags.paused,
+        OUTPOSTS_DISABLED_POLL,
+        || {
+            session(
+                &client,
+                &executor,
+                &registration,
+                &signals,
+                expected_target_id,
+                &flags,
+                rotation.as_ref(),
+            )
+        },
+    )
     .await
 }
 
-async fn reconnect<F, Fut>(drain: &CancellationToken, mut connect: F) -> CtResult<()>
+async fn reconnect<F, Fut>(
+    drain: &CancellationToken,
+    paused: &std::sync::atomic::AtomicBool,
+    poll: Duration,
+    mut connect: F,
+) -> CtResult<()>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = CtResult<()>>,
@@ -65,6 +94,21 @@ where
             Ok(()) => return Ok(()),
             Err(error) => error,
         };
+        if let Some(message) = outposts_disabled_message(&error) {
+            if !paused.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                output::worker_event(&format!(
+                    "Workers are turned off ({}). Waiting; checking every {}s.",
+                    output::terminal_text(message),
+                    poll.as_secs()
+                ));
+            }
+            tokio::select! {
+                _=drain.cancelled()=>return Ok(()),
+                _=tokio::time::sleep(poll)=>{},
+            }
+            continue;
+        }
+        let reason = telemetry::poll_error(&error);
         if is_fatal(&error) {
             return Err(error);
         }
@@ -74,10 +118,19 @@ where
         if started.elapsed() >= RECONNECT_STABLE_AFTER {
             delay = RECONNECT_MIN_DELAY;
         }
-        output::worker_event(&format!(
-            "Lost the connection to CloudThinker ({error}); reconnecting in {}s.",
-            delay.as_secs()
-        ));
+        telemetry::set_state(WorkerState::Reconnecting);
+        telemetry::emit(
+            Level::Info,
+            "connection_lost",
+            Fields {
+                outcome: Some(reason),
+                ..Fields::default()
+            },
+            &format!(
+                "Lost the connection to CloudThinker ({error}); reconnecting in {}s.",
+                delay.as_secs()
+            ),
+        );
         tokio::select! {
             _=drain.cancelled()=>return Ok(()),
             _=tokio::time::sleep(delay)=>{},
@@ -109,10 +162,16 @@ async fn session(
     registration: &api::RegisterWorkerRequest,
     signals: &Signals,
     expected_target_id: Uuid,
-    verified: &std::sync::atomic::AtomicBool,
+    flags: &SessionFlags,
+    rotation: Option<&RotationHook>,
 ) -> CtResult<()> {
     let shutdown = signals.drain.clone();
     maintain(executor).await;
+    let snapshot = repository_snapshot(executor).await;
+    let registration = &api::RegisterWorkerRequest {
+        repository: snapshot.clone(),
+        ..registration.clone()
+    };
     let Some(worker) = until_drained(
         &shutdown,
         retry_transport({
@@ -129,23 +188,37 @@ async fn session(
     else {
         return Ok(());
     };
+    if flags
+        .paused
+        .swap(false, std::sync::atomic::Ordering::SeqCst)
+    {
+        output::worker_event("Workers are turned on again. Resuming.");
+    }
     validate_registration_target(expected_target_id, worker.target_id)?;
-    if !verified.load(std::sync::atomic::Ordering::SeqCst) {
+    if !flags.verified.load(std::sync::atomic::Ordering::SeqCst) {
         if until_drained(&shutdown, client.conformance(worker.worker_id))
             .await?
             .is_none()
         {
             return Ok(());
         }
-        verified.store(true, std::sync::atomic::Ordering::SeqCst);
+        flags
+            .verified
+            .store(true, std::sync::atomic::Ordering::SeqCst);
     }
     if until_drained(
         &shutdown,
         retry_heartbeat({
             let client = client.clone();
+            let snapshot = snapshot.clone();
             move || {
                 let client = client.clone();
-                async move { client.worker_heartbeat(worker.worker_id, false).await }
+                let snapshot = snapshot.clone();
+                async move {
+                    client
+                        .worker_heartbeat(worker.worker_id, false, snapshot.as_ref(), false)
+                        .await
+                }
             }
         }),
     )
@@ -154,25 +227,57 @@ async fn session(
     {
         return Ok(());
     }
-    output::worker_event(&format!("Worker {} is online.", worker.worker_id));
+    telemetry::set_state(WorkerState::Online);
+    telemetry::poll_ok();
+    telemetry::emit(
+        Level::Info,
+        "worker_online",
+        Fields::default(),
+        &format!("Worker {} is online.", worker.worker_id),
+    );
     let mut tasks = JoinSet::new();
     let permits = Arc::new(Semaphore::new(16));
     let heartbeat_client = client.clone();
     let heartbeat_shutdown = shutdown.clone();
     let heartbeat_executor = executor.clone();
+    let heartbeat_rotation = rotation.cloned();
+    let mut reported = snapshot
+        .as_ref()
+        .map(|summary| summary.digest.as_str().to_owned());
     let mut heartbeat = AbortOnDropHandle::new(tokio::spawn(async move {
         let mut ticks: u32 = 0;
         loop {
             tokio::select! {
                 _=heartbeat_shutdown.cancelled()=>return Ok(()),
                 _=tokio::time::sleep(Duration::from_secs(15))=>{
+                    let current = repository_snapshot(&heartbeat_executor).await;
+                    let digest = current.as_ref().map(|summary| summary.digest.as_str().to_owned());
+                    let full = digest != reported;
                     let retry_client = heartbeat_client.clone();
+                    let retry_current = current.clone();
                     let result = retry_heartbeat(move || {
                         let client = retry_client.clone();
-                        async move { client.worker_heartbeat(worker.worker_id, false).await }
+                        let current = retry_current.clone();
+                        async move {
+                            client
+                                .worker_heartbeat(worker.worker_id, false, current.as_ref(), full)
+                                .await
+                        }
                     })
                     .await;
                     result?;
+                    reported = digest;
+                    if heartbeat_client.rotation_due()
+                        && let Some(rotate) = &heartbeat_rotation
+                        && let Err(error) = rotate().await
+                    {
+                        if stops_worker(&error) {
+                            return Err(error);
+                        }
+                        output::warn(&format!(
+                            "Could not rotate the Worker credential ({error}); it will be retried."
+                        ));
+                    }
                     ticks += 1;
                     if ticks.is_multiple_of(GC_EVERY_HEARTBEATS) {
                         maintain(&heartbeat_executor).await;
@@ -189,8 +294,8 @@ async fn session(
             _=shutdown.cancelled()=>break Ok(()),
             completed=tasks.join_next(), if !tasks.is_empty()=>{
                 match completed {
-                    Some(Ok((id,Ok(()))))=>{seen.remove(&id);output::worker_event(&format!("Assignment {id} finished."));},
-                    Some(Ok((id,Err(error))))=>{seen.remove(&id); if stops_worker(&error) {break Err(error);} output::warn(&format!("Assignment {id} stopped: {error}. Check its status in CloudThinker."));},
+                    Some(Ok((id,Ok(()))))=>{seen.remove(&id);telemetry::set_active(tasks.len());telemetry::emit(Level::Info,"assignment_finished",Fields{assignment_id:Some(id),..Fields::default()},&format!("Assignment {id} finished."));},
+                    Some(Ok((id,Err(error))))=>{seen.remove(&id);telemetry::set_active(tasks.len()); if stops_worker(&error) {break Err(error);} telemetry::emit(Level::Warn,"assignment_stopped",Fields{assignment_id:Some(id),outcome:Some("error"),..Fields::default()},&format!("Assignment {id} stopped: {error}. Check its status in CloudThinker."));},
                     _=>break Err(CtError::Protocol("worker assignment task stopped".into())),
                 }
             }
@@ -202,7 +307,7 @@ async fn session(
                 }
             }), if tasks.len()<registration.max_assignments.get() as usize=>{
                 let pending=match pending {
-                    Ok(pending)=>pending,
+                    Ok(pending)=>{telemetry::poll_ok();pending},
                     Err(error)=>break Err(error),
                 };
                 for assignment in pending {
@@ -211,12 +316,13 @@ async fn session(
                     match client.claim(worker.worker_id,assignment.assignment_id).await {
                         Ok(lease)=>{
                             seen.insert(lease.assignment_id);
-                            output::worker_event(&format!("Assignment {} claimed for session {}.", lease.assignment_id, lease.session_id));
+                            telemetry::emit(Level::Info,"assignment_claimed",Fields{assignment_id:Some(lease.assignment_id),..Fields::default()},&format!("Assignment {} claimed for session {}.", lease.assignment_id, lease.session_id));
                             let client=client.clone();let executor=executor.clone();let tokens=(stop.child_token(),signals.abort.clone());let permits=permits.clone();
                             tasks.spawn(async move {(lease.assignment_id,serve(client,executor,lease,tokens,permits).await)});
+                            telemetry::set_active(tasks.len());
                         }
-                        Err(CtError::Api {status:409,detail})=>output::worker_debug(&format!("Assignment {} was not claimed: {}.", assignment.assignment_id, detail.unwrap_or_default())),
-                        Err(error) if error.is_transport()=>output::warn(&format!("Could not claim assignment {} ({error}); it will be retried.", assignment.assignment_id)),
+                        Err(CtError::Api {status:409,detail})=>telemetry::emit(Level::Debug,"assignment_not_claimed",Fields{assignment_id:Some(assignment.assignment_id),..Fields::default()},&format!("Assignment {} was not claimed: {}.", assignment.assignment_id, detail.unwrap_or_default())),
+                        Err(error) if error.is_transport()=>telemetry::emit(Level::Warn,"claim_retry",Fields{assignment_id:Some(assignment.assignment_id),..Fields::default()},&format!("Could not claim assignment {} ({error}); it will be retried.", assignment.assignment_id)),
                         Err(error)=>break 'serve Err(error),
                     }
                 }
@@ -226,11 +332,19 @@ async fn session(
     } }.await;
     let draining = shutdown.is_cancelled();
     if draining {
-        output::worker_event(&format!(
-            "Draining {} running operations; press Ctrl-C again to cancel them.",
-            executor.running()
-        ));
-        let _ = client.worker_heartbeat(worker.worker_id, true).await;
+        telemetry::set_state(WorkerState::Draining);
+        telemetry::emit(
+            Level::Info,
+            "worker_draining",
+            Fields::default(),
+            &format!(
+                "Draining {} running operations; press Ctrl-C again to cancel them.",
+                executor.running()
+            ),
+        );
+        let _ = client
+            .worker_heartbeat(worker.worker_id, true, None, false)
+            .await;
     }
     stop.cancel();
     heartbeat.abort();
@@ -255,12 +369,30 @@ async fn until_drained<T>(
     }
 }
 
+async fn repository_snapshot(executor: &Arc<WorkdirExecutor>) -> Option<api::RepositorySummary> {
+    let path = executor.identity.path.clone();
+    let state = tokio::task::spawn_blocking(move || worktree::repository_state(&path))
+        .await
+        .ok()?;
+    Some(api::RepositorySummary {
+        branches: state
+            .branches
+            .iter()
+            .filter_map(|name| name.parse().ok())
+            .collect(),
+        digest: state.digest.parse().ok()?,
+        head_branch: state.head_branch.and_then(|name| name.parse().ok()),
+        is_git: state.is_git,
+    })
+}
+
 async fn maintain(executor: &Arc<WorkdirExecutor>) {
     let executor = executor.clone();
     let _ = tokio::task::spawn_blocking(move || {
         let now = SystemTime::now();
         background::gc(&executor.identity, now);
         journal::remove_abandoned(&executor.identity.state, now, ABANDONED_JOURNAL_AGE);
+        worktree::prune(&executor.identity.state, now, worktree::MAX_IDLE);
     })
     .await;
 }
@@ -301,6 +433,7 @@ async fn serve(
     else {
         return Ok(());
     };
+    let workspace = workspace_of(&lease);
     let cancel = abort.child_token();
     let _cancel_on_drop = cancel.clone().drop_guard();
     let journal = Journal::open(
@@ -399,14 +532,14 @@ async fn serve(
                     if state==JournalState::Acknowledged {continue;}
                     last_operation=std::time::Instant::now();
                     active.insert(envelope.operation_id);
-                    let client=client.clone();let executor=executor.clone();let journal=journal.clone();let cancel=cancel.child_token();let operation_drain=drain.clone();let permits=permits.clone();
+                    let client=client.clone();let executor=executor.clone();let journal=journal.clone();let cancel=cancel.child_token();let operation_drain=drain.clone();let permits=permits.clone();let workspace=workspace.clone();
                     operations.spawn(async move {
                         let permit = tokio::select! {
                             _=cancel.cancelled()=>return (envelope.operation_id,Err(CtError::Protocol("assignment cancelled before dispatch".into()))),
                             permit=permits.acquire_owned()=>permit,
                         };
                         let _permit=match permit {Ok(permit)=>permit,Err(_)=>return (envelope.operation_id,Err(CtError::Protocol("worker operation capacity unavailable".into())))};
-                        (envelope.operation_id,execute(client,executor,journal,envelope,lease.worker_id,(cancel,operation_drain),state).await)});
+                        (envelope.operation_id,execute(client,executor,journal,envelope,(lease.worker_id,workspace.as_ref()),(cancel,operation_drain),state).await)});
                 }
                 journal.apply(move |j| j.advance_cursor(j.cursor().max(after))).await?;
             }
@@ -527,10 +660,11 @@ async fn execute(
     executor: Arc<WorkdirExecutor>,
     journal: Journal,
     envelope: api::OperationEnvelope,
-    worker: Uuid,
+    placement: (Uuid, Option<&Workspace>),
     tokens: (CancellationToken, CancellationToken),
     state: JournalState,
 ) -> CtResult<()> {
+    let (worker, workspace) = placement;
     let (cancel, drain) = tokens;
     let envelope = Arc::new(envelope);
     let operation_id = envelope.operation_id;
@@ -561,7 +695,9 @@ async fn execute(
         let result = if cancel.is_cancelled() {
             super::executor::cancelled()?
         } else {
-            executor.execute(&envelope, cancel, worker, &client).await?
+            executor
+                .execute(&envelope, cancel, worker, &client, workspace)
+                .await?
         };
         let durable_result = result.clone();
         journal
@@ -590,6 +726,14 @@ async fn execute(
         drain.cancel();
     }
     Ok(())
+}
+
+fn workspace_of(lease: &api::AssignmentLease) -> Option<Workspace> {
+    let mode = lease.workspace_mode.as_ref().filter(|mode| mode.worktree)?;
+    Some(Workspace {
+        filesystem_id: lease.filesystem_id?,
+        base_branch: mode.base_branch.as_str().to_owned(),
+    })
 }
 
 fn validate(lease: &api::AssignmentLease, envelope: &api::OperationEnvelope) -> CtResult<()> {
@@ -708,7 +852,7 @@ where
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -721,17 +865,22 @@ mod tests {
         let attempts = AtomicUsize::new(0);
         let drain = CancellationToken::new();
 
-        let result = reconnect(&drain, || async {
-            match attempts.fetch_add(1, Ordering::SeqCst) {
-                0 => Err(CtError::Transport("connection reset".into())),
-                1 => Err(CtError::Api {
-                    status: 503,
-                    detail: None,
-                }),
-                2 => Err(CtError::Protocol("worker heartbeat task stopped".into())),
-                _ => Ok(()),
-            }
-        })
+        let result = reconnect(
+            &drain,
+            &AtomicBool::new(false),
+            RECONNECT_MIN_DELAY,
+            || async {
+                match attempts.fetch_add(1, Ordering::SeqCst) {
+                    0 => Err(CtError::Transport("connection reset".into())),
+                    1 => Err(CtError::Api {
+                        status: 503,
+                        detail: None,
+                    }),
+                    2 => Err(CtError::Protocol("worker heartbeat task stopped".into())),
+                    _ => Ok(()),
+                }
+            },
+        )
         .await;
 
         assert!(result.is_ok());
@@ -750,11 +899,16 @@ mod tests {
         ] {
             let attempts = AtomicUsize::new(0);
             let mut error = Some(fatal);
-            let result = reconnect(&CancellationToken::new(), || {
-                attempts.fetch_add(1, Ordering::SeqCst);
-                let error = error.take();
-                async move { Err(error.unwrap_or(CtError::Transport("again".into()))) }
-            })
+            let result = reconnect(
+                &CancellationToken::new(),
+                &AtomicBool::new(false),
+                RECONNECT_MIN_DELAY,
+                || {
+                    attempts.fetch_add(1, Ordering::SeqCst);
+                    let error = error.take();
+                    async move { Err(error.unwrap_or(CtError::Transport("again".into()))) }
+                },
+            )
             .await;
             assert!(result.is_err());
             assert_eq!(attempts.load(Ordering::SeqCst), 1);
@@ -762,10 +916,64 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn turned_off_workers_keep_waiting_and_resume_without_a_restart() {
+        let attempts = AtomicUsize::new(0);
+        let paused = AtomicBool::new(false);
+        let started = tokio::time::Instant::now();
+
+        let result = reconnect(
+            &CancellationToken::new(),
+            &paused,
+            OUTPOSTS_DISABLED_POLL,
+            || {
+                let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if attempt < 3 {
+                        Err(CtError::Api {
+                            status: 403,
+                            detail: Some("EXECUTOR_OUTPOSTS_DISABLED: Workers are off.".into()),
+                        })
+                    } else {
+                        Ok(())
+                    }
+                }
+            },
+        )
+        .await;
+
+        assert!(result.is_ok());
+        assert_eq!(attempts.load(Ordering::SeqCst), 4);
+        assert!(paused.load(Ordering::SeqCst));
+        assert_eq!(started.elapsed(), OUTPOSTS_DISABLED_POLL * 3);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn another_forbidden_response_still_stops_the_worker() {
+        let attempts = AtomicUsize::new(0);
+        let result = reconnect(
+            &CancellationToken::new(),
+            &AtomicBool::new(false),
+            OUTPOSTS_DISABLED_POLL,
+            || {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                async {
+                    Err(CtError::Api {
+                        status: 403,
+                        detail: Some("EXECUTOR_TARGET_PRIVATE: no".into()),
+                    })
+                }
+            },
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn a_drain_request_ends_the_reconnect_wait() {
         let drain = CancellationToken::new();
         let stopping = drain.clone();
-        let result = reconnect(&drain, || {
+        let result = reconnect(&drain, &AtomicBool::new(false), RECONNECT_MIN_DELAY, || {
             stopping.cancel();
             async { Err(CtError::Transport("offline".into())) }
         })
@@ -826,6 +1034,8 @@ mod tests {
             state: api::AssignmentState::Active,
             target_id: Uuid::new_v4(),
             worker_id: Uuid::new_v4(),
+            filesystem_id: None,
+            workspace_mode: None,
         };
         let body = serde_json::to_string(&lease).unwrap();
         let attempts = Arc::new(AtomicUsize::new(0));
@@ -1028,7 +1238,7 @@ mod tests {
                 let client = client.clone();
                 move || {
                     let client = client.clone();
-                    async move { client.worker_heartbeat(worker_id, false).await }
+                    async move { client.worker_heartbeat(worker_id, false, None, false).await }
                 }
             },
             &config,
@@ -1054,6 +1264,8 @@ mod tests {
             state: api::AssignmentState::Active,
             target_id: Uuid::new_v4(),
             worker_id: Uuid::new_v4(),
+            filesystem_id: None,
+            workspace_mode: None,
         };
         let deadline = lease_retry_deadline(&lease);
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -1081,6 +1293,8 @@ mod tests {
             state: api::AssignmentState::Active,
             target_id: Uuid::new_v4(),
             worker_id: Uuid::new_v4(),
+            filesystem_id: None,
+            workspace_mode: None,
         };
 
         assert!(renewal_wait(&lease) < Duration::from_secs(2));

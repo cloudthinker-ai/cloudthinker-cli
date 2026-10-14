@@ -1047,6 +1047,15 @@
         "title": "ApplyFixDisabledReason",
         "type": "string"
       },
+      "ApprovalLevel": {
+        "enum": [
+          "approve_each",
+          "approve_exceptions",
+          "pre_approved_only"
+        ],
+        "title": "ApprovalLevel",
+        "type": "string"
+      },
       "ArtifactGrantPublic": {
         "additionalProperties": false,
         "properties": {
@@ -1085,6 +1094,12 @@
             "title": "Fence Token",
             "type": "integer"
           },
+          "filesystem_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Filesystem Id",
+            "type": "string"
+          },
           "lease_expires_at": {
             "format": "date-time",
             "title": "Lease Expires At",
@@ -1111,6 +1126,10 @@
             "format": "uuid",
             "title": "Worker Id",
             "type": "string"
+          },
+          "workspace_mode": {
+            "$ref": "#/components/schemas/WorkspaceMode",
+            "nullable": true
           }
         },
         "required": [
@@ -1489,6 +1508,15 @@
         ],
         "title": "CliTokenRequest",
         "type": "object"
+      },
+      "CliVersionStatus": {
+        "enum": [
+          "current",
+          "update_available",
+          "outdated"
+        ],
+        "title": "CliVersionStatus",
+        "type": "string"
       },
       "CliWhoAmIResponse": {
         "description": "Live identity resolved from the active CLI bearer credential.",
@@ -3017,7 +3045,8 @@
           "artifacts",
           "connections",
           "mcp",
-          "background_shell"
+          "background_shell",
+          "worktree"
         ],
         "title": "ExecutorCapability",
         "type": "string"
@@ -3035,12 +3064,39 @@
           "availability": {
             "$ref": "#/components/schemas/ExecutorAvailability"
           },
+          "branches": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Branches",
+            "type": "array"
+          },
           "capabilities": {
             "items": {
               "$ref": "#/components/schemas/ExecutorCapability"
             },
             "title": "Capabilities",
             "type": "array"
+          },
+          "cli_version": {
+            "nullable": true,
+            "title": "Cli Version",
+            "type": "string"
+          },
+          "cli_version_status": {
+            "$ref": "#/components/schemas/CliVersionStatus",
+            "nullable": true
+          },
+          "git": {
+            "default": false,
+            "title": "Git",
+            "type": "boolean"
+          },
+          "head_branch": {
+            "nullable": true,
+            "title": "Head Branch",
+            "type": "string"
           },
           "kind": {
             "$ref": "#/components/schemas/ExecutorChoiceKind"
@@ -3068,6 +3124,15 @@
             "nullable": true,
             "title": "Verification Error",
             "type": "string"
+          },
+          "workers_disabled": {
+            "$ref": "#/components/schemas/WorkersDisabledLevel",
+            "nullable": true
+          },
+          "worktree_supported": {
+            "default": false,
+            "title": "Worktree Supported",
+            "type": "boolean"
           }
         },
         "required": [
@@ -5756,6 +5821,11 @@
             "title": "Capabilities",
             "type": "array"
           },
+          "label": {
+            "nullable": true,
+            "title": "Label",
+            "type": "string"
+          },
           "max_assignments": {
             "maximum": 64,
             "minimum": 1,
@@ -5777,6 +5847,10 @@
             "minimum": 1,
             "title": "Protocol Version",
             "type": "integer"
+          },
+          "repository": {
+            "$ref": "#/components/schemas/RepositorySummary",
+            "nullable": true
           },
           "workdir_id": {
             "format": "uuid",
@@ -5940,6 +6014,42 @@
           "kind"
         ],
         "title": "RepositoryOperation",
+        "type": "object"
+      },
+      "RepositorySummary": {
+        "additionalProperties": false,
+        "properties": {
+          "branches": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 200,
+            "title": "Branches",
+            "type": "array"
+          },
+          "digest": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "RepositorySummary_digest",
+            "type": "string"
+          },
+          "head_branch": {
+            "maxLength": 255,
+            "nullable": true,
+            "title": "RepositorySummary_head_branch",
+            "type": "string"
+          },
+          "is_git": {
+            "title": "Is Git",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "is_git",
+          "digest"
+        ],
+        "title": "RepositorySummary",
         "type": "object"
       },
       "RequestAgentCliWriteRequest": {
@@ -7478,6 +7588,16 @@
       "WorkerHeartbeatRequest": {
         "additionalProperties": false,
         "properties": {
+          "repository": {
+            "$ref": "#/components/schemas/RepositorySummary",
+            "nullable": true
+          },
+          "repository_digest": {
+            "nullable": true,
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "WorkerHeartbeatRequest_repository_digest",
+            "type": "string"
+          },
           "state": {
             "enum": [
               "online",
@@ -7616,6 +7736,14 @@
         "title": "WorkerState",
         "type": "string"
       },
+      "WorkersDisabledLevel": {
+        "enum": [
+          "instance",
+          "workspace"
+        ],
+        "title": "WorkersDisabledLevel",
+        "type": "string"
+      },
       "WorkspaceCreate": {
         "properties": {
           "description": {
@@ -7639,8 +7767,33 @@
         "title": "WorkspaceCreate",
         "type": "object"
       },
+      "WorkspaceMode": {
+        "additionalProperties": false,
+        "properties": {
+          "base_branch": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "WorkspaceMode_base_branch",
+            "type": "string"
+          },
+          "worktree": {
+            "default": true,
+            "title": "Worktree",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "base_branch"
+        ],
+        "title": "WorkspaceMode",
+        "type": "object"
+      },
       "WorkspacePublic": {
         "properties": {
+          "approval_level": {
+            "$ref": "#/components/schemas/ApprovalLevel",
+            "nullable": true
+          },
           "auto_mode_enabled": {
             "default": true,
             "title": "Auto Mode Enabled",
@@ -7737,6 +7890,11 @@
             "title": "Owner Id",
             "type": "string"
           },
+          "policy_enforcement_enabled": {
+            "nullable": true,
+            "title": "Policy Enforcement Enabled",
+            "type": "boolean"
+          },
           "pulse_auto_subscribe": {
             "default": false,
             "title": "Pulse Auto Subscribe",
@@ -7746,6 +7904,11 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "workers_enabled": {
+            "default": true,
+            "title": "Workers Enabled",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7771,6 +7934,10 @@
       "WorkspaceWithRolePublic": {
         "description": "WorkspacePublic with the current user's role in the workspace.",
         "properties": {
+          "approval_level": {
+            "$ref": "#/components/schemas/ApprovalLevel",
+            "nullable": true
+          },
           "auto_mode_enabled": {
             "default": true,
             "title": "Auto Mode Enabled",
@@ -7882,6 +8049,11 @@
             "title": "Owner Id",
             "type": "string"
           },
+          "policy_enforcement_enabled": {
+            "nullable": true,
+            "title": "Policy Enforcement Enabled",
+            "type": "boolean"
+          },
           "pulse_auto_subscribe": {
             "default": false,
             "title": "Pulse Auto Subscribe",
@@ -7891,6 +8063,11 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "workers_enabled": {
+            "default": true,
+            "title": "Workers Enabled",
+            "type": "boolean"
           }
         },
         "required": [
@@ -10212,6 +10389,8 @@
             "required": true,
             "schema": {
               "description": "MR/PR number parsed from the MR URL",
+              "maximum": 2147483647,
+              "minimum": 1,
               "title": "Mr Iid",
               "type": "integer"
             }

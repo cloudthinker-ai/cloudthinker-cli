@@ -1,6 +1,7 @@
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use cloudthinker_client::auth::worker_store::{WORKER_TOKEN_ENV, WorkerCredential, WorkerStore};
 use cloudthinker_client::{CtError, CtResult, worker_api::WorkerClient, worker_types as api};
 use serde::Serialize;
@@ -35,6 +36,13 @@ enum WorkerCommand {
         #[command(subcommand)]
         command: ServiceCommand,
     },
+    /// Check that this machine can run a worker and print one fix for each problem.
+    Doctor(DoctorArgs),
+    /// List or clean up the git worktrees this machine made for conversations.
+    Worktrees {
+        #[command(subcommand)]
+        command: WorktreesCommand,
+    },
     /// Show one outpost's availability as the workspace sees it.
     Status {
         /// Outpost UUID or exact name.
@@ -48,6 +56,30 @@ enum WorkerCommand {
     /// Supervise one background command for a running worker.
     #[command(hide = true)]
     BgShim(BgShimArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum WorktreesCommand {
+    /// List worktrees with their branch, last use, and whether they hold uncommitted changes.
+    Ls {
+        /// Only this outpost's worktrees: UUID or exact name.
+        #[arg(long)]
+        outpost: Option<String>,
+
+        /// Print JSON on stdout instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove worktrees unused for 14 days that have no uncommitted changes.
+    Prune {
+        /// Only this outpost's worktrees: UUID or exact name.
+        #[arg(long)]
+        outpost: Option<String>,
+
+        /// Print JSON on stdout instead of text.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -83,6 +115,42 @@ enum OutpostCommand {
 }
 
 #[derive(Debug, Args)]
+pub struct DoctorArgs {
+    /// Outpost UUID or exact name; defaults to the only outpost set up on this machine.
+    #[arg(long, env = "CLOUDTHINKER_OUTPOST_ID")]
+    outpost: Option<String>,
+
+    /// The folder you serve or plan to serve.
+    #[arg(long, default_value = ".")]
+    workdir: PathBuf,
+
+    /// Print JSON on stdout instead of text.
+    #[arg(long)]
+    json: bool,
+}
+
+#[cfg(unix)]
+impl DoctorArgs {
+    pub(super) fn outpost(&self) -> Option<&str> {
+        self.outpost.as_deref()
+    }
+
+    pub(super) fn workdir(&self) -> &std::path::Path {
+        &self.workdir
+    }
+
+    pub(super) fn json(&self) -> bool {
+        self.json
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum LogFormat {
+    Text,
+    Json,
+}
+
+#[derive(Debug, Args)]
 pub struct StartArgs {
     /// Outpost UUID or exact name; omit it only with `--register`.
     #[arg(long, env = "CLOUDTHINKER_OUTPOST_ID")]
@@ -104,8 +172,8 @@ pub struct StartArgs {
     #[arg(long)]
     label: Option<String>,
 
-    /// Pass `NAME=VALUE` to shell commands; repeat for more.
-    #[arg(long = "env")]
+    /// Pass this variable's value from the worker's own environment to shell commands. Give the name only, not NAME=VALUE; repeat for more.
+    #[arg(long = "env", value_name = "NAME")]
     env: Vec<String>,
 
     /// Pass this shell's whole environment to shell commands.
@@ -115,6 +183,14 @@ pub struct StartArgs {
     /// Serve a replaced folder at --workdir as a new folder for this outpost.
     #[arg(long)]
     reset_folder: bool,
+
+    /// Print worker logs on stderr as plain text or as one JSON object per line.
+    #[arg(long, value_enum, default_value_t = LogFormat::Text)]
+    log_format: LogFormat,
+
+    /// Serve /healthz and /metrics on this address, for example 127.0.0.1:9464.
+    #[arg(long)]
+    health_addr: Option<SocketAddr>,
 
     /// Read the worker credential from this machine's worker store, as an installed service does.
     #[arg(long, hide = true)]
@@ -139,17 +215,32 @@ struct OutpostOutput {
 }
 
 pub async fn run(base_url: &str, workspace: Option<&str>, args: WorkerArgs) -> ExitCode {
+    if let WorkerCommand::Doctor(args) = args.command {
+        return doctor(base_url, args).await;
+    }
     match execute(base_url, workspace, args).await {
         Ok(()) => ExitCode::Ok,
         Err(error) => exit::report(&error),
     }
 }
 
+#[cfg(unix)]
+async fn doctor(base_url: &str, args: DoctorArgs) -> ExitCode {
+    super::worker_doctor::run(base_url, args).await
+}
+
+#[cfg(not(unix))]
+async fn doctor(_base_url: &str, _args: DoctorArgs) -> ExitCode {
+    exit::report(&CtError::Usage("worker requires Linux or macOS".into()))
+}
+
 async fn execute(base_url: &str, workspace: Option<&str>, args: WorkerArgs) -> CtResult<()> {
     match args.command {
+        WorkerCommand::Doctor(_) => Ok(()),
         WorkerCommand::Start(args) => start(base_url, args).await,
         WorkerCommand::BgShim(args) => bg_shim(args).await,
         WorkerCommand::Service { command } => worker_service::execute(base_url, workspace, command),
+        WorkerCommand::Worktrees { command } => worktrees(base_url, command),
         WorkerCommand::Outpost {
             command: OutpostCommand::Create { name, shared, json },
         } => {
@@ -207,9 +298,19 @@ async fn execute(base_url: &str, workspace: Option<&str>, args: WorkerArgs) -> C
             output::emit_worker(&result, &human, json).map_err(CtError::Store)
         }
         WorkerCommand::Status { outpost, json } => {
-            let choices = build_client(base_url, workspace)?.list_outposts().await?;
-            let choice = resolve(&choices, &outpost)?;
-            output::emit_worker(choice, &output::outpost_status_line(choice), json)
+            let statuses = build_client(base_url, workspace)?
+                .list_outpost_status()
+                .await?;
+            let choices: Vec<_> = statuses
+                .iter()
+                .map(|status| status.choice.clone())
+                .collect();
+            let target_id = resolve(&choices, &outpost)?.target_id;
+            let status = statuses
+                .iter()
+                .find(|status| status.choice.target_id == target_id)
+                .ok_or_else(|| CtError::Usage("outpost not found".into()))?;
+            output::emit_worker(status, &output::outpost_status_text(status), json)
                 .map_err(CtError::Store)
         }
     }
@@ -304,7 +405,7 @@ async fn resolve_credential(
     base_url: &str,
     store: &WorkerStore,
     args: &StartArgs,
-) -> CtResult<WorkerCredential> {
+) -> CtResult<(WorkerCredential, bool)> {
     let source = credential_source(
         args.outpost.as_deref(),
         args.register.clone(),
@@ -316,14 +417,69 @@ async fn resolve_credential(
             let boot = WorkerClient::exchange(base_url, &reference, CLI_VERSION).await?;
             let credential = registered_credential(args.outpost.as_deref(), boot)?;
             store.save(&credential)?;
-            Ok(credential)
+            Ok((credential, true))
         }
-        CredentialSource::Stored(selector) => store.load(&selector),
-        CredentialSource::Env { target_id, token } => Ok(WorkerCredential {
-            target_id,
-            name: "outpost".into(),
-            token,
-        }),
+        CredentialSource::Stored(selector) => Ok((store.load(&selector)?, true)),
+        CredentialSource::Env { target_id, token } => Ok((
+            WorkerCredential {
+                target_id,
+                name: "outpost".into(),
+                token,
+            },
+            false,
+        )),
+    }
+}
+
+#[cfg(unix)]
+struct Rotator {
+    store: WorkerStore,
+    client: WorkerClient,
+    executor: std::sync::Arc<crate::worker::executor::WorkdirExecutor>,
+    target_id: Uuid,
+    name: String,
+    token: std::sync::Mutex<String>,
+}
+
+#[cfg(unix)]
+impl Rotator {
+    async fn rotate(&self) -> CtResult<()> {
+        let current = self
+            .token
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Ok(stored) = self.store.load(&self.target_id.to_string())
+            && stored.token != current
+        {
+            return self.switch(stored.token);
+        }
+        let boot = self.client.rotate().await?;
+        if boot.target_id != self.target_id {
+            return Err(CtError::Protocol("worker rotation target mismatch".into()));
+        }
+        let saved = self.store.save(&WorkerCredential {
+            target_id: self.target_id,
+            name: self.name.clone(),
+            token: boot.credential.clone(),
+        });
+        self.switch(boot.credential)?;
+        if saved.is_err() {
+            output::warn(
+                "Could not save the rotated Worker credential. After a restart, enroll this Worker again with the command from the Workers page.",
+            );
+        }
+        Ok(())
+    }
+
+    fn switch(&self, token: String) -> CtResult<()> {
+        self.client.adopt(&token)?;
+        self.executor.add_secret(token.clone());
+        *self
+            .token
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = token;
+        Ok(())
     }
 }
 
@@ -331,12 +487,23 @@ async fn resolve_credential(
 fn build_registration(
     identity: &crate::worker::config::WorkdirIdentity,
     concurrency: u16,
+    label: Option<&str>,
 ) -> CtResult<api::RegisterWorkerRequest> {
     let os = if cfg!(target_os = "macos") {
         "darwin"
     } else {
         "linux"
     };
+    let mut capabilities = vec![
+        api::ExecutorCapability::FilesRead,
+        api::ExecutorCapability::FilesWrite,
+        api::ExecutorCapability::Shell,
+        api::ExecutorCapability::Artifacts,
+        api::ExecutorCapability::BackgroundShell,
+    ];
+    if crate::worker::worktree::git_supports_worktrees() {
+        capabilities.push(api::ExecutorCapability::Worktree);
+    }
     Ok(api::RegisterWorkerRequest {
         worker_instance_id: Uuid::new_v4(),
         worker_installation_id: identity.installation_id,
@@ -352,22 +519,25 @@ fn build_registration(
             .map_err(|_| {
                 CtError::Usage("worker requires Linux or macOS on x86_64 or aarch64".into())
             })?,
-        capabilities: vec![
-            api::ExecutorCapability::FilesRead,
-            api::ExecutorCapability::FilesWrite,
-            api::ExecutorCapability::Shell,
-            api::ExecutorCapability::Artifacts,
-            api::ExecutorCapability::BackgroundShell,
-        ],
+        capabilities,
+        label: label.map(str::to_owned),
+        repository: None,
     })
 }
 
 #[cfg(unix)]
 async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
     use crate::worker::{
-        background::ShimImage, config::WorkdirIdentity, executor::WorkdirExecutor, runtime, shell,
+        background::ShimImage,
+        config::WorkdirIdentity,
+        executor::WorkdirExecutor,
+        runtime, shell,
+        telemetry::{self, Fields, Level},
     };
     use std::sync::Arc;
+    use tokio_util::sync::CancellationToken;
+    let json_logs = args.log_format == LogFormat::Json;
+    telemetry::init(json_logs, usize::from(args.concurrency));
     if !args.workdir.is_dir() {
         return Err(CtError::Usage(
             "--workdir must name an existing directory".into(),
@@ -380,7 +550,7 @@ async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
         ));
     }
     let store = WorkerStore::open_default(base_url)?;
-    let credential = resolve_credential(base_url, &store, &args).await?;
+    let (credential, rotates) = resolve_credential(base_url, &store, &args).await?;
     if args.reset_folder {
         WorkdirIdentity::forget(&args.workdir, store.state_root())?;
     }
@@ -392,23 +562,40 @@ async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
     let environment = shell::environment(&args.env, args.inherit_env)
         .map_err(|code| CtError::Usage(code.into()))?;
     let client = WorkerClient::new(base_url, &credential.token, CLI_VERSION)?;
-    let registration = build_registration(&identity, args.concurrency)?;
+    let registration = build_registration(&identity, args.concurrency, args.label.as_deref())?;
     let shim = match std::env::current_exe() {
         Ok(path) => ShimImage::open(path, &environment).await,
         Err(error) => Err(error),
     }
     .map_err(|_| CtError::Store("worker executable unavailable".into()))?;
     if let Some(reason) = shim.refusal() {
-        output::warn(&format!(
-            "Background jobs are unavailable inside this service unit: {reason}"
-        ));
+        telemetry::emit(
+            Level::Warn,
+            "background_unavailable",
+            Fields::default(),
+            &format!("Background jobs are unavailable inside this service unit: {reason}"),
+        );
     }
     let executor = Arc::new(WorkdirExecutor::new(
         identity,
         environment,
-        vec![credential.token],
+        vec![credential.token.clone()],
         shim,
     ));
+    let rotation: Option<runtime::RotationHook> = rotates.then(|| {
+        let rotator = Arc::new(Rotator {
+            store,
+            client: client.clone(),
+            executor: executor.clone(),
+            target_id: credential.target_id,
+            name: credential.name.clone(),
+            token: std::sync::Mutex::new(credential.token.clone()),
+        });
+        Arc::new(move || -> runtime::RotationFuture {
+            let rotator = rotator.clone();
+            Box::pin(async move { rotator.rotate().await })
+        }) as runtime::RotationHook
+    });
     let signals = runtime::Signals::default();
     let handler = signals.clone();
     let listen = |kind| {
@@ -421,22 +608,178 @@ async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
         tokio::select! {_=interrupt.recv()=>{},_=term.recv()=>{}}
         handler.drain.cancel();
         tokio::select! {_=interrupt.recv()=>{},_=term.recv()=>{}}
-        output::worker_event("Cancelling running operations.");
+        telemetry::emit(
+            Level::Info,
+            "worker_cancelling",
+            Fields::default(),
+            "Cancelling running operations.",
+        );
         handler.abort.cancel();
     });
-    output::progress(&output::worker_serving_line(&credential.name, label));
-    runtime::run(
+    let health_stop = CancellationToken::new();
+    if let Some(address) = args.health_addr {
+        let listener = telemetry::bind(address).await?;
+        if !address.ip().is_loopback() {
+            telemetry::emit(
+                Level::Warn,
+                "health_exposed",
+                Fields::default(),
+                "--health-addr is not a loopback address; /healthz and /metrics have no authentication.",
+            );
+        }
+        telemetry::serve(listener, health_stop.clone());
+    }
+    let serving = output::worker_serving_line(&credential.name, label);
+    if json_logs {
+        telemetry::emit(Level::Info, "worker_serving", Fields::default(), &serving);
+    } else {
+        output::progress(&serving);
+    }
+    let outcome = runtime::run(
         client,
         executor,
         registration,
         signals,
         credential.target_id,
+        rotation,
     )
-    .await
+    .await;
+    health_stop.cancel();
+    outcome
 }
 
 #[cfg(not(unix))]
 async fn start(_base_url: &str, _args: StartArgs) -> CtResult<()> {
+    Err(CtError::Usage("worker requires Linux or macOS".into()))
+}
+
+#[cfg(unix)]
+#[derive(Serialize)]
+struct WorktreeRow {
+    outpost_id: Uuid,
+    #[serde(flatten)]
+    worktree: crate::worker::worktree::Listed,
+}
+
+#[cfg(unix)]
+#[derive(Serialize)]
+struct PrunedRow {
+    outpost_id: Uuid,
+    #[serde(flatten)]
+    pruned: crate::worker::worktree::Pruned,
+}
+
+#[cfg(unix)]
+fn state_directories(store: &WorkerStore, outpost: Option<&str>) -> CtResult<Vec<(Uuid, PathBuf)>> {
+    let wanted = match outpost {
+        None => None,
+        Some(selector) => Some(match Uuid::parse_str(selector) {
+            Ok(id) => id,
+            Err(_) => store.load(selector)?.target_id,
+        }),
+    };
+    let mut found = Vec::new();
+    let Ok(outposts) = std::fs::read_dir(store.state_root()) else {
+        return Ok(found);
+    };
+    for entry in outposts.flatten() {
+        let Some(id) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| Uuid::parse_str(name).ok())
+        else {
+            continue;
+        };
+        if wanted.is_some_and(|wanted| wanted != id) || !entry.path().is_dir() {
+            continue;
+        }
+        let Ok(workdirs) = std::fs::read_dir(entry.path()) else {
+            continue;
+        };
+        for workdir in workdirs.flatten() {
+            if workdir.path().join("worktrees").is_dir() {
+                found.push((id, workdir.path()));
+            }
+        }
+    }
+    found.sort();
+    Ok(found)
+}
+
+#[cfg(unix)]
+fn worktrees(base_url: &str, command: WorktreesCommand) -> CtResult<()> {
+    use crate::worker::worktree;
+    let store = WorkerStore::open_default(base_url)?;
+    match command {
+        WorktreesCommand::Ls { outpost, json } => {
+            let mut rows = Vec::new();
+            for (outpost_id, state) in state_directories(&store, outpost.as_deref())? {
+                rows.extend(
+                    worktree::list(&state)
+                        .into_iter()
+                        .map(|worktree| WorktreeRow {
+                            outpost_id,
+                            worktree,
+                        }),
+                );
+            }
+            let human = if rows.is_empty() {
+                "No worktrees on this machine.".to_owned()
+            } else {
+                rows.iter()
+                    .map(|row| {
+                        let record = &row.worktree.record;
+                        output::terminal_text(&format!(
+                            "{}  {}  from {}  {}  {}",
+                            record.branch,
+                            row.worktree.state,
+                            record.base,
+                            idle_text(record.last_used),
+                            row.worktree.path.display()
+                        ))
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            output::emit_worker(&rows, &human, json).map_err(CtError::Store)
+        }
+        WorktreesCommand::Prune { outpost, json } => {
+            let mut rows = Vec::new();
+            for (outpost_id, state) in state_directories(&store, outpost.as_deref())? {
+                rows.extend(
+                    worktree::prune(&state, std::time::SystemTime::now(), worktree::MAX_IDLE)
+                        .into_iter()
+                        .map(|pruned| PrunedRow { outpost_id, pruned }),
+                );
+            }
+            let human = if rows.is_empty() {
+                "Nothing to prune. Only worktrees unused for 14 days are considered.".to_owned()
+            } else {
+                rows.iter()
+                    .map(|row| {
+                        output::terminal_text(&format!(
+                            "{}  {}",
+                            row.pruned.branch, row.pruned.outcome
+                        ))
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            output::emit_worker(&rows, &human, json).map_err(CtError::Store)
+        }
+    }
+}
+
+#[cfg(unix)]
+fn idle_text(last_used: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs());
+    format!("used {}d ago", now.saturating_sub(last_used) / 86_400)
+}
+
+#[cfg(not(unix))]
+fn worktrees(_base_url: &str, _command: WorktreesCommand) -> CtResult<()> {
     Err(CtError::Usage("worker requires Linux or macOS".into()))
 }
 
@@ -468,6 +811,13 @@ mod tests {
             scope: api::ExecutorScope::Personal,
             target_id,
             verification_error: None,
+            git: false,
+            head_branch: None,
+            branches: Vec::new(),
+            worktree_supported: false,
+            cli_version: None,
+            cli_version_status: None,
+            workers_disabled: None,
         }
     }
 

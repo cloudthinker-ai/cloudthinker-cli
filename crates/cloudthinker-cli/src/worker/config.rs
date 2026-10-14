@@ -17,21 +17,32 @@ struct DirectoryIdentity {
     inode: u64,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum SavedIdentity {
+    Absent,
+    Matches,
+    Replaced,
+}
+
 pub struct WorkdirIdentity {
     pub installation_id: Uuid,
     pub workdir_id: Uuid,
     pub root: Dir,
     pub path: PathBuf,
     pub state: PathBuf,
-    pub background_bytes: std::sync::atomic::AtomicU64,
-    process_lock: std::fs::File,
-    served_lock: std::fs::File,
+    pub background_bytes: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    process_lock: Option<std::fs::File>,
+    served_lock: Option<std::fs::File>,
 }
 
 impl Drop for WorkdirIdentity {
     fn drop(&mut self) {
-        let _ = FileExt::unlock(&self.process_lock);
-        let _ = FileExt::unlock(&self.served_lock);
+        for lock in [&self.process_lock, &self.served_lock]
+            .into_iter()
+            .flatten()
+        {
+            let _ = FileExt::unlock(lock);
+        }
     }
 }
 
@@ -69,10 +80,50 @@ impl WorkdirIdentity {
             root,
             path,
             state,
-            background_bytes: std::sync::atomic::AtomicU64::new(0),
-            process_lock,
-            served_lock,
+            background_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            process_lock: Some(process_lock),
+            served_lock: Some(served_lock),
         })
+    }
+
+    pub fn rooted_at(&self, path: &Path) -> CtResult<Self> {
+        let path = path.canonicalize().map_err(|_| invalid_directory())?;
+        let root = Dir::open_ambient_dir(&path, cap_std::ambient_authority())
+            .map_err(|_| invalid_directory())?;
+        Ok(Self {
+            installation_id: self.installation_id,
+            workdir_id: self.workdir_id,
+            root,
+            path,
+            state: self.state.clone(),
+            background_bytes: self.background_bytes.clone(),
+            process_lock: None,
+            served_lock: None,
+        })
+    }
+
+    pub fn saved(workdir: &Path, state_root: &Path) -> CtResult<SavedIdentity> {
+        let path = workdir.canonicalize().map_err(|_| invalid_directory())?;
+        let root = Dir::open_ambient_dir(&path, cap_std::ambient_authority())
+            .map_err(|_| invalid_directory())?;
+        let Ok(state_dir) = Dir::open_ambient_dir(state_root, cap_std::ambient_authority()) else {
+            return Ok(SavedIdentity::Absent);
+        };
+        let key = identity_key(&path);
+        if !state_dir.try_exists(&key).map_err(|_| state_error())? {
+            return Ok(SavedIdentity::Absent);
+        }
+        let saved: DirectoryIdentity =
+            serde_json::from_slice(&read_private(&state_dir, &key, 1024)?)
+                .map_err(|_| state_error())?;
+        let metadata = root.dir_metadata().map_err(|_| invalid_directory())?;
+        Ok(
+            if saved.device == metadata.dev() && saved.inode == metadata.ino() {
+                SavedIdentity::Matches
+            } else {
+                SavedIdentity::Replaced
+            },
+        )
     }
 
     pub fn forget(workdir: &Path, state_root: &Path) -> CtResult<()> {

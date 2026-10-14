@@ -102,6 +102,7 @@ esac
     write_descriptor(&descriptor_path, b"[Service]\n").unwrap();
     let target = ServiceTarget {
         platform: ServicePlatform::Systemd,
+        scope: ServiceScope::User,
         target_id,
         workdir,
         service_name: service_name.clone(),
@@ -228,6 +229,7 @@ esac
     write_descriptor(&descriptor_path, b"<plist/>\n").unwrap();
     let target = ServiceTarget {
         platform: ServicePlatform::Launchd,
+        scope: ServiceScope::User,
         target_id,
         workdir,
         service_name,
@@ -279,6 +281,7 @@ esac
     let _manager_override = ManagerOverride;
     let target = ServiceTarget {
         platform: ServicePlatform::Systemd,
+        scope: ServiceScope::User,
         target_id: Uuid::from_u128(44),
         workdir: root.path().to_path_buf(),
         service_name: format!("{SERVICE_NAMESPACE}.demo"),
@@ -354,6 +357,7 @@ fn install_updates_a_unit_the_previous_release_wrote_for_the_same_settings() {
     let spec = |argv: &[String]| ServiceSpec {
         target: ServiceTarget {
             platform: ServicePlatform::Systemd,
+            scope: ServiceScope::User,
             target_id: Uuid::from_u128(45),
             workdir: workdir.clone(),
             service_name: service_name.clone(),
@@ -366,6 +370,7 @@ fn install_updates_a_unit_the_previous_release_wrote_for_the_same_settings() {
             argv,
             &workdir,
             &root.path().join("worker.log"),
+            &ServiceScope::User,
         )
         .unwrap(),
     };
@@ -465,4 +470,27 @@ fn ca_wo_46_descriptor_write_creates_a_private_service_directory_under_a_group_u
         assert_eq!(mode & 0o022, 0, "{} is {mode:o}", directory.display());
     }
     assert_eq!(fs::read(&descriptor_path).unwrap(), b"[Service]\n");
+}
+
+#[test]
+fn a_passwd_line_gives_the_service_account_and_home() {
+    let user = parse_passwd("alice:x:1001:1001:Alice:/home/alice:/bin/bash\n", "alice").unwrap();
+    assert_eq!(user.uid, 1001);
+    assert_eq!(user.home, PathBuf::from("/home/alice"));
+    assert!(parse_passwd("bob:x:1002:1002::/home/bob:/bin/sh\n", "alice").is_none());
+    assert!(parse_passwd("alice:x:1001:1001::relative:/bin/sh\n", "alice").is_none());
+}
+
+#[test]
+fn dscl_output_gives_the_service_account_and_home() {
+    let user = parse_dscl("NFSHomeDirectory: /Users/alice\nUniqueID: 501\n", "alice").unwrap();
+    assert_eq!(user.uid, 501);
+    assert_eq!(user.home, PathBuf::from("/Users/alice"));
+}
+
+#[test]
+fn the_linger_setting_is_read_from_loginctl_output() {
+    assert_eq!(parse_linger("Linger=yes\n"), Some(true));
+    assert_eq!(parse_linger("Linger=no\n"), Some(false));
+    assert_eq!(parse_linger("State=active\n"), None);
 }

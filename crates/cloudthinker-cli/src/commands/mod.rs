@@ -20,6 +20,8 @@ pub mod review;
 pub mod update;
 pub mod whoami;
 pub mod worker;
+#[cfg(unix)]
+pub mod worker_doctor;
 pub mod worker_service;
 
 use cloudthinker_client::{CtClient, CtError, TOKEN_ENV_VAR, resolve_store};

@@ -14,6 +14,7 @@ pub mod cyber_run_guard;
 mod discovery;
 mod error;
 mod outposts;
+pub use outposts::OutpostStatus;
 mod retry;
 mod review_url;
 mod toolpack;

@@ -3232,6 +3232,90 @@ pub mod types {
         }
     }
 
+    ///`ApprovalLevel`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ApprovalLevel",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "approve_each",
+    ///    "approve_exceptions",
+    ///    "pre_approved_only"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ApprovalLevel {
+        #[serde(rename = "approve_each")]
+        ApproveEach,
+        #[serde(rename = "approve_exceptions")]
+        ApproveExceptions,
+        #[serde(rename = "pre_approved_only")]
+        PreApprovedOnly,
+    }
+
+    impl ::std::fmt::Display for ApprovalLevel {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::ApproveEach => f.write_str("approve_each"),
+                Self::ApproveExceptions => f.write_str("approve_exceptions"),
+                Self::PreApprovedOnly => f.write_str("pre_approved_only"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ApprovalLevel {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "approve_each" => Ok(Self::ApproveEach),
+                "approve_exceptions" => Ok(Self::ApproveExceptions),
+                "pre_approved_only" => Ok(Self::PreApprovedOnly),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ApprovalLevel {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ApprovalLevel {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ApprovalLevel {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///`ArtifactGrantPublic`
     ///
     /// <details><summary>JSON schema</summary>
@@ -3301,6 +3385,14 @@ pub mod types {
     ///      "title": "Fence Token",
     ///      "type": "integer"
     ///    },
+    ///    "filesystem_id": {
+    ///      "title": "Filesystem Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
     ///    "lease_expires_at": {
     ///      "title": "Lease Expires At",
     ///      "type": "string",
@@ -3327,6 +3419,9 @@ pub mod types {
     ///      "title": "Worker Id",
     ///      "type": "string",
     ///      "format": "uuid"
+    ///    },
+    ///    "workspace_mode": {
+    ///      "$ref": "#/components/schemas/WorkspaceMode"
     ///    }
     ///  },
     ///  "additionalProperties": false
@@ -3338,12 +3433,16 @@ pub mod types {
     pub struct AssignmentLease {
         pub assignment_id: ::uuid::Uuid,
         pub fence_token: i64,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub filesystem_id: ::std::option::Option<::uuid::Uuid>,
         pub lease_expires_at: ::chrono::DateTime<::chrono::offset::Utc>,
         pub lease_token: ::std::string::String,
         pub session_id: ::uuid::Uuid,
         pub state: AssignmentState,
         pub target_id: ::uuid::Uuid,
         pub worker_id: ::uuid::Uuid,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub workspace_mode: ::std::option::Option<WorkspaceMode>,
     }
 
     ///`AssignmentLeaseRequest`
@@ -4163,6 +4262,85 @@ pub mod types {
             value: ::std::string::String,
         ) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
+        }
+    }
+
+    ///`BranchesItem`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "string",
+    ///  "maxLength": 255,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct BranchesItem(::std::string::String);
+    impl ::std::ops::Deref for BranchesItem {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<BranchesItem> for ::std::string::String {
+        fn from(value: BranchesItem) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for BranchesItem {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 255usize {
+                return Err("longer than 255 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for BranchesItem {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for BranchesItem {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for BranchesItem {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for BranchesItem {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
         }
     }
 
@@ -5025,6 +5203,90 @@ pub mod types {
                 .map_err(|e: self::error::ConversionError| {
                     <D::Error as ::serde::de::Error>::custom(e.to_string())
                 })
+        }
+    }
+
+    ///`CliVersionStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliVersionStatus",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "current",
+    ///    "update_available",
+    ///    "outdated"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum CliVersionStatus {
+        #[serde(rename = "current")]
+        Current,
+        #[serde(rename = "update_available")]
+        UpdateAvailable,
+        #[serde(rename = "outdated")]
+        Outdated,
+    }
+
+    impl ::std::fmt::Display for CliVersionStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Current => f.write_str("current"),
+                Self::UpdateAvailable => f.write_str("update_available"),
+                Self::Outdated => f.write_str("outdated"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for CliVersionStatus {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "current" => Ok(Self::Current),
+                "update_available" => Ok(Self::UpdateAvailable),
+                "outdated" => Ok(Self::Outdated),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliVersionStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliVersionStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliVersionStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
 
@@ -9313,7 +9575,8 @@ pub mod types {
     ///    "artifacts",
     ///    "connections",
     ///    "mcp",
-    ///    "background_shell"
+    ///    "background_shell",
+    ///    "worktree"
     ///  ]
     ///}
     /// ```
@@ -9345,6 +9608,8 @@ pub mod types {
         Mcp,
         #[serde(rename = "background_shell")]
         BackgroundShell,
+        #[serde(rename = "worktree")]
+        Worktree,
     }
 
     impl ::std::fmt::Display for ExecutorCapability {
@@ -9357,6 +9622,7 @@ pub mod types {
                 Self::Connections => f.write_str("connections"),
                 Self::Mcp => f.write_str("mcp"),
                 Self::BackgroundShell => f.write_str("background_shell"),
+                Self::Worktree => f.write_str("worktree"),
             }
         }
     }
@@ -9372,6 +9638,7 @@ pub mod types {
                 "connections" => Ok(Self::Connections),
                 "mcp" => Ok(Self::Mcp),
                 "background_shell" => Ok(Self::BackgroundShell),
+                "worktree" => Ok(Self::Worktree),
                 _ => Err("invalid value".into()),
             }
         }
@@ -9501,12 +9768,42 @@ pub mod types {
     ///    "availability": {
     ///      "$ref": "#/components/schemas/ExecutorAvailability"
     ///    },
+    ///    "branches": {
+    ///      "title": "Branches",
+    ///      "default": [],
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
     ///    "capabilities": {
     ///      "title": "Capabilities",
     ///      "type": "array",
     ///      "items": {
     ///        "$ref": "#/components/schemas/ExecutorCapability"
     ///      }
+    ///    },
+    ///    "cli_version": {
+    ///      "title": "Cli Version",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "cli_version_status": {
+    ///      "$ref": "#/components/schemas/CliVersionStatus"
+    ///    },
+    ///    "git": {
+    ///      "title": "Git",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "head_branch": {
+    ///      "title": "Head Branch",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
     ///    },
     ///    "kind": {
     ///      "$ref": "#/components/schemas/ExecutorChoiceKind"
@@ -9540,6 +9837,14 @@ pub mod types {
     ///        "string",
     ///        "null"
     ///      ]
+    ///    },
+    ///    "workers_disabled": {
+    ///      "$ref": "#/components/schemas/WorkersDisabledLevel"
+    ///    },
+    ///    "worktree_supported": {
+    ///      "title": "Worktree Supported",
+    ///      "default": false,
+    ///      "type": "boolean"
     ///    }
     ///  }
     ///}
@@ -9548,7 +9853,17 @@ pub mod types {
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ExecutorChoicePublic {
         pub availability: ExecutorAvailability,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub branches: ::std::vec::Vec<::std::string::String>,
         pub capabilities: ::std::vec::Vec<ExecutorCapability>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub cli_version: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub cli_version_status: ::std::option::Option<CliVersionStatus>,
+        #[serde(default)]
+        pub git: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub head_branch: ::std::option::Option<::std::string::String>,
         pub kind: ExecutorChoiceKind,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub last_verified_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
@@ -9557,6 +9872,10 @@ pub mod types {
         pub target_id: ::std::option::Option<::uuid::Uuid>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub verification_error: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub workers_disabled: ::std::option::Option<WorkersDisabledLevel>,
+        #[serde(default)]
+        pub worktree_supported: bool,
     }
 
     ///`ExecutorScope`
@@ -17923,6 +18242,13 @@ pub mod types {
     ///        "$ref": "#/components/schemas/ExecutorCapability"
     ///      }
     ///    },
+    ///    "label": {
+    ///      "title": "Label",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "max_assignments": {
     ///      "title": "Max Assignments",
     ///      "type": "integer",
@@ -17944,6 +18270,9 @@ pub mod types {
     ///      "default": 1,
     ///      "type": "integer",
     ///      "minimum": 1.0
+    ///    },
+    ///    "repository": {
+    ///      "$ref": "#/components/schemas/RepositorySummary"
     ///    },
     ///    "workdir_id": {
     ///      "title": "Workdir Id",
@@ -17969,10 +18298,14 @@ pub mod types {
     #[serde(deny_unknown_fields)]
     pub struct RegisterWorkerRequest {
         pub capabilities: ::std::vec::Vec<ExecutorCapability>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub label: ::std::option::Option<::std::string::String>,
         pub max_assignments: ::std::num::NonZeroU64,
         pub os_arch: RegisterWorkerRequestOsArch,
         #[serde(default = "defaults::default_nzu64::<::std::num::NonZeroU64, 1>")]
         pub protocol_version: ::std::num::NonZeroU64,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub repository: ::std::option::Option<RepositorySummary>,
         pub workdir_id: ::uuid::Uuid,
         pub worker_installation_id: ::uuid::Uuid,
         pub worker_instance_id: ::uuid::Uuid,
@@ -18549,6 +18882,216 @@ pub mod types {
     }
 
     impl<'de> ::serde::Deserialize<'de> for RepositoryOperationLeaseOwner {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`RepositorySummary`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RepositorySummary",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "digest",
+    ///    "is_git"
+    ///  ],
+    ///  "properties": {
+    ///    "branches": {
+    ///      "title": "Branches",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string",
+    ///        "maxLength": 255,
+    ///        "minLength": 1
+    ///      },
+    ///      "maxItems": 200
+    ///    },
+    ///    "digest": {
+    ///      "title": "RepositorySummary_digest",
+    ///      "type": "string",
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
+    ///    "head_branch": {
+    ///      "title": "RepositorySummary_head_branch",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "maxLength": 255
+    ///    },
+    ///    "is_git": {
+    ///      "title": "Is Git",
+    ///      "type": "boolean"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct RepositorySummary {
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub branches: ::std::vec::Vec<BranchesItem>,
+        pub digest: RepositorySummaryDigest,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub head_branch: ::std::option::Option<RepositorySummaryHeadBranch>,
+        pub is_git: bool,
+    }
+
+    ///`RepositorySummaryDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RepositorySummary_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[a-f0-9]{64}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct RepositorySummaryDigest(::std::string::String);
+    impl ::std::ops::Deref for RepositorySummaryDigest {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<RepositorySummaryDigest> for ::std::string::String {
+        fn from(value: RepositorySummaryDigest) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for RepositorySummaryDigest {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[a-f0-9]{64}$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-f0-9]{64}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RepositorySummaryDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for RepositorySummaryDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RepositorySummaryDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for RepositorySummaryDigest {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`RepositorySummaryHeadBranch`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RepositorySummary_head_branch",
+    ///  "type": "string",
+    ///  "maxLength": 255
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct RepositorySummaryHeadBranch(::std::string::String);
+    impl ::std::ops::Deref for RepositorySummaryHeadBranch {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<RepositorySummaryHeadBranch> for ::std::string::String {
+        fn from(value: RepositorySummaryHeadBranch) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for RepositorySummaryHeadBranch {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 255usize {
+                return Err("longer than 255 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RepositorySummaryHeadBranch {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for RepositorySummaryHeadBranch {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RepositorySummaryHeadBranch {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for RepositorySummaryHeadBranch {
         fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
         where
             D: ::serde::Deserializer<'de>,
@@ -24789,6 +25332,17 @@ pub mod types {
     ///    "worker_id"
     ///  ],
     ///  "properties": {
+    ///    "repository": {
+    ///      "$ref": "#/components/schemas/RepositorySummary"
+    ///    },
+    ///    "repository_digest": {
+    ///      "title": "WorkerHeartbeatRequest_repository_digest",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "pattern": "^[a-f0-9]{64}$"
+    ///    },
     ///    "state": {
     ///      "title": "WorkerHeartbeatRequest_state",
     ///      "type": "string",
@@ -24810,8 +25364,90 @@ pub mod types {
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     #[serde(deny_unknown_fields)]
     pub struct WorkerHeartbeatRequest {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub repository: ::std::option::Option<RepositorySummary>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub repository_digest: ::std::option::Option<WorkerHeartbeatRequestRepositoryDigest>,
         pub state: WorkerHeartbeatRequestState,
         pub worker_id: ::uuid::Uuid,
+    }
+
+    ///`WorkerHeartbeatRequestRepositoryDigest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkerHeartbeatRequest_repository_digest",
+    ///  "type": "string",
+    ///  "pattern": "^[a-f0-9]{64}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct WorkerHeartbeatRequestRepositoryDigest(::std::string::String);
+    impl ::std::ops::Deref for WorkerHeartbeatRequestRepositoryDigest {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<WorkerHeartbeatRequestRepositoryDigest> for ::std::string::String {
+        fn from(value: WorkerHeartbeatRequestRepositoryDigest) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for WorkerHeartbeatRequestRepositoryDigest {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| ::regress::Regex::new("^[a-f0-9]{64}$").unwrap());
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[a-f0-9]{64}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for WorkerHeartbeatRequestRepositoryDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkerHeartbeatRequestRepositoryDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for WorkerHeartbeatRequestRepositoryDigest {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for WorkerHeartbeatRequestRepositoryDigest {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
     }
 
     ///`WorkerHeartbeatRequestState`
@@ -25414,6 +26050,85 @@ pub mod types {
         }
     }
 
+    ///`WorkersDisabledLevel`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkersDisabledLevel",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "instance",
+    ///    "workspace"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum WorkersDisabledLevel {
+        #[serde(rename = "instance")]
+        Instance,
+        #[serde(rename = "workspace")]
+        Workspace,
+    }
+
+    impl ::std::fmt::Display for WorkersDisabledLevel {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Instance => f.write_str("instance"),
+                Self::Workspace => f.write_str("workspace"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for WorkersDisabledLevel {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "instance" => Ok(Self::Instance),
+                "workspace" => Ok(Self::Workspace),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for WorkersDisabledLevel {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkersDisabledLevel {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for WorkersDisabledLevel {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///`WorkspaceCreate`
     ///
     /// <details><summary>JSON schema</summary>
@@ -25457,6 +26172,122 @@ pub mod types {
         pub organization_name: ::std::option::Option<::std::string::String>,
     }
 
+    ///`WorkspaceMode`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspaceMode",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "base_branch"
+    ///  ],
+    ///  "properties": {
+    ///    "base_branch": {
+    ///      "title": "WorkspaceMode_base_branch",
+    ///      "type": "string",
+    ///      "maxLength": 255,
+    ///      "minLength": 1
+    ///    },
+    ///    "worktree": {
+    ///      "title": "Worktree",
+    ///      "default": true,
+    ///      "type": "boolean"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct WorkspaceMode {
+        pub base_branch: WorkspaceModeBaseBranch,
+        #[serde(default = "defaults::default_bool::<true>")]
+        pub worktree: bool,
+    }
+
+    ///`WorkspaceModeBaseBranch`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "WorkspaceMode_base_branch",
+    ///  "type": "string",
+    ///  "maxLength": 255,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct WorkspaceModeBaseBranch(::std::string::String);
+    impl ::std::ops::Deref for WorkspaceModeBaseBranch {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<WorkspaceModeBaseBranch> for ::std::string::String {
+        fn from(value: WorkspaceModeBaseBranch) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for WorkspaceModeBaseBranch {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 255usize {
+                return Err("longer than 255 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for WorkspaceModeBaseBranch {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for WorkspaceModeBaseBranch {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for WorkspaceModeBaseBranch {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for WorkspaceModeBaseBranch {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
     ///`WorkspacePublic`
     ///
     /// <details><summary>JSON schema</summary>
@@ -25471,6 +26302,9 @@ pub mod types {
     ///    "name"
     ///  ],
     ///  "properties": {
+    ///    "approval_level": {
+    ///      "$ref": "#/components/schemas/ApprovalLevel"
+    ///    },
     ///    "auto_mode_enabled": {
     ///      "title": "Auto Mode Enabled",
     ///      "default": true,
@@ -25583,6 +26417,13 @@ pub mod types {
     ///      ],
     ///      "format": "uuid"
     ///    },
+    ///    "policy_enforcement_enabled": {
+    ///      "title": "Policy Enforcement Enabled",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "pulse_auto_subscribe": {
     ///      "title": "Pulse Auto Subscribe",
     ///      "default": false,
@@ -25592,6 +26433,11 @@ pub mod types {
     ///      "title": "Updated At",
     ///      "type": "string",
     ///      "format": "date-time"
+    ///    },
+    ///    "workers_enabled": {
+    ///      "title": "Workers Enabled",
+    ///      "default": true,
+    ///      "type": "boolean"
     ///    }
     ///  }
     ///}
@@ -25599,6 +26445,8 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct WorkspacePublic {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub approval_level: ::std::option::Option<ApprovalLevel>,
         #[serde(default = "defaults::default_bool::<true>")]
         pub auto_mode_enabled: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -25630,10 +26478,14 @@ pub mod types {
         pub organization_name: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub owner_id: ::std::option::Option<::uuid::Uuid>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub policy_enforcement_enabled: ::std::option::Option<bool>,
         #[serde(default)]
         pub pulse_auto_subscribe: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub updated_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default = "defaults::default_bool::<true>")]
+        pub workers_enabled: bool,
     }
 
     ///`WorkspacePublicDescription`
@@ -25923,6 +26775,9 @@ pub mod types {
     ///    "name"
     ///  ],
     ///  "properties": {
+    ///    "approval_level": {
+    ///      "$ref": "#/components/schemas/ApprovalLevel"
+    ///    },
     ///    "auto_mode_enabled": {
     ///      "title": "Auto Mode Enabled",
     ///      "default": true,
@@ -26052,6 +26907,13 @@ pub mod types {
     ///      ],
     ///      "format": "uuid"
     ///    },
+    ///    "policy_enforcement_enabled": {
+    ///      "title": "Policy Enforcement Enabled",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "pulse_auto_subscribe": {
     ///      "title": "Pulse Auto Subscribe",
     ///      "default": false,
@@ -26061,6 +26923,11 @@ pub mod types {
     ///      "title": "Updated At",
     ///      "type": "string",
     ///      "format": "date-time"
+    ///    },
+    ///    "workers_enabled": {
+    ///      "title": "Workers Enabled",
+    ///      "default": true,
+    ///      "type": "boolean"
     ///    }
     ///  }
     ///}
@@ -26068,6 +26935,8 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct WorkspaceWithRolePublic {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub approval_level: ::std::option::Option<ApprovalLevel>,
         #[serde(default = "defaults::default_bool::<true>")]
         pub auto_mode_enabled: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -26104,10 +26973,14 @@ pub mod types {
         pub organization_name: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub owner_id: ::std::option::Option<::uuid::Uuid>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub policy_enforcement_enabled: ::std::option::Option<bool>,
         #[serde(default)]
         pub pulse_auto_subscribe: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub updated_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default = "defaults::default_bool::<true>")]
+        pub workers_enabled: bool,
     }
 
     ///`WorkspaceWithRolePublicDescription`

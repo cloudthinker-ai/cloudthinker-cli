@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use base64::Engine;
 use cloudthinker_client::{CtError, CtResult, worker_api::WorkerClient, worker_types as api};
@@ -12,6 +12,8 @@ use super::{
     config::WorkdirIdentity,
     files, shell,
     skill_bundles::{SKILL_BUNDLES_ENV, SkillBundleChunk, SkillBundleStore},
+    telemetry::{self, Fields, Level},
+    worktree::{WORKTREE_CODE, Workspace, Worktrees},
 };
 
 type Dispatched = Result<(Value, Option<Vec<u8>>), &'static str>;
@@ -19,9 +21,10 @@ type Dispatched = Result<(Value, Option<Vec<u8>>), &'static str>;
 pub struct WorkdirExecutor {
     pub identity: Arc<WorkdirIdentity>,
     environment: BTreeMap<String, String>,
-    secrets: Vec<String>,
+    secrets: Mutex<Vec<String>>,
     bundles: SkillBundleStore,
     shim: Arc<ShimImage>,
+    pub worktrees: Worktrees,
     running: AtomicUsize,
 }
 
@@ -49,17 +52,26 @@ impl WorkdirExecutor {
     ) -> Self {
         secrets.push(identity.path.to_string_lossy().into_owned());
         let bundles = SkillBundleStore::new(&identity.state);
+        let worktrees = Worktrees::new(&identity.state);
         let bundles_path = bundles.root().to_string_lossy().into_owned();
         secrets.push(bundles_path.clone());
         environment.insert(SKILL_BUNDLES_ENV.into(), bundles_path);
         Self {
             identity,
             environment,
-            secrets,
+            secrets: Mutex::new(secrets),
             bundles,
             shim: Arc::new(shim),
+            worktrees,
             running: AtomicUsize::new(0),
         }
+    }
+
+    pub fn add_secret(&self, secret: String) {
+        self.secrets
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(secret);
     }
 
     pub fn running(&self) -> usize {
@@ -72,16 +84,35 @@ impl WorkdirExecutor {
         cancel: CancellationToken,
         worker: uuid::Uuid,
         client: &WorkerClient,
+        workspace: Option<&Workspace>,
     ) -> CtResult<api::WorkerOperationResult> {
         let _running = Running::enter(&self.running);
         let started = std::time::Instant::now();
         let kind = payload_kind(&envelope.payload);
-        crate::engine::output::worker_debug(&format!(
-            "Operation {} ({kind}) started.",
-            envelope.operation_id
-        ));
-        self.identity.revalidate()?;
-        let output = self.dispatch(envelope, cancel, worker, client).await?;
+        telemetry::emit(
+            Level::Debug,
+            "operation_started",
+            Fields {
+                assignment_id: Some(envelope.assignment_id),
+                operation_kind: Some(kind),
+                ..Fields::default()
+            },
+            &format!("Operation {} ({kind}) started.", envelope.operation_id),
+        );
+        let identity = match workspace {
+            None => self.identity.clone(),
+            Some(workspace) => match self.worktrees.resolve(&self.identity, workspace).await {
+                Ok(identity) => identity,
+                Err(failure) => {
+                    let message = self.redact(failure.message());
+                    return failure_with(WORKTREE_CODE, &message);
+                }
+            },
+        };
+        identity.revalidate()?;
+        let output = self
+            .dispatch(envelope, cancel, worker, client, &identity)
+            .await?;
         let code = match &output {
             Err(code) => Some((*code).to_owned()),
             Ok((value, _)) => value
@@ -89,15 +120,31 @@ impl WorkdirExecutor {
                 .and_then(Value::as_str)
                 .map(str::to_owned),
         };
-        crate::engine::output::worker_event(&format!(
-            "Operation {} ({kind}) {} in {} ms.",
-            envelope.operation_id,
-            code.as_deref().map_or_else(
-                || "finished".to_owned(),
-                |code| format!("ended with {code}")
+        let outcome = match code.as_deref() {
+            None => "succeeded",
+            Some("CANCELLED") => "cancelled",
+            Some(_) => "failed",
+        };
+        telemetry::operation(kind, outcome, started.elapsed());
+        telemetry::emit(
+            Level::Info,
+            "operation_finished",
+            Fields {
+                assignment_id: Some(envelope.assignment_id),
+                operation_kind: Some(kind),
+                outcome: Some(outcome),
+                duration_ms: Some(started.elapsed().as_millis()),
+            },
+            &format!(
+                "Operation {} ({kind}) {} in {} ms.",
+                envelope.operation_id,
+                code.as_deref().map_or_else(
+                    || "finished".to_owned(),
+                    |code| format!("ended with {code}")
+                ),
+                started.elapsed().as_millis()
             ),
-            started.elapsed().as_millis()
-        ));
+        );
         if matches!(
             output,
             Err("EXECUTOR_ARTIFACT_UPLOAD_UNCONFIRMED"
@@ -120,8 +167,13 @@ impl WorkdirExecutor {
         if value.pointer("/result/error_code").and_then(Value::as_str) == Some("CANCELLED") {
             state = api::WorkerOperationResultState::Cancelled;
         }
-        let mut secrets = self.secrets.clone();
+        let mut secrets = self
+            .secrets
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
         secrets.extend([envelope.lease_token.clone(), envelope.nonce.clone()]);
+        secrets.push(identity.path.to_string_lossy().into_owned());
         sanitize(&mut value, &secrets);
         let binary = raw.is_some();
         let bytes = if let Some(bytes) = raw {
@@ -145,12 +197,26 @@ impl WorkdirExecutor {
         })
     }
 
+    fn redact(&self, mut message: String) -> String {
+        let state = self.identity.state.to_string_lossy().into_owned();
+        let secrets = self
+            .secrets
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        for secret in secrets.iter().chain([&state]).filter(|s| !s.is_empty()) {
+            message = message.replace(secret, "[redacted]");
+        }
+        message
+    }
+
     async fn dispatch(
         &self,
         envelope: &Arc<api::OperationEnvelope>,
         cancel: CancellationToken,
         worker: uuid::Uuid,
         client: &WorkerClient,
+        identity: &Arc<WorkdirIdentity>,
     ) -> CtResult<Dispatched> {
         Ok(match &envelope.payload {
             api::Payload::SkillBundleChunk(chunk) => match SkillBundleChunk::from_api(chunk) {
@@ -164,12 +230,12 @@ impl WorkdirExecutor {
                 }
             },
             api::Payload::FlushOutput(_) => {
-                super::artifacts::flush(client, self.identity.clone(), envelope, worker, cancel)
+                super::artifacts::flush(client, identity.clone(), envelope, worker, cancel)
                     .await
                     .map(|v| (v, None))
             }
             api::Payload::ScriptRun(script) => shell::execute(
-                &self.identity.root,
+                &identity.root,
                 script,
                 &self.environment,
                 envelope.deadline_at,
@@ -178,7 +244,7 @@ impl WorkdirExecutor {
             .await
             .map(|value| (value, None)),
             api::Payload::BackgroundOperation(op) => background::execute(
-                self.identity.clone(),
+                identity.clone(),
                 self.shim.clone(),
                 op.clone(),
                 self.environment.clone(),
@@ -188,8 +254,7 @@ impl WorkdirExecutor {
             .await
             .map(|value| (value, None)),
             _ => {
-                let dir = self
-                    .identity
+                let dir = identity
                     .root
                     .try_clone()
                     .map_err(|_| CtError::Store("worker directory unavailable".into()))?;
@@ -231,8 +296,8 @@ pub fn payload_kind(payload: &api::Payload) -> &'static str {
         api::Payload::FilesDeliverables(_) => "files_deliverables",
         api::Payload::FlushOutput(_) => "flush_output",
         api::Payload::ConvertOfficePdf(_) => "convert_office_pdf",
-        api::Payload::RepositoryOperation(_) => "repository_operation",
-        api::Payload::BackgroundOperation(_) => "background_operation",
+        api::Payload::RepositoryOperation(_) => "repository",
+        api::Payload::BackgroundOperation(_) => "background",
     }
 }
 
@@ -243,8 +308,12 @@ pub fn cancelled() -> CtResult<api::WorkerOperationResult> {
 }
 
 pub fn failure(code: &str) -> CtResult<api::WorkerOperationResult> {
+    failure_with(code, code)
+}
+
+pub fn failure_with(code: &str, message: &str) -> CtResult<api::WorkerOperationResult> {
     let bytes = serde_json::to_vec(
-        &json!({"status":"error","message":code,"error":{"code":code,"message":code}}),
+        &json!({"status":"error","message":message,"error":{"code":code,"message":message}}),
     )
     .map_err(|_| CtError::Protocol("worker failure encoding failed".into()))?;
     Ok(api::WorkerOperationResult {
@@ -357,6 +426,7 @@ mod tests {
                     cancel,
                     uuid::Uuid::new_v4(),
                     &self.client,
+                    None,
                 )
                 .await
         }

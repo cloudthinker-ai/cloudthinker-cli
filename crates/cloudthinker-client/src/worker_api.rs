@@ -1,10 +1,12 @@
 use std::num::NonZeroU64;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::{PoisonError, RwLock};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use reqwest::header::{DATE, HeaderMap, RETRY_AFTER};
+use reqwest::header::{DATE, HeaderMap, HeaderValue, RETRY_AFTER};
+use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{CtError, CtResult, origin_of, worker_types as api};
@@ -12,27 +14,125 @@ use crate::{CtError, CtResult, origin_of, worker_types as api};
 const MIN_CLOCK_SKEW_MS: i64 = 2_000;
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(30);
 const CLI_VERSION_HEADER: &str = "x-cloudthinker-cli-version";
+const ROTATE_HEADER: &str = "x-cloudthinker-credential-rotate";
+const ROTATE_PATH: &str = "/api/v1/executor-workers/credential/rotate";
+const STATUS_PATH: &str = "/api/v1/executor-workers/credential";
+const UNAUTHORIZED_CODE: &str = "EXECUTOR_WORKER_UNAUTHORIZED";
+const UNAUTHORIZED_FALLBACK: &str = "This Worker's credential expired or was revoked. Enroll it again with the command from the Workers page.";
 const OUTDATED_CODE: &str = "EXECUTOR_WORKER_OUTDATED";
+const OUTPOSTS_DISABLED_CODE: &str = "EXECUTOR_OUTPOSTS_DISABLED";
+const OUTPOSTS_DISABLED_FALLBACK: &str = "Workers are turned off.";
+const QUOTA_EXCEEDED_CODE: &str = "EXECUTOR_QUOTA_EXCEEDED";
 const OUTDATED_FALLBACK: &str =
     "Your CLI is out of date. Run `cloudthinker update`, then run a new command.";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProbeFailure {
+    Dns,
+    Connect,
+    Timeout,
+    Tls,
+    Other,
+}
+
+#[derive(Debug, Clone)]
+pub struct OriginProbe {
+    pub status: u16,
+    pub skew: Option<chrono::Duration>,
+    pub elapsed: Duration,
+}
+
+#[derive(Default)]
+struct Observed {
+    skew_ms: AtomicI64,
+    rotate_due: AtomicBool,
+}
+
+#[derive(Clone)]
+struct Wire {
+    api: cloudthinker_api::Client,
+    http: reqwest::Client,
+    origin: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorkerCredentialStatus {
+    pub target_id: Uuid,
+    pub generation: i64,
+    pub expires_at: DateTime<Utc>,
+    pub rotate_after: DateTime<Utc>,
+}
+
 #[derive(Clone)]
 pub struct WorkerClient {
-    client: cloudthinker_api::Client,
-    skew_ms: Arc<AtomicI64>,
+    base_url: String,
+    cli_version: String,
+    wire: Arc<RwLock<Wire>>,
+    observed: Arc<Observed>,
 }
 
 impl WorkerClient {
     pub fn new(base_url: &str, credential: &str, cli_version: &str) -> CtResult<Self> {
-        let mut headers = version_headers(cli_version)?;
-        let mut bearer = reqwest::header::HeaderValue::from_str(&format!("Bearer {credential}"))
-            .map_err(|_| CtError::Auth("invalid worker credential".into()))?;
-        bearer.set_sensitive(true);
-        headers.insert(reqwest::header::AUTHORIZATION, bearer);
+        let headers = authorized_headers(cli_version, credential)?;
         Ok(Self {
-            client: client(base_url, headers)?,
-            skew_ms: Arc::new(AtomicI64::new(0)),
+            base_url: base_url.to_owned(),
+            cli_version: cli_version.to_owned(),
+            wire: Arc::new(RwLock::new(client(base_url, headers)?)),
+            observed: Arc::new(Observed::default()),
         })
+    }
+
+    fn wire(&self) -> Wire {
+        self.wire
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn api(&self) -> cloudthinker_api::Client {
+        self.wire().api
+    }
+
+    pub fn rotation_due(&self) -> bool {
+        self.observed.rotate_due.load(Ordering::Relaxed)
+    }
+
+    pub fn adopt(&self, token: &str) -> CtResult<()> {
+        let headers = authorized_headers(&self.cli_version, token)?;
+        let wire = client(&self.base_url, headers)?;
+        *self.wire.write().unwrap_or_else(PoisonError::into_inner) = wire;
+        self.observed.rotate_due.store(false, Ordering::Relaxed);
+        Ok(())
+    }
+
+    pub async fn rotate(&self) -> CtResult<api::WorkerBootstrap> {
+        let wire = self.wire();
+        self.send(wire.http.post(format!("{}{ROTATE_PATH}", wire.origin)))
+            .await
+    }
+
+    pub async fn credential_status(&self) -> CtResult<WorkerCredentialStatus> {
+        let wire = self.wire();
+        self.send(wire.http.get(format!("{}{STATUS_PATH}", wire.origin)))
+            .await
+    }
+
+    async fn send<T: serde::de::DeserializeOwned>(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> CtResult<T> {
+        let reply = request
+            .send()
+            .await
+            .map_err(|_| CtError::Transport("worker request failed".into()))?;
+        observe(&self.observed, reply.headers());
+        let status = reply.status();
+        if status.is_success() {
+            return reply.json().await.map_err(|_| protocol_mismatch());
+        }
+        let wait = retry_after(reply.headers());
+        let body = reply.text().await.ok();
+        Err(rejected(status.as_u16(), body.as_deref(), wait).await)
     }
 
     pub async fn exchange(
@@ -40,10 +140,9 @@ impl WorkerClient {
         reference: &str,
         cli_version: &str,
     ) -> CtResult<api::WorkerBootstrap> {
-        let client = client(base_url, version_headers(cli_version)?)?;
-        let skew = AtomicI64::new(0);
+        let client = client(base_url, version_headers(cli_version)?)?.api;
         response(
-            &skew,
+            &Observed::default(),
             client
                 .executor_targets_exchange_registration(&api::ExchangeWorkerRegistrationRequest {
                     reference: reference.into(),
@@ -54,7 +153,7 @@ impl WorkerClient {
     }
 
     pub fn server_skew(&self) -> chrono::Duration {
-        chrono::Duration::milliseconds(self.skew_ms.load(Ordering::Relaxed))
+        chrono::Duration::milliseconds(self.observed.skew_ms.load(Ordering::Relaxed))
     }
 
     fn local_time(&self, server: DateTime<Utc>) -> DateTime<Utc> {
@@ -65,20 +164,20 @@ impl WorkerClient {
         &self,
         result: Result<cloudthinker_api::ResponseValue<T>, cloudthinker_api::Error<()>>,
     ) -> CtResult<T> {
-        response(&self.skew_ms, result).await
+        response(&self.observed, result).await
     }
 
     pub async fn register(
         &self,
         request: &api::RegisterWorkerRequest,
     ) -> CtResult<api::WorkerPublic> {
-        self.call(self.client.executor_targets_register_worker(request).await)
+        self.call(self.api().executor_targets_register_worker(request).await)
             .await
     }
 
     pub async fn conformance(&self, worker_id: Uuid) -> CtResult<api::WorkerConformancePublic> {
         self.call(
-            self.client
+            self.api()
                 .executor_targets_worker_conformance(&api::StartWorkerConformanceRequest {
                     worker_id,
                 })
@@ -91,6 +190,8 @@ impl WorkerClient {
         &self,
         worker: Uuid,
         draining: bool,
+        repository: Option<&api::RepositorySummary>,
+        full: bool,
     ) -> CtResult<api::WorkerPublic> {
         let state = if draining {
             api::WorkerHeartbeatRequestState::Draining
@@ -98,10 +199,12 @@ impl WorkerClient {
             api::WorkerHeartbeatRequestState::Online
         };
         self.call(
-            self.client
+            self.api()
                 .executor_targets_worker_heartbeat(&api::WorkerHeartbeatRequest {
                     worker_id: worker,
                     state,
+                    repository_digest: repository.and_then(|r| r.digest.parse().ok()),
+                    repository: repository.filter(|_| full).cloned(),
                 })
                 .await,
         )
@@ -110,7 +213,7 @@ impl WorkerClient {
 
     pub async fn pending(&self, worker: Uuid) -> CtResult<Vec<api::PendingAssignmentPublic>> {
         self.call(
-            self.client
+            self.api()
                 .executor_targets_pending_assignments(Some(15.0), &worker)
                 .await,
         )
@@ -119,7 +222,7 @@ impl WorkerClient {
 
     pub async fn claim(&self, worker: Uuid, assignment: Uuid) -> CtResult<api::AssignmentLease> {
         self.call(
-            self.client
+            self.api()
                 .executor_targets_claim_assignment(
                     &assignment,
                     &api::ClaimAssignmentRequest { worker_id: worker },
@@ -147,7 +250,7 @@ impl WorkerClient {
             state,
         };
         self.call(
-            self.client
+            self.api()
                 .executor_targets_heartbeat_assignment(&lease.assignment_id, &body)
                 .await,
         )
@@ -162,7 +265,7 @@ impl WorkerClient {
         batch_size: u64,
     ) -> CtResult<Vec<api::OperationEnvelope>> {
         self.call(
-            self.client
+            self.api()
                 .executor_targets_assignment_operations(
                     &lease.assignment_id,
                     Some(after),
@@ -192,7 +295,7 @@ impl WorkerClient {
         request: &api::IssueArtifactGrantRequest,
     ) -> CtResult<api::ArtifactGrantPublic> {
         self.call(
-            self.client
+            self.api()
                 .executor_targets_issue_artifact_grant(&assignment, request)
                 .await,
         )
@@ -206,7 +309,7 @@ impl WorkerClient {
         request: &api::UploadWorkerArtifactRequest,
     ) -> CtResult<api::WorkerArtifactPublic> {
         self.call(
-            self.client
+            self.api()
                 .executor_targets_upload_worker_artifact(&assignment, &grant, request)
                 .await,
         )
@@ -226,7 +329,7 @@ impl WorkerClient {
                 .map_err(|_| invalid_envelope())?,
         };
         self.call(
-            self.client
+            self.api()
                 .executor_targets_start_operation(
                     &envelope.assignment_id,
                     &envelope.operation_id,
@@ -257,7 +360,7 @@ impl WorkerClient {
             result,
         };
         self.call(
-            self.client
+            self.api()
                 .executor_targets_complete_operation(
                     &envelope.assignment_id,
                     &envelope.operation_id,
@@ -275,7 +378,7 @@ impl WorkerClient {
         operation: Uuid,
     ) -> CtResult<api::OperationReceiptPublic> {
         self.call(
-            self.client
+            self.api()
                 .executor_targets_read_receipt(&assignment, &operation, &worker)
                 .await,
         )
@@ -289,7 +392,7 @@ impl WorkerClient {
             lease_token: lease.lease_token.clone(),
         };
         self.call(
-            self.client
+            self.api()
                 .executor_targets_release_assignment(&lease.assignment_id, &body)
                 .await,
         )
@@ -307,10 +410,16 @@ fn version_headers(cli_version: &str) -> CtResult<HeaderMap> {
     Ok(headers)
 }
 
-fn client(
-    base_url: &str,
-    headers: reqwest::header::HeaderMap,
-) -> CtResult<cloudthinker_api::Client> {
+fn authorized_headers(cli_version: &str, credential: &str) -> CtResult<HeaderMap> {
+    let mut headers = version_headers(cli_version)?;
+    let mut bearer = HeaderValue::from_str(&format!("Bearer {credential}"))
+        .map_err(|_| CtError::Auth("invalid worker credential".into()))?;
+    bearer.set_sensitive(true);
+    headers.insert(reqwest::header::AUTHORIZATION, bearer);
+    Ok(headers)
+}
+
+fn client(base_url: &str, headers: reqwest::header::HeaderMap) -> CtResult<Wire> {
     let origin = origin_of(base_url)?;
     let url =
         url::Url::parse(&origin).map_err(|_| CtError::Usage("invalid worker origin".into()))?;
@@ -329,19 +438,85 @@ fn client(
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| CtError::Transport("worker HTTP client unavailable".into()))?;
-    Ok(cloudthinker_api::Client::new_with_client(&origin, http))
+    Ok(Wire {
+        api: cloudthinker_api::Client::new_with_client(&origin, http.clone()),
+        http,
+        origin,
+    })
 }
 
 async fn response<T>(
-    skew_ms: &AtomicI64,
+    observed: &Observed,
     result: Result<cloudthinker_api::ResponseValue<T>, cloudthinker_api::Error<()>>,
 ) -> CtResult<T> {
     match result {
         Ok(value) => {
-            observe_clock(skew_ms, value.headers());
+            observe(observed, value.headers());
             Ok(value.into_inner())
         }
-        Err(error) => Err(worker_error(skew_ms, error).await),
+        Err(error) => Err(worker_error(observed, error).await),
+    }
+}
+
+fn observe(observed: &Observed, headers: &HeaderMap) {
+    if headers
+        .get(ROTATE_HEADER)
+        .is_some_and(|value| value.as_bytes() == b"1")
+    {
+        observed.rotate_due.store(true, Ordering::Relaxed);
+    }
+    observe_clock(&observed.skew_ms, headers);
+}
+
+pub async fn probe_origin(base_url: &str) -> Result<OriginProbe, ProbeFailure> {
+    let origin = origin_of(base_url).map_err(|_| ProbeFailure::Other)?;
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .connect_timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|_| ProbeFailure::Other)?;
+    let started = std::time::Instant::now();
+    let sent = Utc::now();
+    let response = http
+        .get(format!("{origin}/api/v1/utils/health-check/"))
+        .send()
+        .await
+        .map_err(|error| probe_failure(&error))?;
+    let elapsed = started.elapsed();
+    let midpoint = sent + chrono::Duration::from_std(elapsed / 2).unwrap_or_default();
+    let skew = response
+        .headers()
+        .get(DATE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| DateTime::parse_from_rfc2822(value).ok())
+        .map(|server| server.with_timezone(&Utc).signed_duration_since(midpoint));
+    Ok(OriginProbe {
+        status: response.status().as_u16(),
+        skew,
+        elapsed,
+    })
+}
+
+fn probe_failure(error: &reqwest::Error) -> ProbeFailure {
+    if error.is_timeout() {
+        return ProbeFailure::Timeout;
+    }
+    let mut text = String::new();
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(error);
+    while let Some(current) = source {
+        text.push_str(&current.to_string().to_ascii_lowercase());
+        text.push(' ');
+        source = current.source();
+    }
+    if text.contains("certificate") || text.contains("tls") || text.contains("handshake") {
+        ProbeFailure::Tls
+    } else if text.contains("dns") || text.contains("resolve") || text.contains("lookup") {
+        ProbeFailure::Dns
+    } else if error.is_connect() {
+        ProbeFailure::Connect
+    } else {
+        ProbeFailure::Other
     }
 }
 
@@ -383,26 +558,52 @@ fn is_retryable(status: u16) -> bool {
     matches!(status, 408 | 429) || (500..=599).contains(&status)
 }
 
-async fn worker_error(skew_ms: &AtomicI64, error: cloudthinker_api::Error<()>) -> CtError {
+fn protocol_mismatch() -> CtError {
+    CtError::Protocol(
+        "worker response does not match the protocol; run `cloudthinker update` and try again"
+            .into(),
+    )
+}
+
+async fn rejected(status: u16, body: Option<&str>, wait: Option<Duration>) -> CtError {
+    if let Some(message) = body.and_then(outdated) {
+        return CtError::Usage(message);
+    }
+    if status == 401
+        && let Some(message) = body.and_then(unauthorized)
+    {
+        return CtError::Auth(message);
+    }
+    if status == 403
+        && let Some(message) = body.and_then(quota_exceeded)
+    {
+        return CtError::Usage(message);
+    }
+    if status == 403
+        && let Some(message) = body.and_then(outposts_disabled)
+    {
+        return CtError::Api {
+            status,
+            detail: Some(format!("{OUTPOSTS_DISABLED_CODE}: {message}")),
+        };
+    }
+    status_error(status, body.and_then(rejection), wait).await
+}
+
+async fn worker_error(observed: &Observed, error: cloudthinker_api::Error<()>) -> CtError {
     match error {
-        cloudthinker_api::Error::InvalidResponsePayload(_, _) => CtError::Protocol(
-            "worker response does not match the protocol; run `cloudthinker update` and try again"
-                .into(),
-        ),
+        cloudthinker_api::Error::InvalidResponsePayload(_, _) => protocol_mismatch(),
         cloudthinker_api::Error::ErrorResponse(value) => {
-            observe_clock(skew_ms, value.headers());
+            observe(observed, value.headers());
             let wait = retry_after(value.headers());
             status_error(value.status().as_u16(), None, wait).await
         }
         cloudthinker_api::Error::UnexpectedResponse(response) => {
-            observe_clock(skew_ms, response.headers());
+            observe(observed, response.headers());
             let status = response.status().as_u16();
             let wait = retry_after(response.headers());
             let body = response.text().await.ok();
-            if let Some(message) = body.as_deref().and_then(outdated) {
-                return CtError::Usage(message);
-            }
-            status_error(status, body.as_deref().and_then(rejection), wait).await
+            rejected(status, body.as_deref(), wait).await
         }
         other => match other.status().map(|status| status.as_u16()) {
             Some(status) => status_error(status, None, None).await,
@@ -430,6 +631,39 @@ async fn status_error(status: u16, rejection: Option<String>, wait: Option<Durat
     }
 }
 
+pub fn outposts_disabled_message(error: &CtError) -> Option<&str> {
+    match error {
+        CtError::Api {
+            status: 403,
+            detail: Some(detail),
+        } => detail
+            .strip_prefix(OUTPOSTS_DISABLED_CODE)?
+            .strip_prefix(": "),
+        _ => None,
+    }
+}
+
+fn outposts_disabled(body: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    let code = value
+        .pointer("/error/code")
+        .and_then(serde_json::Value::as_str)?;
+    (code == OUTPOSTS_DISABLED_CODE).then(|| {
+        crate::error::parse_error_message(body).unwrap_or_else(|| OUTPOSTS_DISABLED_FALLBACK.into())
+    })
+}
+
+fn quota_exceeded(body: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    let code = value
+        .pointer("/error/code")
+        .and_then(serde_json::Value::as_str)?;
+    (code == QUOTA_EXCEEDED_CODE).then(|| {
+        crate::error::parse_error_message(body)
+            .unwrap_or_else(|| "This Worker limit is reached.".into())
+    })
+}
+
 fn outdated(body: &str) -> Option<String> {
     let value: serde_json::Value = serde_json::from_str(body).ok()?;
     let code = value
@@ -437,6 +671,16 @@ fn outdated(body: &str) -> Option<String> {
         .and_then(serde_json::Value::as_str)?;
     (code == OUTDATED_CODE).then(|| {
         crate::error::parse_error_message(body).unwrap_or_else(|| OUTDATED_FALLBACK.into())
+    })
+}
+
+fn unauthorized(body: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    let code = value
+        .pointer("/error/code")
+        .and_then(serde_json::Value::as_str)?;
+    (code == UNAUTHORIZED_CODE).then(|| {
+        crate::error::parse_error_message(body).unwrap_or_else(|| UNAUTHORIZED_FALLBACK.into())
     })
 }
 
@@ -494,6 +738,8 @@ mod tests {
             max_assignments: 1.try_into().unwrap(),
             os_arch: "linux-x86_64".parse().unwrap(),
             capabilities: vec![api::ExecutorCapability::Shell],
+            label: None,
+            repository: None,
         }
     }
 
@@ -541,6 +787,104 @@ mod tests {
             let error = register_error(status, "{}").await;
             assert!(matches!(error, CtError::Auth(_)), "got {error:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn an_unauthorized_worker_gets_the_server_message_once() {
+        let message = "This Worker's credential expired or was revoked. Enroll it again with the command from the Workers page.";
+        let error = register_error(
+            401,
+            &format!(
+                r#"{{"error":{{"code":"EXECUTOR_WORKER_UNAUTHORIZED","message":"{message}"}},"request_id":"req-4"}}"#
+            ),
+        )
+        .await;
+        assert!(
+            matches!(&error, CtError::Auth(text) if text == message),
+            "got {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_rotate_header_asks_for_rotation_and_an_adopted_token_becomes_the_bearer() {
+        let server = MockServer::start().await;
+        let target = Uuid::from_u128(5);
+        let status = serde_json::json!({
+            "target_id": target,
+            "generation": 1,
+            "expires_at": Utc::now(),
+            "rotate_after": Utc::now(),
+        });
+        Mock::given(method("GET"))
+            .and(path("/api/v1/executor-workers/credential"))
+            .and(header("Authorization", "Bearer worker-token"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("X-CloudThinker-Credential-Rotate", "1")
+                    .set_body_json(&status),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/executor-workers/credential"))
+            .and(header("Authorization", "Bearer rotated-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&status))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/executor-workers/credential/rotate"))
+            .and(header("Authorization", "Bearer worker-token"))
+            .and(header("X-CloudThinker-CLI-Version", "0.8.0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "target_id": target,
+                "credential": "rotated-token",
+                "credential_generation": 2,
+                "expires_at": Utc::now(),
+            })))
+            .mount(&server)
+            .await;
+        let client = worker(&server.uri());
+        assert!(!client.rotation_due());
+
+        client.credential_status().await.expect("status");
+        assert!(client.rotation_due());
+        let boot = client.rotate().await.expect("rotated");
+        assert_eq!(boot.credential, "rotated-token");
+        client.adopt(&boot.credential).expect("adopted");
+
+        assert!(!client.rotation_due());
+        let clone = client.clone();
+        assert_eq!(
+            clone.credential_status().await.expect("status").target_id,
+            target
+        );
+    }
+
+    #[tokio::test]
+    async fn turned_off_workers_are_a_wait_state_not_a_rejected_credential() {
+        let message =
+            "Workers are turned off for this workspace. Ask a workspace admin to turn them on.";
+        let error = register_error(
+            403,
+            &format!(
+                r#"{{"error":{{"code":"EXECUTOR_OUTPOSTS_DISABLED","message":"{message}","context":{{"level":"workspace"}}}},"request_id":"req-4"}}"#
+            ),
+        )
+        .await;
+        assert_eq!(outposts_disabled_message(&error), Some(message));
+    }
+
+    #[tokio::test]
+    async fn a_full_quota_is_a_usage_error_not_a_rejected_credential() {
+        let message = "The limit of 25 shared Workers in this workspace is reached. Archive an unused Worker, or ask your admin to raise the limit.";
+        let error = register_error(
+            403,
+            &format!(
+                r#"{{"error":{{"code":"EXECUTOR_QUOTA_EXCEEDED","message":"{message}"}},"request_id":"req-5"}}"#
+            ),
+        )
+        .await;
+        assert!(matches!(error, CtError::Usage(ref text) if text == message));
     }
 
     #[tokio::test]

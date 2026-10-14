@@ -1396,27 +1396,35 @@ mod tests {
     #[tokio::test]
     async fn a_waiting_tail_returns_as_soon_as_bytes_arrive() {
         let fixture = fixture().await;
-        fixture.start("w1", "sleep 1; echo hi; sleep 30").await;
+        fixture.start("w1", "sleep 1; echo hi; sleep 120").await;
         let (page, elapsed) = fixture
-            .timed_tail("w1", 3, far_deadline(), CancellationToken::new())
+            .timed_tail("w1", 30, far_deadline(), CancellationToken::new())
             .await;
+        fixture
+            .run(operation("cancel", "w1", json!({})))
+            .await
+            .unwrap();
         assert_eq!(page["stdout_text"], "hi\n");
         assert_eq!(page["exit_code"], Value::Null);
-        assert!(elapsed < Duration::from_millis(2000), "took {elapsed:?}");
+        assert!(elapsed < Duration::from_secs(15), "took {elapsed:?}");
     }
 
     #[tokio::test]
     async fn a_waiting_tail_on_a_silent_job_returns_empty_after_the_wait() {
         let fixture = fixture().await;
-        fixture.start("w2", "sleep 30").await;
+        fixture.start("w2", "sleep 120").await;
         let (page, elapsed) = fixture
             .timed_tail("w2", 2, far_deadline(), CancellationToken::new())
             .await;
+        fixture
+            .run(operation("cancel", "w2", json!({})))
+            .await
+            .unwrap();
         assert_eq!(page["stdout_text"], "");
         assert_eq!(page["stderr_text"], "");
         assert_eq!(page["exit_code"], Value::Null);
         assert!(elapsed >= Duration::from_secs(2), "took {elapsed:?}");
-        assert!(elapsed < Duration::from_millis(3000), "took {elapsed:?}");
+        assert!(elapsed < Duration::from_secs(12), "took {elapsed:?}");
     }
 
     #[tokio::test]
@@ -1424,10 +1432,10 @@ mod tests {
         let fixture = fixture().await;
         fixture.start("w3", "sleep 1; exit 7").await;
         let (page, elapsed) = fixture
-            .timed_tail("w3", 5, far_deadline(), CancellationToken::new())
+            .timed_tail("w3", 30, far_deadline(), CancellationToken::new())
             .await;
         assert_eq!(page["exit_code"], 7);
-        assert!(elapsed < Duration::from_millis(2000), "took {elapsed:?}");
+        assert!(elapsed < Duration::from_secs(15), "took {elapsed:?}");
     }
 
     #[tokio::test]

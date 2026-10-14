@@ -1,3 +1,18 @@
+## [0.8.2-dev.2]
+
+- A worker credential now stays valid for 30 days after its last use. A worker that read its credential from the private store rotates it about every 25 days and keeps serving, with no action from you. A `CLOUDTHINKER_WORKER_TOKEN` credential is renewed by use and never replaced.
+- An expired or revoked worker credential now stops `cloudthinker worker start` with exit code 3 and the message "This Worker's credential expired or was revoked. Enroll it again with the command from the Workers page." The systemd service does not restart on exit code 3.
+- `cloudthinker worker start --label` now sends the label to CloudThinker, so the Workers page shows it.
+- `cloudthinker worker start` waits when an admin turns Workers off for the instance or the workspace. It prints one line, checks every 60 seconds, and resumes by itself when Workers are on again, so you do not reinstall or restart it.
+- `cloudthinker worker status` shows the worker CLI version and the badge `Update available` or `Outdated` with the fix `cloudthinker update`.
+- `cloudthinker worker start` gains `--log-format json` for one JSON log object per line, and `--health-addr` to serve `/healthz` and Prometheus `/metrics` on a local address. `cloudthinker worker doctor` checks the CLI version, network path, clock skew, credential, folder, state modes, service, and git, and prints one fix for each problem.
+- A Worker can run each conversation in its own git worktree. When you start a conversation with **New worktree** on, the worker runs `git worktree add -b cloudthinker/<id>` from the branch you pick, in its state folder, so your main checkout stays unchanged. The worker needs git 2.38 or newer, and it reports its branches to CloudThinker.
+- `cloudthinker worker worktrees ls` lists the worktrees on this machine, and `cloudthinker worker worktrees prune` removes the ones unused for 14 days that have no uncommitted changes. Add `--outpost` to pick one outpost and `--json` to print JSON. The worker also does this cleanup by itself.
+- `cloudthinker worker service install` on Linux checks lingering and tells you when it is off, because a user service then stops at logout and does not start at boot. Add `--enable-linger` to turn it on.
+- `worker service install --system --user <account>` run as root installs a machine-wide systemd unit or macOS LaunchDaemon that runs the worker as that account. The credential stays in the account's private store. Enroll the worker as that account first.
+- The "worker service directory is unsafe" error now names the directory, its mode, and the `chmod` that fixes it.
+- `worker start --env` help now says to give a variable name only.
+
 ## [0.8.2-dev.1]
 
 - `cloudthinker worker` sends its CLI version in the `X-CloudThinker-CLI-Version` header on every worker request. A server that sets a minimum CLI version rejects an older worker at registration and heartbeat, and the worker prints the server message and exits instead of retrying; run `cloudthinker update`, then start the worker again.

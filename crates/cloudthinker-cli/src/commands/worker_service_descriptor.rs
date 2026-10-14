@@ -6,9 +6,24 @@ use std::path::{Path, PathBuf};
 use cloudthinker_client::{CtError, CtResult};
 use uuid::Uuid;
 
-use super::{ServicePlatform, ServiceTarget};
+use super::{ServicePlatform, ServiceScope, ServiceTarget};
 
-pub(super) fn descriptor_path(platform: ServicePlatform, service_name: &str) -> CtResult<PathBuf> {
+pub(super) fn descriptor_path(
+    platform: ServicePlatform,
+    scope: &ServiceScope,
+    service_name: &str,
+) -> CtResult<PathBuf> {
+    let suffix = match platform {
+        ServicePlatform::Systemd => "service",
+        ServicePlatform::Launchd => "plist",
+    };
+    if scope.is_system() {
+        let root = match platform {
+            ServicePlatform::Systemd => "/etc/systemd/system",
+            ServicePlatform::Launchd => "/Library/LaunchDaemons",
+        };
+        return Ok(Path::new(root).join(format!("{service_name}.{suffix}")));
+    }
     let home = env::var_os("HOME")
         .map(PathBuf::from)
         .filter(|path| path.is_absolute())
@@ -21,10 +36,6 @@ pub(super) fn descriptor_path(platform: ServicePlatform, service_name: &str) -> 
             .join("systemd/user"),
         ServicePlatform::Launchd => home.join("Library/LaunchAgents"),
     };
-    let suffix = match platform {
-        ServicePlatform::Systemd => "service",
-        ServicePlatform::Launchd => "plist",
-    };
     Ok(root.join(format!("{service_name}.{suffix}")))
 }
 
@@ -34,10 +45,22 @@ pub(super) fn render_descriptor(
     argv: &[String],
     workdir: &Path,
     log_path: &Path,
+    scope: &ServiceScope,
 ) -> CtResult<String> {
+    let system = scope.system_user();
     match platform {
-        ServicePlatform::Systemd => render_systemd(service_name, argv, workdir),
-        ServicePlatform::Launchd => render_launchd(service_name, argv, log_path),
+        ServicePlatform::Systemd => render_systemd_unit(
+            service_name,
+            argv,
+            workdir,
+            system.map(|user| user.name.as_str()),
+        ),
+        ServicePlatform::Launchd => render_launchd_plist(
+            service_name,
+            argv,
+            log_path,
+            system.map(|user| (user.name.as_str(), user.home.as_path())),
+        ),
     }
 }
 
@@ -87,25 +110,80 @@ pub(super) fn render_systemd(
     argv: &[String],
     workdir: &Path,
 ) -> CtResult<String> {
+    render_systemd_unit(service_name, argv, workdir, None)
+}
+
+fn render_systemd_unit(
+    service_name: &str,
+    argv: &[String],
+    workdir: &Path,
+    system_user: Option<&str>,
+) -> CtResult<String> {
     let command = argv
         .iter()
         .map(|value| systemd_quote(value))
         .collect::<CtResult<Vec<_>>>()?
         .join(" ");
     let workdir = systemd_path(&path_text(workdir, "workdir")?)?;
+    let (ordering, account, wanted_by) = match system_user {
+        None => (String::new(), String::new(), "default.target"),
+        Some(user) => (
+            "After=network-online.target\nWants=network-online.target\n".to_owned(),
+            format!("User={}\n", systemd_account(user)?),
+            "multi-user.target",
+        ),
+    };
     Ok(format!(
-        "[Unit]\nDescription=CloudThinker worker {service_name}\n\n[Service]\nType=exec\nExecStart={command}\nWorkingDirectory={workdir}\nRestart=on-failure\nRestartPreventExitStatus=2 3\nRestartSec=5\nKillMode=mixed\nKillSignal=SIGTERM\nTimeoutStopSec=300\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=default.target\n"
+        "[Unit]\nDescription=CloudThinker worker {service_name}\n{ordering}\n[Service]\nType=exec\n{account}ExecStart={command}\nWorkingDirectory={workdir}\nRestart=on-failure\nRestartPreventExitStatus=2 3\nRestartSec=5\nKillMode=mixed\nKillSignal=SIGTERM\nTimeoutStopSec=300\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy={wanted_by}\n"
     ))
 }
 
+fn systemd_account(user: &str) -> CtResult<&str> {
+    validate_unix_user(user)?;
+    Ok(user)
+}
+
+pub(super) fn validate_unix_user(user: &str) -> CtResult<()> {
+    let valid = !user.is_empty()
+        && user.len() <= 32
+        && !user.starts_with('-')
+        && user
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'));
+    if valid {
+        Ok(())
+    } else {
+        Err(CtError::Usage(
+            "--user must be an account name of letters, digits, `.`, `_` and `-`".into(),
+        ))
+    }
+}
+
+#[cfg(test)]
 pub(super) fn render_launchd(
     service_name: &str,
     argv: &[String],
     log_path: &Path,
 ) -> CtResult<String> {
+    render_launchd_plist(service_name, argv, log_path, None)
+}
+
+fn render_launchd_plist(
+    service_name: &str,
+    argv: &[String],
+    log_path: &Path,
+    system_user: Option<(&str, &Path)>,
+) -> CtResult<String> {
     let log_path = path_text(log_path, "worker service log")?;
     let mut output = String::from(LAUNCHD_HEADER);
     push_launchd_arguments(&mut output, service_name, argv)?;
+    if let Some((user, home)) = system_user {
+        validate_unix_user(user)?;
+        xml_key_value(&mut output, "UserName", user)?;
+        output.push_str("<key>EnvironmentVariables</key>\n<dict>\n");
+        xml_key_value(&mut output, "HOME", &path_text(home, "home directory")?)?;
+        output.push_str("</dict>\n");
+    }
     xml_key_value(&mut output, "StandardOutPath", &log_path)?;
     xml_key_value(&mut output, "StandardErrorPath", &log_path)?;
     output.push_str(LAUNCHD_POLICY);
@@ -200,13 +278,30 @@ pub(super) fn write_descriptor(path: &Path, contents: &[u8]) -> CtResult<()> {
     let metadata = fs::symlink_metadata(parent)
         .map_err(|_| CtError::Store("worker service directory unavailable".into()))?;
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
-        return Err(CtError::Store("worker service directory is unsafe".into()));
+        return Err(CtError::Store(format!(
+            "worker service directory {} is a symlink or not a directory; remove it and run the command again",
+            parent.display()
+        )));
     }
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        if metadata.uid() != rustix::process::geteuid().as_raw() || metadata.mode() & 0o022 != 0 {
-            return Err(CtError::Store("worker service directory is unsafe".into()));
+        let euid = rustix::process::geteuid().as_raw();
+        if metadata.uid() != euid {
+            return Err(CtError::Store(format!(
+                "worker service directory {} is owned by uid {}, not by you (uid {euid}); run: sudo chown {euid} '{}'",
+                parent.display(),
+                metadata.uid(),
+                parent.display()
+            )));
+        }
+        if metadata.mode() & 0o022 != 0 {
+            return Err(CtError::Store(format!(
+                "worker service directory {} has mode {:o}, so other users can write to it; run: chmod go-w '{}'",
+                parent.display(),
+                metadata.mode() & 0o777,
+                parent.display()
+            )));
         }
     }
     let file_name = path
@@ -383,6 +478,62 @@ mod tests {
         assert!(rendered.contains("<key>SuccessfulExit</key>\n<false/>"));
         assert!(rendered.contains("<key>ExitTimeOut</key>\n<integer>300</integer>"));
         assert!(!rendered.contains("CLOUDTHINKER_WORKER_TOKEN"));
+    }
+
+    #[test]
+    fn a_system_unit_runs_as_the_named_account_and_waits_for_the_network() {
+        let argv = vec!["/usr/local/bin/cloudthinker".to_owned(), "worker".into()];
+        let rendered = render_systemd_unit(
+            "io.cloudthinker.worker.demo",
+            &argv,
+            Path::new("/srv/work"),
+            Some("alice"),
+        )
+        .unwrap();
+        assert!(rendered.contains("[Unit]\nDescription=CloudThinker worker io.cloudthinker.worker.demo\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=exec\nUser=alice\nExecStart="));
+        assert!(rendered.contains("WantedBy=multi-user.target"));
+        assert!(!rendered.contains("default.target"));
+        assert!(matches!(
+            render_systemd_unit("demo", &argv, Path::new("/srv/work"), Some("-root")),
+            Err(CtError::Usage(_))
+        ));
+    }
+
+    #[test]
+    fn a_launch_daemon_names_its_account_and_home() {
+        let rendered = render_launchd_plist(
+            "io.cloudthinker.worker.demo",
+            &["/usr/local/bin/cloudthinker".to_owned()],
+            Path::new("/var/log/demo.log"),
+            Some(("alice", Path::new("/Users/alice"))),
+        )
+        .unwrap();
+        assert!(rendered.contains("<key>UserName</key>\n<string>alice</string>"));
+        assert!(rendered.contains(
+            "<key>EnvironmentVariables</key>\n<dict>\n<key>HOME</key>\n<string>/Users/alice</string>\n</dict>"
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unsafe_service_directory_error_names_the_path_the_mode_and_the_fix() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(root.path(), PermissionsExt::from_mode(0o775)).unwrap();
+        let path = root.path().join("worker.service");
+
+        let error = write_descriptor(&path, b"[Service]\n").expect_err("group-writable directory");
+
+        let CtError::Store(message) = error else {
+            panic!("expected a store error");
+        };
+        let directory = root.path().display().to_string();
+        assert!(message.contains(&directory), "{message}");
+        assert!(message.contains("mode 775"), "{message}");
+        assert!(
+            message.contains(&format!("chmod go-w '{directory}'")),
+            "{message}"
+        );
     }
 
     #[cfg(unix)]

@@ -30,6 +30,14 @@ impl WorkerStore {
         Self::open(&root.join("cloudthinker/worker-state"), base_url)
     }
 
+    pub fn default_state_root(base_url: &str) -> CtResult<PathBuf> {
+        let root = dirs::config_dir()
+            .ok_or_else(|| CtError::Store("worker configuration directory unavailable".into()))?;
+        let origin = origin_of(base_url)?;
+        let digest = format!("{:x}", Sha256::digest(origin.as_bytes()));
+        Ok(root.join("cloudthinker/worker-state").join(digest))
+    }
+
     pub fn open(root: &Path, base_url: &str) -> CtResult<Self> {
         let origin = origin_of(base_url)?;
         let digest = format!("{:x}", Sha256::digest(origin.as_bytes()));

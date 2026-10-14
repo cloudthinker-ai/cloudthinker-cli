@@ -28,6 +28,7 @@ use tempfile as _;
 use tokio_util as _;
 
 use axoupdater as _;
+use axum as _;
 use clap as _;
 use clap_complete as _;
 use cloudthinker_client as _;
@@ -2550,6 +2551,25 @@ fn ca_wo_21_worker_status_reports_one_outpost_availability() {
         .assert()
         .success()
         .stdout("build: available\n");
+}
+
+#[test]
+fn worker_status_shows_the_cli_version_badge_with_the_update_fix() {
+    let home = tempfile::tempdir().unwrap();
+    let outpost = outpost_json("build", Some(OUTPOST_ID)).replace(
+        r#""kind""#,
+        r#""cli_version":"0.8.0","cli_version_status":"update_available","kind""#,
+    );
+    let api = RecordingApi::start(vec![
+        ("200 OK", WHOAMI_BODY.into()),
+        ("200 OK", format!("[{outpost}]")),
+    ]);
+
+    worker_cli(&api.base_url, home.path())
+        .args(["worker", "status", "--outpost", OUTPOST_ID])
+        .assert()
+        .success()
+        .stdout("build: available; Update available (CLI 0.8.0). Run `cloudthinker update`.\n");
 }
 
 const SERVICE_ORIGIN: &str = "https://app.example.com:443";
