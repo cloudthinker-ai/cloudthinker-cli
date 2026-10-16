@@ -27,7 +27,7 @@ LIMITS_SOURCE = EXECUTOR_SCRIPTS / "cyber_discovery_limits.py"
 LOCKFILE = REPO_ROOT / "executor/uv.lock"
 COMMON_MODULES = (
     "cyber_auth.py",
-    "cyber_curl.py",
+    "cyber_response.py",
     "cyber_routes.py",
     "cyber_scope.py",
     "cyber_source_routes.py",

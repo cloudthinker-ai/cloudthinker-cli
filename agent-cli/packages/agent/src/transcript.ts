@@ -14,6 +14,7 @@ import {
 import { sanitizeTerminalText } from "@cloudthinker/cloud/src/awareness.ts";
 import { CommandBlock } from "./command-block.ts";
 import { hunksFromContent, parsePiDiff, plainHunks, renderHunks, resolveStyle, splitFits, takeRows, twoSided, type Hunk } from "./diff-view.ts";
+import { copiedStatus } from "./terminal-copy.ts";
 import { diffStyle, setDiffStyle } from "./verbosity.ts";
 import { copyToClipboard } from "@earendil-works/pi-coding-agent";
 import { editInExternalEditor } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/external-editor.js";
@@ -302,7 +303,7 @@ export class TranscriptView implements Component {
 
 	private copy(text: string, label: string): void {
 		this.options.onCopy(text).then(
-			() => { this.notice = `Copied ${label}`; },
+			() => { this.notice = copiedStatus(`Copied ${label}`); },
 			(error: unknown) => { this.notice = `Copy failed: ${error instanceof Error ? error.message : String(error)}`; },
 		).finally(() => this.options.tui.requestRender());
 	}

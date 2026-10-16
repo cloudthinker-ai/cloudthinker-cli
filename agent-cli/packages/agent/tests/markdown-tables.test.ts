@@ -48,9 +48,9 @@ test("numeric columns align without Markdown alignment markers", () => {
 	assert.equal(lines[2]!.indexOf("-14.1%") + 6, lines[4]!.indexOf("+100.0%") + 7);
 });
 
-test("code blocks draw a language label and a bar instead of fences", () => {
-	const source = "Output:\n\n```text\nrun 1\nall done\n```\n\n```\nplain\n```\n\nAfter";
+test("code blocks and quotes draw no glyphs, so a screen selection copies clean text", () => {
+	const source = "Output:\n\n```text\nrun 1\nall done\n```\n\n```\nplain\n```\n\n> Fail% = 1 - ok / sent\n\nAfter";
 	const lines = new Markdown(source, 0, 0, getMarkdownTheme()).render(60)
 		.map(stripVTControlCharacters).map((line) => line.trimEnd());
-	assert.deepEqual(lines, ["Output:", "", "text", "▎ run 1", "▎ all done", "", "▎ plain", "", "After"]);
+	assert.deepEqual(lines, ["Output:", "", "text", "run 1", "all done", "", "plain", "", "  Fail% = 1 - ok / sent", "", "After"]);
 });

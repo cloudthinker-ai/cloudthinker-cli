@@ -17,6 +17,7 @@ import { outboxPath, rejectedPath } from "../src/paths.ts";
 import { startFakeServer, withTempDir } from "./helpers.ts";
 
 const CONVERSATION = "11111111-1111-1111-1111-111111111111";
+const NEXT_CONVERSATION = "22222222-2222-2222-2222-222222222222";
 
 function entry(id: string, parentId: string | null, text = "hi"): SessionEntry {
 	return {
@@ -112,6 +113,52 @@ test("link seeds the acknowledged set so a resume re-sends only its tail", async
 				appended.map((chunk) => chunk.map((item) => item.entry_id)),
 				[["e1"]],
 			);
+		});
+	} finally {
+		await server.close();
+	}
+});
+
+test("a late append response from a prior link cannot acknowledge the next session", async () => {
+	const appended: { conversationId: string; entryIds: string[] }[] = [];
+	let resolveAppendStarted!: () => void;
+	const appendStarted = new Promise<void>((resolve) => {
+		resolveAppendStarted = resolve;
+	});
+	const server = await startFakeServer((request) => {
+		if (request.method === "GET") return { body: { entries: [], last_seq: 0 } };
+		const conversationId = request.path.includes(NEXT_CONVERSATION)
+			? NEXT_CONVERSATION
+			: CONVERSATION;
+		const body = request.body as { entries: MirrorEntryInput[] };
+		appended.push({
+			conversationId,
+			entryIds: body.entries.map((item) => item.entry_id),
+		});
+		if (conversationId === CONVERSATION) {
+			resolveAppendStarted();
+			return {
+				body: { stored: body.entries.length, last_seq: 1 },
+				delayMs: 100,
+			};
+		}
+		return { body: { stored: body.entries.length, last_seq: 1 } };
+	});
+	try {
+		await withTempDir(async (dir) => {
+			const mirror = new SessionMirror(clientFor(server.origin), () => {}, dir);
+			await mirror.link(CONVERSATION);
+			const oldDelivery = mirror.flush([entry("shared-id", null, "old session")]);
+			await appendStarted;
+			mirror.unlink();
+			await mirror.link(NEXT_CONVERSATION);
+			await oldDelivery;
+			await mirror.flush([entry("shared-id", null, "current session")]);
+
+			assert.deepEqual(appended, [
+				{ conversationId: CONVERSATION, entryIds: ["shared-id"] },
+				{ conversationId: NEXT_CONVERSATION, entryIds: ["shared-id"] },
+			]);
 		});
 	} finally {
 		await server.close();

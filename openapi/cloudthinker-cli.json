@@ -527,7 +527,8 @@
           "running",
           "succeeded",
           "failed",
-          "required_approval"
+          "required_approval",
+          "cancelled"
         ],
         "title": "AgentRunStatus",
         "type": "string"
@@ -1051,7 +1052,8 @@
         "enum": [
           "approve_each",
           "approve_exceptions",
-          "pre_approved_only"
+          "pre_approved_only",
+          "auto"
         ],
         "title": "ApprovalLevel",
         "type": "string"
@@ -1781,6 +1783,12 @@
             "default": "code_review",
             "title": "Finding Source",
             "type": "string"
+          },
+          "headline_only": {
+            "default": false,
+            "description": "True on a resolved finding listed inside the MR detail. It carries the headline fields only: an empty issue_description, no suggested_fix and no snapshot. GET /findings/{finding_id} returns the full body.",
+            "title": "Headline Only",
+            "type": "boolean"
           },
           "id": {
             "format": "uuid",
@@ -7838,14 +7846,6 @@
             "title": "Id",
             "type": "string"
           },
-          "interrupt_approver_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Interrupt Approver Ids",
-            "type": "array"
-          },
           "is_default": {
             "title": "Is Default",
             "type": "boolean"
@@ -7893,6 +7893,11 @@
           "policy_enforcement_enabled": {
             "nullable": true,
             "title": "Policy Enforcement Enabled",
+            "type": "boolean"
+          },
+          "policy_tool_enabled": {
+            "nullable": true,
+            "title": "Policy Tool Enabled",
             "type": "boolean"
           },
           "pulse_auto_subscribe": {
@@ -7992,14 +7997,6 @@
             "title": "Id",
             "type": "string"
           },
-          "interrupt_approver_ids": {
-            "items": {
-              "format": "uuid",
-              "type": "string"
-            },
-            "title": "Interrupt Approver Ids",
-            "type": "array"
-          },
           "is_default": {
             "title": "Is Default",
             "type": "boolean"
@@ -8052,6 +8049,11 @@
           "policy_enforcement_enabled": {
             "nullable": true,
             "title": "Policy Enforcement Enabled",
+            "type": "boolean"
+          },
+          "policy_tool_enabled": {
+            "nullable": true,
+            "title": "Policy Tool Enabled",
             "type": "boolean"
           },
           "pulse_auto_subscribe": {

@@ -30,7 +30,7 @@ pub async fn run_list(
     } else {
         output::print_incident_list(&incidents)
     };
-    finish_output(result)
+    exit::finish_output(result)
 }
 
 pub async fn run_status(
@@ -78,7 +78,7 @@ pub async fn run_status(
     } else {
         output::print_incident_status(&view)
     };
-    finish_output(result)
+    exit::finish_output(result)
 }
 
 enum Waited {
@@ -106,15 +106,5 @@ async fn wait_for_incident(
             &cfg,
         ) => outcome.map_err(Waited::Failed),
         () = interrupted => Err(Waited::Interrupted),
-    }
-}
-
-fn finish_output(result: Result<(), String>) -> ExitCode {
-    match result {
-        Ok(()) => ExitCode::Ok,
-        Err(err) => {
-            output::eprintln_error(&err);
-            ExitCode::JobFailed
-        }
     }
 }

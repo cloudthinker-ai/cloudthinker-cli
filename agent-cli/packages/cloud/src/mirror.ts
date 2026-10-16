@@ -75,6 +75,7 @@ export class SessionMirror {
 	private rejected = new Set<string>();
 	private conversationId: string | undefined;
 	private linked = false;
+	private linkGeneration = 0;
 	private backoffMs = 0;
 	private nextAttemptAt = 0;
 	private pendingCount = 0;
@@ -98,19 +99,24 @@ export class SessionMirror {
 	}
 
 	async link(conversationId: string): Promise<void> {
+		const generation = ++this.linkGeneration;
 		this.conversationId = conversationId;
 		this.linked = false;
 		let acknowledged: Set<string>;
 		try {
 			acknowledged = await this.serverEntryIds(conversationId);
 		} catch (error) {
+			if (!this.isCurrentLink(generation, conversationId)) return;
 			this.delayNextAttempt();
 			this.report(true);
 			throw error;
 		}
+		if (!this.isCurrentLink(generation, conversationId)) return;
+		const rejected = await this.readRejected(conversationId);
+		if (!this.isCurrentLink(generation, conversationId)) return;
 		this.acknowledged = acknowledged;
 		this.truncated = new Set();
-		this.rejected = await this.readRejected(conversationId);
+		this.rejected = rejected;
 		this.linked = true;
 		this.backoffMs = 0;
 		this.nextAttemptAt = 0;
@@ -118,8 +124,20 @@ export class SessionMirror {
 	}
 
 	unlink(): void {
+		this.linkGeneration += 1;
 		this.conversationId = undefined;
 		this.linked = false;
+		this.acknowledged = new Set();
+		this.truncated = new Set();
+		this.rejected = new Set();
+		this.backoffMs = 0;
+		this.nextAttemptAt = 0;
+		this.pendingCount = 0;
+		this.report(false);
+	}
+
+	private isCurrentLink(generation: number, conversationId: string): boolean {
+		return this.linkGeneration === generation && this.conversationId === conversationId;
 	}
 
 	sync(entries: SessionEntry[], onError: (error: unknown) => void): void {
@@ -152,18 +170,26 @@ export class SessionMirror {
 	private async deliver(entries: SessionEntry[]): Promise<void> {
 		const conversationId = this.conversationId;
 		if (!conversationId) return;
+		let generation = this.linkGeneration;
 		if (!this.linked) {
-			this.pendingCount = (await this.outstanding(conversationId, entries)).length;
+			const pending = await this.outstanding(conversationId, entries, generation);
+			if (!this.isCurrentLink(generation, conversationId)) return;
+			this.pendingCount = pending.length;
 			if (this.now() < this.nextAttemptAt) {
 				this.report(true);
 				return;
 			}
-			await this.link(conversationId);
+			const linking = this.link(conversationId);
+			generation = this.linkGeneration;
+			await linking;
+			if (!this.isCurrentLink(generation, conversationId) || !this.linked) return;
 		}
-		const outstanding = await this.outstanding(conversationId, entries);
+		const outstanding = await this.outstanding(conversationId, entries, generation);
+		if (!this.isCurrentLink(generation, conversationId)) return;
 		this.pendingCount = outstanding.length;
 		if (outstanding.length === 0) {
 			await this.clearOutbox(conversationId);
+			if (!this.isCurrentLink(generation, conversationId)) return;
 			this.backoffMs = 0;
 			this.nextAttemptAt = 0;
 			this.report(false);
@@ -174,26 +200,32 @@ export class SessionMirror {
 			return;
 		}
 		let sent = 0;
+		const rejectedForDelivery = new Set(this.rejected);
 		for (const chunk of batch(outstanding, MAX_ENTRIES_PER_BATCH)) {
 			try {
 				await this.client.appendEntries(conversationId, chunk);
 			} catch (error) {
 				if (isTerminalRejection(error)) {
-					for (const item of chunk) this.rejected.add(item.entry_id);
-					await this.writeRejected(conversationId);
+					for (const item of chunk) rejectedForDelivery.add(item.entry_id);
+					await this.writeRejected(conversationId, rejectedForDelivery);
+					if (!this.isCurrentLink(generation, conversationId)) return;
+					this.rejected = new Set(rejectedForDelivery);
 					sent += chunk.length;
 					continue;
 				}
 				await this.writeOutbox(conversationId, outstanding.slice(sent));
+				if (!this.isCurrentLink(generation, conversationId)) throw error;
 				this.pendingCount = outstanding.length - sent;
 				this.delayNextAttempt();
 				this.report(true);
 				throw error;
 			}
+			if (!this.isCurrentLink(generation, conversationId)) return;
 			for (const entry of chunk) this.acknowledged.add(entry.entry_id);
 			sent += chunk.length;
 		}
 		await this.clearOutbox(conversationId);
+		if (!this.isCurrentLink(generation, conversationId)) return;
 		this.pendingCount = 0;
 		this.backoffMs = 0;
 		this.nextAttemptAt = 0;
@@ -203,9 +235,12 @@ export class SessionMirror {
 	private async outstanding(
 		conversationId: string,
 		entries: SessionEntry[],
+		generation: number,
 	): Promise<MirrorEntryInput[]> {
 		const outstanding: MirrorEntryInput[] = [];
 		const seen = new Set<string>();
+		const outbox = await this.readOutbox(conversationId);
+		if (!this.isCurrentLink(generation, conversationId)) return [];
 		const consider = (candidate: MirrorEntryInput): void => {
 			if (this.acknowledged.has(candidate.entry_id)) return;
 			if (this.rejected.has(candidate.entry_id)) return;
@@ -218,7 +253,7 @@ export class SessionMirror {
 			}
 			outstanding.push(candidate);
 		};
-		for (const candidate of await this.readOutbox(conversationId)) consider(candidate);
+		for (const candidate of outbox) consider(candidate);
 		for (const entry of entries) consider(toMirrorEntry(entry));
 		return outstanding;
 	}
@@ -278,10 +313,13 @@ export class SessionMirror {
 		return new Set();
 	}
 
-	private async writeRejected(conversationId: string): Promise<void> {
+	private async writeRejected(
+		conversationId: string,
+		rejected: Set<string>,
+	): Promise<void> {
 		const path = rejectedPath(conversationId, this.agentDir);
 		await mkdir(dirname(path), { recursive: true });
-		await writeFile(path, JSON.stringify([...this.rejected]), "utf8");
+		await writeFile(path, JSON.stringify([...rejected]), "utf8");
 	}
 }
 

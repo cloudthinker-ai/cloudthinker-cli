@@ -25,6 +25,7 @@ import { CLEAR_SCREEN, CLEAR_SCREEN_BUSY, MODEL_SELECT, applyClearScreenKey, cle
 import { applyQueuedMessagesUi } from "../src/queue-ui.ts";
 import { applyScrollPill, noteTranscriptUpdate } from "../src/scroll-pill.ts";
 import { MAX_RESULT_LINES, TranscriptView, applyTranscriptUi, renderBlocks, transcriptBlocks, transcriptMarkdown } from "../src/transcript.ts";
+import { TERMINAL_COPY_HINT, applyTerminalCopyNote } from "../src/terminal-copy.ts";
 import { savedTuiMode, tuiModeArgs } from "../src/tui-mode.ts";
 import { diffStyle, setDiffStyle } from "../src/verbosity.ts";
 
@@ -38,6 +39,30 @@ applyFilePicker();
 applyMentionPicker();
 applyMentionHighlight();
 applyToolGroups();
+applyTerminalCopyNote();
+
+const CLIPBOARD_ENV = ["SSH_CONNECTION", "SSH_CLIENT", "MOSH_CONNECTION", "DISPLAY", "WAYLAND_DISPLAY", "TERMUX_VERSION", "WSL_DISTRO_NAME"] as const;
+const LOCAL_DESKTOP = { DISPLAY: ":0" };
+const REMOTE_SHELL = { SSH_CONNECTION: "203.0.113.5 50000 198.51.100.7 22", DISPLAY: ":0" };
+const HEADLESS_VM = {};
+
+function copyText(screen: TuiAltScreen, text: string): Promise<boolean> {
+	return (screen as unknown as { copyTextToClipboard(text: string): Promise<boolean> }).copyTextToClipboard(text);
+}
+
+async function withEnv<T>(vars: Partial<Record<(typeof CLIPBOARD_ENV)[number], string>>, run: () => Promise<T>): Promise<T> {
+	const saved = CLIPBOARD_ENV.map((name) => [name, process.env[name]] as const);
+	for (const name of CLIPBOARD_ENV) delete process.env[name];
+	Object.assign(process.env, vars);
+	try {
+		return await run();
+	} finally {
+		for (const [name, value] of saved) {
+			if (value === undefined) delete process.env[name];
+			else process.env[name] = value;
+		}
+	}
+}
 
 const prototype = InteractiveMode.prototype as unknown as {
 	toggleToolOutputExpansion(this: unknown): void;
@@ -69,10 +94,17 @@ const conversation: SessionEntry[] = [
 	message("d", { role: "assistant", content: [{ type: "text", text: "The container hits its memory limit." }], stopReason: "stop" }),
 ];
 
-test("a fresh launch defaults to fullscreen, while a saved choice or an explicit flag wins", () => {
-	assert.deepEqual(tuiModeArgs([], savedTuiMode(SettingsManager.inMemory())), ["--tui-mode", "fullscreen"]);
-	assert.deepEqual(tuiModeArgs([], savedTuiMode(SettingsManager.inMemory({ tuiMode: "regular" }))), []);
-	assert.deepEqual(tuiModeArgs(["--tui-mode", "regular"], undefined), []);
+test("a fresh launch is fullscreen on a desktop and regular on a remote or headless host, while a saved choice or an explicit flag wins", () => {
+	const fresh = savedTuiMode(SettingsManager.inMemory());
+	assert.deepEqual(tuiModeArgs([], fresh, LOCAL_DESKTOP, "linux"), ["--tui-mode", "fullscreen"]);
+	assert.deepEqual(tuiModeArgs([], fresh, {}, "darwin"), ["--tui-mode", "fullscreen"]);
+	assert.deepEqual(tuiModeArgs([], fresh, { WSL_DISTRO_NAME: "Ubuntu" }, "linux"), ["--tui-mode", "fullscreen"]);
+	assert.deepEqual(tuiModeArgs([], fresh, REMOTE_SHELL, "linux"), ["--tui-mode", "regular"]);
+	assert.deepEqual(tuiModeArgs([], fresh, { SSH_CLIENT: "203.0.113.5 50000 22" }, "darwin"), ["--tui-mode", "regular"]);
+	assert.deepEqual(tuiModeArgs([], fresh, HEADLESS_VM, "linux"), ["--tui-mode", "regular"]);
+	assert.deepEqual(tuiModeArgs([], savedTuiMode(SettingsManager.inMemory({ tuiMode: "fullscreen" })), REMOTE_SHELL, "linux"), []);
+	assert.deepEqual(tuiModeArgs([], savedTuiMode(SettingsManager.inMemory({ tuiMode: "regular" })), LOCAL_DESKTOP, "linux"), []);
+	assert.deepEqual(tuiModeArgs(["--tui-mode", "fullscreen"], undefined, REMOTE_SHELL, "linux"), []);
 });
 
 test("Ctrl+O opens a searchable full transcript instead of expanding tool output in place", async () => {
@@ -228,6 +260,34 @@ test("scrolling up in fullscreen shows how much new output arrived below", () =>
 	}
 });
 
+test("a fullscreen copy on a remote or headless host says it went through the terminal", async () => {
+	const writes: string[] = [];
+	const terminal = new Proxy({ columns: 80, rows: 6, write: (data: string) => writes.push(data) } as Record<string, unknown>, {
+		get: (target, key) => (key in target ? target[key as string] : () => {}),
+	});
+	const tui = new TuiAltScreen(terminal as never, false, undefined, { copySelection: async () => true });
+	const frame = (): string => {
+		writes.length = 0;
+		(tui as unknown as { doRender(): void }).doRender();
+		return stripVTControlCharacters(writes.join(""));
+	};
+	tui.start();
+	try {
+		tui.addChild(new Text("answer", 0, 0));
+		await withEnv(REMOTE_SHELL, () => copyText(tui, "Fail% = 1"));
+		assert.match(frame(), /Sent to your terminal · paste empty\? Hold Shift/);
+		await withEnv(HEADLESS_VM, () => copyText(tui, "Fail% = 1"));
+		assert.match(frame(), /Sent to your terminal/);
+		const local = new TuiAltScreen(terminal as never, false, undefined, { copySelection: async () => true });
+		const flashes: string[] = [];
+		(local as unknown as { flashes: { flash(message: string): void } }).flashes.flash = (message) => flashes.push(message);
+		await withEnv(LOCAL_DESKTOP, () => copyText(local, "Fail% = 1"));
+		assert.deepEqual(flashes, ["Copied!"]);
+	} finally {
+		tui.stop();
+	}
+});
+
 test("Ctrl+L clears an idle screen and refuses while a task runs", () => {
 	const keybindings = new KeybindingsManager();
 	assert.equal(keybindings.matches("\x0c", CLEAR_SCREEN), true);
@@ -282,9 +342,10 @@ test("answer code blocks are numbered and /copy N copies one", async () => {
 	];
 	const component = new AssistantMessageComponent({ role: "assistant", content, stopReason: "stop" } as never, true);
 	const rendered = stripVTControlCharacters(component.render(80).map((line) => line.trimEnd()).join("\n"));
-	assert.match(rendered, /\[1\] bash\n\s*▎ kubectl get pods/);
-	assert.match(rendered, /\[2\]\n\s*▎ plain/);
-	assert.match(rendered, /\[3\] ts\n\s*▎ const x = 1;/);
+	assert.match(rendered, /\[1\] bash\n\s*kubectl get pods$/m);
+	assert.match(rendered, /\[2\]\n\s*plain$/m);
+	assert.match(rendered, /\[3\] ts\n\s*const x = 1;$/m);
+	assert.doesNotMatch(rendered, /▎|│/);
 	assert.doesNotMatch(rendered, /\[\d\] mermaid/);
 
 	const copied: string[] = [];
@@ -294,10 +355,11 @@ test("answer code blocks are numbered and /copy N copies one", async () => {
 		showStatus: (message: string) => notes.push(message),
 		showError: (message: string) => notes.push(`error: ${message}`),
 	};
-	await copyCodeBlock(host, 3, async (text) => { copied.push(text); });
+	await withEnv(LOCAL_DESKTOP, () => copyCodeBlock(host, 3, async (text) => { copied.push(text); }));
 	await copyCodeBlock(host, 4, async (text) => { copied.push(text); });
-	assert.deepEqual(copied, ["const x = 1;"]);
-	assert.deepEqual(notes, ["Copied code block 3 (1 line)", "error: The last answer has code blocks 1–3."]);
+	await withEnv(REMOTE_SHELL, () => copyCodeBlock(host, 3, async (text) => { copied.push(text); }));
+	assert.deepEqual(copied, ["const x = 1;", "const x = 1;"]);
+	assert.deepEqual(notes, ["Copied code block 3 (1 line)", "error: The last answer has code blocks 1–3.", `Copied code block 3 (1 line) through your terminal · ${TERMINAL_COPY_HINT}`]);
 	const tabbed = [{ type: "text", text: "Run:\n\n\tmake build\n\n```sh\necho hi\n```" }];
 	const shown = stripVTControlCharacters(new AssistantMessageComponent({ role: "assistant", content: tabbed, stopReason: "stop" } as never, true).render(80).join("\n"));
 	assert.match(shown, /\[1\] sh/);

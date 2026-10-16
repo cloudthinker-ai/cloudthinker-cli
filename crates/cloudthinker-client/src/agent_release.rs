@@ -1,15 +1,14 @@
 //! Download, verify, and install the released `cloudthinker-agent` bundle.
 
-use std::fmt::Display;
-use std::io::Read;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 use fs2::FileExt as _;
-use sha2::{Digest, Sha256};
 
 use crate::error::{CtError, CtResult};
+
+mod archive;
 
 /// GitHub release download root the published agent assets hang off.
 pub const DEFAULT_RELEASE_BASE_URL: &str =
@@ -117,14 +116,14 @@ pub async fn install_agent(
         MAX_ASSET_BYTES,
     )
     .await?;
-    verify_digest(&archive, &sidecar, &asset)?;
+    let archive = archive::verify_digest(archive, &sidecar, &asset)?;
     let inventory = download(
         &http,
         &asset_url(release_base, version, CHECKSUM_INVENTORY),
         64 * 1024,
     )
     .await?;
-    verify_inventory(&archive, &inventory, &asset)?;
+    let archive = archive.verify_inventory(&inventory)?;
 
     let bin_root = bin_root.to_path_buf();
     let version = version.to_string();
@@ -133,7 +132,11 @@ pub async fn install_agent(
         .map_err(|e| CtError::AgentInstall(format!("bundle install task failed: {e}")))?
 }
 
-fn commit_bundle(archive: &[u8], bin_root: &Path, version: &str) -> CtResult<InstalledAgent> {
+fn commit_bundle(
+    archive: &archive::VerifiedArchive,
+    bin_root: &Path,
+    version: &str,
+) -> CtResult<InstalledAgent> {
     create_dir(bin_root)?;
     let lock_path = bin_root.join(".install.lock");
     let lock = std::fs::OpenOptions::new()
@@ -160,13 +163,13 @@ fn commit_bundle(archive: &[u8], bin_root: &Path, version: &str) -> CtResult<Ins
 }
 
 fn stage_bundle(
-    archive: &[u8],
+    archive: &archive::VerifiedArchive,
     staging: &Path,
     bin_root: &Path,
     version: &str,
 ) -> CtResult<PathBuf> {
     create_dir(staging)?;
-    extract_bundle(archive, staging)?;
+    archive::extract_bundle(archive, staging)?;
     if !staging.join(BUNDLE_BINARY_NAME).is_file() {
         return Err(CtError::AgentInstall(format!(
             "release archive carries no {BUNDLE_DIR_NAME}/{BUNDLE_BINARY_NAME}"
@@ -305,139 +308,6 @@ fn bundle_process_status(bundle: &Path) -> Option<i32> {
         .and_then(|output| output.status.code())
 }
 
-/// Unpack the archive's `cloudthinker-agent/` directory into `dest`, rejecting
-/// an entry that is not a plain file or directory inside it.
-fn extract_bundle(archive: &[u8], dest: &Path) -> CtResult<()> {
-    let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(archive));
-    let entries = tar.entries().map_err(archive_read_error)?;
-    for entry in entries {
-        let mut entry = entry.map_err(archive_read_error)?;
-        let path = entry.path().map_err(archive_read_error)?.into_owned();
-        let relative = bundle_relative_path(&path).ok_or_else(|| {
-            CtError::AgentInstall(format!(
-                "release archive entry outside {BUNDLE_DIR_NAME}/: {}",
-                path.display()
-            ))
-        })?;
-        if relative.as_os_str().is_empty() {
-            continue;
-        }
-        let target = dest.join(&relative);
-        match entry.header().entry_type() {
-            tar::EntryType::Directory => create_dir(&target)?,
-            tar::EntryType::Regular => {
-                if let Some(parent) = target.parent() {
-                    create_dir(parent)?;
-                }
-                let mode = entry.header().mode().unwrap_or(0o644);
-                write_file(&mut entry, &target, mode)?;
-            }
-            _ => {
-                return Err(CtError::AgentInstall(format!(
-                    "unsupported release archive entry: {}",
-                    path.display()
-                )));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn archive_read_error(e: impl Display) -> CtError {
-    CtError::AgentInstall(format!("unreadable release archive: {e}"))
-}
-
-fn write_file(source: &mut impl Read, target: &Path, mode: u32) -> CtResult<()> {
-    let mut file = std::fs::File::create(target).map_err(|e| fs_error("write", target, &e))?;
-    std::io::copy(source, &mut file).map_err(|e| fs_error("write", target, &e))?;
-    apply_mode(&file, mode).map_err(|e| fs_error("write", target, &e))
-}
-
-#[cfg(unix)]
-fn apply_mode(file: &std::fs::File, mode: u32) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let bits = if mode & 0o111 == 0 { 0o644 } else { 0o755 };
-    file.set_permissions(std::fs::Permissions::from_mode(bits))
-}
-
-#[cfg(not(unix))]
-fn apply_mode(_file: &std::fs::File, _mode: u32) -> std::io::Result<()> {
-    Ok(())
-}
-
-/// The path under the bundle directory, or `None` when the entry sits outside it.
-fn bundle_relative_path(path: &Path) -> Option<PathBuf> {
-    let mut components = path.components().peekable();
-    while components.peek() == Some(&Component::CurDir) {
-        components.next();
-    }
-    match components.next() {
-        Some(Component::Normal(name)) if name == BUNDLE_DIR_NAME => {}
-        _ => return None,
-    }
-    let mut relative = PathBuf::new();
-    for component in components {
-        match component {
-            Component::Normal(part) => relative.push(part),
-            Component::CurDir => {}
-            _ => return None,
-        }
-    }
-    Some(relative)
-}
-
-/// Check the archive against its `sha256sum`-format sidecar, which must name
-/// the asset it covers.
-fn verify_digest(archive: &[u8], sidecar: &[u8], asset: &str) -> CtResult<()> {
-    let text = String::from_utf8_lossy(sidecar);
-    let mut fields = text.split_whitespace();
-    let (Some(expected), Some(named)) = (fields.next(), fields.next()) else {
-        return Err(CtError::AgentInstall(format!(
-            "malformed checksum file for {asset}"
-        )));
-    };
-    if named.trim_start_matches('*') != asset {
-        return Err(CtError::AgentInstall(format!(
-            "checksum file names {named}, not {asset}"
-        )));
-    }
-    let actual = format!("{:x}", Sha256::digest(archive));
-    if !actual.eq_ignore_ascii_case(expected) {
-        return Err(CtError::AgentInstall(format!(
-            "checksum mismatch for {asset}: expected {expected}, got {actual}"
-        )));
-    }
-    Ok(())
-}
-
-fn verify_inventory(archive: &[u8], inventory: &[u8], asset: &str) -> CtResult<()> {
-    let text = std::str::from_utf8(inventory)
-        .map_err(|_| CtError::AgentInstall("checksum inventory is not UTF-8".into()))?;
-    let mut selected = None;
-    for line in text.lines().filter(|line| !line.trim().is_empty()) {
-        let fields: Vec<_> = line.split_whitespace().collect();
-        if fields.len() != 2
-            || fields[0].len() != 64
-            || !fields[0].bytes().all(|byte| byte.is_ascii_hexdigit())
-        {
-            return Err(CtError::AgentInstall("malformed checksum inventory".into()));
-        }
-        if fields[1].trim_start_matches('*') == asset {
-            if selected.is_some() {
-                return Err(CtError::AgentInstall(format!(
-                    "duplicate inventory entry for {asset}"
-                )));
-            }
-            selected = Some(line);
-        }
-    }
-    let line = selected.ok_or_else(|| {
-        CtError::AgentInstall(format!("checksum inventory has no entry for {asset}"))
-    })?;
-    verify_digest(archive, line.as_bytes(), asset)
-}
-
 fn http_client() -> CtResult<reqwest::Client> {
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
@@ -492,9 +362,10 @@ fn fs_error(action: &str, path: &Path, error: &std::io::Error) -> CtError {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::io::{Read, Write};
 
     use super::*;
+    use sha2::{Digest, Sha256};
 
     fn tar_gz(entries: &[(&str, &[u8], u32)]) -> Vec<u8> {
         let mut builder = tar::Builder::new(Vec::new());
@@ -535,6 +406,15 @@ mod tests {
 
     fn sidecar(archive: &[u8], asset: &str) -> Vec<u8> {
         format!("{:x}  {asset}\n", Sha256::digest(archive)).into_bytes()
+    }
+
+    fn verified_archive(bytes: &[u8]) -> archive::VerifiedArchive {
+        let asset = asset_name("x86_64-unknown-linux-gnu");
+        let checksum = sidecar(bytes, &asset);
+        archive::verify_digest(bytes.to_vec(), &checksum, &asset)
+            .unwrap()
+            .verify_inventory(&checksum)
+            .unwrap()
     }
 
     #[cfg(unix)]
@@ -583,7 +463,7 @@ mod tests {
             b"#!/bin/sh\n[ -z \"${CLOUDTHINKER_TOKEN+x}\" ] && [ -z \"${CT_PROBE_PARENT+x}\" ] && [ \"$HOME\" = \"$PWD\" ] && [ \"$PI_SKIP_VERSION_CHECK\" = 1 ]\n",
             0o755,
         )]);
-        extract_bundle(&archive, root.path()).unwrap();
+        archive::extract_bundle(&verified_archive(&archive), root.path()).unwrap();
         probe_bundle(root.path(), Duration::from_secs(10)).unwrap();
     }
 
@@ -623,7 +503,7 @@ mod tests {
             std::fs::write(installed.join(BUNDLE_BINARY_NAME), b"previous").unwrap();
             let archive = tar_gz(&[("cloudthinker-agent/cloudthinker-agent", body, 0o755)]);
             let result = stage_bundle(
-                &archive,
+                &verified_archive(&archive),
                 &root.path().join(".staging-test"),
                 root.path(),
                 "0.3.0",
@@ -646,7 +526,7 @@ mod tests {
             0o755,
         )]);
         let staging = root.path().join("probe");
-        extract_bundle(&bundle, &staging).unwrap();
+        archive::extract_bundle(&verified_archive(&bundle), &staging).unwrap();
         let started = Instant::now();
         assert!(probe_bundle(&staging, Duration::from_millis(30)).is_err());
         assert!(started.elapsed() < Duration::from_secs(2));
@@ -655,7 +535,7 @@ mod tests {
             b"#!/bin/sh\nexit 9\n",
             0o755,
         )]);
-        assert!(commit_bundle(&failed, root.path(), "0.4.0").is_err());
+        assert!(commit_bundle(&verified_archive(&failed), root.path(), "0.4.0").is_err());
         assert!(!root.path().join("0.4.0").exists());
         assert!(
             !std::fs::read_dir(root.path())
@@ -669,11 +549,13 @@ mod tests {
     #[test]
     fn ca_ad_2_retains_previous_and_open_older_bundle() {
         let root = tempfile::tempdir().unwrap();
-        commit_bundle(&good_bundle(), root.path(), "0.1.0").unwrap();
+        let bundle = good_bundle();
+        let archive = verified_archive(&bundle);
+        commit_bundle(&archive, root.path(), "0.1.0").unwrap();
         let oldest = agent_install_dir(root.path(), "0.1.0");
         let open = std::fs::File::open(oldest.join(BUNDLE_BINARY_NAME)).unwrap();
-        commit_bundle(&good_bundle(), root.path(), "0.2.0").unwrap();
-        commit_bundle(&good_bundle(), root.path(), "0.3.0").unwrap();
+        commit_bundle(&archive, root.path(), "0.2.0").unwrap();
+        commit_bundle(&archive, root.path(), "0.3.0").unwrap();
         assert!(oldest.exists());
         assert!(agent_install_dir(root.path(), "0.2.0").exists());
         drop(open);
@@ -770,18 +652,10 @@ mod tests {
     #[test]
     fn digest_verification_accepts_the_matching_sidecar() {
         let archive = good_bundle();
+        let asset = "cloudthinker-agent-x86_64-unknown-linux-gnu.tar.gz";
+        let checksum = sidecar(&archive, asset);
 
-        assert!(
-            verify_digest(
-                &archive,
-                &sidecar(
-                    &archive,
-                    "cloudthinker-agent-x86_64-unknown-linux-gnu.tar.gz"
-                ),
-                "cloudthinker-agent-x86_64-unknown-linux-gnu.tar.gz",
-            )
-            .is_ok()
-        );
+        assert!(archive::verify_digest(archive, &checksum, asset).is_ok());
     }
 
     #[test]
@@ -789,15 +663,25 @@ mod tests {
         let archive = good_bundle();
         let asset = asset_name("x86_64-unknown-linux-gnu");
         let valid = sidecar(&archive, &asset);
-        assert!(verify_inventory(&archive, &valid, &asset).is_ok());
+        assert!(
+            archive::verify_digest(archive.clone(), &valid, &asset)
+                .unwrap()
+                .verify_inventory(&valid)
+                .is_ok()
+        );
         for invalid in [
             Vec::new(),
             b"malformed".to_vec(),
-            [valid.clone(), valid].concat(),
+            [valid.clone(), valid.clone()].concat(),
             sidecar(b"other archive", &asset),
             sidecar(&archive, "other.tar.gz"),
         ] {
-            assert!(verify_inventory(&archive, &invalid, &asset).is_err());
+            assert!(
+                archive::verify_digest(archive.clone(), &valid, &asset)
+                    .unwrap()
+                    .verify_inventory(&invalid)
+                    .is_err()
+            );
         }
     }
 
@@ -850,18 +734,23 @@ mod tests {
 
         let mut tampered = archive.clone();
         tampered.push(0);
-        let mismatch = verify_digest(&tampered, &sidecar_for_asset, asset).unwrap_err();
+        let mismatch = archive::verify_digest(tampered, &sidecar_for_asset, asset)
+            .err()
+            .unwrap();
         assert!(mismatch.to_string().contains("checksum mismatch"));
 
-        let foreign = verify_digest(
-            &archive,
+        let foreign = archive::verify_digest(
+            archive.clone(),
             &sidecar(&archive, "cloudthinker-agent-aarch64-apple-darwin.tar.gz"),
             asset,
         )
-        .unwrap_err();
+        .err()
+        .unwrap();
         assert!(foreign.to_string().contains("checksum file names"));
 
-        let malformed = verify_digest(&archive, b"deadbeef\n", asset).unwrap_err();
+        let malformed = archive::verify_digest(archive, b"deadbeef\n", asset)
+            .err()
+            .unwrap();
         assert!(malformed.to_string().contains("malformed checksum file"));
     }
 
@@ -869,7 +758,7 @@ mod tests {
     fn extraction_strips_the_top_level_directory_and_keeps_the_executable_bit() {
         let dest = tempfile::tempdir().unwrap();
 
-        extract_bundle(&good_bundle(), dest.path()).unwrap();
+        archive::extract_bundle(&verified_archive(&good_bundle()), dest.path()).unwrap();
 
         let binary = dest.path().join("cloudthinker-agent");
         assert!(binary.is_file());
@@ -903,7 +792,7 @@ mod tests {
             ("cloudthinker-agent/../escape.txt", b"owned", 0o644),
         ]);
 
-        let err = extract_bundle(&archive, dest.path()).unwrap_err();
+        let err = archive::extract_bundle(&verified_archive(&archive), dest.path()).unwrap_err();
 
         assert!(err.to_string().contains("outside cloudthinker-agent/"));
         assert!(!dest.path().parent().unwrap().join("escape.txt").exists());
@@ -914,7 +803,7 @@ mod tests {
         let dest = tempfile::tempdir().unwrap();
         let archive = tar_gz(&[("elsewhere/cloudthinker-agent", b"binary", 0o755)]);
 
-        assert!(extract_bundle(&archive, dest.path()).is_err());
+        assert!(archive::extract_bundle(&verified_archive(&archive), dest.path()).is_err());
     }
 
     #[cfg(unix)]
@@ -968,7 +857,7 @@ mod tests {
         let installed = agent_install_dir(root.path(), "0.3.0");
         std::fs::create_dir_all(&installed).unwrap();
         std::fs::write(installed.join("partial"), b"preserve").unwrap();
-        assert!(commit_bundle(&good_bundle(), root.path(), "0.3.0").is_err());
+        assert!(commit_bundle(&verified_archive(&good_bundle()), root.path(), "0.3.0").is_err());
         assert_eq!(
             std::fs::read(installed.join("partial")).unwrap(),
             b"preserve"
@@ -986,7 +875,7 @@ mod tests {
         std::fs::write(installed.join("theme/retired.json"), b"{}").unwrap();
 
         let binary = stage_bundle(
-            &good_bundle(),
+            &verified_archive(&good_bundle()),
             &root.path().join(".staging-test"),
             root.path(),
             "0.3.0",

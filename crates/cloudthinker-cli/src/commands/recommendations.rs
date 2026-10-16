@@ -25,11 +25,5 @@ pub async fn run_list(
     } else {
         output::print_recommendation_list(&recommendations)
     };
-    match result {
-        Ok(()) => ExitCode::Ok,
-        Err(err) => {
-            output::eprintln_error(&err);
-            ExitCode::JobFailed
-        }
-    }
+    exit::finish_output(result)
 }

@@ -62,6 +62,56 @@ test("concurrent token requests share one asynchronous command", async () => {
 	assert.equal(calls, 1);
 });
 
+test("workspace changes start their own token command and stale completion preserves the active cache", async () => {
+	const env: NodeJS.ProcessEnv = { CLOUDTHINKER_WORKSPACE: "workspace-a" };
+	const commands: Array<{ args: string[]; resolve: (result: { status: number | null; stdout: string }) => void }> = [];
+	const tokens = new TokenSource(env, (_command, args) => {
+		return new Promise((resolve) => commands.push({ args, resolve }));
+	});
+	const workspaceA = tokens.resolve();
+	env.CLOUDTHINKER_WORKSPACE = "workspace-b";
+	const workspaceB = tokens.resolve();
+	assert.equal(commands.length, 2);
+	assert.deepEqual(commands.map(({ args }) => args.slice(-1)), [["workspace-a"], ["workspace-b"]]);
+
+	commands[1]?.resolve({ status: 0, stdout: "token-b" });
+	assert.equal(await workspaceB, "token-b");
+	commands[0]?.resolve({ status: 0, stdout: "token-a" });
+	assert.equal(await workspaceA, "token-a");
+	assert.equal(await tokens.resolve(), "token-b");
+	assert.equal(commands.length, 2);
+});
+
+test("an earlier workspace completion does not clear the newer pending command", async () => {
+	const env: NodeJS.ProcessEnv = { CLOUDTHINKER_WORKSPACE: "workspace-a" };
+	const commands: Array<{ resolve: (result: { status: number | null; stdout: string }) => void }> = [];
+	const tokens = new TokenSource(env, () => new Promise((resolve) => commands.push({ resolve })));
+	const workspaceA = tokens.resolve();
+	env.CLOUDTHINKER_WORKSPACE = "workspace-b";
+	const workspaceB = tokens.resolve();
+	commands[0]?.resolve({ status: 0, stdout: "token-a" });
+	assert.equal(await workspaceA, "token-a");
+	const joinedWorkspaceB = tokens.resolve();
+	assert.equal(commands.length, 2);
+	commands[1]?.resolve({ status: 0, stdout: "token-b" });
+	assert.deepEqual(await Promise.all([workspaceB, joinedWorkspaceB]), ["token-b", "token-b"]);
+});
+
+test("explicit invalidation fences off a token command already in flight", async () => {
+	const commands: Array<{ resolve: (result: { status: number | null; stdout: string }) => void }> = [];
+	const tokens = new TokenSource({}, () => new Promise((resolve) => commands.push({ resolve })));
+	const stale = tokens.resolve();
+	tokens.invalidate();
+	const fresh = tokens.resolve();
+	assert.equal(commands.length, 2);
+	commands[1]?.resolve({ status: 0, stdout: "fresh-token" });
+	assert.equal(await fresh, "fresh-token");
+	commands[0]?.resolve({ status: 0, stdout: "stale-token" });
+	assert.equal(await stale, "stale-token");
+	assert.equal(await tokens.resolve(), "fresh-token");
+	assert.equal(commands.length, 2);
+});
+
 test("the token command carries the workspace the wrapper pinned", async () => {
 	assert.deepEqual(tokenCommandArgs({}), ["auth", "token"]);
 	assert.deepEqual(tokenCommandArgs({ CLOUDTHINKER_WORKSPACE: "  " }), ["auth", "token"]);

@@ -1,5 +1,5 @@
 diff --git a/dist/components/markdown.js b/dist/components/markdown.js
-index 28709ba455..b93ef035b4 100644
+index 28709ba4553d4fd3620040d5d23cf7e37b5bd77b..2b63f46a4649006398dc3bb448b2b0a48124e196 100644
 --- a/dist/components/markdown.js
 +++ b/dist/components/markdown.js
 @@ -390,22 +390,24 @@ export class Markdown {
@@ -8,7 +8,7 @@ index 28709ba455..b93ef035b4 100644
              case "code": {
 -                const indent = this.theme.codeBlockIndent ?? "  ";
 -                lines.push(this.theme.codeBlockBorder(`\`\`\`${token.lang || ""}`));
-+                const indent = `${this.theme.codeBlockBorder("▎")} `;
++                const indent = "";
 +                const codeText = token.lang?.split(/\s+/)[0]?.toLowerCase() === "mermaid" ? token.text.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, char => `\\x${char.charCodeAt(0).toString(16).padStart(2, "0")}`) : token.text;
 +                if (token.lang) {
 +                    lines.push(this.theme.codeBlockBorder(token.lang));
@@ -32,6 +32,15 @@ index 28709ba455..b93ef035b4 100644
                  if (nextTokenType && nextTokenType !== "space") {
                      lines.push(""); // Add spacing after code blocks (unless space token follows)
                  }
+@@ -457,7 +459,7 @@ export class Markdown {
+                     const styledLine = applyQuoteStyle(quoteLine);
+                     const wrappedLines = wrapTextWithAnsi(styledLine, quoteContentWidth);
+                     for (const wrappedLine of wrappedLines) {
+-                        lines.push(this.theme.quoteBorder("│ ") + wrappedLine);
++                        lines.push(this.theme.quoteBorder("  ") + wrappedLine);
+                     }
+                 }
+                 if (nextTokenType && nextTokenType !== "space") {
 @@ -534,7 +536,7 @@ export class Markdown {
                      break;
                  }

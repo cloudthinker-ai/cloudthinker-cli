@@ -172,6 +172,99 @@ test("credits are read once per agent response, the mirror on every event", asyn
 	}
 });
 
+test("a stale mirror link cannot sync entries into the next session", async () => {
+	const savedUrl = process.env.CLOUDTHINKER_URL;
+	const savedToken = process.env.CLOUDTHINKER_TOKEN;
+	const sessionA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+	const sessionB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+	const appended: { conversationId: string; entryIds: string[] }[] = [];
+	const server = await startFakeServer((request) => {
+		if (request.path === "/api/v1/agent-cli/models") return { body: { models: [] } };
+		if (request.path === "/api/v1/agent-cli/sessions" && request.method === "POST") {
+			const cwd = (request.body as { cwd?: string } | undefined)?.cwd;
+			const conversationId = cwd === "/tmp/session-a" ? sessionA : sessionB;
+			return {
+				body: {
+					conversation_id: conversationId,
+					workspace_id: WORKSPACE,
+					web_url: `http://web/${conversationId}`,
+					auto_mode: { enabled: false, can_edit: false },
+				},
+			};
+		}
+		if (request.path === "/api/v1/cli/whoami") {
+			return {
+				body: {
+					user_email: "dev@acme.io",
+					workspace_id: WORKSPACE,
+					workspace_name: "acme-prod",
+					organization_id: null,
+				},
+			};
+		}
+		if (request.path === "/api/v1/agent-cli/connections") return { body: { xml: "", prefixes: [] } };
+		if (request.path.endsWith("/credits")) return { body: { credits_used: 1, tokens_consumed: 10 } };
+		if (request.path.includes("/entries") && request.method === "GET") {
+			const entries = request.path.includes(sessionB)
+				? [{ seq: 1, entry_id: "entry-b", parent_id: null, entry_type: "message", payload: {} }]
+				: [];
+			return {
+				body: { entries, last_seq: entries.length },
+				...(request.path.includes(sessionA) ? { delayMs: 200 } : {}),
+			};
+		}
+		if (request.path.includes("/entries")) {
+			const conversationId = request.path.includes(sessionA) ? sessionA : sessionB;
+			const body = request.body as { entries?: { entry_id: string }[] } | undefined;
+			appended.push({ conversationId, entryIds: body?.entries?.map((entry) => entry.entry_id) ?? [] });
+			return { body: { stored: body?.entries?.length ?? 0, last_seq: 1 } };
+		}
+		return undefined;
+	});
+	const { pi, handlers, dispose } = piHarness();
+	process.env.CLOUDTHINKER_URL = server.origin;
+	process.env.CLOUDTHINKER_TOKEN = "t";
+	try {
+		await cloudthinker(pi);
+		const ctxA = sessionContext("/tmp/session-a", [{
+			type: "message",
+			id: "entry-a",
+			parentId: null,
+			timestamp: "",
+			message: { role: "user", content: "session A" },
+		}]);
+		const ctxB = sessionContext("/tmp/session-b", [{
+			type: "message",
+			id: "entry-b",
+			parentId: null,
+			timestamp: "",
+			message: { role: "user", content: "session B" },
+		}]);
+		await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, ctxA);
+		await until(() => server.requests.some(
+			(request) => request.method === "GET" && request.path.includes(`/sessions/${sessionA}/entries`),
+		));
+		await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, ctxB);
+		await until(() => server.requests.some(
+			(request) => request.method === "GET" && request.path.includes(`/sessions/${sessionB}/entries`),
+		));
+		await settle(300);
+		await handlers.get("turn_end")?.({ type: "turn_end" }, ctxB);
+		await settle(40);
+		assert.equal(
+			appended.some((request) => request.conversationId === sessionB),
+			false,
+		);
+	} finally {
+		if (savedUrl === undefined) delete process.env.CLOUDTHINKER_URL;
+		else process.env.CLOUDTHINKER_URL = savedUrl;
+		if (savedToken === undefined) delete process.env.CLOUDTHINKER_TOKEN;
+		else process.env.CLOUDTHINKER_TOKEN = savedToken;
+		dispose();
+		await server.close();
+	}
+});
+
 test("CA-CLOUD-9: a new session takes cloudDefault, while a recorded choice still wins", async () => {
 	const savedUrl = process.env.CLOUDTHINKER_URL;
 	const savedToken = process.env.CLOUDTHINKER_TOKEN;

@@ -1,3 +1,10 @@
+## [0.8.2-dev.3]
+
+- The background task status refresh now uses the summary snapshot already supplied by the manager callback. Session setup and the one-second refresh still read a fresh task list, and task-pane output and controls still read live manager state.
+- On a remote or headless machine (SSH, AWS SSM, or Linux without a display), the agent now starts in the regular view, so you select text with the mouse and copy it with your terminal as usual. On your own computer it still starts fullscreen. `--tui-mode` or a saved TUI mode still wins.
+- Code blocks and quotes in an answer no longer draw a `▎` or `│` bar, so copied text pastes without it. A code block keeps its `[N] lang` label for `/copy N`.
+- In fullscreen on a remote machine, a copy now says `Sent to your terminal` and to hold Shift (Option on Mac) while selecting if the paste is empty, instead of `Copied!`.
+
 ## [0.8.2-dev.1]
 
 - `/share`, `/login`, `/logout`, `/changelog`, `/bug`, and `/session` run the matching `/cloudthinker:<name>` command.

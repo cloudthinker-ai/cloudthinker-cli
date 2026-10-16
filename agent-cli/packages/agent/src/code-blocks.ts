@@ -2,6 +2,7 @@ import { copyToClipboard } from "@earendil-works/pi-coding-agent";
 import { Markdown, Marked, type Token } from "@earendil-works/pi-tui";
 
 import { AssistantMessageComponent } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/assistant-message.js";
+import { copiedStatus } from "./terminal-copy.ts";
 
 type Block = { type: string; text?: string };
 
@@ -67,7 +68,7 @@ export async function copyCodeBlock(host: CopyHost, index: number, copy: (text: 
 	try {
 		await copy(block);
 		const lines = block.split("\n").length;
-		host.showStatus(`Copied code block ${index} (${lines} ${lines === 1 ? "line" : "lines"})`);
+		host.showStatus(copiedStatus(`Copied code block ${index} (${lines} ${lines === 1 ? "line" : "lines"})`));
 	} catch (error) {
 		host.showError(error instanceof Error ? error.message : String(error));
 	}

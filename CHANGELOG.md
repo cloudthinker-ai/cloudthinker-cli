@@ -1,3 +1,15 @@
+## [0.8.2-dev.3]
+
+- Consolidated CLI output failure handling across Cyber, Cyber config, incidents, and recommendations without changing command output or exit codes.
+- Isolated worker service account and credential resolution without changing system-scope selection or service behavior.
+- Moved local Cyber discovery subprocess supervision into a private module without changing its output, timeout, cancellation, or descendant cleanup behavior.
+- Refactored worker credential source resolution and rotation into a private module without changing command behavior.
+- Moved Cyber API types, conversions, and `CtClient` methods into a feature adapter while preserving their public paths and wire behavior.
+- Keep agent release checksum verification and archive extraction behind a verified archive value; install behavior stays unchanged.
+- Moved Review API types, conversions, finding ordering, and lookup into a feature adapter while preserving the client facade and wire behavior.
+- Cyber agents can choose curl, Python, or Browser Use for requests, use the supplied bearer or session auth, and save screenshots with `cyber evidence`.
+- `cloudthinker chat` now treats a cancelled run as terminal and exits with a failure status.
+
 ## [0.8.2-dev.2]
 
 - A worker credential now stays valid for 30 days after its last use. A worker that read its credential from the private store rotates it about every 25 days and keeps serving, with no action from you. A `CLOUDTHINKER_WORKER_TOKEN` credential is renewed by use and never replaced.

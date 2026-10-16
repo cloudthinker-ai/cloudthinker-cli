@@ -45,7 +45,7 @@ test("CA-MMD-1/2/4/6: completed fences preview diagrams without changing streame
     assert.match(plain(component(fence(source), 0, "final", true).render(140)), /flowchart LR/);
     assert.match(plain(component(fence(source), 0, "off").render(140)), /flowchart LR/);
     assert.match(plain(render(fence(source, "~~~~"))), /┌|╭/);
-    assert.match(plain(render(fence(""))), /^mermaid\n▎/);
+    assert.match(plain(render(fence(""))), /^mermaid\n/);
     assert.match(plain(render("```ts\nconst diagram = 1;\n```")), /const diagram = 1/);
     assert.match(plain(render(`> ${fence("flowchart TD\nA[Start] --> B[End]").replaceAll("\n", "\n> ")}`)), /Start/);
     assert.match(plain(render(fence("flowchart TD\nA[Café] --> B[Done]"))), /Café/);

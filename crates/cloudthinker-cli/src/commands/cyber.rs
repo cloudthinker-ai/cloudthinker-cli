@@ -90,7 +90,7 @@ pub async fn list_apps(base_url: &str, workspace: Option<&str>, json: bool) -> E
             } else {
                 output::print_cyber_apps(&apps)
             };
-            finish(result)
+            exit::finish_output(result)
         }
         Err(err) => exit::report(&err),
     }
@@ -108,7 +108,7 @@ pub async fn list_domains(base_url: &str, workspace: Option<&str>, json: bool) -
             } else {
                 output::print_cyber_domains(&domains)
             };
-            finish(result)
+            exit::finish_output(result)
         }
         Err(err) => exit::report(&err),
     }
@@ -134,7 +134,7 @@ pub async fn create_domain(
                     value.domain_id, value.status, value.domain
                 )])
             };
-            finish(result)
+            exit::finish_output(result)
         }
         Err(err) => exit::report(&err),
     }
@@ -160,7 +160,7 @@ pub async fn check_domain(
                     value.domain_id, value.status, value.domain
                 )])
             };
-            finish(result)
+            exit::finish_output(result)
         }
         Err(err) => exit::report(&err),
     }
@@ -324,7 +324,7 @@ pub async fn open_run(
             } else {
                 output::print_run_brief(&brief)
             };
-            finish(result)
+            exit::finish_output(result)
         }
         Err(err) => {
             if let Err(cancel_err) = client.cyber_cancel(run.run_id).await {
@@ -443,7 +443,7 @@ pub async fn findings_list(
             } else {
                 output::print_cyber_findings(&findings.data)
             };
-            finish(result)
+            exit::finish_output(result)
         }
         Err(err) => exit::report(&err),
     }
@@ -466,7 +466,7 @@ pub async fn finding_get(
             } else {
                 output::print_cyber_finding(&finding)
             };
-            finish(result)
+            exit::finish_output(result)
         }
         Err(err) => exit::report(&err),
     }
@@ -494,7 +494,7 @@ pub async fn findings_export(
             } else {
                 output::print_cyber_export(&export)
             };
-            finish(rendered)
+            exit::finish_output(rendered)
         }
         Err(err) => exit::report(&err),
     }
@@ -589,7 +589,7 @@ pub async fn run_session(
     } else {
         output::print_cyber_session(&run, &entries)
     };
-    finish(result)
+    exit::finish_output(result)
 }
 
 pub async fn bind_run(
@@ -616,7 +616,7 @@ pub async fn bind_run(
             } else {
                 output::print_run_brief(&brief)
             };
-            finish(result)
+            exit::finish_output(result)
         }
         Err(err) => exit::report(&err),
     }
@@ -665,7 +665,7 @@ pub async fn submit_evidence(
             } else {
                 output::print_evidence_receipt(&receipt)
             };
-            finish(result)
+            exit::finish_output(result)
         }
         Err(err) => exit::report(&err),
     }
@@ -693,7 +693,7 @@ pub async fn settle(
             } else {
                 output::print_settle_result(&result)
             };
-            finish(rendered)
+            exit::finish_output(rendered)
         }
         Err(err) => exit::report(&err),
     }
@@ -713,7 +713,7 @@ pub async fn plan(base_url: &str, workspace: Option<&str>, run_id: Uuid, json: b
             } else {
                 output::print_work_plan(&plan)
             };
-            finish(rendered)
+            exit::finish_output(rendered)
         }
         Err(err) => exit::report(&err),
     }
@@ -810,7 +810,7 @@ pub async fn scan(
             } else {
                 output::print_coverage_report(&report)
             };
-            finish(rendered)
+            exit::finish_output(rendered)
         }
         Err(err) => exit::report(&err),
     }
@@ -856,7 +856,7 @@ pub async fn surface(
             } else {
                 output::print_surface(&surface)
             };
-            finish(rendered)
+            exit::finish_output(rendered)
         }
         Err(err) => exit::report(&err),
     }
@@ -900,7 +900,7 @@ pub async fn partition(
             } else {
                 output::print_partition(&partition)
             };
-            finish(rendered)
+            exit::finish_output(rendered)
         }
         Err(err) => exit::report(&err),
     }
@@ -954,7 +954,7 @@ pub async fn ingest(
             } else {
                 output::print_coverage_report(&report)
             };
-            finish(rendered)
+            exit::finish_output(rendered)
         }
         Err(err) => exit::report(&err),
     }
@@ -1005,7 +1005,7 @@ pub async fn coverage(
             } else {
                 output::print_coverage_report(&report)
             };
-            finish(rendered)
+            exit::finish_output(rendered)
         }
         Err(err) => exit::report(&err),
     }
@@ -1017,15 +1017,7 @@ fn render_run(run: &CyberRun, json: bool) -> ExitCode {
     } else {
         output::print_cyber_run(run)
     };
-    finish(result)
-}
-
-fn finish(result: Result<(), String>) -> ExitCode {
-    if let Err(err) = result {
-        output::eprintln_error(&err);
-        return ExitCode::JobFailed;
-    }
-    ExitCode::Ok
+    exit::finish_output(result)
 }
 
 /// Read one bounded text or binary artifact; a directory or unreadable path is

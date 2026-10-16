@@ -82,7 +82,8 @@ export interface CommandToolResult {
 export class TokenSource {
 	private cachedFor: string | undefined;
 	private cachedToken: string | undefined;
-	private pending: Promise<string> | undefined;
+	private pending: { commandKey: string; generation: number; promise: Promise<string> } | undefined;
+	private generation = 0;
 	private readonly env: NodeJS.ProcessEnv;
 	private readonly run: CommandRunner;
 
@@ -95,13 +96,13 @@ export class TokenSource {
 		return [tokenBinary(this.env), ...tokenCommandArgs(this.env)].join(" ");
 	}
 
-	private get cached(): string | undefined {
-		return this.cachedFor === this.commandKey ? this.cachedToken : undefined;
+	private cache(token: string | undefined, commandKey: string): void {
+		this.cachedFor = token === undefined ? undefined : commandKey;
+		this.cachedToken = token;
 	}
 
-	private set cached(token: string | undefined) {
-		this.cachedFor = token === undefined ? undefined : this.commandKey;
-		this.cachedToken = token;
+	private get cached(): string | undefined {
+		return this.cachedFor === this.commandKey ? this.cachedToken : undefined;
 	}
 
 	get fromEnvironment(): boolean {
@@ -112,10 +113,16 @@ export class TokenSource {
 		const configured = this.env.CLOUDTHINKER_TOKEN?.trim();
 		if (configured) return configured;
 		if (this.cached) return this.cached;
-		if (this.pending) return this.pending;
+		const commandKey = this.commandKey;
+		const pendingCommand = this.pending;
+		if (pendingCommand?.commandKey === commandKey && pendingCommand.generation === this.generation) {
+			return pendingCommand.promise;
+		}
+		const generation = this.generation;
 		const args = tokenCommandArgs(this.env);
+		const binary = tokenBinary(this.env);
 		const pending = (async () => {
-			const result = await this.run(tokenBinary(this.env), args);
+			const result = await this.run(binary, args);
 			const token = result.stdout.trim();
 			if (result.status !== 0 || token.length === 0) {
 				throw new CloudThinkerApiError(
@@ -123,19 +130,26 @@ export class TokenSource {
 					`\`cloudthinker ${args.join(" ")}\` exited with code ${result.status ?? "null"}. Run \`cloudthinker login\`.`,
 				);
 			}
-			this.cached = token;
+			if (this.generation === generation && this.commandKey === commandKey) {
+				this.cache(token, commandKey);
+			}
 			return token;
 		})();
-		this.pending = pending;
+		const pendingRecord = { commandKey, generation, promise: pending };
+		this.pending = pendingRecord;
 		try {
 			return await pending;
 		} finally {
-			if (this.pending === pending) this.pending = undefined;
+			if (this.pending === pendingRecord) this.pending = undefined;
 		}
 	}
 
 	invalidate(rejectedToken?: string): void {
-		if (rejectedToken === undefined || this.cached === rejectedToken) this.cached = undefined;
+		if (rejectedToken === undefined || this.cached === rejectedToken) {
+			this.generation += 1;
+			this.cache(undefined, this.commandKey);
+			this.pending = undefined;
+		}
 	}
 }
 

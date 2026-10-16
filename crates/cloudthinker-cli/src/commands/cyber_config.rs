@@ -26,7 +26,8 @@ use std::process::Command;
 
 use serde::Serialize;
 
-use crate::engine::{exit::ExitCode, output};
+use crate::engine::exit::{self, ExitCode};
+use crate::engine::output;
 
 /// The table Cyber owns inside the shared project config.
 const CYBER_PREFIX: &str = "cyber";
@@ -65,7 +66,7 @@ pub fn show(json: bool) -> ExitCode {
     } else {
         print_view(&view)
     };
-    finish(result)
+    exit::finish_output(result)
 }
 
 pub fn get(key: &str, json: bool) -> ExitCode {
@@ -86,7 +87,7 @@ pub fn get(key: &str, json: bool) -> ExitCode {
             }
         }
     };
-    finish(result)
+    exit::finish_output(result)
 }
 
 pub fn set(key: &str, value: &str, user: bool, json: bool) -> ExitCode {
@@ -116,7 +117,7 @@ pub fn set(key: &str, value: &str, user: bool, json: bool) -> ExitCode {
     } else {
         output::print_config_value(leaf, value)
     };
-    finish(result)
+    exit::finish_output(result)
 }
 
 /// Write a Cyber leaf key to the project config without printing. The caller is
@@ -499,16 +500,6 @@ fn print_view(view: &CyberConfigView) -> Result<(), String> {
             .map(|(key, value)| format!("{key} = {value} (auto)")),
     );
     output::print_lines(&lines)
-}
-
-fn finish(result: Result<(), String>) -> ExitCode {
-    match result {
-        Ok(()) => ExitCode::Ok,
-        Err(error) => {
-            output::eprintln_error(&error);
-            ExitCode::JobFailed
-        }
-    }
 }
 
 #[cfg(test)]

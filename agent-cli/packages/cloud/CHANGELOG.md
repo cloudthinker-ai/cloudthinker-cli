@@ -1,3 +1,8 @@
+## [0.8.2-dev.3]
+
+- Keep pending token commands and cached tokens scoped to the selected workspace. A command that finishes after a workspace change or invalidation cannot replace the current token cache.
+- Ignore detached mirror-link results from an earlier session so its entries cannot be sent to the active conversation.
+
 ## [0.8.2-dev.1]
 
 - Each CloudThinker command is now its own slash command: `/cloudthinker:workspace`, `/cloudthinker:auto`, `/cloudthinker:notify`, `/cloudthinker:session`, and the rest show in the slash picker with a description. `/cloudthinker workspace` and the other spaced forms still work.

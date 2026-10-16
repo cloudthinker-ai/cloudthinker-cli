@@ -1090,6 +1090,7 @@ pub fn status_label(status: RunStatus) -> &'static str {
         RunStatus::Succeeded => "succeeded",
         RunStatus::Failed => "failed",
         RunStatus::RequiredApproval => "approval required",
+        RunStatus::Cancelled => "cancelled",
     }
 }
 

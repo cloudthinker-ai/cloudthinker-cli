@@ -1534,7 +1534,8 @@ pub mod types {
     ///    "running",
     ///    "succeeded",
     ///    "failed",
-    ///    "required_approval"
+    ///    "required_approval",
+    ///    "cancelled"
     ///  ]
     ///}
     /// ```
@@ -1562,6 +1563,8 @@ pub mod types {
         Failed,
         #[serde(rename = "required_approval")]
         RequiredApproval,
+        #[serde(rename = "cancelled")]
+        Cancelled,
     }
 
     impl ::std::fmt::Display for AgentRunStatus {
@@ -1572,6 +1575,7 @@ pub mod types {
                 Self::Succeeded => f.write_str("succeeded"),
                 Self::Failed => f.write_str("failed"),
                 Self::RequiredApproval => f.write_str("required_approval"),
+                Self::Cancelled => f.write_str("cancelled"),
             }
         }
     }
@@ -1585,6 +1589,7 @@ pub mod types {
                 "succeeded" => Ok(Self::Succeeded),
                 "failed" => Ok(Self::Failed),
                 "required_approval" => Ok(Self::RequiredApproval),
+                "cancelled" => Ok(Self::Cancelled),
                 _ => Err("invalid value".into()),
             }
         }
@@ -3243,7 +3248,8 @@ pub mod types {
     ///  "enum": [
     ///    "approve_each",
     ///    "approve_exceptions",
-    ///    "pre_approved_only"
+    ///    "pre_approved_only",
+    ///    "auto"
     ///  ]
     ///}
     /// ```
@@ -3267,6 +3273,8 @@ pub mod types {
         ApproveExceptions,
         #[serde(rename = "pre_approved_only")]
         PreApprovedOnly,
+        #[serde(rename = "auto")]
+        Auto,
     }
 
     impl ::std::fmt::Display for ApprovalLevel {
@@ -3275,6 +3283,7 @@ pub mod types {
                 Self::ApproveEach => f.write_str("approve_each"),
                 Self::ApproveExceptions => f.write_str("approve_exceptions"),
                 Self::PreApprovedOnly => f.write_str("pre_approved_only"),
+                Self::Auto => f.write_str("auto"),
             }
         }
     }
@@ -3286,6 +3295,7 @@ pub mod types {
                 "approve_each" => Ok(Self::ApproveEach),
                 "approve_exceptions" => Ok(Self::ApproveExceptions),
                 "pre_approved_only" => Ok(Self::PreApprovedOnly),
+                "auto" => Ok(Self::Auto),
                 _ => Err("invalid value".into()),
             }
         }
@@ -5817,6 +5827,15 @@ pub mod types {
     ///      "default": "code_review",
     ///      "type": "string"
     ///    },
+    ///    "headline_only": {
+    ///      "title": "Headline Only",
+    ///      "description": "True on a resolved finding listed inside the MR
+    /// detail. It carries the headline fields only: an empty issue_description,
+    /// no suggested_fix and no snapshot. GET /findings/{finding_id} returns the
+    /// full body.",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
     ///    "id": {
     ///      "title": "Id",
     ///      "type": "string",
@@ -5995,6 +6014,12 @@ pub mod types {
         pub finding_index: i64,
         #[serde(default = "defaults::code_review_detail_finding_finding_source")]
         pub finding_source: ::std::string::String,
+        ///True on a resolved finding listed inside the MR detail. It carries
+        /// the headline fields only: an empty issue_description, no
+        /// suggested_fix and no snapshot. GET /findings/{finding_id} returns
+        /// the full body.
+        #[serde(default)]
+        pub headline_only: bool,
         pub id: ::uuid::Uuid,
         pub issue_description: ::std::string::String,
         pub issue_title: ::std::string::String,
@@ -26359,14 +26384,6 @@ pub mod types {
     ///      "type": "string",
     ///      "format": "uuid"
     ///    },
-    ///    "interrupt_approver_ids": {
-    ///      "title": "Interrupt Approver Ids",
-    ///      "type": "array",
-    ///      "items": {
-    ///        "type": "string",
-    ///        "format": "uuid"
-    ///      }
-    ///    },
     ///    "is_default": {
     ///      "title": "Is Default",
     ///      "type": "boolean"
@@ -26424,6 +26441,13 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "policy_tool_enabled": {
+    ///      "title": "Policy Tool Enabled",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "pulse_auto_subscribe": {
     ///      "title": "Pulse Auto Subscribe",
     ///      "default": false,
@@ -26462,8 +26486,6 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub description: ::std::option::Option<WorkspacePublicDescription>,
         pub id: ::uuid::Uuid,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        pub interrupt_approver_ids: ::std::vec::Vec<::uuid::Uuid>,
         pub is_default: bool,
         #[serde(default)]
         pub is_deleted: bool,
@@ -26480,6 +26502,8 @@ pub mod types {
         pub owner_id: ::std::option::Option<::uuid::Uuid>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub policy_enforcement_enabled: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub policy_tool_enabled: ::std::option::Option<bool>,
         #[serde(default)]
         pub pulse_auto_subscribe: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -26842,14 +26866,6 @@ pub mod types {
     ///      "type": "string",
     ///      "format": "uuid"
     ///    },
-    ///    "interrupt_approver_ids": {
-    ///      "title": "Interrupt Approver Ids",
-    ///      "type": "array",
-    ///      "items": {
-    ///        "type": "string",
-    ///        "format": "uuid"
-    ///      }
-    ///    },
     ///    "is_default": {
     ///      "title": "Is Default",
     ///      "type": "boolean"
@@ -26914,6 +26930,13 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "policy_tool_enabled": {
+    ///      "title": "Policy Tool Enabled",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "pulse_auto_subscribe": {
     ///      "title": "Pulse Auto Subscribe",
     ///      "default": false,
@@ -26955,8 +26978,6 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub description: ::std::option::Option<WorkspaceWithRolePublicDescription>,
         pub id: ::uuid::Uuid,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        pub interrupt_approver_ids: ::std::vec::Vec<::uuid::Uuid>,
         pub is_default: bool,
         #[serde(default)]
         pub is_deleted: bool,
@@ -26975,6 +26996,8 @@ pub mod types {
         pub owner_id: ::std::option::Option<::uuid::Uuid>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub policy_enforcement_enabled: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub policy_tool_enabled: ::std::option::Option<bool>,
         #[serde(default)]
         pub pulse_auto_subscribe: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -29400,7 +29423,7 @@ impl Client {
     /// - `workspace_id`
     pub async fn code_review_lookup_code_review_merge_request<'a>(
         &'a self,
-        mr_iid: i64,
+        mr_iid: ::std::num::NonZeroU64,
         project_path: &'a str,
         provider: types::CodeReviewProvider,
         workspace_id: Option<&'a ::serde_json::Value>,

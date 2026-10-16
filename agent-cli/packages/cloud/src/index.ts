@@ -68,6 +68,7 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 	const mirror = new SessionMirror(runtime.client, (status) =>
 		runtime.setStatus(formatMirrorStatus(status)),
 	);
+	let sessionGeneration = 0;
 	const locations = new LocationTracker(pi);
 	const credits = new CreditsMeter(runtime);
 
@@ -96,12 +97,19 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 		mirror.sync(ctx.sessionManager.getEntries(), silent);
 	};
 
-	const initializeLinked = async (ctx: ExtensionContext): Promise<void> => {
+	const initializeLinked = async (
+		ctx: ExtensionContext,
+		generation: number = sessionGeneration,
+	): Promise<void> => {
 		const session = runtime.session;
 		if (!session) return;
 		pinProviderWorkspace(runtime, session.workspace_id);
 		detach(async () => {
 			await mirror.link(session.conversation_id).catch(silent);
+			if (
+				generation !== sessionGeneration ||
+				runtime.session?.conversation_id !== session.conversation_id
+			) return;
 			sync(ctx);
 			credits.refresh();
 		}, silent);
@@ -127,6 +135,7 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 	runtime.afterLink = initializeLinked;
 
 	pi.on("session_start", async (event, ctx) => {
+		const generation = ++sessionGeneration;
 		runtime.bind(ctx);
 		runtime.startEvent = event;
 		runtime.sourceConversationId = options.sourceConversationId;
@@ -187,7 +196,7 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 		}
 		const session = runtime.session;
 		if (!session) return;
-		if (!localReview) await initializeLinked(ctx);
+		if (!localReview) await initializeLinked(ctx, generation);
 		markStartup("agent.session_start");
 		};
 		if (ctx.mode === "tui" && event.reason !== "startup" && !localReview) {

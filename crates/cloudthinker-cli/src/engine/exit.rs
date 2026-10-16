@@ -60,6 +60,16 @@ pub fn report(err: &CtError) -> ExitCode {
     code_for(err)
 }
 
+pub fn finish_output(result: Result<(), String>) -> ExitCode {
+    match result {
+        Ok(()) => ExitCode::Ok,
+        Err(error) => {
+            crate::engine::output::eprintln_error(&error);
+            ExitCode::JobFailed
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

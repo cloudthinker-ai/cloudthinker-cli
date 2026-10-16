@@ -68,8 +68,7 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 		}
 		return shell;
 	};
-	const renderStatus = (ctx: ExtensionContext, manager: BackgroundCommandManager) => {
-		const tasks = manager.list();
+	const renderStatus = (ctx: ExtensionContext, manager: BackgroundCommandManager, tasks: readonly BackgroundTaskSummary[] = manager.list()) => {
 		for (const task of tasks) commands.set(task.id, task.command);
 		if (!ctx.hasUI) return;
 		tasksPane.bind(ctx.ui);
@@ -119,9 +118,9 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 				operations: {
 					exec: (command, cwd, options) => bash.exec(commandPrefix ? `${commandPrefix}\n${command}` : command, cwd, options),
 				},
-				onChange: () => {
+				onChange: (tasks) => {
 					const current = contexts.get(key);
-					if (current) renderStatus(current, manager!);
+					if (current) renderStatus(current, manager!, tasks);
 				},
 				onTerminal: () => {
 					const current = contexts.get(key);

@@ -30,7 +30,7 @@ class DiscoveryRuntimeResourcesTest(unittest.TestCase):
             names = archive.namelist()
             self.assertIn("__main__.py", names)
             self.assertIn("cyber_discovery/runner.py", names)
-            self.assertIn("cyber_curl.py", names)
+            self.assertIn("cyber_response.py", names)
             self.assertIn("cyber_auth.py", names)
             self.assertIn("vendor/PyYAML-LICENSE", names)
             self.assertTrue(

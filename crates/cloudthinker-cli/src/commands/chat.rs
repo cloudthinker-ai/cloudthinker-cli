@@ -296,6 +296,12 @@ fn finish(view: &RunView, json: bool) -> ExitCode {
             }
             ExitCode::ApprovalRequired
         }
+        RunStatus::Cancelled => {
+            if !json {
+                output::eprintln_error(view.message.as_deref().unwrap_or("the run was cancelled"));
+            }
+            ExitCode::JobFailed
+        }
         // Non-terminal states never reach `finish` (watch only yields terminal).
         RunStatus::Pending | RunStatus::Running => ExitCode::JobFailed,
     }
