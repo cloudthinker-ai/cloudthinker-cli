@@ -25,7 +25,7 @@ import { CLEAR_SCREEN, CLEAR_SCREEN_BUSY, MODEL_SELECT, applyClearScreenKey, cle
 import { applyQueuedMessagesUi } from "../src/queue-ui.ts";
 import { applyScrollPill, noteTranscriptUpdate } from "../src/scroll-pill.ts";
 import { MAX_RESULT_LINES, TranscriptView, applyTranscriptUi, renderBlocks, transcriptBlocks, transcriptMarkdown } from "../src/transcript.ts";
-import { TERMINAL_COPY_HINT, applyTerminalCopyNote } from "../src/terminal-copy.ts";
+import { applyTerminalCopyNote, nativeSelectKey } from "../src/terminal-copy.ts";
 import { savedTuiMode, tuiModeArgs } from "../src/tui-mode.ts";
 import { diffStyle, setDiffStyle } from "../src/verbosity.ts";
 
@@ -41,7 +41,7 @@ applyMentionHighlight();
 applyToolGroups();
 applyTerminalCopyNote();
 
-const CLIPBOARD_ENV = ["SSH_CONNECTION", "SSH_CLIENT", "MOSH_CONNECTION", "DISPLAY", "WAYLAND_DISPLAY", "TERMUX_VERSION", "WSL_DISTRO_NAME"] as const;
+const CLIPBOARD_ENV = ["SSH_CONNECTION", "SSH_CLIENT", "MOSH_CONNECTION", "DISPLAY", "WAYLAND_DISPLAY", "TERMUX_VERSION", "WSL_DISTRO_NAME", "TERM_PROGRAM", "LC_TERMINAL"] as const;
 const LOCAL_DESKTOP = { DISPLAY: ":0" };
 const REMOTE_SHELL = { SSH_CONNECTION: "203.0.113.5 50000 198.51.100.7 22", DISPLAY: ":0" };
 const HEADLESS_VM = {};
@@ -94,17 +94,10 @@ const conversation: SessionEntry[] = [
 	message("d", { role: "assistant", content: [{ type: "text", text: "The container hits its memory limit." }], stopReason: "stop" }),
 ];
 
-test("a fresh launch is fullscreen on a desktop and regular on a remote or headless host, while a saved choice or an explicit flag wins", () => {
-	const fresh = savedTuiMode(SettingsManager.inMemory());
-	assert.deepEqual(tuiModeArgs([], fresh, LOCAL_DESKTOP, "linux"), ["--tui-mode", "fullscreen"]);
-	assert.deepEqual(tuiModeArgs([], fresh, {}, "darwin"), ["--tui-mode", "fullscreen"]);
-	assert.deepEqual(tuiModeArgs([], fresh, { WSL_DISTRO_NAME: "Ubuntu" }, "linux"), ["--tui-mode", "fullscreen"]);
-	assert.deepEqual(tuiModeArgs([], fresh, REMOTE_SHELL, "linux"), ["--tui-mode", "regular"]);
-	assert.deepEqual(tuiModeArgs([], fresh, { SSH_CLIENT: "203.0.113.5 50000 22" }, "darwin"), ["--tui-mode", "regular"]);
-	assert.deepEqual(tuiModeArgs([], fresh, HEADLESS_VM, "linux"), ["--tui-mode", "regular"]);
-	assert.deepEqual(tuiModeArgs([], savedTuiMode(SettingsManager.inMemory({ tuiMode: "fullscreen" })), REMOTE_SHELL, "linux"), []);
-	assert.deepEqual(tuiModeArgs([], savedTuiMode(SettingsManager.inMemory({ tuiMode: "regular" })), LOCAL_DESKTOP, "linux"), []);
-	assert.deepEqual(tuiModeArgs(["--tui-mode", "fullscreen"], undefined, REMOTE_SHELL, "linux"), []);
+test("a fresh launch defaults to fullscreen, while a saved choice or an explicit flag wins", () => {
+	assert.deepEqual(tuiModeArgs([], savedTuiMode(SettingsManager.inMemory())), ["--tui-mode", "fullscreen"]);
+	assert.deepEqual(tuiModeArgs([], savedTuiMode(SettingsManager.inMemory({ tuiMode: "regular" }))), []);
+	assert.deepEqual(tuiModeArgs(["--tui-mode", "regular"], undefined), []);
 });
 
 test("Ctrl+O opens a searchable full transcript instead of expanding tool output in place", async () => {
@@ -260,9 +253,9 @@ test("scrolling up in fullscreen shows how much new output arrived below", () =>
 	}
 });
 
-test("a fullscreen copy on a remote or headless host says it went through the terminal", async () => {
+test("a fullscreen copy says how many chars it copied, and on a remote or headless host that they went out by OSC 52 and which key selects natively", async () => {
 	const writes: string[] = [];
-	const terminal = new Proxy({ columns: 80, rows: 6, write: (data: string) => writes.push(data) } as Record<string, unknown>, {
+	const terminal = new Proxy({ columns: 160, rows: 6, write: (data: string) => writes.push(data) } as Record<string, unknown>, {
 		get: (target, key) => (key in target ? target[key as string] : () => {}),
 	});
 	const tui = new TuiAltScreen(terminal as never, false, undefined, { copySelection: async () => true });
@@ -274,15 +267,17 @@ test("a fullscreen copy on a remote or headless host says it went through the te
 	tui.start();
 	try {
 		tui.addChild(new Text("answer", 0, 0));
-		await withEnv(REMOTE_SHELL, () => copyText(tui, "Fail% = 1"));
-		assert.match(frame(), /Sent to your terminal · paste empty\? Hold Shift/);
-		await withEnv(HEADLESS_VM, () => copyText(tui, "Fail% = 1"));
-		assert.match(frame(), /Sent to your terminal/);
+		await withEnv(REMOTE_SHELL, () => copyText(tui, "Fail% = 1 - ΣSuccess"));
+		assert.match(frame(), /Sent 20 chars via OSC 52 · if paste fails, hold Shift \(Option in iTerm2, Fn in Terminal\.app\) while selecting/);
+		await withEnv({ ...REMOTE_SHELL, LC_TERMINAL: "iTerm2" }, () => copyText(tui, "x"));
+		assert.match(frame(), /Sent 1 char via OSC 52 · if paste fails, hold Option while selecting/);
+		await withEnv({ ...HEADLESS_VM, TERM_PROGRAM: "Apple_Terminal" }, () => copyText(tui, "ok"));
+		assert.match(frame(), /Sent 2 chars via OSC 52 · if paste fails, hold Fn while selecting/);
 		const local = new TuiAltScreen(terminal as never, false, undefined, { copySelection: async () => true });
 		const flashes: string[] = [];
 		(local as unknown as { flashes: { flash(message: string): void } }).flashes.flash = (message) => flashes.push(message);
 		await withEnv(LOCAL_DESKTOP, () => copyText(local, "Fail% = 1"));
-		assert.deepEqual(flashes, ["Copied!"]);
+		assert.deepEqual(flashes, ["Copied 9 chars to clipboard"]);
 	} finally {
 		tui.stop();
 	}
@@ -359,7 +354,7 @@ test("answer code blocks are numbered and /copy N copies one", async () => {
 	await copyCodeBlock(host, 4, async (text) => { copied.push(text); });
 	await withEnv(REMOTE_SHELL, () => copyCodeBlock(host, 3, async (text) => { copied.push(text); }));
 	assert.deepEqual(copied, ["const x = 1;", "const x = 1;"]);
-	assert.deepEqual(notes, ["Copied code block 3 (1 line)", "error: The last answer has code blocks 1–3.", `Copied code block 3 (1 line) through your terminal · ${TERMINAL_COPY_HINT}`]);
+	assert.deepEqual(notes, ["Copied code block 3 (1 line)", "error: The last answer has code blocks 1–3.", `Copied code block 3 (1 line) via OSC 52 · if paste fails, hold ${nativeSelectKey({})} while selecting`]);
 	const tabbed = [{ type: "text", text: "Run:\n\n\tmake build\n\n```sh\necho hi\n```" }];
 	const shown = stripVTControlCharacters(new AssistantMessageComponent({ role: "assistant", content: tabbed, stopReason: "stop" } as never, true).render(80).join("\n"));
 	assert.match(shown, /\[1\] sh/);

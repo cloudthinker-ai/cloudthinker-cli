@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -73,14 +73,28 @@ test("refresh installs, re-downloads on a new stamp, and deletes what is gone", 
 		["alpha", "alpha v1"],
 		["beta", "beta v1"],
 	]);
+	let failDownload = false;
+	let failListing = false;
+	let conflictingArchive = false;
 	const downloads: string[] = [];
 	const server = await startFakeServer((request) => {
-		if (request.path === "/api/v1/custom-skills/") return { body: skills };
+		if (request.path === "/api/v1/custom-skills/") {
+			if (failListing) return { status: 503, body: { detail: "temporary" } };
+			return { body: skills };
+		}
 		const match = /\/api\/v1\/custom-skills\/(.+)\/download$/.exec(request.path);
 		if (match?.[1]) {
 			downloads.push(match[1]);
+			if (failDownload) return { status: 503, body: { detail: "temporary" } };
 			return {
-				raw: Buffer.from(skillZip(match[1], bodies.get(match[1]) ?? "")),
+				raw: Buffer.from(
+					conflictingArchive
+						? zipSync({
+								"alpha/SKILL.md": encoder.encode("partial update"),
+								"alpha/SKILL.md/notes.md": encoder.encode("conflict"),
+							})
+						: skillZip(match[1], bodies.get(match[1]) ?? ""),
+				),
 			};
 		}
 		return undefined;
@@ -109,6 +123,98 @@ test("refresh installs, re-downloads on a new stamp, and deletes what is gone", 
 				{ name: "beta" },
 			]);
 			downloads.length = 0;
+			failDownload = true;
+			const unavailable = await refreshSkills(client, WORKSPACE, dir);
+			assert.deepEqual(unavailable.installed, []);
+			assert.deepEqual(unavailable.removed, []);
+			assert.deepEqual(downloads, ["alpha"]);
+			assert.equal(
+				await readFile(join(root, "alpha", "SKILL.md"), "utf8"),
+				"alpha v1",
+			);
+			assert.equal(
+				(await readIndex(skillsIndexPath(WORKSPACE, dir))).alpha,
+				"2026-09-01T00:00:00Z",
+			);
+
+			failDownload = false;
+			downloads.length = 0;
+			conflictingArchive = true;
+			const malformed = await refreshSkills(client, WORKSPACE, dir);
+			assert.deepEqual(malformed.installed, []);
+			assert.deepEqual(malformed.removed, []);
+			assert.deepEqual(downloads, ["alpha"]);
+			assert.equal(
+				await readFile(join(root, "alpha", "SKILL.md"), "utf8"),
+				"alpha v1",
+			);
+			assert.equal(
+				(await readIndex(skillsIndexPath(WORKSPACE, dir))).alpha,
+				"2026-09-01T00:00:00Z",
+			);
+
+			const indexPath = skillsIndexPath(WORKSPACE, dir);
+			const indexWithoutAlpha = await readIndex(indexPath);
+			delete indexWithoutAlpha.alpha;
+			await writeFile(indexPath, JSON.stringify(indexWithoutAlpha));
+			let deadPid = process.pid + 1;
+			while (true) {
+				try {
+					process.kill(deadPid, 0);
+					deadPid += 1;
+				} catch (error) {
+					const code = (error as NodeJS.ErrnoException).code;
+					if (code === "ESRCH") break;
+					if (code === "EPERM") {
+						deadPid += 1;
+						continue;
+					}
+					assert.fail(`Unexpected process probe error: ${code}`);
+				}
+			}
+			const abandonedStage = join(
+				root,
+				`.skill-stage-${deadPid}-fixture`,
+			);
+			await mkdir(abandonedStage);
+			await writeFile(join(abandonedStage, "target.json"), JSON.stringify("alpha"));
+			await rename(join(root, "alpha"), join(abandonedStage, "old"));
+			await mkdir(join(abandonedStage, "new"));
+			await writeFile(join(abandonedStage, "new", "SKILL.md"), "partial v2");
+			await writeFile(
+				join(abandonedStage, "revision.json"),
+				JSON.stringify("2026-09-01T00:00:00Z"),
+			);
+			failListing = true;
+			await assert.rejects(refreshSkills(client, WORKSPACE, dir));
+			failListing = false;
+			assert.equal(await readFile(join(root, "alpha", "SKILL.md"), "utf8"), "alpha v1");
+			assert.equal(
+				(await readIndex(indexPath)).alpha,
+				"2026-09-01T00:00:00Z",
+			);
+
+			failDownload = true;
+			downloads.length = 0;
+			const recovered = await refreshSkills(client, WORKSPACE, dir);
+			assert.deepEqual(recovered.installed, []);
+			assert.deepEqual(recovered.removed, []);
+			assert.deepEqual(downloads, ["alpha"]);
+			assert.equal(await readFile(join(root, "alpha", "SKILL.md"), "utf8"), "alpha v1");
+			assert.equal(
+				(await readIndex(skillsIndexPath(WORKSPACE, dir))).alpha,
+				"2026-09-01T00:00:00Z",
+			);
+			assert.equal(
+				(await readdir(root, { withFileTypes: true })).some(
+					(entry) => entry.isDirectory() && entry.name.startsWith(".skill-stage-"),
+				),
+				false,
+			);
+
+			failDownload = false;
+			downloads.length = 0;
+			conflictingArchive = false;
 			const third = await refreshSkills(client, WORKSPACE, dir);
 			assert.deepEqual(third.installed, ["alpha"]);
 			assert.deepEqual(downloads, ["alpha"]);

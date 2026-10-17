@@ -1,3 +1,7 @@
+## [0.8.2-dev.4]
+
+- A failed workspace skill update keeps the installed copy and retries the newer revision on the next refresh.
+
 ## [0.8.2-dev.3]
 
 - Keep pending token commands and cached tokens scoped to the selected workspace. A command that finishes after a workspace change or invalidation cannot replace the current token cache.

@@ -28,7 +28,7 @@
         "description": "The workspace's Auto Mode as the terminal shows it at session start.",
         "properties": {
           "can_edit": {
-            "description": "Whether the caller may flip it through `PATCH /workspaces/{workspace_id}/auto-mode`.",
+            "description": "Whether the caller may flip it through `PATCH /workspaces/{workspace_id}/approval-mode`.",
             "title": "Can Edit",
             "type": "boolean"
           },
@@ -1048,14 +1048,15 @@
         "title": "ApplyFixDisabledReason",
         "type": "string"
       },
-      "ApprovalLevel": {
+      "ApprovalMode": {
         "enum": [
-          "approve_each",
-          "approve_exceptions",
-          "pre_approved_only",
-          "auto"
+          "manual",
+          "auto_rules_ask",
+          "auto_rules_refuse",
+          "auto_ai_ask",
+          "auto_ai_refuse"
         ],
-        "title": "ApprovalLevel",
+        "title": "ApprovalMode",
         "type": "string"
       },
       "ArtifactGrantPublic": {
@@ -4521,6 +4522,16 @@
         "title": "IssueArtifactGrantRequest",
         "type": "object"
       },
+      "LegacyApprovalLevel": {
+        "enum": [
+          "approve_each",
+          "approve_exceptions",
+          "pre_approved_only",
+          "auto"
+        ],
+        "title": "LegacyApprovalLevel",
+        "type": "string"
+      },
       "LoadConnectionSkillRequest": {
         "properties": {
           "connection_prefix": {
@@ -7799,8 +7810,15 @@
       "WorkspacePublic": {
         "properties": {
           "approval_level": {
-            "$ref": "#/components/schemas/ApprovalLevel",
+            "$ref": "#/components/schemas/LegacyApprovalLevel",
+            "deprecated": true,
+            "description": "Deprecated: the old level name, kept for released CLIs. Read approval_mode.",
             "nullable": true
+          },
+          "approval_mode": {
+            "$ref": "#/components/schemas/ApprovalMode",
+            "nullable": true,
+            "readOnly": true
           },
           "auto_mode_enabled": {
             "default": true,
@@ -7919,7 +7937,8 @@
         "required": [
           "name",
           "id",
-          "is_default"
+          "is_default",
+          "approval_mode"
         ],
         "title": "WorkspacePublic",
         "type": "object"
@@ -7940,8 +7959,15 @@
         "description": "WorkspacePublic with the current user's role in the workspace.",
         "properties": {
           "approval_level": {
-            "$ref": "#/components/schemas/ApprovalLevel",
+            "$ref": "#/components/schemas/LegacyApprovalLevel",
+            "deprecated": true,
+            "description": "Deprecated: the old level name, kept for released CLIs. Read approval_mode.",
             "nullable": true
+          },
+          "approval_mode": {
+            "$ref": "#/components/schemas/ApprovalMode",
+            "nullable": true,
+            "readOnly": true
           },
           "auto_mode_enabled": {
             "default": true,
@@ -8076,7 +8102,8 @@
           "name",
           "id",
           "is_default",
-          "current_user_role"
+          "current_user_role",
+          "approval_mode"
         ],
         "title": "WorkspaceWithRolePublic",
         "type": "object"

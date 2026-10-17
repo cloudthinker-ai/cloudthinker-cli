@@ -1,3 +1,8 @@
+## [0.8.2-dev.4]
+
+- A conversation worktree whose `git worktree add` timed out or was stopped part way is now removed and created again on the next message. Before, the Worker used the half-built folder, where most tracked files looked deleted, and the folder was never pruned.
+- Build against the latest API schema, which adds the workspace approval mode. The CLI reads none of these fields, so nothing changes for you.
+
 ## [0.8.2-dev.3]
 
 - Consolidated CLI output failure handling across Cyber, Cyber config, incidents, and recommendations without changing command output or exit codes.

@@ -1,3 +1,7 @@
+## [0.8.2-dev.4]
+
+- The agent opens fullscreen on remote machines again, as in 0.8.1; the regular-view default from 0.8.2-dev.3 is gone. A copy there now says `Sent N chars via OSC 52` and, if the paste fails, which key to hold for your terminal's own selection: Fn in Terminal.app, Option in iTerm2, Shift elsewhere. On your own computer a copy says `Copied N chars to clipboard` instead of `Copied!`.
+
 ## [0.8.2-dev.3]
 
 - The background task status refresh now uses the summary snapshot already supplied by the manager callback. Session setup and the one-second refresh still read a fresh task list, and task-pane output and controls still read live manager state.

@@ -183,7 +183,7 @@ pub mod types {
     ///    "can_edit": {
     ///      "title": "Can Edit",
     ///      "description": "Whether the caller may flip it through `PATCH
-    /// /workspaces/{workspace_id}/auto-mode`.",
+    /// /workspaces/{workspace_id}/approval-mode`.",
     ///      "type": "boolean"
     ///    },
     ///    "enabled": {
@@ -197,7 +197,7 @@ pub mod types {
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliAutoMode {
         ///Whether the caller may flip it through `PATCH
-        /// /workspaces/{workspace_id}/auto-mode`.
+        /// /workspaces/{workspace_id}/approval-mode`.
         pub can_edit: bool,
         pub enabled: bool,
     }
@@ -3237,19 +3237,20 @@ pub mod types {
         }
     }
 
-    ///`ApprovalLevel`
+    ///`ApprovalMode`
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "title": "ApprovalLevel",
+    ///  "title": "ApprovalMode",
     ///  "type": "string",
     ///  "enum": [
-    ///    "approve_each",
-    ///    "approve_exceptions",
-    ///    "pre_approved_only",
-    ///    "auto"
+    ///    "manual",
+    ///    "auto_rules_ask",
+    ///    "auto_rules_refuse",
+    ///    "auto_ai_ask",
+    ///    "auto_ai_refuse"
     ///  ]
     ///}
     /// ```
@@ -3266,49 +3267,53 @@ pub mod types {
         PartialEq,
         PartialOrd,
     )]
-    pub enum ApprovalLevel {
-        #[serde(rename = "approve_each")]
-        ApproveEach,
-        #[serde(rename = "approve_exceptions")]
-        ApproveExceptions,
-        #[serde(rename = "pre_approved_only")]
-        PreApprovedOnly,
-        #[serde(rename = "auto")]
-        Auto,
+    pub enum ApprovalMode {
+        #[serde(rename = "manual")]
+        Manual,
+        #[serde(rename = "auto_rules_ask")]
+        AutoRulesAsk,
+        #[serde(rename = "auto_rules_refuse")]
+        AutoRulesRefuse,
+        #[serde(rename = "auto_ai_ask")]
+        AutoAiAsk,
+        #[serde(rename = "auto_ai_refuse")]
+        AutoAiRefuse,
     }
 
-    impl ::std::fmt::Display for ApprovalLevel {
+    impl ::std::fmt::Display for ApprovalMode {
         fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
             match *self {
-                Self::ApproveEach => f.write_str("approve_each"),
-                Self::ApproveExceptions => f.write_str("approve_exceptions"),
-                Self::PreApprovedOnly => f.write_str("pre_approved_only"),
-                Self::Auto => f.write_str("auto"),
+                Self::Manual => f.write_str("manual"),
+                Self::AutoRulesAsk => f.write_str("auto_rules_ask"),
+                Self::AutoRulesRefuse => f.write_str("auto_rules_refuse"),
+                Self::AutoAiAsk => f.write_str("auto_ai_ask"),
+                Self::AutoAiRefuse => f.write_str("auto_ai_refuse"),
             }
         }
     }
 
-    impl ::std::str::FromStr for ApprovalLevel {
+    impl ::std::str::FromStr for ApprovalMode {
         type Err = self::error::ConversionError;
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
             match value {
-                "approve_each" => Ok(Self::ApproveEach),
-                "approve_exceptions" => Ok(Self::ApproveExceptions),
-                "pre_approved_only" => Ok(Self::PreApprovedOnly),
-                "auto" => Ok(Self::Auto),
+                "manual" => Ok(Self::Manual),
+                "auto_rules_ask" => Ok(Self::AutoRulesAsk),
+                "auto_rules_refuse" => Ok(Self::AutoRulesRefuse),
+                "auto_ai_ask" => Ok(Self::AutoAiAsk),
+                "auto_ai_refuse" => Ok(Self::AutoAiRefuse),
                 _ => Err("invalid value".into()),
             }
         }
     }
 
-    impl ::std::convert::TryFrom<&str> for ApprovalLevel {
+    impl ::std::convert::TryFrom<&str> for ApprovalMode {
         type Error = self::error::ConversionError;
         fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
         }
     }
 
-    impl ::std::convert::TryFrom<&::std::string::String> for ApprovalLevel {
+    impl ::std::convert::TryFrom<&::std::string::String> for ApprovalMode {
         type Error = self::error::ConversionError;
         fn try_from(
             value: &::std::string::String,
@@ -3317,7 +3322,7 @@ pub mod types {
         }
     }
 
-    impl ::std::convert::TryFrom<::std::string::String> for ApprovalLevel {
+    impl ::std::convert::TryFrom<::std::string::String> for ApprovalMode {
         type Error = self::error::ConversionError;
         fn try_from(
             value: ::std::string::String,
@@ -14444,6 +14449,95 @@ pub mod types {
                 .map_err(|e: self::error::ConversionError| {
                     <D::Error as ::serde::de::Error>::custom(e.to_string())
                 })
+        }
+    }
+
+    ///`LegacyApprovalLevel`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "LegacyApprovalLevel",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "approve_each",
+    ///    "approve_exceptions",
+    ///    "pre_approved_only",
+    ///    "auto"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum LegacyApprovalLevel {
+        #[serde(rename = "approve_each")]
+        ApproveEach,
+        #[serde(rename = "approve_exceptions")]
+        ApproveExceptions,
+        #[serde(rename = "pre_approved_only")]
+        PreApprovedOnly,
+        #[serde(rename = "auto")]
+        Auto,
+    }
+
+    impl ::std::fmt::Display for LegacyApprovalLevel {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::ApproveEach => f.write_str("approve_each"),
+                Self::ApproveExceptions => f.write_str("approve_exceptions"),
+                Self::PreApprovedOnly => f.write_str("pre_approved_only"),
+                Self::Auto => f.write_str("auto"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for LegacyApprovalLevel {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "approve_each" => Ok(Self::ApproveEach),
+                "approve_exceptions" => Ok(Self::ApproveExceptions),
+                "pre_approved_only" => Ok(Self::PreApprovedOnly),
+                "auto" => Ok(Self::Auto),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for LegacyApprovalLevel {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for LegacyApprovalLevel {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for LegacyApprovalLevel {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
 
@@ -26322,13 +26416,17 @@ pub mod types {
     ///  "title": "WorkspacePublic",
     ///  "type": "object",
     ///  "required": [
+    ///    "approval_mode",
     ///    "id",
     ///    "is_default",
     ///    "name"
     ///  ],
     ///  "properties": {
     ///    "approval_level": {
-    ///      "$ref": "#/components/schemas/ApprovalLevel"
+    ///      "$ref": "#/components/schemas/LegacyApprovalLevel"
+    ///    },
+    ///    "approval_mode": {
+    ///      "$ref": "#/components/schemas/ApprovalMode"
     ///    },
     ///    "auto_mode_enabled": {
     ///      "title": "Auto Mode Enabled",
@@ -26470,7 +26568,8 @@ pub mod types {
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct WorkspacePublic {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub approval_level: ::std::option::Option<ApprovalLevel>,
+        pub approval_level: ::std::option::Option<LegacyApprovalLevel>,
+        pub approval_mode: ApprovalMode,
         #[serde(default = "defaults::default_bool::<true>")]
         pub auto_mode_enabled: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -26793,6 +26892,7 @@ pub mod types {
     /// workspace.",
     ///  "type": "object",
     ///  "required": [
+    ///    "approval_mode",
     ///    "current_user_role",
     ///    "id",
     ///    "is_default",
@@ -26800,7 +26900,10 @@ pub mod types {
     ///  ],
     ///  "properties": {
     ///    "approval_level": {
-    ///      "$ref": "#/components/schemas/ApprovalLevel"
+    ///      "$ref": "#/components/schemas/LegacyApprovalLevel"
+    ///    },
+    ///    "approval_mode": {
+    ///      "$ref": "#/components/schemas/ApprovalMode"
     ///    },
     ///    "auto_mode_enabled": {
     ///      "title": "Auto Mode Enabled",
@@ -26959,7 +27062,8 @@ pub mod types {
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct WorkspaceWithRolePublic {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub approval_level: ::std::option::Option<ApprovalLevel>,
+        pub approval_level: ::std::option::Option<LegacyApprovalLevel>,
+        pub approval_mode: ApprovalMode,
         #[serde(default = "defaults::default_bool::<true>")]
         pub auto_mode_enabled: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]

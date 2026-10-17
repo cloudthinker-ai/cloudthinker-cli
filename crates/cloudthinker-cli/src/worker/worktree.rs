@@ -362,11 +362,16 @@ fn ensure(state: &Path, repository: &Path, workspace: &Workspace) -> Result<Path
     if !is_toplevel(repository) {
         return Err(Failure::NotGit);
     }
-    if target.join(".git").exists() && is_toplevel(&target) {
+    let recorded = has_record(state, workspace.filesystem_id);
+    if recorded && target.join(".git").exists() && is_toplevel(&target) {
         return Ok(target.canonicalize().unwrap_or(target));
     }
     let branch = branch_name(workspace.filesystem_id);
     let target_text = target.to_string_lossy().into_owned();
+    if !recorded && std::fs::symlink_metadata(&target).is_ok() {
+        discard(repository, &target)?;
+    }
+    let fresh = std::fs::symlink_metadata(&target).is_err();
     let _ = git(repository, &["worktree", "prune"], LOCAL_GIT_TIMEOUT);
     let output = if local_branch(repository, &branch) {
         git(
@@ -394,9 +399,17 @@ fn ensure(state: &Path, repository: &Path, workspace: &Workspace) -> Result<Path
     match output {
         Some(output) if output.ok => {}
         Some(output) => {
+            if fresh {
+                let _ = discard(repository, &target);
+            }
             return Err(Failure::Other(first_line(&output.stderr)));
         }
-        None => return Err(Failure::Other("git did not finish".into())),
+        None => {
+            if fresh {
+                let _ = discard(repository, &target);
+            }
+            return Err(Failure::Other("git did not finish".into()));
+        }
     }
     let now = now_secs(SystemTime::now());
     let record = Record {
@@ -410,6 +423,36 @@ fn ensure(state: &Path, repository: &Path, workspace: &Workspace) -> Result<Path
     write_record(state, &record)
         .map_err(|_| Failure::Other("the worktree record could not be saved".into()))?;
     Ok(target.canonicalize().unwrap_or(target))
+}
+
+fn has_record(state: &Path, id: Uuid) -> bool {
+    worktrees_dir(state).is_ok_and(|dir| dir.exists(record_name(id)))
+}
+
+fn discard(repository: &Path, target: &Path) -> Result<(), Failure> {
+    let _ = git(
+        repository,
+        &[
+            "worktree",
+            "remove",
+            "--force",
+            "--force",
+            &target.to_string_lossy(),
+        ],
+        LOCAL_GIT_TIMEOUT,
+    );
+    if let Ok(metadata) = std::fs::symlink_metadata(target) {
+        let removed = if metadata.is_dir() {
+            std::fs::remove_dir_all(target)
+        } else {
+            std::fs::remove_file(target)
+        };
+        removed.map_err(|_| {
+            Failure::Other("an unfinished worktree folder could not be removed".into())
+        })?;
+    }
+    let _ = git(repository, &["worktree", "prune"], LOCAL_GIT_TIMEOUT);
+    Ok(())
 }
 
 fn first_line(text: &str) -> String {
@@ -672,6 +715,60 @@ mod tests {
         let listed = list(&state);
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].state, "dirty");
+    }
+
+    #[test]
+    fn an_interrupted_worktree_add_is_rebuilt_instead_of_served() {
+        let temporary = tempfile::tempdir().unwrap();
+        let repo = repository(temporary.path());
+        let state = state(temporary.path());
+        let workspace = workspace("main");
+        let id = workspace.filesystem_id.to_string();
+        let target = state.join(WORKTREES_DIR).join(&id);
+        let branch = branch_name(workspace.filesystem_id);
+        worktrees_dir(&state).unwrap();
+        run(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "--quiet",
+                "--no-checkout",
+                "-b",
+                &branch,
+                &target.to_string_lossy(),
+                "main",
+            ],
+        );
+        std::fs::write(
+            repo.join(".git").join("worktrees").join(&id).join("locked"),
+            "initializing",
+        )
+        .unwrap();
+        assert!(is_toplevel(&target));
+        assert_eq!(is_clean(&target), Some(false));
+        let path = ensure(&state, &repo, &workspace).unwrap();
+        assert_eq!(path, target.canonicalize().unwrap());
+        assert!(path.join("readme.md").is_file());
+        assert_eq!(is_clean(&path), Some(true));
+        assert!(
+            !repo
+                .join(".git")
+                .join("worktrees")
+                .join(&id)
+                .join("locked")
+                .exists()
+        );
+        let listed = list(&state);
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].state, "clean");
+        std::fs::write(path.join("work.txt"), "edit").unwrap();
+        assert_eq!(ensure(&state, &repo, &workspace).unwrap(), path);
+        assert!(path.join("work.txt").is_file());
+        let later = SystemTime::now() + Duration::from_secs(15 * 24 * 60 * 60);
+        let pruned = prune(&state, later, MAX_IDLE);
+        assert_eq!(pruned.len(), 1);
+        assert_eq!(pruned[0].outcome, "kept: uncommitted changes");
     }
 
     #[tokio::test]
