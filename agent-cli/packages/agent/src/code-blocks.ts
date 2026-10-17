@@ -2,7 +2,7 @@ import { copyToClipboard } from "@earendil-works/pi-coding-agent";
 import { Markdown, Marked, type Token } from "@earendil-works/pi-tui";
 
 import { AssistantMessageComponent } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/assistant-message.js";
-import { copiedStatus } from "./terminal-copy.ts";
+import { copiedStatus, plural } from "./terminal-copy.ts";
 
 type Block = { type: string; text?: string };
 
@@ -12,7 +12,12 @@ interface NumberedMarkdown {
 }
 
 const parser = new Marked();
+const PLAIN_LANGS = new Set(["text", "txt", "plain", "plaintext"]);
 const offsets = new WeakMap<object, number>();
+
+function shownLang(lang: string | undefined): string | undefined {
+	return lang && !PLAIN_LANGS.has(lang.toLowerCase()) ? lang : undefined;
+}
 
 function numbered(lang: string | undefined): boolean {
 	return lang?.split(/\s+/)[0]?.toLowerCase() !== "mermaid";
@@ -67,8 +72,7 @@ export async function copyCodeBlock(host: CopyHost, index: number, copy: (text: 
 	}
 	try {
 		await copy(block);
-		const lines = block.split("\n").length;
-		host.showStatus(copiedStatus(`Copied code block ${index} (${lines} ${lines === 1 ? "line" : "lines"})`));
+		host.showStatus(copiedStatus(`Copied code block ${index} (${plural(block.split("\n").length, "line")})`));
 	} catch (error) {
 		host.showError(error instanceof Error ? error.message : String(error));
 	}
@@ -93,7 +97,8 @@ export function applyCodeBlockNumbers(): void {
 		const lang = (token as { lang?: string }).lang;
 		if (token.type !== "code" || this.ctCodeIndex === undefined || !numbered(lang)) return lines;
 		this.ctCodeIndex += 1;
-		const label = this.theme.codeBlockBorder(lang ? `[${this.ctCodeIndex}] ${lang}` : `[${this.ctCodeIndex}]`);
+		const shown = shownLang(lang);
+		const label = this.theme.codeBlockBorder(shown ? `[${this.ctCodeIndex}] ${shown}` : `[${this.ctCodeIndex}]`);
 		if (lang) lines[0] = label;
 		else lines.unshift(label);
 		return lines;

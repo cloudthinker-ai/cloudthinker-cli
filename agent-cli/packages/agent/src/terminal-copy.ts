@@ -23,16 +23,26 @@ export function terminalCopyHint(env: NodeJS.ProcessEnv = process.env): string {
 	return `if paste fails, hold ${nativeSelectKey(env)} while selecting`;
 }
 
-function counted(chars: number | undefined): string {
-	return chars === undefined ? "" : ` ${chars} ${chars === 1 ? "char" : "chars"}`;
+export function plural(count: number, one: string): string {
+	return `${count} ${count === 1 ? one : `${one}s`}`;
 }
 
-export function localCopyNote(chars: number | undefined): string {
-	return `Copied${counted(chars)} to clipboard`;
+function what(label: string | undefined): string {
+	return label ? ` ${label}` : "";
 }
 
-export function terminalCopyNote(chars: number | undefined, env: NodeJS.ProcessEnv = process.env): string {
-	return `Sent${counted(chars)} via OSC 52 · ${terminalCopyHint(env)}`;
+export function localCopyNote(label: string | undefined): string {
+	return `Copied${what(label)} to clipboard`;
+}
+
+export function terminalCopyNote(label: string | undefined, env: NodeJS.ProcessEnv = process.env): string {
+	return `Sent${what(label)} via OSC 52 · ${terminalCopyHint(env)}`;
+}
+
+const labels = new WeakMap<object, { text: string; label: string }>();
+
+export function labelNextCopy(screen: object, text: string, label: string): void {
+	labels.set(screen, { text, label });
 }
 
 export function copiedStatus(status: string, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
@@ -45,9 +55,11 @@ export function applyTerminalCopyNote(): void {
 	if (typeof flash !== "function" || typeof copyTextToClipboard !== "function") {
 		throw new Error("pi-tui's fullscreen no longer copies through copyTextToClipboard and flash, so a terminal-only copy cannot say how it was sent");
 	}
-	const copying = new WeakMap<object, number>();
+	const copying = new WeakMap<object, string>();
 	screen.copyTextToClipboard = async function (text) {
-		copying.set(this, [...text].length);
+		const pending = labels.get(this);
+		labels.delete(this);
+		copying.set(this, pending?.text === text ? pending.label : plural([...text].length, "char"));
 		try {
 			return await copyTextToClipboard.call(this, text);
 		} finally {

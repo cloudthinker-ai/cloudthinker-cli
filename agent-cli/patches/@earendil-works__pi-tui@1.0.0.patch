@@ -1,8 +1,62 @@
 diff --git a/dist/components/markdown.js b/dist/components/markdown.js
-index 28709ba4553d4fd3620040d5d23cf7e37b5bd77b..2b63f46a4649006398dc3bb448b2b0a48124e196 100644
+index 28709ba4553d4fd3620040d5d23cf7e37b5bd77b..5835034e34a9aaba6365a6e1fb23397c6b1931ed 100644
 --- a/dist/components/markdown.js
 +++ b/dist/components/markdown.js
-@@ -390,22 +390,24 @@ export class Markdown {
+@@ -195,6 +195,7 @@ export class Markdown {
+             this.cachedText = this.text;
+             this.cachedWidth = width;
+             this.cachedLines = result;
++            this.lineOrigins = undefined;
+             return result;
+         }
+         // Replace tabs with 3 spaces for consistent rendering
+@@ -209,23 +210,30 @@ export class Markdown {
+         }
+         // Convert tokens to styled terminal output
+         const renderedLines = [];
++        const renderedOrigins = [];
+         for (let i = 0; i < tokens.length; i++) {
+             const token = tokens[i];
+             const nextToken = tokens[i + 1];
+             const tokenLines = this.renderToken(token, contentWidth, nextToken?.type);
+-            for (const tokenLine of tokenLines) {
+-                renderedLines.push(tokenLine);
++            for (let line = 0; line < tokenLines.length; line++) {
++                renderedLines.push(tokenLines[line]);
++                renderedOrigins.push(i, line);
+             }
+         }
+         // Wrap lines (NO padding, NO background yet)
+         const wrappedLines = [];
+-        for (const line of renderedLines) {
++        const wrappedOrigins = [];
++        for (let index = 0; index < renderedLines.length; index++) {
++            const line = renderedLines[index];
+             if (isImageLine(line)) {
+                 wrappedLines.push(line);
++                wrappedOrigins.push(renderedOrigins[index * 2], renderedOrigins[index * 2 + 1], 0);
+             }
+             else {
+-                for (const wrappedLine of wrapTextWithAnsi(line, contentWidth)) {
+-                    wrappedLines.push(wrappedLine);
++                const fragments = wrapTextWithAnsi(line, contentWidth);
++                for (let fragment = 0; fragment < fragments.length; fragment++) {
++                    wrappedLines.push(fragments[fragment]);
++                    wrappedOrigins.push(renderedOrigins[index * 2], renderedOrigins[index * 2 + 1], fragment);
+                 }
+             }
+         }
+@@ -260,6 +268,9 @@ export class Markdown {
+         // Combine top padding, content, and bottom padding
+         const result = emptyLines.concat(contentLines, emptyLines);
+         flattenLines(result);
++        const lineOrigins = new Int32Array(result.length * 3).fill(-1);
++        lineOrigins.set(wrappedOrigins, emptyLines.length * 3);
++        this.lineOrigins = lineOrigins;
+         // Update cache
+         this.cachedText = this.text;
+         this.cachedWidth = width;
+@@ -390,22 +401,24 @@ export class Markdown {
                  break;
              }
              case "code": {
@@ -32,7 +86,7 @@ index 28709ba4553d4fd3620040d5d23cf7e37b5bd77b..2b63f46a4649006398dc3bb448b2b0a4
                  if (nextTokenType && nextTokenType !== "space") {
                      lines.push(""); // Add spacing after code blocks (unless space token follows)
                  }
-@@ -457,7 +459,7 @@ export class Markdown {
+@@ -457,7 +470,7 @@ export class Markdown {
                      const styledLine = applyQuoteStyle(quoteLine);
                      const wrappedLines = wrapTextWithAnsi(styledLine, quoteContentWidth);
                      for (const wrappedLine of wrappedLines) {
@@ -41,7 +95,7 @@ index 28709ba4553d4fd3620040d5d23cf7e37b5bd77b..2b63f46a4649006398dc3bb448b2b0a4
                      }
                  }
                  if (nextTokenType && nextTokenType !== "space") {
-@@ -534,7 +536,7 @@ export class Markdown {
+@@ -534,7 +547,7 @@ export class Markdown {
                      break;
                  }
                  case "codespan":
@@ -50,7 +104,7 @@ index 28709ba4553d4fd3620040d5d23cf7e37b5bd77b..2b63f46a4649006398dc3bb448b2b0a4
                      break;
                  case "link": {
                      const linkText = this.renderInlineTokens(token.tokens || [], resolvedStyleContext);
-@@ -679,9 +681,7 @@ export class Markdown {
+@@ -679,9 +692,7 @@ export class Markdown {
          if (numCols === 0) {
              return lines;
          }
@@ -61,7 +115,7 @@ index 28709ba4553d4fd3620040d5d23cf7e37b5bd77b..2b63f46a4649006398dc3bb448b2b0a4
          const availableForCells = availableWidth - borderOverhead;
          if (availableForCells < numCols) {
              // Too narrow to render a stable table. Fall back to raw markdown.
-@@ -769,10 +769,20 @@ export class Markdown {
+@@ -769,10 +780,20 @@ export class Markdown {
                  }
              }
          }
@@ -86,7 +140,7 @@ index 28709ba4553d4fd3620040d5d23cf7e37b5bd77b..2b63f46a4649006398dc3bb448b2b0a4
          const headerCellLines = token.header.map((cell, i) => {
              const text = this.renderInlineTokens(cell.tokens || [], styleContext);
              return this.wrapCellText(text, columnWidths[i], styleContext?.stylePrefix);
-@@ -781,16 +791,11 @@ export class Markdown {
+@@ -781,16 +802,11 @@ export class Markdown {
          for (let lineIdx = 0; lineIdx < headerLineCount; lineIdx++) {
              const rowParts = headerCellLines.map((cellLines, colIdx) => {
                  const text = cellLines[lineIdx] || "";
@@ -105,7 +159,7 @@ index 28709ba4553d4fd3620040d5d23cf7e37b5bd77b..2b63f46a4649006398dc3bb448b2b0a4
          for (let rowIndex = 0; rowIndex < token.rows.length; rowIndex++) {
              const row = token.rows[rowIndex];
              const rowCellLines = row.map((cell, i) => {
-@@ -801,17 +806,15 @@ export class Markdown {
+@@ -801,17 +817,15 @@ export class Markdown {
              for (let lineIdx = 0; lineIdx < rowLineCount; lineIdx++) {
                  const rowParts = rowCellLines.map((cellLines, colIdx) => {
                      const text = cellLines[lineIdx] || "";

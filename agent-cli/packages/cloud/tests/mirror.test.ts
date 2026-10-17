@@ -4,6 +4,7 @@ import test from "node:test";
 
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
+import { withinBudget } from "../src/async.ts";
 import { CloudThinkerClient, TokenSource, type MirrorEntryInput } from "../src/client.ts";
 import {
 	MAX_ENTRIES_PER_BATCH,
@@ -197,6 +198,7 @@ test("a rejected batch lands in the outbox and the next run delivers it", async 
 				written
 					.trim()
 					.split("\n")
+					.filter(Boolean)
 					.map((line) => (JSON.parse(line) as MirrorEntryInput).entry_id),
 				["e0", "e1"],
 			);
@@ -219,6 +221,109 @@ test("a rejected batch lands in the outbox and the next run delivers it", async 
 			assert.equal(statuses.at(-1), undefined);
 		});
 	} finally {
+		await server.close();
+	}
+});
+
+test("a shutdown-budget timeout preserves entries while append is pending", async () => {
+	let resolveAppendStarted!: () => void;
+	const appendStarted = new Promise<void>((resolve) => {
+		resolveAppendStarted = resolve;
+	});
+	const server = await startFakeServer((request) => {
+		if (request.method === "GET") return { body: { entries: [], last_seq: 0 } };
+		resolveAppendStarted();
+		return {
+			body: { stored: 1, last_seq: 1 },
+			delayMs: 250,
+		};
+	});
+	try {
+		await withTempDir(async (dir) => {
+			const mirror = new SessionMirror(clientFor(server.origin), () => {}, dir);
+			await mirror.link(CONVERSATION);
+			const entries = [entry("e0", null)];
+			const delivery = mirror.flush(entries);
+			await appendStarted;
+
+			assert.equal(await withinBudget(delivery, 20), undefined);
+			const written = await readFile(outboxPath(CONVERSATION, dir), "utf8");
+			assert.deepEqual(
+				written
+					.trim()
+					.split("\n")
+					.filter((line) => line.length > 0)
+					.map((line) => (JSON.parse(line) as MirrorEntryInput).entry_id),
+				["e0"],
+			);
+		});
+	} finally {
+		await server.close();
+	}
+});
+
+test("a concurrent shutdown flush stages new entries before the first append completes", async () => {
+	let resolveAppendStarted!: () => void;
+	const appendStarted = new Promise<void>((resolve) => {
+		resolveAppendStarted = resolve;
+	});
+	let releaseFirstAppend!: () => void;
+	const firstAppendResponse = new Promise<void>((resolve) => {
+		releaseFirstAppend = resolve;
+	});
+	let appendCount = 0;
+	const server = await startFakeServer((request) => {
+		if (request.method === "GET") return { body: { entries: [], last_seq: 0 } };
+		const body = request.body as { entries: MirrorEntryInput[] };
+		appendCount += 1;
+		if (appendCount === 1) {
+			resolveAppendStarted();
+			return {
+				body: { stored: body.entries.length, last_seq: body.entries.length },
+				responseBarrier: firstAppendResponse,
+			};
+		}
+		return { body: { stored: body.entries.length, last_seq: body.entries.length } };
+	});
+	let pendingDelivery: Promise<void> | undefined;
+	try {
+		await withTempDir(async (dir) => {
+			const mirror = new SessionMirror(clientFor(server.origin), () => {}, dir);
+			await mirror.link(CONVERSATION);
+			const oldEntry = entry("e0", null);
+			const firstDelivery = mirror.flush([oldEntry]);
+			pendingDelivery = firstDelivery;
+			await appendStarted;
+
+			await mirror.flush([oldEntry, entry("e1", "e0")]);
+			assert.equal(server.requests.filter((request) => request.method === "PUT").length, 1);
+			const written = await readFile(outboxPath(CONVERSATION, dir), "utf8");
+			assert.deepEqual(
+				written
+					.trim()
+					.split("\n")
+					.filter((line) => line.length > 0)
+					.map((line) => (JSON.parse(line) as MirrorEntryInput).entry_id),
+				["e0", "e1"],
+			);
+
+			releaseFirstAppend();
+			await firstDelivery;
+			pendingDelivery = undefined;
+			assert.deepEqual(
+				server.requests
+					.filter((request) => request.method === "PUT")
+					.map((request) =>
+						(request.body as { entries: MirrorEntryInput[] }).entries.map(
+							(item) => item.entry_id,
+						),
+					),
+				[["e0"], ["e1"]],
+			);
+		});
+	} finally {
+		releaseFirstAppend();
+		await pendingDelivery?.catch(() => {});
 		await server.close();
 	}
 });

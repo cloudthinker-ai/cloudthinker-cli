@@ -25,6 +25,7 @@ import { CLEAR_SCREEN, CLEAR_SCREEN_BUSY, MODEL_SELECT, applyClearScreenKey, cle
 import { applyQueuedMessagesUi } from "../src/queue-ui.ts";
 import { applyScrollPill, noteTranscriptUpdate } from "../src/scroll-pill.ts";
 import { MAX_RESULT_LINES, TranscriptView, applyTranscriptUi, renderBlocks, transcriptBlocks, transcriptMarkdown } from "../src/transcript.ts";
+import { applyMarkdownCopy } from "../src/copy-markdown.ts";
 import { applyTerminalCopyNote, nativeSelectKey } from "../src/terminal-copy.ts";
 import { savedTuiMode, tuiModeArgs } from "../src/tui-mode.ts";
 import { diffStyle, setDiffStyle } from "../src/verbosity.ts";
@@ -40,6 +41,7 @@ applyMentionPicker();
 applyMentionHighlight();
 applyToolGroups();
 applyTerminalCopyNote();
+applyMarkdownCopy();
 
 const CLIPBOARD_ENV = ["SSH_CONNECTION", "SSH_CLIENT", "MOSH_CONNECTION", "DISPLAY", "WAYLAND_DISPLAY", "TERMUX_VERSION", "WSL_DISTRO_NAME", "TERM_PROGRAM", "LC_TERMINAL"] as const;
 const LOCAL_DESKTOP = { DISPLAY: ":0" };
@@ -278,6 +280,71 @@ test("a fullscreen copy says how many chars it copied, and on a remote or headle
 		(local as unknown as { flashes: { flash(message: string): void } }).flashes.flash = (message) => flashes.push(message);
 		await withEnv(LOCAL_DESKTOP, () => copyText(local, "Fail% = 1"));
 		assert.deepEqual(flashes, ["Copied 9 chars to clipboard"]);
+	} finally {
+		tui.stop();
+	}
+});
+
+test("a fullscreen drag pastes tables, code, and links as Markdown, and a drag inside one row pastes it as drawn", async () => {
+	const answer = [
+		"Growth by year:",
+		"",
+		"| Year | Balance |",
+		"|---|---:|",
+		"| 1 | 1051.16 |",
+		"| 2 | 1104.94 |",
+		"| 3 | 1161.47 |",
+		"",
+		"Run:",
+		"",
+		"```bash",
+		"P=1000",
+		"",
+		"awk -v P=$P 'BEGIN{print P*1.05}'",
+		"```",
+		"",
+		"See [the docs](https://example.com/docs) for more.",
+	].join("\n");
+	const terminal = new Proxy({ columns: 100, rows: 60, write: () => {} } as Record<string, unknown>, {
+		get: (target, key) => (key in target ? target[key as string] : () => {}),
+	});
+	const copied: string[] = [];
+	const flashes: string[] = [];
+	const tui = new TuiAltScreen(terminal as never, false, undefined, { copySelection: async (text: string) => (copied.push(text), true) });
+	(tui as unknown as { flashes: { flash(message: string): void } }).flashes.flash = (message) => flashes.push(message);
+	tui.addChild(new AssistantMessageComponent({ role: "assistant", content: [{ type: "text", text: answer }], stopReason: "stop" } as never, true));
+	const recomputed = "| Year | Balance |\n|---|---:|\n| 1 | 1051.16 |\n| 2 | 1104.94 |\n| 3 | 1200.00 |";
+	tui.addChild(new AssistantMessageComponent({ role: "assistant", content: [{ type: "text", text: recomputed }], stopReason: "stop" } as never, true));
+	tui.start();
+	try {
+		(tui as unknown as { doRender(): void }).doRender();
+		const screen = (tui as unknown as { previousScreen: string[] }).previousScreen.map((line) => stripVTControlCharacters(line).trimEnd());
+		const row = (pattern: RegExp) => screen.findIndex((line) => pattern.test(line));
+		const input = (tui as unknown as { handleViewportInput(data: string): void }).handleViewportInput.bind(tui);
+		const drag = async (from: [number, number], to: [number, number]) => {
+			input(`\x1b[<0;${from[0] + 1};${from[1] + 1}M`);
+			input(`\x1b[<32;${to[0] + 1};${to[1] + 1}M`);
+			input(`\x1b[<0;${to[0] + 1};${to[1] + 1}m`);
+			await new Promise((resolve) => setImmediate(resolve));
+			return copied.at(-1);
+		};
+		await withEnv(LOCAL_DESKTOP, async () => {
+			assert.equal(await drag([0, row(/^\s*Year/)], [99, row(/^\s*2\s/)]), "| Year | Balance |\n| --- | ---: |\n| 1 | 1051.16 |\n| 2 | 1104.94 |");
+			assert.equal(flashes.at(-1), "Copied table (2 rows) as Markdown to clipboard");
+			assert.equal(await drag([0, row(/\[1\] bash/)], [99, row(/awk -v/)]), "P=1000\n\nawk -v P=$P 'BEGIN{print P*1.05}'");
+			assert.equal(flashes.at(-1), "Copied code (3 lines) to clipboard");
+			assert.equal(await drag([0, row(/^\s*Run:/)], [99, row(/See /)]), "Run:\n\n```bash\nP=1000\n\nawk -v P=$P 'BEGIN{print P*1.05}'\n```\n\nSee [the docs](https://example.com/docs) for more.");
+			const last = (pattern: RegExp) => screen.findLastIndex((line) => pattern.test(line));
+			assert.equal(await drag([0, last(/^\s*Year/)], [99, last(/1200\.00/)]), "| Year | Balance |\n| --- | ---: |\n| 1 | 1051.16 |\n| 2 | 1104.94 |\n| 3 | 1200.00 |");
+			assert.match(await drag([0, row(/^\s*Year/)], [99, row(/^\s*Year/) + 1]) ?? "", /^Year\s+Balance$/);
+			assert.doesNotMatch(flashes.at(-1)!, /table/);
+			const growth = row(/Growth by year/);
+			const start = screen[growth]!.indexOf("Growth");
+			assert.equal(await drag([start, growth], [start + 5, growth]), "Growth");
+			assert.equal(flashes.at(-1), "Copied 6 chars to clipboard");
+		});
+		const formula = new AssistantMessageComponent({ role: "assistant", content: [{ type: "text", text: "```text\nA = P × (1 + r/n)^(n·t)\n```" }], stopReason: "stop" } as never, true);
+		assert.match(stripVTControlCharacters(formula.render(80).join("\n")), /\[1\]\s*\n\s*A = P/);
 	} finally {
 		tui.stop();
 	}

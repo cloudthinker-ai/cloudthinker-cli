@@ -7,6 +7,7 @@ import type {
 import { setMachineState } from "./awareness.ts";
 import { CloudThinkerClient, type SessionCreated } from "./client.ts";
 import { classifyCloudError, failureNotice, failureStatus, retryDelay } from "./cloud-error.ts";
+import { isSafeConversationId } from "./conversation-id.ts";
 import { DEFAULT_MODE, PROVIDER_ID, pinProviderWorkspace, registerProvider } from "./provider.ts";
 import {
 	ASK_THREAD_ENTRY_TYPE,
@@ -29,12 +30,12 @@ function lastCustomData<T>(entries: SessionEntry[], customType: string): T | und
 
 export function findLinkedSession(entries: SessionEntry[]): SessionCreated | undefined {
 	const data = lastCustomData<SessionCreated>(entries, SESSION_ENTRY_TYPE);
-	return data && typeof data.conversation_id === "string" ? data : undefined;
+	return data && isSafeConversationId(data.conversation_id) ? data : undefined;
 }
 
 export function findAskThread(entries: SessionEntry[]): AskThread | undefined {
 	const data = lastCustomData<AskThread>(entries, ASK_THREAD_ENTRY_TYPE);
-	if (!data || typeof data.conversation_id !== "string") return undefined;
+	if (!data || !isSafeConversationId(data.conversation_id)) return undefined;
 	const selectedAgentReference = normalizeAgentReference(data.selected_agent_reference);
 	return {
 		conversation_id: data.conversation_id,

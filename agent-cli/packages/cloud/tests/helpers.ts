@@ -11,9 +11,15 @@ export interface RecordedRequest {
 	body: unknown;
 }
 
-export type Route = (
-	request: RecordedRequest,
-) => { status?: number; body?: unknown; raw?: Buffer; delayMs?: number } | undefined;
+interface RouteResponse {
+	status?: number;
+	body?: unknown;
+	raw?: Buffer;
+	delayMs?: number;
+	responseBarrier?: Promise<void>;
+}
+
+export type Route = (request: RecordedRequest) => RouteResponse | undefined;
 
 export interface FakeServer {
 	origin: string;
@@ -49,6 +55,7 @@ export async function startFakeServer(route: Route): Promise<FakeServer> {
 				response.end(JSON.stringify({ detail: "no route" }));
 				return;
 			}
+			if (answer.responseBarrier) await answer.responseBarrier;
 			if (answer.delayMs) await new Promise((resolve) => setTimeout(resolve, answer.delayMs));
 			if (answer.raw) {
 				response.writeHead(answer.status ?? 200, {

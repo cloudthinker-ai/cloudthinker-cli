@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
@@ -6,6 +6,7 @@ import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 import { singleFlight } from "./async.ts";
 import { CloudThinkerApiError } from "./client.ts";
 import type { CloudThinkerClient, MirrorEntryInput } from "./client.ts";
+import { conversationPathSegment } from "./conversation-id.ts";
 import { outboxPath, rejectedPath } from "./paths.ts";
 
 export const MAX_ENTRIES_PER_BATCH = 200;
@@ -69,6 +70,11 @@ export interface MirrorStatus {
 	retryingAfterFailure: boolean;
 }
 
+interface DeliveryRequest {
+	conversationId: string | undefined;
+	generation: number;
+}
+
 export class SessionMirror {
 	private acknowledged = new Set<string>();
 	private truncated = new Set<string>();
@@ -79,10 +85,14 @@ export class SessionMirror {
 	private backoffMs = 0;
 	private nextAttemptAt = 0;
 	private pendingCount = 0;
+	private readonly pendingEntryIds = new Set<string>();
+	private outboxConversationId: string | undefined;
+	private readonly outboxEntries = new Map<string, MirrorEntryInput>();
 	private readonly client: CloudThinkerClient;
 	private readonly onStatus: (status: MirrorStatus) => void;
 	private readonly agentDir: string | undefined;
 	private readonly now: () => number;
+	private outboxOperations: Promise<void> = Promise.resolve();
 	readonly flush: (entries: SessionEntry[]) => Promise<void>;
 
 	constructor(
@@ -95,10 +105,28 @@ export class SessionMirror {
 		this.onStatus = onStatus;
 		this.agentDir = agentDir;
 		this.now = now;
-		this.flush = singleFlight((entries: SessionEntry[]) => this.deliver(entries));
+		const deliver = singleFlight((request: DeliveryRequest) => this.deliver(request));
+		this.flush = async (entries: SessionEntry[]) => {
+			const conversationId = this.conversationId;
+			const generation = this.linkGeneration;
+			if (conversationId) await this.stageEntries(conversationId, entries, generation);
+			await deliver({ conversationId, generation });
+		};
 	}
 
 	async link(conversationId: string): Promise<void> {
+		conversationPathSegment(conversationId);
+		if (this.conversationId !== conversationId) {
+			this.acknowledged.clear();
+			this.truncated.clear();
+			this.rejected.clear();
+			this.pendingEntryIds.clear();
+			this.outboxEntries.clear();
+			this.outboxConversationId = undefined;
+			this.pendingCount = 0;
+			this.backoffMs = 0;
+			this.nextAttemptAt = 0;
+		}
 		const generation = ++this.linkGeneration;
 		this.conversationId = conversationId;
 		this.linked = false;
@@ -117,10 +145,15 @@ export class SessionMirror {
 		this.acknowledged = acknowledged;
 		this.truncated = new Set();
 		this.rejected = rejected;
+		for (const entryId of this.pendingEntryIds) {
+			if (this.acknowledged.has(entryId) || this.rejected.has(entryId)) {
+				this.pendingEntryIds.delete(entryId);
+			}
+		}
+		this.pendingCount = this.pendingEntryIds.size;
 		this.linked = true;
 		this.backoffMs = 0;
 		this.nextAttemptAt = 0;
-		this.pendingCount = 0;
 	}
 
 	unlink(): void {
@@ -133,6 +166,9 @@ export class SessionMirror {
 		this.backoffMs = 0;
 		this.nextAttemptAt = 0;
 		this.pendingCount = 0;
+		this.pendingEntryIds.clear();
+		this.outboxEntries.clear();
+		this.outboxConversationId = undefined;
 		this.report(false);
 	}
 
@@ -167,14 +203,13 @@ export class SessionMirror {
 		this.nextAttemptAt = this.now() + this.backoffMs;
 	}
 
-	private async deliver(entries: SessionEntry[]): Promise<void> {
-		const conversationId = this.conversationId;
+	private async deliver(request: DeliveryRequest): Promise<void> {
+		const { conversationId } = request;
 		if (!conversationId) return;
-		let generation = this.linkGeneration;
+		let generation = request.generation;
+		if (!this.isCurrentLink(generation, conversationId)) return;
 		if (!this.linked) {
-			const pending = await this.outstanding(conversationId, entries, generation);
-			if (!this.isCurrentLink(generation, conversationId)) return;
-			this.pendingCount = pending.length;
+			this.pendingCount = this.pendingEntryIds.size;
 			if (this.now() < this.nextAttemptAt) {
 				this.report(true);
 				return;
@@ -184,11 +219,15 @@ export class SessionMirror {
 			await linking;
 			if (!this.isCurrentLink(generation, conversationId) || !this.linked) return;
 		}
-		const outstanding = await this.outstanding(conversationId, entries, generation);
 		if (!this.isCurrentLink(generation, conversationId)) return;
-		this.pendingCount = outstanding.length;
+		const outstanding: MirrorEntryInput[] = [];
+		for (const entryId of this.pendingEntryIds) {
+			const entry = this.outboxEntries.get(entryId);
+			if (entry) outstanding.push(entry);
+		}
+		this.pendingCount = this.pendingEntryIds.size;
 		if (outstanding.length === 0) {
-			await this.clearOutbox(conversationId);
+			await this.clearOutbox(conversationId, generation);
 			if (!this.isCurrentLink(generation, conversationId)) return;
 			this.backoffMs = 0;
 			this.nextAttemptAt = 0;
@@ -199,7 +238,6 @@ export class SessionMirror {
 			this.report(true);
 			return;
 		}
-		let sent = 0;
 		const rejectedForDelivery = new Set(this.rejected);
 		for (const chunk of batch(outstanding, MAX_ENTRIES_PER_BATCH)) {
 			try {
@@ -210,52 +248,29 @@ export class SessionMirror {
 					await this.writeRejected(conversationId, rejectedForDelivery);
 					if (!this.isCurrentLink(generation, conversationId)) return;
 					this.rejected = new Set(rejectedForDelivery);
-					sent += chunk.length;
+					for (const item of chunk) this.pendingEntryIds.delete(item.entry_id);
+					this.pendingCount = this.pendingEntryIds.size;
 					continue;
 				}
-				await this.writeOutbox(conversationId, outstanding.slice(sent));
 				if (!this.isCurrentLink(generation, conversationId)) throw error;
-				this.pendingCount = outstanding.length - sent;
+				this.pendingCount = this.pendingEntryIds.size;
 				this.delayNextAttempt();
 				this.report(true);
 				throw error;
 			}
 			if (!this.isCurrentLink(generation, conversationId)) return;
-			for (const entry of chunk) this.acknowledged.add(entry.entry_id);
-			sent += chunk.length;
+			for (const entry of chunk) {
+				this.acknowledged.add(entry.entry_id);
+				this.pendingEntryIds.delete(entry.entry_id);
+			}
+			this.pendingCount = this.pendingEntryIds.size;
 		}
-		await this.clearOutbox(conversationId);
+		await this.clearOutbox(conversationId, generation);
 		if (!this.isCurrentLink(generation, conversationId)) return;
-		this.pendingCount = 0;
+		this.pendingCount = this.pendingEntryIds.size;
 		this.backoffMs = 0;
 		this.nextAttemptAt = 0;
 		this.report(false);
-	}
-
-	private async outstanding(
-		conversationId: string,
-		entries: SessionEntry[],
-		generation: number,
-	): Promise<MirrorEntryInput[]> {
-		const outstanding: MirrorEntryInput[] = [];
-		const seen = new Set<string>();
-		const outbox = await this.readOutbox(conversationId);
-		if (!this.isCurrentLink(generation, conversationId)) return [];
-		const consider = (candidate: MirrorEntryInput): void => {
-			if (this.acknowledged.has(candidate.entry_id)) return;
-			if (this.rejected.has(candidate.entry_id)) return;
-			if (seen.has(candidate.entry_id)) return;
-			seen.add(candidate.entry_id);
-			if (payloadBytes(candidate) > MAX_PAYLOAD_BYTES) {
-				this.truncated.add(candidate.entry_id);
-				outstanding.push(truncatePayload(candidate));
-				return;
-			}
-			outstanding.push(candidate);
-		};
-		for (const candidate of outbox) consider(candidate);
-		for (const entry of entries) consider(toMirrorEntry(entry));
-		return outstanding;
 	}
 
 	private report(retryingAfterFailure: boolean): void {
@@ -284,21 +299,96 @@ export class SessionMirror {
 		return entries;
 	}
 
-	private async writeOutbox(
+	private async stageEntries(
+		conversationId: string,
+		entries: SessionEntry[],
+		generation: number,
+	): Promise<void> {
+		return this.withOutboxOperation(async () => {
+			if (!this.isCurrentLink(generation, conversationId)) return;
+			if (this.outboxConversationId !== conversationId) {
+				const outbox = await this.readOutbox(conversationId);
+				if (!this.isCurrentLink(generation, conversationId)) return;
+				this.outboxEntries.clear();
+				for (const entry of outbox) {
+					if (!this.outboxEntries.has(entry.entry_id)) {
+						this.outboxEntries.set(entry.entry_id, entry);
+						if (
+							!this.acknowledged.has(entry.entry_id) &&
+							!this.rejected.has(entry.entry_id)
+						) {
+							this.pendingEntryIds.add(entry.entry_id);
+						}
+					}
+				}
+				this.outboxConversationId = conversationId;
+			}
+			const missing: MirrorEntryInput[] = [];
+			for (const entry of entries) {
+				const candidate = toMirrorEntry(entry);
+				if (
+					this.acknowledged.has(candidate.entry_id) ||
+					this.rejected.has(candidate.entry_id) ||
+					this.outboxEntries.has(candidate.entry_id)
+				) {
+					continue;
+				}
+				let staged = candidate;
+				if (payloadBytes(candidate) > MAX_PAYLOAD_BYTES) {
+					this.truncated.add(candidate.entry_id);
+					staged = truncatePayload(candidate);
+				}
+				missing.push(staged);
+			}
+			await this.appendOutboxEntries(conversationId, missing);
+			if (!this.isCurrentLink(generation, conversationId)) return;
+			for (const entry of missing) {
+				this.outboxEntries.set(entry.entry_id, entry);
+				this.pendingEntryIds.add(entry.entry_id);
+			}
+			this.pendingCount = this.pendingEntryIds.size;
+		});
+	}
+
+	private async clearOutbox(conversationId: string, generation: number): Promise<void> {
+		await this.withOutboxOperation(async () => {
+			if (!this.isCurrentLink(generation, conversationId)) return;
+			this.pendingCount = this.pendingEntryIds.size;
+			if (this.pendingCount > 0) {
+				return;
+			}
+			await rm(outboxPath(conversationId, this.agentDir), { force: true });
+			if (this.outboxConversationId === conversationId) this.outboxEntries.clear();
+		});
+	}
+
+	private async appendOutboxEntries(
 		conversationId: string,
 		entries: MirrorEntryInput[],
 	): Promise<void> {
+		if (entries.length === 0) return;
 		const path = outboxPath(conversationId, this.agentDir);
 		await mkdir(dirname(path), { recursive: true });
-		await writeFile(
+		const lines = entries.map((entry) => JSON.stringify(entry)).join("\n");
+		await appendFile(
 			path,
-			`${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+			`\n${lines}\n`,
 			"utf8",
 		);
 	}
 
-	private async clearOutbox(conversationId: string): Promise<void> {
-		await rm(outboxPath(conversationId, this.agentDir), { force: true });
+	private async withOutboxOperation<T>(operation: () => Promise<T>): Promise<T> {
+		const previous = this.outboxOperations;
+		let release!: () => void;
+		this.outboxOperations = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		await previous;
+		try {
+			return await operation();
+		} finally {
+			release();
+		}
 	}
 
 	private async readRejected(conversationId: string): Promise<Set<string>> {

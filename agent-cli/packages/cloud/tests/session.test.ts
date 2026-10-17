@@ -16,6 +16,7 @@ import {
 	SESSION_ENTRY_TYPE,
 } from "../src/runtime.ts";
 import {
+	findAskThread,
 	findLinkedSession,
 	findSelectedAgentReference,
 	linkSession,
@@ -147,6 +148,24 @@ test("a linked custom selection is available to child CloudThinker sessions", ()
 		}),
 	];
 	assert.equal(findSelectedAgentReference(entries), "custom-agent");
+});
+
+test("unsafe persisted conversation ids are not linked or reused for ask threads", () => {
+	assert.equal(
+		findLinkedSession([
+			custom(SESSION_ENTRY_TYPE, { ...carried, conversation_id: "../outside" }),
+		]),
+		undefined,
+	);
+	assert.equal(
+		findAskThread([
+			custom(ASK_THREAD_ENTRY_TYPE, {
+				conversation_id: "folder/thread",
+				web_url: "http://web",
+			}),
+		]),
+		undefined,
+	);
 });
 
 test("a configured custom selection supersedes a carried identity and is persisted", async () => {

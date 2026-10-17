@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
+import { conversationPathSegment } from "./conversation-id.ts";
+
 export const DEFAULT_BASE_URL = "https://app.cloudthinker.io";
 const TOKEN_COMMAND_TIMEOUT_MS = 120_000;
 const SAFE_BINARY_PATH = /^\/[A-Za-z0-9._\/+-]+$/;
@@ -374,19 +376,24 @@ export class CloudThinkerClient {
 		return `${this.baseUrl}/api/v1`;
 	}
 
-	createSession(body: {
+	async createSession(body: {
 		cwd: string;
 		title?: string;
 		source_conversation_id?: string;
 		selected_agent_reference?: string;
 		skip_sandbox_warmup?: boolean;
 	}): Promise<SessionCreated> {
-		return this.json({
+		if (body.source_conversation_id !== undefined) {
+			conversationPathSegment(body.source_conversation_id);
+		}
+		const created = await this.json<SessionCreated>({
 			method: "POST",
 			path: "/agent-cli/sessions",
 			body,
 			timeoutMs: SESSION_CREATE_TIMEOUT_MS,
 		});
+		conversationPathSegment(created.conversation_id);
+		return created;
 	}
 
 	appendEntries(
@@ -395,7 +402,7 @@ export class CloudThinkerClient {
 	): Promise<EntriesAppended> {
 		return this.json({
 			method: "PUT",
-			path: `/agent-cli/sessions/${conversationId}/entries`,
+			path: `/agent-cli/sessions/${conversationPathSegment(conversationId)}/entries`,
 			body: { entries },
 			timeoutMs: 60_000,
 		});
@@ -407,13 +414,14 @@ export class CloudThinkerClient {
 	): Promise<EntryPage> {
 		return this.json({
 			method: "GET",
-			path: `/agent-cli/sessions/${conversationId}/entries`,
+			path: `/agent-cli/sessions/${conversationPathSegment(conversationId)}/entries`,
 			query,
 			timeoutMs: DEFAULT_TIMEOUT_MS,
 		});
 	}
 
 	execute(body: ExecutionRequest, signal?: AbortSignal): Promise<ExecutionResult> {
+		conversationPathSegment(body.conversation_id);
 		return this.json({
 			method: "POST",
 			path: "/agent-cli/executions",
@@ -428,6 +436,7 @@ export class CloudThinkerClient {
 		query: { conversation_id: string; since?: number },
 		signal?: AbortSignal,
 	): Promise<ExecutionOutput> {
+		conversationPathSegment(query.conversation_id);
 		return this.json({
 			method: "GET",
 			path: `/agent-cli/executions/${encodeURIComponent(taskId)}`,
@@ -438,6 +447,7 @@ export class CloudThinkerClient {
 	}
 
 	requestWrite(body: WriteRequest, signal?: AbortSignal): Promise<WriteOutcome> {
+		conversationPathSegment(body.conversation_id);
 		return this.json({
 			method: "POST",
 			path: "/agent-cli/writes",
@@ -486,7 +496,7 @@ export class CloudThinkerClient {
 	readCredits(conversationId: string): Promise<SessionCredits> {
 		return this.json({
 			method: "GET",
-			path: `/agent-cli/sessions/${conversationId}/credits`,
+			path: `/agent-cli/sessions/${conversationPathSegment(conversationId)}/credits`,
 			timeoutMs: DEFAULT_TIMEOUT_MS,
 		});
 	}
@@ -568,6 +578,7 @@ export class CloudThinkerClient {
 	}
 
 	async resendInterruptNotification(conversationId: string): Promise<void> {
+		conversationPathSegment(conversationId);
 		await this.send({
 			method: "POST",
 			path: "/notifications/interrupt/resend",
@@ -603,6 +614,12 @@ export class CloudThinkerClient {
 		},
 		signal?: AbortSignal,
 	): Promise<RunSubmitted> {
+		if (body.conversation_id !== undefined) {
+			conversationPathSegment(body.conversation_id);
+		}
+		if (body.source_conversation_id !== undefined) {
+			conversationPathSegment(body.source_conversation_id);
+		}
 		return this.json({
 			method: "POST",
 			path: "/cli/runs",

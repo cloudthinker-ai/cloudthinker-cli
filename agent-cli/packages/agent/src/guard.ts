@@ -19,6 +19,7 @@ import { applyReasoningUiGuard } from "./reasoning-ui.ts";
 import { applySkillCatalogGuard } from "./skill-catalog.ts";
 import { applyScrollPill } from "./scroll-pill.ts";
 import { applyStartupUi } from "./startup.ts";
+import { applyMarkdownCopy } from "./copy-markdown.ts";
 import { applyTerminalCopyNote } from "./terminal-copy.ts";
 import { applyThinkingUi } from "./thinking-ui.ts";
 import { applyToolGroups } from "./tool-groups.ts";
@@ -199,6 +200,7 @@ export function applyGuard(): void {
 	applyMentionHighlight();
 	applyEditorSelection();
 	applyTerminalCopyNote();
+	applyMarkdownCopy();
 	applyCompletionRows();
 	applyToolGroups();
 	applyCloudOnlyModels();

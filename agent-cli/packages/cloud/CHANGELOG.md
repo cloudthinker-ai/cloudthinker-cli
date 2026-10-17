@@ -1,3 +1,7 @@
+## [0.8.3-dev.1]
+
+- Persist each flush snapshot before delivery, including entries from later flushes while an earlier append is in flight, so shutdown timeouts leave a retryable outbox.
+
 ## [0.8.2-dev.4]
 
 - A failed workspace skill update keeps the installed copy and retries the newer revision on the next refresh.

@@ -2,6 +2,7 @@ import { join } from "node:path";
 
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
+import { conversationPathSegment } from "./conversation-id.ts";
 import { isUuid } from "./uuid.ts";
 
 export function cloudthinkerDir(agentDir: string = getAgentDir()): string {
@@ -12,14 +13,14 @@ export function outboxPath(
 	conversationId: string,
 	agentDir: string = getAgentDir(),
 ): string {
-	return join(agentDir, "outbox", `${conversationId}.jsonl`);
+	return join(agentDir, "outbox", `${conversationPathSegment(conversationId)}.jsonl`);
 }
 
 export function rejectedPath(
 	conversationId: string,
 	agentDir: string = getAgentDir(),
 ): string {
-	return join(agentDir, "outbox", `${conversationId}.rejected.json`);
+	return join(agentDir, "outbox", `${conversationPathSegment(conversationId)}.rejected.json`);
 }
 
 function workspaceSegment(workspaceId: string): string {

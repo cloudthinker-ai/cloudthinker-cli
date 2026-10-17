@@ -1,3 +1,7 @@
+## [0.8.3-dev.1]
+
+- A drag over several rows of an answer pastes Markdown: table rows as a Markdown table with its header, code as plain code with wrapped lines joined (fenced when other text is selected too), and paragraphs and links as their Markdown source. The note says what was copied, such as "Copied table (2 rows) as Markdown". A plain-text code block shows only its number, `[1]`.
+
 ## [0.8.2-dev.4]
 
 - The agent opens fullscreen on remote machines again, as in 0.8.1; the regular-view default from 0.8.2-dev.3 is gone. A copy there now says `Sent N chars via OSC 52` and, if the paste fails, which key to hold for your terminal's own selection: Fn in Terminal.app, Option in iTerm2, Shift elsewhere. On your own computer a copy says `Copied N chars to clipboard` instead of `Copied!`.
