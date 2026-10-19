@@ -117,13 +117,11 @@ impl WorkdirIdentity {
             serde_json::from_slice(&read_private(&state_dir, &key, 1024)?)
                 .map_err(|_| state_error())?;
         let metadata = root.dir_metadata().map_err(|_| invalid_directory())?;
-        Ok(
-            if saved.device == metadata.dev() && saved.inode == metadata.ino() {
-                SavedIdentity::Matches
-            } else {
-                SavedIdentity::Replaced
-            },
-        )
+        Ok(if saved.inode == metadata.ino() {
+            SavedIdentity::Matches
+        } else {
+            SavedIdentity::Replaced
+        })
     }
 
     pub fn forget(workdir: &Path, state_root: &Path) -> CtResult<()> {
@@ -177,10 +175,22 @@ fn directory_identity(state_dir: &Dir, root: &Dir, path: &Path) -> CtResult<Dire
         let saved: DirectoryIdentity =
             serde_json::from_slice(&read_private(state_dir, &key, 1024)?)
                 .map_err(|_| state_error())?;
-        if saved.device != metadata.dev() || saved.inode != metadata.ino() {
+        if saved.inode != metadata.ino() {
             return Err(replaced_directory());
         }
-        return Ok(saved);
+        if saved.device == metadata.dev() {
+            return Ok(saved);
+        }
+        let moved = DirectoryIdentity {
+            device: metadata.dev(),
+            ..saved
+        };
+        write_private(
+            state_dir,
+            &key,
+            &serde_json::to_vec(&moved).map_err(|_| state_error())?,
+        )?;
+        return Ok(moved);
     }
     let saved = DirectoryIdentity {
         workdir_id: Uuid::new_v4(),
@@ -303,6 +313,34 @@ mod tests {
         let reset = WorkdirIdentity::open(&work, &state, target).unwrap();
         assert_eq!(reset.installation_id, expected.0);
         assert_ne!(reset.workdir_id, expected.1);
+    }
+
+    #[test]
+    fn renumbered_volume_keeps_the_folder_identity() {
+        let temporary = tempfile::tempdir().unwrap();
+        let work = temporary.path().join("project");
+        std::fs::create_dir(&work).unwrap();
+        let state = temporary.path().join("state");
+        private_directory(&state).unwrap();
+        let target = Uuid::new_v4();
+        let first = WorkdirIdentity::open(&work, &state, target).unwrap();
+        let expected = first.workdir_id;
+        drop(first);
+        let key = state.join(identity_key(&work.canonicalize().unwrap()));
+        let mut saved: DirectoryIdentity =
+            serde_json::from_slice(&std::fs::read(&key).unwrap()).unwrap();
+        let device = saved.device;
+        saved.device = device.wrapping_add(4);
+        std::fs::write(&key, serde_json::to_vec(&saved).unwrap()).unwrap();
+        assert_eq!(
+            WorkdirIdentity::saved(&work, &state).unwrap(),
+            SavedIdentity::Matches
+        );
+        let reopened = WorkdirIdentity::open(&work, &state, target).unwrap();
+        assert_eq!(reopened.workdir_id, expected);
+        let rewritten: DirectoryIdentity =
+            serde_json::from_slice(&std::fs::read(&key).unwrap()).unwrap();
+        assert_eq!(rewritten.device, device);
     }
 
     #[test]

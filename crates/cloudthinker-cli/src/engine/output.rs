@@ -971,6 +971,7 @@ pub fn print_local_review(result: &LocalReviewResult) -> Result<(), String> {
 
 fn review_status_label(status: ReviewStatus) -> &'static str {
     match status {
+        ReviewStatus::Queued => "queued",
         ReviewStatus::InReview => "in review",
         ReviewStatus::ReviewComplete => "review complete",
         ReviewStatus::Filtered => "filtered",

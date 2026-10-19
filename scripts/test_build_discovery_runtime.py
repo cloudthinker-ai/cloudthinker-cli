@@ -109,6 +109,50 @@ class DiscoveryRuntimeResourcesTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("invalid discovery manifest version", result.stderr)
 
+    def test_embedded_manifest_loader_accepts_ultra(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            program = """
+import json
+import sys
+import uuid
+from pathlib import Path
+
+sys.path.insert(0, sys.argv[1])
+
+from cyber_discovery.manifest import load_manifest
+from cyber_discovery_schema import VERSION
+
+root = Path(sys.argv[2])
+manifest_path = root / "manifest.json"
+manifest_path.write_text(json.dumps({
+    "version": VERSION,
+    "run_id": "ultra-manifest-test",
+    "targets": [{
+        "target_id": str(uuid.uuid4()),
+        "target_ref": "https://example.com",
+        "safety_scope": {},
+        "run_scope": {},
+    }],
+    "frameworks": ["owasp_web"],
+    "mode": "black",
+    "intensity": "ultra",
+    "context_dir": str(root),
+    "workspace_dir": str(root),
+    "repository_roots": [],
+    "identity_labels": [],
+    "repository_available": False,
+}))
+print(load_manifest(manifest_path).intensity)
+"""
+            result = subprocess.run(
+                [sys.executable, "-I", "-c", program, str(RUNTIME), temp_dir],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("ultra\n", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

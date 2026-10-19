@@ -1,3 +1,9 @@
+## [0.8.3]
+
+- Regenerated the CLI API schema and bundled Cyber discovery runtime so Ultra pentest runs accept their manifest.
+- Build against the latest API schema. `cloudthinker review` now shows a review that waits in the queue as `queued`, and Cyber observations whose reason, evidence ref, or worker is too long stop with a clear message before upload.
+- A Worker on macOS now keeps serving its folder after a restart. macOS can renumber a disk at boot, and before this fix `worker start` then stopped with `WORKDIR_IDENTITY_CHANGED` and asked for `--reset-folder`, although the folder was the same.
+
 ## [0.8.2-dev.4]
 
 - A conversation worktree whose `git worktree add` timed out or was stopped part way is now removed and created again on the next message. Before, the Worker used the half-built folder, where most tracked files looked deleted, and the folder was never pruned.

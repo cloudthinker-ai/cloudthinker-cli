@@ -7,6 +7,8 @@
 //! Azure DevOps, AWS CodeCommit), or a non-numeric/missing MR number — is a
 //! usage error (V1 scope, `product-cli-mr-f-review.md`).
 
+use std::num::NonZeroU64;
+
 use crate::error::{CtError, CtResult};
 
 /// Which provider a parsed MR URL belongs to. V1 only ever produces these two
@@ -24,7 +26,7 @@ pub enum MrProvider {
 pub struct MrCoordinates {
     pub provider: MrProvider,
     pub project_path: String,
-    pub mr_iid: i64,
+    pub mr_iid: NonZeroU64,
 }
 
 /// Parse a GitLab or GitHub merge-request URL into its coordinates.
@@ -74,8 +76,9 @@ fn build_coordinates(
     let project_path = project_segments.join("/");
     let mr_iid = iid_segment
         .ok_or_else(|| unparseable(url))?
-        .parse::<i64>()
+        .parse::<u64>()
         .map_err(|_| unparseable(url))?;
+    let mr_iid = NonZeroU64::new(mr_iid).ok_or_else(|| unparseable(url))?;
     if project_path.is_empty() {
         return Err(unparseable(url));
     }
@@ -105,7 +108,7 @@ mod tests {
         let c = coords("https://gitlab.com/group/project/-/merge_requests/42");
         assert_eq!(c.provider, MrProvider::Gitlab);
         assert_eq!(c.project_path, "group/project");
-        assert_eq!(c.mr_iid, 42);
+        assert_eq!(c.mr_iid.get(), 42);
     }
 
     #[test]
@@ -113,7 +116,7 @@ mod tests {
         let c = coords("https://github.com/owner/repo/pull/123");
         assert_eq!(c.provider, MrProvider::Github);
         assert_eq!(c.project_path, "owner/repo");
-        assert_eq!(c.mr_iid, 123);
+        assert_eq!(c.mr_iid.get(), 123);
     }
 
     // CA-RV-EC1: trailing slash, query string, self-hosted host all normalize
@@ -138,7 +141,7 @@ mod tests {
         let c = coords("https://gitlab.com/g/sub/repo/-/merge_requests/7");
         assert_eq!(c.provider, MrProvider::Gitlab);
         assert_eq!(c.project_path, "g/sub/repo");
-        assert_eq!(c.mr_iid, 7);
+        assert_eq!(c.mr_iid.get(), 7);
     }
 
     // CA-RV-EC3: a non-numeric MR number is a usage error, not a panic.
@@ -151,6 +154,18 @@ mod tests {
         let err = parse_mr_url("https://github.com/owner/repo/pull/abc")
             .expect_err("non-numeric iid must be rejected");
         assert!(matches!(err, CtError::Usage(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn nonpositive_iids_are_usage_errors() {
+        for url in [
+            "https://gitlab.com/group/project/-/merge_requests/0",
+            "https://gitlab.com/group/project/-/merge_requests/-1",
+            "https://github.com/owner/repo/pull/0",
+        ] {
+            let err = parse_mr_url(url).expect_err("nonpositive iid must be rejected");
+            assert!(matches!(err, CtError::Usage(_)), "got {err:?}");
+        }
     }
 
     // CA-RV-SP1: an unparseable/unrecognized URL is a usage error.

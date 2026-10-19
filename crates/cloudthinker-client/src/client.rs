@@ -1832,7 +1832,7 @@ mod tests {
             let coords = MrCoordinates {
                 provider: MrProvider::Gitlab,
                 project_path: "group/my-repo".to_string(),
-                mr_iid: 42,
+                mr_iid: NonZeroU64::new(42).unwrap(),
             };
             let view = client.lookup_review(&coords).await.unwrap();
 
@@ -1851,28 +1851,6 @@ mod tests {
             assert_eq!(view.findings[1].severity, "high");
             assert_eq!(serde_json::to_value(view.status).unwrap(), status_wire);
             assert_eq!(serde_json::to_value(view.verdict).unwrap(), verdict_wire);
-        }
-    }
-
-    #[tokio::test]
-    async fn lookup_review_rejects_non_positive_mr_iids_before_request() {
-        let client = CtClient::new(
-            "http://127.0.0.1:1".to_string(),
-            Arc::new(MockTokenStore::new(Some(stored("access", "r")))),
-        )
-        .unwrap();
-
-        for mr_iid in [0, -42] {
-            let coords = MrCoordinates {
-                provider: MrProvider::Gitlab,
-                project_path: "group/my-repo".to_string(),
-                mr_iid,
-            };
-            let error = client
-                .lookup_review(&coords)
-                .await
-                .expect_err("non-positive MR numbers are invalid");
-            assert!(matches!(error, CtError::Usage(_)), "got {error:?}");
         }
     }
 
@@ -1896,7 +1874,7 @@ mod tests {
         let coords = MrCoordinates {
             provider: MrProvider::Github,
             project_path: "owner/repo".to_string(),
-            mr_iid: 99,
+            mr_iid: NonZeroU64::new(99).unwrap(),
         };
         let err = client.lookup_review(&coords).await.unwrap_err();
         assert!(
@@ -2195,6 +2173,48 @@ mod tests {
         assert_eq!(report.coverage.terminal, 501);
         assert!(report.coverage.valid);
         assert_eq!(report.rows.len(), 501);
+    }
+
+    #[tokio::test]
+    async fn over_long_observation_in_a_later_batch_uploads_nothing() {
+        let run_id = Uuid::from_u128(1);
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/api/v1/appsec/runs/{run_id}/plan/plan-1/observations"
+            )))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let client = CtClient::new(
+            server.uri(),
+            Arc::new(MockTokenStore::new(Some(stored("access", "r")))),
+        )
+        .unwrap();
+        let observations: Vec<Observation> = (0..600)
+            .map(|index| Observation {
+                row_id: format!("row-{index:04}"),
+                status: CoverageStatus::Covered,
+                reason: if index == 599 {
+                    "x".repeat(1025)
+                } else {
+                    String::new()
+                },
+                evidence_ref: String::new(),
+                worker: "test".into(),
+            })
+            .collect();
+
+        let error = client
+            .cyber_ingest_observations(run_id, "plan-1", observations)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(&error, CtError::Usage(message) if message.contains("row-0599") && message.contains("reason")),
+            "got {error:?}"
+        );
     }
 
     #[tokio::test]

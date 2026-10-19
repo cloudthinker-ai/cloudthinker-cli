@@ -1238,6 +1238,15 @@ pub mod types {
     ///    "web_url"
     ///  ],
     ///  "properties": {
+    ///    "can_respond": {
+    ///      "title": "Can Respond",
+    ///      "description": "Whether the caller may approve this write. Set only
+    /// on a session list read while the write waits for approval.",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "connection_list": {
     ///      "title": "Connection List",
     ///      "type": "array",
@@ -1375,6 +1384,10 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliWritePublic {
+        ///Whether the caller may approve this write. Set only on a session
+        /// list read while the write waits for approval.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub can_respond: ::std::option::Option<bool>,
         pub connection_list: ::std::vec::Vec<::std::string::String>,
         pub conversation_id: ::uuid::Uuid,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
@@ -4047,6 +4060,14 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "policy_lease": {
+    ///      "title": "Policy Lease",
+    ///      "type": [
+    ///        "object",
+    ///        "null"
+    ///      ],
+    ///      "additionalProperties": true
+    ///    },
     ///    "stderr_offset": {
     ///      "title": "Stderr Offset",
     ///      "type": [
@@ -4101,6 +4122,9 @@ pub mod types {
         pub kind: BackgroundOperationKind,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub offset: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub policy_lease:
+            ::std::option::Option<::serde_json::Map<::std::string::String, ::serde_json::Value>>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub stderr_offset: ::std::option::Option<i64>,
         pub task_id: ::std::string::String,
@@ -6221,6 +6245,16 @@ pub mod types {
     ///    "merge_disabled_reason": {
     ///      "$ref": "#/components/schemas/MergeDisabledReason"
     ///    },
+    ///    "merge_hint": {
+    ///      "$ref": "#/components/schemas/MergeDisabledReason"
+    ///    },
+    ///    "merge_hint_detail": {
+    ///      "title": "Merge Hint Detail",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "merge_status": {
     ///      "title": "Merge Status",
     ///      "type": [
@@ -6448,6 +6482,10 @@ pub mod types {
         pub manual_trigger_disabled_reason: ::std::option::Option<ManualTriggerDisabledReason>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub merge_disabled_reason: ::std::option::Option<MergeDisabledReason>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub merge_hint: ::std::option::Option<MergeDisabledReason>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub merge_hint_detail: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub merge_status: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -8339,6 +8377,9 @@ pub mod types {
     ///    "meta"
     ///  ],
     ///  "properties": {
+    ///    "change_counts": {
+    ///      "$ref": "#/components/schemas/RunChangeCounts"
+    ///    },
     ///    "counts": {
     ///      "$ref": "#/components/schemas/FindingTabCounts"
     ///    },
@@ -8358,6 +8399,8 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct CyberFindingListResponse {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub change_counts: ::std::option::Option<RunChangeCounts>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub counts: ::std::option::Option<FindingTabCounts>,
         pub data: ::std::vec::Vec<FindingPublic>,
@@ -12092,6 +12135,9 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "run_change": {
+    ///      "$ref": "#/components/schemas/ItemRunChange"
+    ///    },
     ///    "severity": {
     ///      "$ref": "#/components/schemas/Severity"
     ///    },
@@ -12138,6 +12184,8 @@ pub mod types {
         pub manually_resolved: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub owasp: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub run_change: ::std::option::Option<ItemRunChange>,
         pub severity: Severity,
         pub status: FindingStatus,
         pub title: ::std::string::String,
@@ -12548,6 +12596,11 @@ pub mod types {
     ///      "default": 0,
     ///      "type": "integer"
     ///    },
+    ///    "dismissed": {
+    ///      "title": "Dismissed",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
     ///    "fixed": {
     ///      "title": "Fixed",
     ///      "default": 0,
@@ -12574,6 +12627,8 @@ pub mod types {
         #[serde(default)]
         pub confirmed: i64,
         #[serde(default)]
+        pub dismissed: i64,
+        #[serde(default)]
         pub fixed: i64,
         #[serde(default)]
         pub in_progress: i64,
@@ -12586,6 +12641,7 @@ pub mod types {
             Self {
                 all: Default::default(),
                 confirmed: Default::default(),
+                dismissed: Default::default(),
                 fixed: Default::default(),
                 in_progress: Default::default(),
                 needs_verification: Default::default(),
@@ -14038,7 +14094,7 @@ pub mod types {
         }
     }
 
-    ///Per-run probing intensity: safe|aggressive|full.
+    ///Per-run probing intensity: safe|aggressive|full|ultra.
     ///
     ///Consolidates two legacy flags into one: the dead PentestRun.safe_mode
     ///(hardcoded True, never varied) and the live App.allow_active_probing
@@ -14047,24 +14103,24 @@ pub mod types {
     ///freeze their own chosen intensity at construction (a schedule's frozen
     ///intensity survives a later change to the App's default).
     ///
+    ///``ultra`` has the same destructive-probing allowance as ``full`` but
+    /// also turns on the saturation loop: the agent keeps hunting new
+    /// attack surface in further waves until two in a row find nothing new
+    /// (the `cyber-scan-modes-ultra` depth leaf). It is the highest blast
+    /// radius.
+    ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
     ///  "title": "Intensity",
-    ///  "description": "Per-run probing intensity:
-    /// safe|aggressive|full.\n\nConsolidates two legacy flags into one: the
-    /// dead PentestRun.safe_mode\n(hardcoded True, never varied) and the live
-    /// App.allow_active_probing\nconsent gate (destructive DELETE/data-changing
-    /// probing). App carries a\ndefault_intensity that seeds new runs;
-    /// PentestRun and CyberSchedule each\nfreeze their own chosen intensity at
-    /// construction (a schedule's frozen\nintensity survives a later change to
-    /// the App's default).",
+    ///  "description": "Per-run probing intensity: safe|aggressive|full|ultra.\n\nConsolidates two legacy flags into one: the dead PentestRun.safe_mode\n(hardcoded True, never varied) and the live App.allow_active_probing\nconsent gate (destructive DELETE/data-changing probing). App carries a\ndefault_intensity that seeds new runs; PentestRun and CyberSchedule each\nfreeze their own chosen intensity at construction (a schedule's frozen\nintensity survives a later change to the App's default).\n\n``ultra`` has the same destructive-probing allowance as ``full`` but also\nturns on the saturation loop: the agent keeps hunting new attack surface in\nfurther waves until two in a row find nothing new (the `cyber-scan-modes-ultra`\ndepth leaf). It is the highest blast radius.",
     ///  "type": "string",
     ///  "enum": [
     ///    "safe",
     ///    "aggressive",
-    ///    "full"
+    ///    "full",
+    ///    "ultra"
     ///  ]
     ///}
     /// ```
@@ -14088,6 +14144,8 @@ pub mod types {
         Aggressive,
         #[serde(rename = "full")]
         Full,
+        #[serde(rename = "ultra")]
+        Ultra,
     }
 
     impl ::std::fmt::Display for Intensity {
@@ -14096,6 +14154,7 @@ pub mod types {
                 Self::Safe => f.write_str("safe"),
                 Self::Aggressive => f.write_str("aggressive"),
                 Self::Full => f.write_str("full"),
+                Self::Ultra => f.write_str("ultra"),
             }
         }
     }
@@ -14107,6 +14166,7 @@ pub mod types {
                 "safe" => Ok(Self::Safe),
                 "aggressive" => Ok(Self::Aggressive),
                 "full" => Ok(Self::Full),
+                "ultra" => Ok(Self::Ultra),
                 _ => Err("invalid value".into()),
             }
         }
@@ -14450,6 +14510,37 @@ pub mod types {
                     <D::Error as ::serde::de::Error>::custom(e.to_string())
                 })
         }
+    }
+
+    ///`ItemRunChange`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ItemRunChange",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "changed_at",
+    ///    "kind"
+    ///  ],
+    ///  "properties": {
+    ///    "changed_at": {
+    ///      "title": "Changed At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "kind": {
+    ///      "$ref": "#/components/schemas/RunChangeKind"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct ItemRunChange {
+        pub changed_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        pub kind: RunChangeKind,
     }
 
     ///`LegacyApprovalLevel`
@@ -15923,14 +16014,16 @@ pub mod types {
     ///  ],
     ///  "properties": {
     ///    "evidence_ref": {
-    ///      "title": "Evidence Ref",
+    ///      "title": "ObservationIn_evidence_ref",
     ///      "default": "",
-    ///      "type": "string"
+    ///      "type": "string",
+    ///      "maxLength": 1024
     ///    },
     ///    "reason": {
-    ///      "title": "Reason",
+    ///      "title": "ObservationIn_reason",
     ///      "default": "",
-    ///      "type": "string"
+    ///      "type": "string",
+    ///      "maxLength": 1024
     ///    },
     ///    "row_id": {
     ///      "title": "Row Id",
@@ -15940,9 +16033,10 @@ pub mod types {
     ///      "$ref": "#/components/schemas/CoverageStatus"
     ///    },
     ///    "worker": {
-    ///      "title": "Worker",
+    ///      "title": "ObservationIn_worker",
     ///      "default": "",
-    ///      "type": "string"
+    ///      "type": "string",
+    ///      "maxLength": 128
     ///    }
     ///  }
     ///}
@@ -15950,14 +16044,263 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct ObservationIn {
-        #[serde(default)]
-        pub evidence_ref: ::std::string::String,
-        #[serde(default)]
-        pub reason: ::std::string::String,
+        #[serde(default = "defaults::observation_in_evidence_ref")]
+        pub evidence_ref: ObservationInEvidenceRef,
+        #[serde(default = "defaults::observation_in_reason")]
+        pub reason: ObservationInReason,
         pub row_id: ::std::string::String,
         pub status: CoverageStatus,
-        #[serde(default)]
-        pub worker: ::std::string::String,
+        #[serde(default = "defaults::observation_in_worker")]
+        pub worker: ObservationInWorker,
+    }
+
+    ///`ObservationInEvidenceRef`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ObservationIn_evidence_ref",
+    ///  "default": "",
+    ///  "type": "string",
+    ///  "maxLength": 1024
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct ObservationInEvidenceRef(::std::string::String);
+    impl ::std::ops::Deref for ObservationInEvidenceRef {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<ObservationInEvidenceRef> for ::std::string::String {
+        fn from(value: ObservationInEvidenceRef) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::default::Default for ObservationInEvidenceRef {
+        fn default() -> Self {
+            ObservationInEvidenceRef("".to_string())
+        }
+    }
+
+    impl ::std::str::FromStr for ObservationInEvidenceRef {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 1024usize {
+                return Err("longer than 1024 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ObservationInEvidenceRef {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ObservationInEvidenceRef {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ObservationInEvidenceRef {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for ObservationInEvidenceRef {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`ObservationInReason`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ObservationIn_reason",
+    ///  "default": "",
+    ///  "type": "string",
+    ///  "maxLength": 1024
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct ObservationInReason(::std::string::String);
+    impl ::std::ops::Deref for ObservationInReason {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<ObservationInReason> for ::std::string::String {
+        fn from(value: ObservationInReason) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::default::Default for ObservationInReason {
+        fn default() -> Self {
+            ObservationInReason("".to_string())
+        }
+    }
+
+    impl ::std::str::FromStr for ObservationInReason {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 1024usize {
+                return Err("longer than 1024 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ObservationInReason {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ObservationInReason {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ObservationInReason {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for ObservationInReason {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`ObservationInWorker`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ObservationIn_worker",
+    ///  "default": "",
+    ///  "type": "string",
+    ///  "maxLength": 128
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct ObservationInWorker(::std::string::String);
+    impl ::std::ops::Deref for ObservationInWorker {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<ObservationInWorker> for ::std::string::String {
+        fn from(value: ObservationInWorker) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::default::Default for ObservationInWorker {
+        fn default() -> Self {
+            ObservationInWorker("".to_string())
+        }
+    }
+
+    impl ::std::str::FromStr for ObservationInWorker {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 128usize {
+                return Err("longer than 128 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ObservationInWorker {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ObservationInWorker {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ObservationInWorker {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for ObservationInWorker {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
     }
 
     ///`ObservationsIngestRequest`
@@ -17669,6 +18012,21 @@ pub mod types {
     ///      "title": "Type",
     ///      "type": "string"
     ///    },
+    ///    "updated_at": {
+    ///      "title": "Updated At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "user_edited_fields": {
+    ///      "title": "User Edited Fields",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
     ///    "visibility": {
     ///      "$ref": "#/components/schemas/RecommendationVisibility"
     ///    }
@@ -17745,6 +18103,10 @@ pub mod types {
         pub title: RecommendationListPublicTitle,
         #[serde(rename = "type")]
         pub type_: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub updated_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub user_edited_fields: ::std::vec::Vec<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub visibility: ::std::option::Option<RecommendationVisibility>,
     }
@@ -19889,6 +20251,7 @@ pub mod types {
     ///  "title": "ReviewStatus",
     ///  "type": "string",
     ///  "enum": [
+    ///    "queued",
     ///    "in_review",
     ///    "review_complete",
     ///    "filtered",
@@ -19911,6 +20274,8 @@ pub mod types {
         PartialOrd,
     )]
     pub enum ReviewStatus {
+        #[serde(rename = "queued")]
+        Queued,
         #[serde(rename = "in_review")]
         InReview,
         #[serde(rename = "review_complete")]
@@ -19926,6 +20291,7 @@ pub mod types {
     impl ::std::fmt::Display for ReviewStatus {
         fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
             match *self {
+                Self::Queued => f.write_str("queued"),
                 Self::InReview => f.write_str("in_review"),
                 Self::ReviewComplete => f.write_str("review_complete"),
                 Self::Filtered => f.write_str("filtered"),
@@ -19939,6 +20305,7 @@ pub mod types {
         type Err = self::error::ConversionError;
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
             match value {
+                "queued" => Ok(Self::Queued),
                 "in_review" => Ok(Self::InReview),
                 "review_complete" => Ok(Self::ReviewComplete),
                 "filtered" => Ok(Self::Filtered),
@@ -20034,6 +20401,274 @@ pub mod types {
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct RunBindRequest {
         pub conversation_id: ::uuid::Uuid,
+    }
+
+    ///`RunChangeCounts`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RunChangeCounts",
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "added": {
+    ///      "title": "Added",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "all": {
+    ///      "title": "All",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "changed": {
+    ///      "title": "Changed",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "dismissed": {
+    ///      "title": "Dismissed",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "resolved": {
+    ///      "title": "Resolved",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct RunChangeCounts {
+        #[serde(default)]
+        pub added: i64,
+        #[serde(default)]
+        pub all: i64,
+        #[serde(default)]
+        pub changed: i64,
+        #[serde(default)]
+        pub dismissed: i64,
+        #[serde(default)]
+        pub resolved: i64,
+    }
+
+    impl ::std::default::Default for RunChangeCounts {
+        fn default() -> Self {
+            Self {
+                added: Default::default(),
+                all: Default::default(),
+                changed: Default::default(),
+                dismissed: Default::default(),
+                resolved: Default::default(),
+            }
+        }
+    }
+
+    ///`RunChangeGroup`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RunChangeGroup",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "added",
+    ///    "resolved",
+    ///    "dismissed",
+    ///    "changed"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum RunChangeGroup {
+        #[serde(rename = "added")]
+        Added,
+        #[serde(rename = "resolved")]
+        Resolved,
+        #[serde(rename = "dismissed")]
+        Dismissed,
+        #[serde(rename = "changed")]
+        Changed,
+    }
+
+    impl ::std::fmt::Display for RunChangeGroup {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Added => f.write_str("added"),
+                Self::Resolved => f.write_str("resolved"),
+                Self::Dismissed => f.write_str("dismissed"),
+                Self::Changed => f.write_str("changed"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for RunChangeGroup {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "added" => Ok(Self::Added),
+                "resolved" => Ok(Self::Resolved),
+                "dismissed" => Ok(Self::Dismissed),
+                "changed" => Ok(Self::Changed),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RunChangeGroup {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for RunChangeGroup {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RunChangeGroup {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///What a run did to an item, recorded once at the sync transition point.
+    ///
+    ///Findings use
+    /// added|modified|resolved|dismissed|reopened|needs_verification;
+    /// surface uses added|modified. One superset enum serves both streams (the
+    /// FE renders only the kinds each stream can emit). RESOLVED (fixed)
+    /// and DISMISSED (false-positive) are kept distinct — folding dismissed
+    /// into resolved would report a false-positive dismissal as a real fix
+    /// in the run badge and stats. NEEDS_VERIFICATION is its OWN kind —
+    /// never ADDED (which reads as a confirmed finding in the "N
+    /// discovered" count) and never MODIFIED (which would hide the
+    /// unconfirmed lead) — so a lead Oliver parked for human reconfirm surfaces
+    ///truthfully. Surface items only ever appear (added) or change
+    ///provenance/properties (modified) — there is no stale/removed transition,
+    ///because a black-box probe can never prove an endpoint is gone (freshness
+    ///lives in `last_seen_run`).
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RunChangeKind",
+    ///  "description": "What a run did to an item, recorded once at the sync transition point.\n\nFindings use added|modified|resolved|dismissed|reopened|needs_verification;\nsurface uses added|modified. One superset enum serves both streams (the FE\nrenders only the kinds each stream can emit). RESOLVED (fixed) and DISMISSED\n(false-positive) are kept distinct — folding dismissed into resolved would\nreport a false-positive dismissal as a real fix in the run badge and stats.\nNEEDS_VERIFICATION is its OWN kind — never ADDED (which reads as a confirmed\nfinding in the \"N discovered\" count) and never MODIFIED (which would hide the\nunconfirmed lead) — so a lead Oliver parked for human reconfirm surfaces\ntruthfully. Surface items only ever appear (added) or change\nprovenance/properties (modified) — there is no stale/removed transition,\nbecause a black-box probe can never prove an endpoint is gone (freshness\nlives in `last_seen_run`).",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "added",
+    ///    "modified",
+    ///    "resolved",
+    ///    "dismissed",
+    ///    "reopened",
+    ///    "needs_verification"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum RunChangeKind {
+        #[serde(rename = "added")]
+        Added,
+        #[serde(rename = "modified")]
+        Modified,
+        #[serde(rename = "resolved")]
+        Resolved,
+        #[serde(rename = "dismissed")]
+        Dismissed,
+        #[serde(rename = "reopened")]
+        Reopened,
+        #[serde(rename = "needs_verification")]
+        NeedsVerification,
+    }
+
+    impl ::std::fmt::Display for RunChangeKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Added => f.write_str("added"),
+                Self::Modified => f.write_str("modified"),
+                Self::Resolved => f.write_str("resolved"),
+                Self::Dismissed => f.write_str("dismissed"),
+                Self::Reopened => f.write_str("reopened"),
+                Self::NeedsVerification => f.write_str("needs_verification"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for RunChangeKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "added" => Ok(Self::Added),
+                "modified" => Ok(Self::Modified),
+                "resolved" => Ok(Self::Resolved),
+                "dismissed" => Ok(Self::Dismissed),
+                "reopened" => Ok(Self::Reopened),
+                "needs_verification" => Ok(Self::NeedsVerification),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RunChangeKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for RunChangeKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RunChangeKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
     }
 
     ///The machine where the run executes.
@@ -20236,6 +20871,15 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "credit_limit": {
+    ///      "title": "Credit Limit",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "maximum": 1000000000.0,
+    ///      "exclusiveMinimum": 0.0
+    ///    },
     ///    "execution_host": {
     ///      "$ref": "#/components/schemas/RunExecutionHost"
     ///    },
@@ -20281,6 +20925,8 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub advisor_enabled: ::std::option::Option<bool>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub credit_limit: ::std::option::Option<::std::num::NonZeroU64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub execution_host: ::std::option::Option<RunExecutionHost>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub intensity: ::std::option::Option<Intensity>,
@@ -20302,6 +20948,7 @@ pub mod types {
         fn default() -> Self {
             Self {
                 advisor_enabled: Default::default(),
+                credit_limit: Default::default(),
                 execution_host: Default::default(),
                 intensity: Default::default(),
                 jev_enabled: Default::default(),
@@ -20479,6 +21126,43 @@ pub mod types {
     ///      "type": "string",
     ///      "format": "date-time"
     ///    },
+    ///    "credit_limit": {
+    ///      "title": "Credit Limit",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "credit_limit_reached_at": {
+    ///      "title": "Credit Limit Reached At",
+    ///      "description": "When the loop checkpoint stopped testing at or
+    /// above 90% of the run credit limit.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "credit_usage_percent": {
+    ///      "title": "Credit Usage Percent",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "credit_usage_updated_at": {
+    ///      "title": "Credit Usage Updated At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "credits_used": {
+    ///      "title": "Credits Used",
+    ///      "default": 0,
+    ///      "type": "number"
+    ///    },
     ///    "diff_focus": {
     ///      "title": "Diff Focus",
     ///      "type": [
@@ -20570,6 +21254,19 @@ pub mod types {
     ///    "result": {
     ///      "$ref": "#/components/schemas/RunResult"
     ///    },
+    ///    "resume_available": {
+    ///      "title": "Resume Available",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "resumed_at": {
+    ///      "title": "Resumed At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
     ///    "run_scope": {
     ///      "$ref": "#/components/schemas/ScopeSpec"
     ///    },
@@ -20602,6 +21299,20 @@ pub mod types {
         pub counts: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub credit_limit: ::std::option::Option<i64>,
+        ///When the loop checkpoint stopped testing at or above 90% of the run
+        /// credit limit.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub credit_limit_reached_at:
+            ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub credit_usage_percent: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub credit_usage_updated_at:
+            ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default = "defaults::run_public_credits_used")]
+        pub credits_used: f64,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub diff_focus: ::std::option::Option<::std::vec::Vec<ChangeFocusTarget>>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub execution_host: ::std::option::Option<RunExecutionHost>,
@@ -20629,6 +21340,10 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub report_revision_conversation_id: ::std::option::Option<::uuid::Uuid>,
         pub result: RunResult,
+        #[serde(default)]
+        pub resume_available: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub resumed_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub run_scope: ScopeSpec,
         pub scan_mode: ScanMode,
         pub selection: SavedSelection,
@@ -21377,6 +22092,14 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "policy_lease": {
+    ///      "title": "Policy Lease",
+    ///      "type": [
+    ///        "object",
+    ///        "null"
+    ///      ],
+    ///      "additionalProperties": true
+    ///    },
     ///    "renew_idle_timer": {
     ///      "title": "Renew Idle Timer",
     ///      "type": [
@@ -21430,6 +22153,9 @@ pub mod types {
         pub memory_write_context: ::std::option::Option<MemoryWriteContext>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub needs_skills: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub policy_lease:
+            ::std::option::Option<::serde_json::Map<::std::string::String, ::serde_json::Value>>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub renew_idle_timer: ::std::option::Option<bool>,
         pub script: ::std::string::String,
@@ -22818,6 +23544,9 @@ pub mod types {
     ///    "summary"
     ///  ],
     ///  "properties": {
+    ///    "change_counts": {
+    ///      "$ref": "#/components/schemas/RunChangeCounts"
+    ///    },
     ///    "counts": {
     ///      "title": "Counts",
     ///      "type": "array",
@@ -22837,6 +23566,13 @@ pub mod types {
     ///    },
     ///    "summary": {
     ///      "$ref": "#/components/schemas/SurfaceSummary"
+    ///    },
+    ///    "undocumented_count": {
+    ///      "title": "Undocumented Count",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
     ///    }
     ///  }
     ///}
@@ -22844,10 +23580,14 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct SurfaceItemListResponse {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub change_counts: ::std::option::Option<RunChangeCounts>,
         pub counts: ::std::vec::Vec<SurfaceAssetTypeCount>,
         pub data: ::std::vec::Vec<SurfaceItemPublic>,
         pub meta: PaginationMeta,
         pub summary: SurfaceSummary,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub undocumented_count: ::std::option::Option<i64>,
     }
 
     ///Response shape for one backend-backed Cyber surface item.
@@ -22915,6 +23655,9 @@ pub mod types {
     ///      "type": "object",
     ///      "additionalProperties": true
     ///    },
+    ///    "run_change": {
+    ///      "$ref": "#/components/schemas/ItemRunChange"
+    ///    },
     ///    "source": {
     ///      "$ref": "#/components/schemas/SurfaceSource"
     ///    },
@@ -22937,6 +23680,8 @@ pub mod types {
         #[serde(default)]
         pub open_finding_count: i64,
         pub properties: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub run_change: ::std::option::Option<ItemRunChange>,
         pub source: SurfaceSource,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub surface_status: ::std::option::Option<SurfaceStatus>,
@@ -27350,6 +28095,22 @@ pub mod types {
             "./cyber/app-memory".to_string()
         }
 
+        pub(super) fn observation_in_evidence_ref() -> super::ObservationInEvidenceRef {
+            super::ObservationInEvidenceRef("".to_string())
+        }
+
+        pub(super) fn observation_in_reason() -> super::ObservationInReason {
+            super::ObservationInReason("".to_string())
+        }
+
+        pub(super) fn observation_in_worker() -> super::ObservationInWorker {
+            super::ObservationInWorker("".to_string())
+        }
+
+        pub(super) fn run_public_credits_used() -> f64 {
+            0_f64
+        }
+
         pub(super) fn token_token_type() -> ::std::string::String {
             "bearer".to_string()
         }
@@ -28355,8 +29116,10 @@ impl Client {
     pub async fn appsec_list_findings<'a>(
         &'a self,
         app_id: &'a ::uuid::Uuid,
+        change: Option<types::RunChangeGroup>,
         owasp: Option<&'a types::Owasp>,
         page: Option<::std::num::NonZeroU64>,
+        run_id: Option<&'a ::uuid::Uuid>,
         search: Option<&'a types::Search>,
         severity: Option<types::Severity>,
         sort: Option<types::FindingSort>,
@@ -28385,8 +29148,10 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new("change", &change))
             .query(&progenitor_client::QueryParam::new("owasp", &owasp))
             .query(&progenitor_client::QueryParam::new("page", &page))
+            .query(&progenitor_client::QueryParam::new("run_id", &run_id))
             .query(&progenitor_client::QueryParam::new("search", &search))
             .query(&progenitor_client::QueryParam::new("severity", &severity))
             .query(&progenitor_client::QueryParam::new("sort", &sort))
@@ -28599,12 +29364,15 @@ impl Client {
     pub async fn appsec_list_surface<'a>(
         &'a self,
         app_id: &'a ::uuid::Uuid,
+        change: Option<types::RunChangeGroup>,
         page: Option<::std::num::NonZeroU64>,
+        run_id: Option<&'a ::uuid::Uuid>,
         search: Option<&'a types::Search>,
         sort: Option<types::SurfaceSort>,
         sort_dir: Option<types::SortOrder>,
         surface_status: Option<types::SurfaceStatus>,
         take: Option<::std::num::NonZeroU64>,
+        undocumented: Option<bool>,
         workspace_id: Option<&'a ::serde_json::Value>,
     ) -> Result<ResponseValue<types::SurfaceItemListResponse>, Error<()>> {
         let url = format!(
@@ -28625,7 +29393,9 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new("change", &change))
             .query(&progenitor_client::QueryParam::new("page", &page))
+            .query(&progenitor_client::QueryParam::new("run_id", &run_id))
             .query(&progenitor_client::QueryParam::new("search", &search))
             .query(&progenitor_client::QueryParam::new("sort", &sort))
             .query(&progenitor_client::QueryParam::new("sort_dir", &sort_dir))
@@ -28634,6 +29404,10 @@ impl Client {
                 &surface_status,
             ))
             .query(&progenitor_client::QueryParam::new("take", &take))
+            .query(&progenitor_client::QueryParam::new(
+                "undocumented",
+                &undocumented,
+            ))
             .query(&progenitor_client::QueryParam::new(
                 "workspace_id",
                 &workspace_id,
@@ -30402,7 +31176,7 @@ impl Client {
         include_children: Option<bool>,
         limit: Option<::std::num::NonZeroU64>,
         page: Option<::std::num::NonZeroU64>,
-        search: Option<&'a str>,
+        search: Option<&'a types::Search>,
         severity: Option<&'a ::std::vec::Vec<types::Severity>>,
         sort_by: Option<&'a str>,
         sort_order: Option<types::SortOrder>,

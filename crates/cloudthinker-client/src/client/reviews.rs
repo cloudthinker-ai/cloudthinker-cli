@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 use super::CtClient;
-use crate::error::{CtError, CtResult};
+use crate::error::CtResult;
 use crate::review_url::{MrCoordinates, MrProvider};
 
 /// Terminal + non-terminal review states, serialized with the API's wire
@@ -9,6 +9,7 @@ use crate::review_url::{MrCoordinates, MrProvider};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReviewStatus {
+    Queued,
     InReview,
     ReviewComplete,
     Filtered,
@@ -31,6 +32,7 @@ impl From<cloudthinker_api::types::ReviewStatus> for ReviewStatus {
     fn from(status: cloudthinker_api::types::ReviewStatus) -> Self {
         use cloudthinker_api::types::ReviewStatus as A;
         match status {
+            A::Queued => Self::Queued,
             A::InReview => Self::InReview,
             A::ReviewComplete => Self::ReviewComplete,
             A::Filtered => Self::Filtered,
@@ -174,10 +176,7 @@ impl CtClient {
     /// `CtError::Api { status: 404, .. }`.
     pub async fn lookup_review(&self, coords: &MrCoordinates) -> CtResult<ReviewView> {
         let provider = to_api_provider(coords.provider);
-        let mr_iid = u64::try_from(coords.mr_iid)
-            .ok()
-            .and_then(std::num::NonZeroU64::new)
-            .ok_or_else(|| CtError::Usage("MR/PR number must be positive".to_string()))?;
+        let mr_iid = coords.mr_iid;
         let project_path = coords.project_path.as_str();
         let view = self
             .authed(async |c: cloudthinker_api::Client| {

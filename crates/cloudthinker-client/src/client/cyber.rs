@@ -13,10 +13,24 @@ const MAX_OBSERVATIONS_PER_BATCH: usize = 500;
 // must not stall the whole plan, and a timeout is a truthful `blocked` row.
 const PROBE_TIMEOUT_SECS: u64 = 20;
 
-pub(super) fn observation_batches<'a>(
-    observations: &'a [Observation],
-) -> impl Iterator<Item = &'a [Observation]> + 'a {
+pub(super) fn observation_batches<T>(observations: &[T]) -> impl Iterator<Item = &[T]> {
     observations.chunks(MAX_OBSERVATIONS_PER_BATCH)
+}
+
+fn observation_to_api(o: &Observation) -> CtResult<cloudthinker_api::types::ObservationIn> {
+    let too_long = |field: &str, error: cloudthinker_api::types::error::ConversionError| {
+        CtError::Usage(format!("observation `{}` {field} is {error}", o.row_id))
+    };
+    Ok(cloudthinker_api::types::ObservationIn {
+        row_id: o.row_id.clone(),
+        status: o.status.to_api(),
+        reason: o.reason.parse().map_err(|e| too_long("reason", e))?,
+        evidence_ref: o
+            .evidence_ref
+            .parse()
+            .map_err(|e| too_long("evidence ref", e))?,
+        worker: o.worker.parse().map_err(|e| too_long("worker", e))?,
+    })
 }
 
 pub(super) fn validate_observation_ids(observations: &[Observation]) -> CtResult<()> {
@@ -774,6 +788,7 @@ impl CtClient {
     ) -> CtResult<CyberRun> {
         let body = cloudthinker_api::types::RunLaunchRequest {
             advisor_enabled: None,
+            credit_limit: None,
             execution_host: Some(cloudthinker_api::types::RunExecutionHost::Local),
             intensity: intensity.map(CyberIntensity::into_api),
             jev_enabled: None,
@@ -920,7 +935,9 @@ impl CtClient {
                 c.appsec_list_findings(
                     &app_id,
                     None,
+                    None,
                     Some(page),
+                    None,
                     None,
                     severity,
                     Some(cloudthinker_api::types::FindingSort::Severity),
@@ -1170,19 +1187,14 @@ impl CtClient {
         if observations.is_empty() {
             return self.cyber_get_coverage(run_id).await;
         }
+        let observations = observations
+            .iter()
+            .map(observation_to_api)
+            .collect::<CtResult<Vec<_>>>()?;
         let mut latest_report = None;
         for batch in observation_batches(&observations) {
             let body = cloudthinker_api::types::ObservationsIngestRequest {
-                observations: batch
-                    .iter()
-                    .map(|o| cloudthinker_api::types::ObservationIn {
-                        row_id: o.row_id.clone(),
-                        status: o.status.to_api(),
-                        reason: o.reason.clone(),
-                        evidence_ref: o.evidence_ref.clone(),
-                        worker: o.worker.clone(),
-                    })
-                    .collect(),
+                observations: batch.to_vec(),
             };
             let report = self
                 .authed(async |c: cloudthinker_api::Client| {

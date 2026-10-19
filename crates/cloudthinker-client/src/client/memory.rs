@@ -96,7 +96,9 @@ impl CtClient {
                         .appsec_list_findings(
                             &app_id,
                             None,
+                            None,
                             Some(page),
+                            None,
                             None,
                             None,
                             Some(cloudthinker_api::types::FindingSort::Severity),
@@ -146,12 +148,15 @@ impl CtClient {
                     client
                         .appsec_list_surface(
                             &app_id,
+                            None,
                             Some(page),
+                            None,
                             None,
                             Some(cloudthinker_api::types::SurfaceSort::CreatedAt),
                             Some(cloudthinker_api::types::SortOrder::Desc),
                             None,
                             Some(take),
+                            None,
                             None,
                         )
                         .await

@@ -365,6 +365,12 @@
       "AgentCliWritePublic": {
         "description": "One cloud write from a local session, as the terminal and the viewer read it.",
         "properties": {
+          "can_respond": {
+            "description": "Whether the caller may approve this write. Set only on a session list read while the write waits for approval.",
+            "nullable": true,
+            "title": "Can Respond",
+            "type": "boolean"
+          },
           "connection_list": {
             "items": {
               "type": "string"
@@ -1270,6 +1276,12 @@
             "title": "Offset",
             "type": "integer"
           },
+          "policy_lease": {
+            "additionalProperties": true,
+            "nullable": true,
+            "title": "Policy Lease",
+            "type": "object"
+          },
           "stderr_offset": {
             "nullable": true,
             "title": "Stderr Offset",
@@ -2057,6 +2069,15 @@
             "$ref": "#/components/schemas/MergeDisabledReason",
             "nullable": true
           },
+          "merge_hint": {
+            "$ref": "#/components/schemas/MergeDisabledReason",
+            "nullable": true
+          },
+          "merge_hint_detail": {
+            "nullable": true,
+            "title": "Merge Hint Detail",
+            "type": "string"
+          },
           "merge_status": {
             "nullable": true,
             "title": "Merge Status",
@@ -2795,6 +2816,10 @@
       "CyberFindingListResponse": {
         "description": "Response shape for GET /appsec/apps/{app_id}/findings (paginated).",
         "properties": {
+          "change_counts": {
+            "$ref": "#/components/schemas/RunChangeCounts",
+            "nullable": true
+          },
           "counts": {
             "$ref": "#/components/schemas/FindingTabCounts",
             "nullable": true
@@ -3836,6 +3861,10 @@
             "title": "Owasp",
             "type": "string"
           },
+          "run_change": {
+            "$ref": "#/components/schemas/ItemRunChange",
+            "nullable": true
+          },
           "severity": {
             "$ref": "#/components/schemas/Severity"
           },
@@ -3922,6 +3951,11 @@
           "confirmed": {
             "default": 0,
             "title": "Confirmed",
+            "type": "integer"
+          },
+          "dismissed": {
+            "default": 0,
+            "title": "Dismissed",
             "type": "integer"
           },
           "fixed": {
@@ -4450,11 +4484,12 @@
         "type": "string"
       },
       "Intensity": {
-        "description": "Per-run probing intensity: safe|aggressive|full.\n\nConsolidates two legacy flags into one: the dead PentestRun.safe_mode\n(hardcoded True, never varied) and the live App.allow_active_probing\nconsent gate (destructive DELETE/data-changing probing). App carries a\ndefault_intensity that seeds new runs; PentestRun and CyberSchedule each\nfreeze their own chosen intensity at construction (a schedule's frozen\nintensity survives a later change to the App's default).",
+        "description": "Per-run probing intensity: safe|aggressive|full|ultra.\n\nConsolidates two legacy flags into one: the dead PentestRun.safe_mode\n(hardcoded True, never varied) and the live App.allow_active_probing\nconsent gate (destructive DELETE/data-changing probing). App carries a\ndefault_intensity that seeds new runs; PentestRun and CyberSchedule each\nfreeze their own chosen intensity at construction (a schedule's frozen\nintensity survives a later change to the App's default).\n\n``ultra`` has the same destructive-probing allowance as ``full`` but also\nturns on the saturation loop: the agent keeps hunting new attack surface in\nfurther waves until two in a row find nothing new (the `cyber-scan-modes-ultra`\ndepth leaf). It is the highest blast radius.",
         "enum": [
           "safe",
           "aggressive",
-          "full"
+          "full",
+          "ultra"
         ],
         "title": "Intensity",
         "type": "string"
@@ -4520,6 +4555,24 @@
           "size"
         ],
         "title": "IssueArtifactGrantRequest",
+        "type": "object"
+      },
+      "ItemRunChange": {
+        "properties": {
+          "changed_at": {
+            "format": "date-time",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RunChangeKind"
+          }
+        },
+        "required": [
+          "kind",
+          "changed_at"
+        ],
+        "title": "ItemRunChange",
         "type": "object"
       },
       "LegacyApprovalLevel": {
@@ -5007,12 +5060,14 @@
         "properties": {
           "evidence_ref": {
             "default": "",
-            "title": "Evidence Ref",
+            "maxLength": 1024,
+            "title": "ObservationIn_evidence_ref",
             "type": "string"
           },
           "reason": {
             "default": "",
-            "title": "Reason",
+            "maxLength": 1024,
+            "title": "ObservationIn_reason",
             "type": "string"
           },
           "row_id": {
@@ -5024,7 +5079,8 @@
           },
           "worker": {
             "default": "",
-            "title": "Worker",
+            "maxLength": 128,
+            "title": "ObservationIn_worker",
             "type": "string"
           }
         },
@@ -5744,6 +5800,19 @@
             "title": "Type",
             "type": "string"
           },
+          "updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_edited_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "User Edited Fields",
+            "type": "array"
+          },
           "visibility": {
             "$ref": "#/components/schemas/RecommendationVisibility"
           }
@@ -6161,6 +6230,7 @@
       },
       "ReviewStatus": {
         "enum": [
+          "queued",
           "in_review",
           "review_complete",
           "filtered",
@@ -6195,6 +6265,60 @@
         ],
         "title": "RunBindRequest",
         "type": "object"
+      },
+      "RunChangeCounts": {
+        "properties": {
+          "added": {
+            "default": 0,
+            "title": "Added",
+            "type": "integer"
+          },
+          "all": {
+            "default": 0,
+            "title": "All",
+            "type": "integer"
+          },
+          "changed": {
+            "default": 0,
+            "title": "Changed",
+            "type": "integer"
+          },
+          "dismissed": {
+            "default": 0,
+            "title": "Dismissed",
+            "type": "integer"
+          },
+          "resolved": {
+            "default": 0,
+            "title": "Resolved",
+            "type": "integer"
+          }
+        },
+        "title": "RunChangeCounts",
+        "type": "object"
+      },
+      "RunChangeGroup": {
+        "enum": [
+          "added",
+          "resolved",
+          "dismissed",
+          "changed"
+        ],
+        "title": "RunChangeGroup",
+        "type": "string"
+      },
+      "RunChangeKind": {
+        "description": "What a run did to an item, recorded once at the sync transition point.\n\nFindings use added|modified|resolved|dismissed|reopened|needs_verification;\nsurface uses added|modified. One superset enum serves both streams (the FE\nrenders only the kinds each stream can emit). RESOLVED (fixed) and DISMISSED\n(false-positive) are kept distinct \u2014 folding dismissed into resolved would\nreport a false-positive dismissal as a real fix in the run badge and stats.\nNEEDS_VERIFICATION is its OWN kind \u2014 never ADDED (which reads as a confirmed\nfinding in the \"N discovered\" count) and never MODIFIED (which would hide the\nunconfirmed lead) \u2014 so a lead Oliver parked for human reconfirm surfaces\ntruthfully. Surface items only ever appear (added) or change\nprovenance/properties (modified) \u2014 there is no stale/removed transition,\nbecause a black-box probe can never prove an endpoint is gone (freshness\nlives in `last_seen_run`).",
+        "enum": [
+          "added",
+          "modified",
+          "resolved",
+          "dismissed",
+          "reopened",
+          "needs_verification"
+        ],
+        "title": "RunChangeKind",
+        "type": "string"
       },
       "RunExecutionHost": {
         "description": "The machine where the run executes.\n\n``cloud`` \u2014 the worker + OpenSandbox pipeline (``run_pentest_scan_task``).\n``local`` \u2014 the developer's Mac through a bound ``cloudthinker agent``\nsession; the backend never enqueues a scan task for a local row, and the\nlocal session settles it through the same ``finalize_run`` CAS. Exactly one\nhost is live per run; there is no failover between them.",
@@ -6255,6 +6379,14 @@
             "nullable": true,
             "title": "Advisor Enabled",
             "type": "boolean"
+          },
+          "credit_limit": {
+            "exclusiveMinimum": true,
+            "maximum": 1000000000,
+            "minimum": 0,
+            "nullable": true,
+            "title": "Credit Limit",
+            "type": "integer"
           },
           "execution_host": {
             "$ref": "#/components/schemas/RunExecutionHost",
@@ -6344,6 +6476,34 @@
             "title": "Created At",
             "type": "string"
           },
+          "credit_limit": {
+            "nullable": true,
+            "title": "Credit Limit",
+            "type": "integer"
+          },
+          "credit_limit_reached_at": {
+            "description": "When the loop checkpoint stopped testing at or above 90% of the run credit limit.",
+            "format": "date-time",
+            "nullable": true,
+            "title": "Credit Limit Reached At",
+            "type": "string"
+          },
+          "credit_usage_percent": {
+            "nullable": true,
+            "title": "Credit Usage Percent",
+            "type": "integer"
+          },
+          "credit_usage_updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Credit Usage Updated At",
+            "type": "string"
+          },
+          "credits_used": {
+            "default": 0,
+            "title": "Credits Used",
+            "type": "number"
+          },
           "diff_focus": {
             "items": {
               "$ref": "#/components/schemas/ChangeFocusTarget"
@@ -6428,6 +6588,17 @@
           },
           "result": {
             "$ref": "#/components/schemas/RunResult"
+          },
+          "resume_available": {
+            "default": false,
+            "title": "Resume Available",
+            "type": "boolean"
+          },
+          "resumed_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Resumed At",
+            "type": "string"
           },
           "run_scope": {
             "$ref": "#/components/schemas/ScopeSpec"
@@ -6611,6 +6782,12 @@
             "nullable": true,
             "title": "Needs Skills",
             "type": "boolean"
+          },
+          "policy_lease": {
+            "additionalProperties": true,
+            "nullable": true,
+            "title": "Policy Lease",
+            "type": "object"
           },
           "renew_idle_timer": {
             "nullable": true,
@@ -6942,6 +7119,10 @@
       "SurfaceItemListResponse": {
         "description": "Response shape for GET /appsec/apps/{app_id}/surface.\n\n`data`/`meta` describe the current page of ACTIVE surface items; `counts`\ncarries the full per-asset-type active totals (independent of pagination) so\nthe summary chips stay accurate across pages.",
         "properties": {
+          "change_counts": {
+            "$ref": "#/components/schemas/RunChangeCounts",
+            "nullable": true
+          },
           "counts": {
             "items": {
               "$ref": "#/components/schemas/SurfaceAssetTypeCount"
@@ -6961,6 +7142,11 @@
           },
           "summary": {
             "$ref": "#/components/schemas/SurfaceSummary"
+          },
+          "undocumented_count": {
+            "nullable": true,
+            "title": "Undocumented Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -7017,6 +7203,10 @@
             "additionalProperties": true,
             "title": "Properties",
             "type": "object"
+          },
+          "run_change": {
+            "$ref": "#/components/schemas/ItemRunChange",
+            "nullable": true
           },
           "source": {
             "$ref": "#/components/schemas/SurfaceSource"
@@ -9194,6 +9384,27 @@
           },
           {
             "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "nullable": true,
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "change",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/RunChangeGroup",
+              "nullable": true,
+              "title": "Change"
+            }
+          },
+          {
+            "in": "query",
             "name": "workspace_id",
             "required": false,
             "schema": {
@@ -9514,6 +9725,37 @@
               "$ref": "#/components/schemas/SurfaceStatus",
               "nullable": true,
               "title": "Surface Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "nullable": true,
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "change",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/RunChangeGroup",
+              "nullable": true,
+              "title": "Change"
+            }
+          },
+          {
+            "in": "query",
+            "name": "undocumented",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Undocumented",
+              "type": "boolean"
             }
           },
           {
@@ -11337,6 +11579,7 @@
             "required": false,
             "schema": {
               "description": "Search in title/description",
+              "maxLength": 200,
               "nullable": true,
               "title": "Search",
               "type": "string"
