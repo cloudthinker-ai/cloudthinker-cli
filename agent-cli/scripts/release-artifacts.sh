@@ -18,7 +18,7 @@ fi
   exit 1
 }
 
-BUN_VERSION="1.4.2"
+BUN_VERSION="1.4.4"
 
 if [ -x "$HOME/.bun/bin/bun" ]; then
   BUN="$HOME/.bun/bin/bun"

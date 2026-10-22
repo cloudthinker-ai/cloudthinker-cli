@@ -39,6 +39,7 @@ use rand as _;
 use serde as _;
 use supports_color as _;
 use tokio as _;
+use unicode_width as _;
 
 use std::collections::VecDeque;
 
@@ -2328,6 +2329,7 @@ fn ca_cli_skill_exports_bundled_modules_offline() {
         ("cyber-verify", "cyber-verify.md"),
         ("cyber-report", "cyber-report.md"),
         ("worker", "worker.md"),
+        ("remote", "remote.md"),
     ] {
         let expected = std::fs::read(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -3350,4 +3352,700 @@ fn recommendations_ls_renders_savings_json_and_status_filter() {
     let requests = api.requests();
     assert!(requests[0].contains("status=in_progress"));
     assert!(requests[0].contains("limit=3"));
+}
+
+#[cfg(unix)]
+mod remote {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::{Path, PathBuf};
+
+    use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
+
+    const WAIT: Duration = Duration::from_secs(20);
+    const DETACH_KEY: &[u8] = b"\x1a";
+
+    struct Fixture {
+        dir: PathBuf,
+        api: MockApi,
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            let id = uuid::Uuid::new_v4().simple().to_string();
+            let dir = PathBuf::from(format!("/tmp/ctr-{}", &id[..10]));
+            std::fs::create_dir_all(dir.join("bin")).unwrap();
+            std::os::unix::fs::symlink(
+                assert_cmd::cargo::cargo_bin("cloudthinker"),
+                dir.join("bin").join("cloudthinker"),
+            )
+            .unwrap();
+            write_script(
+                &dir.join("ssh"),
+                "#!/bin/sh\n\
+                 if [ -e \"$PWD/.link-down\" ]; then echo 'ssh: connect to host box port 22: Connection refused' >&2; exit 255; fi\n\
+                 echo \"$1\" >> \"$HOME/ssh-targets\"\nexec sh -c \"$2\"\n",
+            );
+            write_script(
+                &dir.join("cloudthinker-agent"),
+                "#!/bin/bash\n\
+                 trap 'echo REDRAW' USR2\n\
+                 trap 'exit 130' TERM\n\
+                 trap 'echo \"SIZE $(stty size)\"' WINCH\n\
+                 echo \"$$\" > \"$CLOUDTHINKER_REMOTE_READY\"\n\
+                 echo \"started remote=$CLOUDTHINKER_REMOTE update=$CLOUDTHINKER_NO_UPDATE_CHECK term=$TERM_PROGRAM\"\n\
+                 echo \"host=$CLOUDTHINKER_REMOTE_HOST_PID\"\n\
+                 echo \"cwd=$(pwd)\"\n\
+                 echo \"args=$*\"\n\
+                 while true; do\n\
+                   if IFS= read -r -t 0.2 line; then\n\
+                     case \"$line\" in quit) exit 7;; *) echo \"echo:$line\";; esac\n\
+                   fi\n\
+                 done\n",
+            );
+            Self {
+                dir,
+                api: MockApi::start(WHOAMI_BODY.into()),
+            }
+        }
+
+        fn home(&self) -> &Path {
+            &self.dir
+        }
+
+        fn folder(&self, name: &str) -> PathBuf {
+            let folder = self.dir.join(name);
+            std::fs::create_dir_all(&folder).unwrap();
+            folder
+        }
+
+        fn state(&self) -> PathBuf {
+            self.dir.join("state")
+        }
+
+        fn remote_bin(&self) -> PathBuf {
+            self.dir.join("bin").join("cloudthinker")
+        }
+
+        fn open(&self, cwd: &Path) -> Client {
+            self.client(&["remote", "box"], cwd, None)
+        }
+
+        fn client(&self, args: &[&str], cwd: &Path, remote_bin: Option<&Path>) -> Client {
+            let pair = native_pty_system()
+                .openpty(PtySize {
+                    rows: 30,
+                    cols: 100,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })
+                .unwrap();
+            let mut cmd = CommandBuilder::new(assert_cmd::cargo::cargo_bin("cloudthinker"));
+            cmd.args(args);
+            cmd.cwd(cwd);
+            cmd.env("TERM", "xterm-256color");
+            cmd.env("TERM_PROGRAM", "ghostty");
+            cmd.env("HOME", self.dir.as_os_str());
+            cmd.env("CLOUDTHINKER_REMOTE_DIR", self.state().as_os_str());
+            cmd.env("CLOUDTHINKER_REMOTE_SSH", self.dir.join("ssh").as_os_str());
+            cmd.env(
+                "CLOUDTHINKER_REMOTE_BIN",
+                remote_bin
+                    .map_or_else(|| self.remote_bin(), Path::to_path_buf)
+                    .as_os_str(),
+            );
+            cmd.env(
+                "CLOUDTHINKER_AGENT_BIN",
+                self.dir.join("cloudthinker-agent").as_os_str(),
+            );
+            cmd.env("CLOUDTHINKER_TOKEN", "test-access-token");
+            cmd.env("CLOUDTHINKER_URL", &self.api.base_url);
+            cmd.env("CLOUDTHINKER_NO_UPDATE_CHECK", "1");
+            cmd.env_remove("CLOUDTHINKER_WORKSPACE");
+            cmd.env_remove("CLOUDTHINKER_CODING_AGENT_DIR");
+            cmd.env_remove("CLOUDTHINKER_CODING_AGENT_SESSION_DIR");
+            cmd.env_remove("SSH_AUTH_SOCK");
+            let child = pair.slave.spawn_command(cmd).unwrap();
+            drop(pair.slave);
+            let output = Arc::new(Mutex::new(Vec::new()));
+            let mut reader = pair.master.try_clone_reader().unwrap();
+            let sink = output.clone();
+            std::thread::spawn(move || {
+                let mut buffer = [0u8; 8192];
+                while let Ok(read) = reader.read(&mut buffer) {
+                    if read == 0 {
+                        break;
+                    }
+                    sink.lock().unwrap().extend_from_slice(&buffer[..read]);
+                }
+            });
+            let writer = pair.master.take_writer().unwrap();
+            Client {
+                child,
+                master: pair.master,
+                writer,
+                output,
+            }
+        }
+
+        fn link(&self, cwd: &Path, up: bool) {
+            let marker = cwd.join(".link-down");
+            if up {
+                std::fs::remove_file(marker).unwrap();
+            } else {
+                std::fs::write(marker, b"").unwrap();
+            }
+        }
+
+        fn drop_links(&self) {
+            for pid in self.bridge_pids() {
+                std::process::Command::new("kill")
+                    .args(["-9", &pid])
+                    .status()
+                    .unwrap();
+            }
+        }
+
+        fn bridge_pids(&self) -> Vec<String> {
+            let out = std::process::Command::new("pgrep")
+                .args([
+                    "-f",
+                    &format!("^{} remote-bridge", self.remote_bin().display()),
+                ])
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout)
+                .split_whitespace()
+                .map(str::to_string)
+                .collect()
+        }
+
+        fn agent_pids(&self) -> Vec<String> {
+            let Ok(entries) = std::fs::read_dir(self.state()) else {
+                return Vec::new();
+            };
+            let mut pids: Vec<String> = entries
+                .flatten()
+                .filter(|entry| entry.file_name().to_string_lossy().ends_with(".ready"))
+                .filter_map(|entry| std::fs::read_to_string(entry.path()).ok())
+                .map(|pid| pid.trim().to_string())
+                .filter(|pid| !pid.is_empty())
+                .collect();
+            pids.sort();
+            pids
+        }
+
+        fn wait_agents(&self, count: usize) -> Vec<String> {
+            let deadline = std::time::Instant::now() + WAIT;
+            while std::time::Instant::now() < deadline {
+                let pids = self.agent_pids();
+                if pids.len() == count {
+                    return pids;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            panic!(
+                "expected {count} running agents, found {:?}",
+                self.agent_pids()
+            );
+        }
+
+        fn write_session(&self, cwd: &Path, first_message: &str) -> PathBuf {
+            let folder = self.dir.join(".cloudthinker/agent/sessions").join(format!(
+                "--{}--",
+                cwd.file_name().unwrap().to_string_lossy()
+            ));
+            std::fs::create_dir_all(&folder).unwrap();
+            let file = folder.join("2026-10-18T12-00-00-000Z_a.jsonl");
+            std::fs::write(
+                &file,
+                format!(
+                    "{{\"type\":\"session\",\"version\":3,\"id\":\"a\",\"timestamp\":\"2026-10-18T12:00:00.000Z\",\"cwd\":\"{}\"}}\n\
+                     {{\"type\":\"message\",\"id\":\"b\",\"message\":{{\"role\":\"user\",\"content\":[{{\"type\":\"text\",\"text\":\"{first_message}\"}}],\"timestamp\":1}}}}\n",
+                    cwd.display()
+                ),
+            )
+            .unwrap();
+            file
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            for pid in self.agent_pids() {
+                let _ = std::process::Command::new("kill").arg(&pid).status();
+            }
+            let _ = std::process::Command::new("pkill")
+                .args(["-f", &format!("^{} ", self.remote_bin().display())])
+                .status();
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    struct Client {
+        child: Box<dyn Child + Send + Sync>,
+        master: Box<dyn MasterPty + Send>,
+        writer: Box<dyn Write + Send>,
+        output: Arc<Mutex<Vec<u8>>>,
+    }
+
+    impl Client {
+        fn send(&mut self, bytes: &[u8]) {
+            self.writer.write_all(bytes).unwrap();
+            self.writer.flush().unwrap();
+        }
+
+        fn text(&self) -> String {
+            String::from_utf8_lossy(&self.output.lock().unwrap()).into_owned()
+        }
+
+        fn mark(&self) -> usize {
+            self.output.lock().unwrap().len()
+        }
+
+        fn find_after(&self, from: usize, needle: &str) -> Option<usize> {
+            let output = self.output.lock().unwrap();
+            output
+                .get(from..)?
+                .windows(needle.len())
+                .position(|window| window == needle.as_bytes())
+                .map(|at| from + at)
+        }
+
+        fn wait_after(&self, from: usize, needle: &str) -> usize {
+            let deadline = std::time::Instant::now() + WAIT;
+            while std::time::Instant::now() < deadline {
+                if let Some(at) = self.find_after(from, needle) {
+                    return at;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            panic!(
+                "timed out waiting for {needle:?}; screen so far:\n{}",
+                self.text()
+            );
+        }
+
+        fn wait_for(&self, needle: &str) {
+            self.wait_after(0, needle);
+        }
+
+        fn value(&self, key: &str) -> String {
+            let at = self.wait_after(0, key) + key.len();
+            self.wait_after(at, "\n");
+            let text = String::from_utf8_lossy(&self.output.lock().unwrap()[at..]).into_owned();
+            text.lines().next().unwrap_or_default().trim().to_string()
+        }
+
+        fn exit_code(&mut self) -> u32 {
+            let deadline = std::time::Instant::now() + WAIT;
+            while std::time::Instant::now() < deadline {
+                if let Some(status) = self.child.try_wait().unwrap() {
+                    return status.exit_code();
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            panic!("client did not exit; screen:\n{}", self.text());
+        }
+
+        fn resize(&self, rows: u16, cols: u16) {
+            self.master
+                .resize(PtySize {
+                    rows,
+                    cols,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })
+                .unwrap();
+        }
+    }
+
+    impl Drop for Client {
+        fn drop(&mut self) {
+            if matches!(self.child.try_wait(), Ok(None)) {
+                let _ = self.child.kill();
+            }
+        }
+    }
+
+    fn write_script(path: &Path, body: &str) {
+        std::fs::write(path, body).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    fn pid_alive(pid: &str) -> bool {
+        std::process::Command::new("kill")
+            .args(["-0", pid])
+            .status()
+            .is_ok_and(|status| status.success())
+    }
+
+    fn detach_in(fixture: &Fixture, cwd: &Path) {
+        let mut client = fixture.open(cwd);
+        client.wait_for("started remote=1");
+        client.send(DETACH_KEY);
+        assert_eq!(client.exit_code(), 0, "{}", client.text());
+    }
+
+    #[test]
+    fn ca_cli_remote_agent_survives_a_closed_client_or_a_detach_and_reattaches_with_a_redraw() {
+        let fixture = Fixture::new();
+        let mut first = fixture.open(fixture.home());
+        first.wait_for("started remote=1 update=1 term=ghostty");
+        first.send(b"hello\r");
+        first.wait_for("echo:hello");
+        first.child.kill().unwrap();
+        let _ = first.child.wait();
+
+        let agent = fixture.wait_agents(1).remove(0);
+        std::thread::sleep(Duration::from_millis(500));
+        assert!(pid_alive(&agent), "the agent died with the client");
+
+        let mut second = fixture.open(fixture.home());
+        second.wait_for("REDRAW");
+        second.send(b"again\r");
+        second.wait_for("echo:again");
+        second.send(DETACH_KEY);
+        assert_eq!(second.exit_code(), 0);
+        assert!(
+            second
+                .text()
+                .contains("Detached · the agent in ~ keeps running"),
+            "{}",
+            second.text()
+        );
+        assert!(second.text().contains(tty_reset()));
+        assert!(pid_alive(&agent), "the agent died on detach");
+
+        let mut third = fixture.open(fixture.home());
+        third.wait_for("REDRAW");
+        third.send(b"last\r");
+        third.wait_for("echo:last");
+        assert!(
+            !third.text().contains("started remote"),
+            "a second agent started"
+        );
+        third.send(b"quit\r");
+        assert_eq!(third.exit_code(), 1);
+        assert!(third.text().contains(tty_reset()));
+        std::thread::sleep(Duration::from_millis(300));
+        let sockets = std::fs::read_dir(fixture.state())
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.file_name().to_string_lossy().ends_with(".sock"))
+            .count();
+        assert_eq!(sockets, 0);
+    }
+
+    #[test]
+    fn ca_cli_remote_remembers_the_machine_for_the_next_run() {
+        let fixture = Fixture::new();
+        let mut first = fixture.open(fixture.home());
+        first.wait_for("Connecting to box…");
+        first.wait_for("Starting a new agent in ~");
+        first.wait_for("started remote=1");
+        first.send(DETACH_KEY);
+        assert_eq!(first.exit_code(), 0);
+        let targets = std::fs::read_to_string(fixture.state().join("targets")).unwrap();
+        assert_eq!(targets.lines().next(), Some("box"));
+
+        let mut second = fixture.client(&["remote"], fixture.home(), None);
+        second.wait_for("Back to your agent in ~");
+        second.wait_for("REDRAW");
+        assert!(!second.text().contains("started remote"));
+        let shim_targets = std::fs::read_to_string(fixture.dir.join("ssh-targets")).unwrap();
+        assert!(
+            shim_targets.lines().all(|target| target == "box"),
+            "{shim_targets}"
+        );
+        second.send(b"quit\r");
+        assert_eq!(second.exit_code(), 1);
+    }
+
+    #[test]
+    fn ca_cli_remote_starts_in_the_same_folder_under_home_without_a_picker() {
+        let fixture = Fixture::new();
+        let app = fixture.folder("app");
+        let mut client = fixture.open(&app);
+        client.wait_for("Starting a new agent in ~/app");
+        assert_eq!(client.value("cwd="), app.display().to_string());
+        assert!(!client.text().contains("Recent folders"));
+        client.send(b"quit\r");
+        assert_eq!(client.exit_code(), 1);
+    }
+
+    #[test]
+    fn ca_cli_remote_attaches_to_the_only_running_agent_from_another_folder() {
+        let fixture = Fixture::new();
+        let app = fixture.folder("app");
+        detach_in(&fixture, &app);
+        let agent = fixture.wait_agents(1).remove(0);
+
+        let mut client = fixture.open(fixture.home());
+        client.wait_for("Back to your agent in ~/app");
+        client.wait_for("REDRAW");
+        assert!(!client.text().contains("started remote"));
+        assert_eq!(fixture.wait_agents(1), [agent]);
+        client.send(b"quit\r");
+        assert_eq!(client.exit_code(), 1);
+    }
+
+    #[test]
+    fn ca_cli_remote_starts_in_home_and_reports_the_end_after_quit() {
+        let fixture = Fixture::new();
+        let mut client = fixture.open(fixture.home());
+        client.wait_for("Starting a new agent in ~");
+        assert!(!client.text().contains("Starting a new agent in ~/"));
+        assert_eq!(client.value("cwd="), fixture.home().display().to_string());
+        client.send(b"quit\r");
+        assert_eq!(client.exit_code(), 1);
+        client.wait_for("The agent in ~ ended");
+        assert!(client.text().contains(tty_reset()));
+    }
+
+    #[test]
+    fn ca_cli_remote_picker_lists_running_agents_and_esc_starts_nothing() {
+        let fixture = Fixture::new();
+        detach_in(&fixture, &fixture.folder("app"));
+        detach_in(&fixture, &fixture.folder("api"));
+        let agents = fixture.wait_agents(2);
+
+        let mut client = fixture.open(fixture.home());
+        client.wait_for("cloudthinker remote · box");
+        client.wait_for("Running");
+        client.wait_for("~/app");
+        client.wait_for("~/api");
+        client.send(b"\x1b");
+        assert_eq!(client.exit_code(), 0, "{}", client.text());
+        assert!(!client.text().contains("Starting a new agent"));
+        assert!(!client.text().contains("started remote"));
+        std::thread::sleep(Duration::from_millis(300));
+        assert_eq!(fixture.agent_pids(), agents);
+    }
+
+    #[test]
+    fn ca_cli_remote_continues_the_last_session_of_a_recent_folder() {
+        let fixture = Fixture::new();
+        let project = fixture.folder("proj");
+        let session = fixture.write_session(&project, "fix login bug");
+
+        let mut client = fixture.open(fixture.home());
+        client.wait_for("Recent folders");
+        client.wait_for("fix login bug");
+        client.send(b"\r");
+        let args = client.value("args=");
+        assert!(
+            args.contains(&format!("--session {}", session.display())),
+            "{args}"
+        );
+        assert_eq!(client.value("cwd="), project.display().to_string());
+        client.send(b"quit\r");
+        assert_eq!(client.exit_code(), 1);
+    }
+
+    #[test]
+    fn ca_cli_remote_ctrl_z_or_the_agent_detaches_and_the_agent_keeps_running() {
+        let fixture = Fixture::new();
+        let mut client = fixture.open(fixture.home());
+        client.wait_for("started remote=1");
+        let agent = fixture.wait_agents(1).remove(0);
+        client.send(DETACH_KEY);
+        assert_eq!(client.exit_code(), 0);
+        assert!(
+            client.text().contains(
+                "Detached · the agent in ~ keeps running · cloudthinker remote returns to it"
+            ),
+            "{}",
+            client.text()
+        );
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(pid_alive(&agent), "the agent died on Ctrl+Z");
+
+        let mut again = fixture.open(fixture.home());
+        again.wait_for("REDRAW");
+        let host = client.value("host=");
+        assert!(pid_alive(&host), "no host pid in the agent env: {host:?}");
+        std::process::Command::new("kill")
+            .args(["-USR1", &host])
+            .status()
+            .unwrap();
+        assert_eq!(again.exit_code(), 0);
+        assert!(
+            again
+                .text()
+                .contains("Detached · the agent in ~ keeps running"),
+            "{}",
+            again.text()
+        );
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(pid_alive(&agent), "the agent died on an agent detach");
+        assert!(pid_alive(&host), "the host died on an agent detach");
+    }
+
+    #[test]
+    fn ca_cli_remote_reconnects_by_itself_after_the_link_drops() {
+        let fixture = Fixture::new();
+        let mut client = fixture.open(&fixture.folder("app"));
+        client.wait_for("started remote=1");
+        let bridges = fixture.bridge_pids();
+        assert!(!bridges.is_empty(), "no bridge process found");
+        let mark = client.mark();
+        for pid in &bridges {
+            std::process::Command::new("kill")
+                .args(["-9", pid])
+                .status()
+                .unwrap();
+        }
+        client.wait_after(mark, "Connection lost · reconnecting");
+        let redraw = client.wait_after(mark, "REDRAW");
+        let between =
+            String::from_utf8_lossy(&client.output.lock().unwrap()[mark..redraw]).into_owned();
+        assert!(
+            !between.contains(tty_reset()),
+            "the screen was reset before the reattach"
+        );
+        client.resize(40, 140);
+        client.wait_for("SIZE 40 140");
+        client.send(b"after\r");
+        client.wait_for("echo:after");
+        let after = String::from_utf8_lossy(&client.output.lock().unwrap()[mark..]).into_owned();
+        assert!(
+            !after.contains("already running"),
+            "a reconnect printed the start notice: {after}"
+        );
+        client.send(b"quit\r");
+        assert_eq!(client.exit_code(), 1);
+    }
+
+    #[test]
+    fn ca_cli_remote_new_attach_takes_over_and_the_old_client_exits_cleanly() {
+        let fixture = Fixture::new();
+        let mut first = fixture.open(fixture.home());
+        first.wait_for("started remote=1");
+        let mut second = fixture.open(fixture.home());
+        second.wait_for("REDRAW");
+        first.wait_for("Attached from another terminal");
+        assert_eq!(first.exit_code(), 0);
+        second.send(b"quit\r");
+        assert_eq!(second.exit_code(), 1);
+    }
+
+    #[test]
+    fn ca_cli_remote_agent_that_ends_while_the_link_is_down_is_reported_and_not_restarted() {
+        let fixture = Fixture::new();
+        let app = fixture.folder("app");
+        let mut client = fixture.open(&app);
+        client.wait_for("started remote=1");
+        let agent = fixture.wait_agents(1).remove(0);
+        fixture.link(&app, false);
+        let mark = client.mark();
+        fixture.drop_links();
+        client.wait_after(mark, "Connection lost");
+        std::process::Command::new("kill")
+            .arg(&agent)
+            .status()
+            .unwrap();
+        fixture.wait_agents(0);
+        std::thread::sleep(Duration::from_millis(300));
+        fixture.link(&app, true);
+        client.wait_after(mark, "The agent in ~/app ended");
+        assert_eq!(client.exit_code(), 130);
+        let after = String::from_utf8_lossy(&client.output.lock().unwrap()[mark..]).into_owned();
+        assert!(
+            !after.contains("started remote"),
+            "a new agent started: {after}"
+        );
+        assert!(fixture.agent_pids().is_empty());
+    }
+
+    #[test]
+    fn ca_cli_remote_window_replaced_while_away_does_not_take_the_agent_back() {
+        let fixture = Fixture::new();
+        let (first_cwd, second_cwd) = (fixture.folder("a"), fixture.folder("b"));
+        let args = ["remote", "box", "--name", "shared"];
+        let mut first = fixture.client(&args, &first_cwd, None);
+        first.wait_for("started remote=1");
+        fixture.link(&first_cwd, false);
+        let mark = first.mark();
+        fixture.drop_links();
+        first.wait_after(mark, "Connection lost");
+        let mut second = fixture.client(&args, &second_cwd, None);
+        second.wait_for("REDRAW");
+        fixture.link(&first_cwd, true);
+        first.wait_for("Attached from another terminal");
+        assert_eq!(first.exit_code(), 0);
+        second.send(b"still\r");
+        second.wait_for("echo:still");
+        assert!(!second.text().contains("Attached from another terminal"));
+        second.send(b"quit\r");
+        assert_eq!(second.exit_code(), 1);
+    }
+
+    #[test]
+    fn ca_cli_remote_dropped_file_is_copied_and_pasted_as_a_remote_path() {
+        let fixture = Fixture::new();
+        let local = fixture.dir.join("notes from laptop.txt");
+        std::fs::write(&local, b"laptop bytes").unwrap();
+        let mut client = fixture.open(fixture.home());
+        client.wait_for("started remote=1");
+        let escaped = local.display().to_string().replace(' ', "\\ ");
+        client.send(format!("\x1b[200~{escaped}\x1b[201~\r").as_bytes());
+        client.wait_for("pastes/");
+        let screen = client.text();
+        let start = screen
+            .find(&*fixture.state().join("pastes").display().to_string())
+            .unwrap();
+        let path: String = screen[start..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || "/._-".contains(*c))
+            .collect();
+        assert_eq!(std::fs::read(&path).unwrap(), b"laptop bytes");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        assert!(
+            !screen.contains(&escaped),
+            "the laptop path reached the agent"
+        );
+        client.send(b"quit\r");
+        assert_eq!(client.exit_code(), 1);
+    }
+
+    #[test]
+    fn ca_cli_remote_setup_failures_print_one_next_step_and_never_loop() {
+        let fixture = Fixture::new();
+        let too_old = fixture.dir.join("old-cloudthinker");
+        write_script(
+            &too_old,
+            "#!/bin/sh\necho \"error: unrecognized subcommand 'remote-bridge'\" >&2\nexit 2\n",
+        );
+        let cases: [(PathBuf, &str); 2] = [
+            (fixture.dir.join("missing"), "is not installed on box"),
+            (too_old, "too old for remote"),
+        ];
+        for (bin, message) in cases {
+            let mut client =
+                fixture.client(&["remote", "box"], fixture.home(), Some(bin.as_path()));
+            client.wait_for(message);
+            if client.text().contains("[Y/n]") {
+                client.send(b"n\r");
+            }
+            assert_eq!(client.exit_code(), 1, "{}", client.text());
+            assert!(client.text().contains(message), "{}", client.text());
+            assert!(!client.text().contains("reconnecting"));
+            assert!(!client.text().contains("unrecognized subcommand"));
+            assert!(!client.text().contains("not found"));
+        }
+        write_script(
+            &fixture.dir.join("ssh"),
+            "#!/bin/sh\necho 'ssh: connect to host box port 22: Connection refused' >&2\nexit 255\n",
+        );
+        let mut client = fixture.open(fixture.home());
+        assert_eq!(client.exit_code(), 1);
+        assert!(client.text().contains("ssh could not connect to box"));
+        assert!(!client.text().contains("reconnecting"));
+    }
+
+    fn tty_reset() -> &'static str {
+        "\x1b[?1000l"
+    }
 }

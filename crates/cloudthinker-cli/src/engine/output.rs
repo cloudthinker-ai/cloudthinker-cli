@@ -21,6 +21,13 @@ use owo_colors::{AnsiColors, OwoColorize};
 use serde::Serialize;
 use uuid::Uuid;
 
+mod worker_console;
+
+pub use worker_console::{
+    ConsoleEvent, ConsoleStyle, WorkerActivity, WorkerConsole, WorkerHeader, short_id,
+    worker_header_lines,
+};
+
 /// Write one line to `out`, treating a broken pipe (the reader hung up, e.g.
 /// piping into `head`) as success per Unix convention rather than an error
 /// for the caller to report. Any other write failure surfaces so the
@@ -1159,11 +1166,22 @@ pub fn outpost_list_text(choices: &[ExecutorChoicePublic]) -> String {
         .join("\n")
 }
 
-pub fn worker_serving_line(name: &str, label: &str) -> String {
-    format!(
-        "Serving {} from {label}. File tools stay in this folder; shell commands run as your user without a sandbox.",
-        terminal_text(name)
-    )
+pub fn worker_console_style() -> ConsoleStyle {
+    ConsoleStyle {
+        color: stderr_supports_color(),
+        terminal: io::stderr().is_terminal(),
+    }
+}
+
+pub fn print_worker_lines(lines: &[String]) {
+    let mut stderr = io::stderr().lock();
+    for line in lines {
+        let _ = writeln!(stderr, "{line}");
+    }
+}
+
+pub fn print_worker_header(header: &WorkerHeader<'_>) {
+    print_worker_lines(&worker_header_lines(header, worker_console_style()));
 }
 
 #[derive(Debug, Serialize)]
@@ -1486,10 +1504,6 @@ mod tests {
         assert_eq!(
             outpost_created_line(hostile, Uuid::from_u128(3)),
             "Created outpost build]0;ownedtxt; start it with cloudthinker worker start --outpost 00000000-0000-0000-0000-000000000003 --workdir <directory>"
-        );
-        assert_eq!(
-            worker_serving_line(hostile, "outpost folder"),
-            "Serving build]0;ownedtxt from outpost folder. File tools stay in this folder; shell commands run as your user without a sandbox."
         );
     }
 

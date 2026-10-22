@@ -431,7 +431,7 @@ fn client(base_url: &str, headers: reqwest::header::HeaderMap) -> CtResult<Wire>
             "worker requires HTTPS; HTTP is allowed only on loopback".into(),
         ));
     }
-    let http = reqwest::Client::builder()
+    let http = crate::tls::http_client_builder()
         .default_headers(headers)
         .timeout(Duration::from_secs(25))
         .connect_timeout(Duration::from_secs(10))
@@ -470,7 +470,7 @@ fn observe(observed: &Observed, headers: &HeaderMap) {
 
 pub async fn probe_origin(base_url: &str) -> Result<OriginProbe, ProbeFailure> {
     let origin = origin_of(base_url).map_err(|_| ProbeFailure::Other)?;
-    let http = reqwest::Client::builder()
+    let http = crate::tls::http_client_builder()
         .timeout(Duration::from_secs(10))
         .connect_timeout(Duration::from_secs(10))
         .redirect(reqwest::redirect::Policy::none())

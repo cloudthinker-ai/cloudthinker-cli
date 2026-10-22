@@ -1,6 +1,6 @@
 [package]
 name = "cloudthinker-cli"
-version = "0.8.3"
+version = "0.9.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -36,6 +36,7 @@ tempfile = "3"
 clap_complete = "4"
 chrono.workspace = true
 fs2 = "0.4"
+unicode-width = "0.2"
 
 [target.'cfg(unix)'.dependencies]
 axum = { version = "0.8", default-features = false, features = ["tokio", "http1"] }
@@ -46,10 +47,10 @@ cap-std = "4"
 tokio-util = { version = "0.7", features = ["rt"] }
 globset = "0.4"
 regex = "1"
-rustix = { version = "1", features = ["process", "fs"] }
+rustix = { version = "1", features = ["process", "fs", "termios"] }
+portable-pty = "0.9"
 
 [dev-dependencies]
 assert_cmd = "2"
-portable-pty = "0.9"
 predicates = "3"
 tokio = { workspace = true, features = ["test-util"] }

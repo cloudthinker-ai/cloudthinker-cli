@@ -115,6 +115,10 @@ fn request_for(channel: Channel) -> UpdateRequest {
 
 async fn install_latest(force: bool, channel: Channel) -> Outcome {
     let mut updater = AxoUpdater::new_for(APP_NAME);
+    match cloudthinker_client::https_client() {
+        Ok(client) => updater.set_client(client),
+        Err(err) => return Outcome::Failed(err.to_string()),
+    };
     if let Err(err) = updater.load_receipt() {
         // No receipt: the binary was not installed by a cargo-dist installer
         // (copied in place, or installed by a future package manager). Refuse
@@ -410,6 +414,7 @@ fn installed_binary_path() -> Option<PathBuf> {
 
 async fn latest_release(channel: Channel) -> Option<String> {
     let mut updater = AxoUpdater::new_for(APP_NAME);
+    updater.set_client(cloudthinker_client::https_client().ok()?);
     updater.load_receipt().ok()?;
     if !matches!(updater.check_receipt_is_for_this_executable(), Ok(true)) {
         return None;

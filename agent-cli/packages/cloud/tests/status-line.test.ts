@@ -13,7 +13,7 @@ import { hostVersionsFrom } from "../src/versions.ts";
 initTheme("dark");
 const plainTheme = { fg: (_color: string, text: string) => text, bold: (text: string) => text } as unknown as Theme;
 
-function footer(runtime: CloudThinkerRuntime, statuses: [string, string][]) {
+function footer(runtime: CloudThinkerRuntime, statuses: [string, string][], host?: string) {
 	const data = {
 		getGitBranch: () => "main",
 		getExtensionStatuses: () => new Map(statuses),
@@ -21,7 +21,7 @@ function footer(runtime: CloudThinkerRuntime, statuses: [string, string][]) {
 		onBranchChange: () => () => {},
 	} as unknown as ReadonlyFooterDataProvider;
 	const ctx = { cwd: "/srv/repo", model: { id: "pro", name: "Pro" }, getContextUsage: () => ({ percent: 41.6 }) } as never;
-	return (width: number) => stripVTControlCharacters(statusLineFooter(runtime, ctx)(undefined, plainTheme, data).render(width).join("\n"));
+	return (width: number) => stripVTControlCharacters(statusLineFooter(runtime, ctx, host)(undefined, plainTheme, data).render(width).join("\n"));
 }
 
 test("the pinned status line names the workspace, approval mode, credits, and Connections, and keeps other statuses", () => {
@@ -56,4 +56,17 @@ test("the pinned status line names the workspace, approval mode, credits, and Co
 	assert.match(render(120), /primary · Manual ·/);
 	runtime.cloudEnabled = false;
 	assert.match(render(120), /○ Cloud off/);
+});
+
+test("under cloudthinker remote the status line names the machine after the folder and branch", () => {
+	const runtime = new CloudThinkerRuntime(
+		{ appendEntry: () => {}, getActiveTools: () => [], setActiveTools: () => {} } as unknown as ExtensionAPI,
+		{} as CloudThinkerClient,
+		hostVersionsFrom({ version: "0.4.0", piVersion: "0.85.1" }, "0.4.0"),
+	);
+	const remote = footer(runtime, [], "product-team-4");
+	assert.match(remote(100).split("\n")[0]!, /○ connecting… +~?\/?srv\/repo \(main\) · on product-team-4 $/);
+	assert.match(remote(30).split("\n")[0]!, /^ ○ connecting…/);
+	assert.doesNotMatch(remote(30), /product-team-4/);
+	assert.doesNotMatch(footer(runtime, [])(100), / · on /);
 });

@@ -96,11 +96,16 @@ where
         };
         if let Some(message) = outposts_disabled_message(&error) {
             if !paused.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                output::worker_event(&format!(
-                    "Workers are turned off ({}). Waiting; checking every {}s.",
-                    output::terminal_text(message),
-                    poll.as_secs()
-                ));
+                telemetry::emit(
+                    Level::Info,
+                    "workers_disabled",
+                    Fields::default(),
+                    &format!(
+                        "Workers are turned off ({}). Waiting; checking every {}s.",
+                        output::terminal_text(message),
+                        poll.as_secs()
+                    ),
+                );
             }
             tokio::select! {
                 _=drain.cancelled()=>return Ok(()),
@@ -192,7 +197,12 @@ async fn session(
         .paused
         .swap(false, std::sync::atomic::Ordering::SeqCst)
     {
-        output::worker_event("Workers are turned on again. Resuming.");
+        telemetry::emit(
+            Level::Info,
+            "workers_enabled",
+            Fields::default(),
+            "Workers are turned on again. Resuming.",
+        );
     }
     validate_registration_target(expected_target_id, worker.target_id)?;
     if !flags.verified.load(std::sync::atomic::Ordering::SeqCst) {
@@ -295,7 +305,7 @@ async fn session(
             completed=tasks.join_next(), if !tasks.is_empty()=>{
                 match completed {
                     Some(Ok((id,Ok(()))))=>{seen.remove(&id);telemetry::set_active(tasks.len());telemetry::emit(Level::Info,"assignment_finished",Fields{assignment_id:Some(id),..Fields::default()},&format!("Assignment {id} finished."));},
-                    Some(Ok((id,Err(error))))=>{seen.remove(&id);telemetry::set_active(tasks.len()); if stops_worker(&error) {break Err(error);} telemetry::emit(Level::Warn,"assignment_stopped",Fields{assignment_id:Some(id),outcome:Some("error"),..Fields::default()},&format!("Assignment {id} stopped: {error}. Check its status in CloudThinker."));},
+                    Some(Ok((id,Err(error))))=>{seen.remove(&id);telemetry::set_active(tasks.len()); if stops_worker(&error) {break Err(error);} telemetry::emit(Level::Warn,"assignment_stopped",Fields{assignment_id:Some(id),outcome:Some("error"),..Fields::default()},&error.to_string());},
                     _=>break Err(CtError::Protocol("worker assignment task stopped".into())),
                 }
             }
@@ -322,7 +332,7 @@ async fn session(
                             telemetry::set_active(tasks.len());
                         }
                         Err(CtError::Api {status:409,detail})=>telemetry::emit(Level::Debug,"assignment_not_claimed",Fields{assignment_id:Some(assignment.assignment_id),..Fields::default()},&format!("Assignment {} was not claimed: {}.", assignment.assignment_id, detail.unwrap_or_default())),
-                        Err(error) if error.is_transport()=>telemetry::emit(Level::Warn,"claim_retry",Fields{assignment_id:Some(assignment.assignment_id),..Fields::default()},&format!("Could not claim assignment {} ({error}); it will be retried.", assignment.assignment_id)),
+                        Err(error) if error.is_transport()=>telemetry::emit(Level::Warn,"claim_retry",Fields{assignment_id:Some(assignment.assignment_id),..Fields::default()},"Could not pick up a new run; retrying."),
                         Err(error)=>break 'serve Err(error),
                     }
                 }

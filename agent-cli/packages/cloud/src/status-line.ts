@@ -6,7 +6,7 @@ import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/p
 
 import { sanitizeTerminalText } from "./awareness.ts";
 import { formatCredits } from "./credits.ts";
-import { AUTO_LABEL, MANUAL_LABEL } from "./header.ts";
+import { AUTO_LABEL, MANUAL_LABEL, remoteHost } from "./header.ts";
 import { CLOUD_ENTRY_TYPE, CREDITS_KEY, type CloudThinkerRuntime } from "./runtime.ts";
 
 export const CLOUD_OFF_LABEL = "Cloud off";
@@ -92,11 +92,12 @@ export function contextLabel(ctx: Pick<ExtensionContext, "getContextUsage" | "mo
 export function statusLineFooter(
 	runtime: CloudThinkerRuntime,
 	ctx: Pick<ExtensionContext, "cwd" | "getContextUsage" | "model">,
+	host = remoteHost(),
 ): (tui: unknown, theme: Theme, footerData: ReadonlyFooterDataProvider) => Component {
 	return (_tui, theme, footerData) => ({
 		render(width: number): string[] {
 			const branch = footerData.getGitBranch();
-			const where = theme.fg("dim", `${shortCwd(ctx.cwd)}${branch ? ` (${branch})` : ""}`);
+			const where = theme.fg("dim", `${shortCwd(ctx.cwd)}${branch ? ` (${branch})` : ""}${host ? ` · on ${host}` : ""}`);
 			const first = joinEnds(` ${statusLineText(runtimeStatusState(runtime), theme)}`, `${where} `, width);
 			const others = [...footerData.getExtensionStatuses().entries()]
 				.filter(([key]) => !OWN_STATUS_KEYS.includes(key))

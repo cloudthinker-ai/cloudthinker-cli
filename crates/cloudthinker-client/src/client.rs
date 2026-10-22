@@ -205,11 +205,11 @@ impl CtClient {
     pub fn new(base_url: impl Into<String>, store: Arc<dyn TokenStore>) -> CtResult<Self> {
         let base_url = normalize_base_url(&base_url.into())?;
         let timeout = Duration::from_secs(REQUEST_TIMEOUT_SECS);
-        let anon_http = reqwest::Client::builder()
+        let anon_http = crate::tls::http_client_builder()
             .timeout(timeout)
             .build()
             .map_err(|e| CtError::Transport(format!("http client build: {e}")))?;
-        let probe_http = reqwest::Client::builder()
+        let probe_http = crate::tls::http_client_builder()
             .timeout(timeout)
             .redirect(reqwest::redirect::Policy::none())
             .build()
@@ -689,7 +689,7 @@ fn build_authed_http(access: &str, timeout: Duration) -> CtResult<reqwest::Clien
     let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {access}"))
         .map_err(|e| CtError::Auth(format!("invalid token header: {e}")))?;
     headers.insert(reqwest::header::AUTHORIZATION, value);
-    reqwest::Client::builder()
+    crate::tls::http_client_builder()
         .timeout(timeout)
         .default_headers(headers)
         .build()

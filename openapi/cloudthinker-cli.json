@@ -1736,6 +1736,11 @@
             "title": "Category",
             "type": "string"
           },
+          "cited_flow_id": {
+            "nullable": true,
+            "title": "Cited Flow Id",
+            "type": "string"
+          },
           "code_review_merge_request_id": {
             "format": "uuid",
             "nullable": true,
@@ -3399,6 +3404,11 @@
             "title": "Convention Patterns",
             "type": "array"
           },
+          "create_if_absent": {
+            "nullable": true,
+            "title": "Create If Absent",
+            "type": "boolean"
+          },
           "dst_path": {
             "nullable": true,
             "title": "Dst Path",
@@ -4484,7 +4494,7 @@
         "type": "string"
       },
       "Intensity": {
-        "description": "Per-run probing intensity: safe|aggressive|full|ultra.\n\nConsolidates two legacy flags into one: the dead PentestRun.safe_mode\n(hardcoded True, never varied) and the live App.allow_active_probing\nconsent gate (destructive DELETE/data-changing probing). App carries a\ndefault_intensity that seeds new runs; PentestRun and CyberSchedule each\nfreeze their own chosen intensity at construction (a schedule's frozen\nintensity survives a later change to the App's default).\n\n``ultra`` has the same destructive-probing allowance as ``full`` but also\nturns on the saturation loop: the agent keeps hunting new attack surface in\nfurther waves until two in a row find nothing new (the `cyber-scan-modes-ultra`\ndepth leaf). It is the highest blast radius.",
+        "description": "Per-run probing intensity: safe|aggressive|full|ultra.\n\nConsolidates two legacy flags into one: the dead PentestRun.safe_mode\n(hardcoded True, never varied) and the live App.allow_active_probing\nconsent gate (destructive DELETE/data-changing probing). App carries a\ndefault_intensity that seeds new runs; PentestRun and CyberSchedule each\nfreeze their own chosen intensity at construction (a schedule's frozen\nintensity survives a later change to the App's default).\n\n``ultra`` has the same destructive-probing allowance as ``full`` but also\nturns on the saturation loop: the agent keeps hunting new attack surface in\nfurther passes until one complete pass adds no new finding or surface record (the `cyber-scan-modes-ultra`\ndepth leaf). It is the highest blast radius.",
         "enum": [
           "safe",
           "aggressive",
@@ -6000,6 +6010,11 @@
           "commit_sha": {
             "nullable": true,
             "title": "Commit Sha",
+            "type": "string"
+          },
+          "comparison_base_sha": {
+            "nullable": true,
+            "title": "Comparison Base Sha",
             "type": "string"
           },
           "credential_ref": {
@@ -8103,6 +8118,11 @@
             "title": "Policy Enforcement Enabled",
             "type": "boolean"
           },
+          "policy_templates_enabled": {
+            "nullable": true,
+            "title": "Policy Templates Enabled",
+            "type": "boolean"
+          },
           "policy_tool_enabled": {
             "nullable": true,
             "title": "Policy Tool Enabled",
@@ -8265,6 +8285,11 @@
           "policy_enforcement_enabled": {
             "nullable": true,
             "title": "Policy Enforcement Enabled",
+            "type": "boolean"
+          },
+          "policy_templates_enabled": {
+            "nullable": true,
+            "title": "Policy Templates Enabled",
             "type": "boolean"
           },
           "policy_tool_enabled": {

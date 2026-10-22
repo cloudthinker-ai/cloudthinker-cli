@@ -4,6 +4,8 @@ use uuid::Uuid;
 
 use super::StartArgs;
 
+pub(super) const UNNAMED_OUTPOST: &str = "outpost";
+
 #[derive(Debug, PartialEq, Eq)]
 enum CredentialSource {
     Register(String),
@@ -64,7 +66,7 @@ fn registered_credential(
     }
     Ok(WorkerCredential {
         target_id: boot.target_id,
-        name: outpost.unwrap_or("outpost").to_owned(),
+        name: outpost.unwrap_or(UNNAMED_OUTPOST).to_owned(),
         token: boot.credential,
     })
 }
@@ -91,7 +93,7 @@ pub(super) async fn resolve_credential(
         CredentialSource::Env { target_id, token } => Ok((
             WorkerCredential {
                 target_id,
-                name: "outpost".into(),
+                name: UNNAMED_OUTPOST.into(),
                 token,
             },
             false,

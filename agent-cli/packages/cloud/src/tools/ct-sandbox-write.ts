@@ -8,6 +8,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 
 import { type CloudWrite, CloudThinkerApiError, type WriteOutcome } from "../client.ts";
+import { terminalNotify } from "../notify.ts";
 import { APPROVAL_KEY, AUTO_MODE_OFF_REASON, type CloudThinkerRuntime } from "../runtime.ts";
 import { type ApprovalChoice, ApprovalPrompt } from "./approval-prompt.ts";
 import { DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS, renderExecution } from "./ct-sandbox-read.ts";
@@ -37,6 +38,7 @@ export const APPROVE_AND_TRUST = "Approve and trust this command";
 export const DECLINE_HERE = "Decline";
 export const DECIDE_IN_BROWSER = "Decide in the browser";
 export const APPROVAL_TITLE = "Cloud write needs your approval";
+export const APPROVAL_NOTIFICATION = "CloudThinker: approval needed";
 export const CHOICE_KEYS: Readonly<Record<string, string>> = {
 	[APPROVE_HERE]: "y",
 	[APPROVE_AND_TRUST]: "a",
@@ -190,6 +192,7 @@ async function chooseDecision(
 	options: readonly string[],
 ): Promise<string | undefined> {
 	if (ctx.mode === "tui") {
+		terminalNotify(APPROVAL_NOTIFICATION);
 		return ctx.ui.custom<string | undefined>((tui, theme, _keybindings, done) => new ApprovalPrompt({
 			title: APPROVAL_TITLE,
 			reasoning: write.reasoning,

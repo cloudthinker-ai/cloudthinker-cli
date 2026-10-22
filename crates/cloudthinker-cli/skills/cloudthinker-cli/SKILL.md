@@ -35,6 +35,7 @@ Read every module whose signal matches the task:
 - `cloudthinker --skill cyber-verify` ([cyber-verify.md](cyber-verify.md)): independently test a candidate before treating it as a finding.
 - `cloudthinker --skill cyber-report` ([cyber-report.md](cyber-report.md)): validate evidence and report the local Cyber run.
 - `cloudthinker --skill worker` ([worker.md](worker.md)): create an outpost, serve a local project, check availability, and drain before an update.
+- `cloudthinker --skill remote` ([remote.md](remote.md)): run the agent on a remote machine from a laptop, detach, reattach, and fix a failed connect.
 
 Typical combinations: first delegation = auth + chat. Review lookup in a named workspace = auth + review. Continuing an identified conversation = chat. Serving a local folder for workspace access = auth + worker + chat. For a local pentest, read cyber plus only the scan, verification, or report module needed for the current stage.
 

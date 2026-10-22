@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -66,21 +67,35 @@ class DiscoveryRuntimeResourcesTest(unittest.TestCase):
             root = Path(temp_dir)
             manifest = root / "manifest.json"
             manifest.write_text("{}")
+            command = [
+                sys.executable,
+                "-I",
+                str(RUNTIME),
+                "run",
+                "--manifest",
+                str(manifest),
+                "--discovery-dir",
+                str(root / "discovery"),
+            ]
+            environment = {
+                name: value
+                for name, value in os.environ.items()
+                if name != "CT_CYBER_DISCOVERY_CA_FILE"
+            }
+            without_roots = subprocess.run(
+                command, capture_output=True, text=True, check=False, env=environment
+            )
+            roots = root / "trusted-roots.pem"
+            roots.write_text("")
             result = subprocess.run(
-                [
-                    sys.executable,
-                    "-I",
-                    str(RUNTIME),
-                    "run",
-                    "--manifest",
-                    str(manifest),
-                    "--discovery-dir",
-                    str(root / "discovery"),
-                ],
+                command,
                 capture_output=True,
                 text=True,
                 check=False,
+                env={**environment, "CT_CYBER_DISCOVERY_CA_FILE": str(roots)},
             )
+        self.assertEqual(without_roots.returncode, 1)
+        self.assertIn("CT_CYBER_DISCOVERY_CA_FILE is not set", without_roots.stderr)
         self.assertEqual(result.returncode, 1)
         self.assertIn("invalid discovery manifest version", result.stderr)
 

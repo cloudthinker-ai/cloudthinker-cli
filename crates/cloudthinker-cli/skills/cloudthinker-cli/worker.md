@@ -118,8 +118,8 @@ whole environment belongs to the work being served. Worker credentials and shell
 startup injection variables are always excluded.
 
 Press Ctrl-C or send SIGTERM to stop claiming assignments and drain current
-work; the worker prints how many operations are still running. A second Ctrl-C
-cancels them and reports them as cancelled. Upgrade the CLI after it exits, then
+work; the worker prints how many commands are still running, or that nothing
+runs. A second Ctrl-C cancels them and reports them as cancelled. Upgrade the CLI after it exits, then
 run the same command. Worker startup never offers an automatic update. Reusing
 the directory preserves its local identity and files; replacing the directory
 stops the worker with `WORKDIR_IDENTITY_CHANGED`. Run `worker start` once with the
@@ -129,9 +129,16 @@ conversations that used the old directory stay unavailable.
 The worker survives short outages. It retries server errors and rate limits,
 reconnects after sleep or a network change, and reads deadlines against the
 server clock. It stops only when its credential is rejected, the folder is
-replaced, or its local state is unusable. Each assignment and operation is logged
-with its duration and error code; set `CLOUDTHINKER_WORKER_LOG=debug` to also log
-operation starts and assignments another worker claimed first.
+replaced, or its local state is unusable. On start, the worker prints a header
+with its name, folder, server, and how to stop it. Then it prints one line when a
+run starts and one summary line when it ends: its duration, the number of shell
+commands, file reads, and file edits, and the count that failed or timed out. A
+failed or timed-out shell command or file edit also gets its own line. A lost
+connection prints one line, and a new connection prints `Reconnected.` Times are
+local `HH:MM:SS` on a terminal, with the date when stderr is a file. Pass
+`--verbose` (`-v`) or set `CLOUDTHINKER_WORKER_LOG=debug` to also print each
+operation with its kind, duration, and error code, the connection errors, and
+assignments another worker claimed first.
 
 An admin can turn Workers off for the whole instance or for one workspace. The
 server then answers `EXECUTOR_OUTPOSTS_DISABLED` (HTTP 403) to a worker. A
@@ -145,7 +152,7 @@ to CloudThinker Cloud. An older CLI exits on this code, so run
 Pass `--log-format json` to `worker start` for one JSON object per line on stderr,
 with the fields `ts`, `level`, `event`, `assignment_id`, `operation_kind`,
 `outcome`, `duration_ms`, and `cli_version`. These lines never hold scripts, paths,
-or output. `CLOUDTHINKER_WORKER_LOG=debug` still adds the debug events.
+or output. `--verbose` or `CLOUDTHINKER_WORKER_LOG=debug` still adds the debug events.
 
 Pass `--health-addr 127.0.0.1:9464` to serve two read-only endpoints. `/healthz`
 answers 200 only when the last poll succeeded less than 60 seconds ago and the

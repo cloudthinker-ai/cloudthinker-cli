@@ -11,8 +11,6 @@ use assert_cmd as _;
 #[cfg(test)]
 use base64 as _;
 #[cfg(test)]
-use portable_pty as _;
-#[cfg(test)]
 use predicates as _;
 
 mod commands;
@@ -224,6 +222,14 @@ enum Command {
     Cyber(CyberArgs),
     /// Run this machine as an outpost worker, and manage its outposts.
     Worker(commands::worker::WorkerArgs),
+    /// Run the agent on a remote machine over SSH; it keeps running when the connection drops.
+    Remote(commands::remote::RemoteArgs),
+    /// Relay one SSH connection to the remote agent host; started by `cloudthinker remote`.
+    #[command(hide = true)]
+    RemoteBridge(commands::remote::RemoteSideArgs),
+    /// Keep a remote agent running across SSH connections; started by `remote-bridge`.
+    #[command(hide = true)]
+    RemoteHost(commands::remote::RemoteSideArgs),
     /// Update `cloudthinker` to the latest GitHub release.
     Update(UpdateArgs),
     /// Print a shell completion script.
@@ -1493,6 +1499,9 @@ async fn run_command(
             commands::agent::run(base_url, workspace.as_deref(), args.args).await
         }
         Command::Completion { shell } => commands::completion::run(shell, &mut Cli::command()),
+        Command::Remote(args) => commands::remote::run(args).await,
+        Command::RemoteBridge(args) => commands::remote::bridge(args).await,
+        Command::RemoteHost(args) => commands::remote::host(args).await,
     }
 }
 

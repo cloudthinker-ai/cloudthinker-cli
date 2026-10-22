@@ -6,5 +6,7 @@ pub mod login_guide;
 pub mod login_mode;
 pub mod output;
 pub mod piped_input;
+#[cfg(unix)]
+pub mod remote;
 pub mod timing;
 pub mod watch;

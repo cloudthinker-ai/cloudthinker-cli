@@ -16,6 +16,7 @@ pub mod incident;
 pub mod login;
 pub mod logout;
 pub mod recommendations;
+pub mod remote;
 pub mod review;
 pub mod update;
 pub mod whoami;

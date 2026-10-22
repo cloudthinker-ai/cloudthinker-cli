@@ -7,6 +7,8 @@ use cloudthinker_client::{CtError, CtResult, worker_api::WorkerClient, worker_ty
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
+use crate::engine::output::WorkerActivity;
+
 use super::{
     background::{self, ShimImage},
     config::WorkdirIdentity,
@@ -95,6 +97,7 @@ impl WorkdirExecutor {
             Fields {
                 assignment_id: Some(envelope.assignment_id),
                 operation_kind: Some(kind),
+                operation_id: Some(envelope.operation_id),
                 ..Fields::default()
             },
             &format!("Operation {} ({kind}) started.", envelope.operation_id),
@@ -134,6 +137,9 @@ impl WorkdirExecutor {
                 operation_kind: Some(kind),
                 outcome: Some(outcome),
                 duration_ms: Some(started.elapsed().as_millis()),
+                operation_id: Some(envelope.operation_id),
+                activity: Some(activity(&envelope.payload)),
+                error_code: code.as_deref(),
             },
             &format!(
                 "Operation {} ({kind}) {} in {} ms.",
@@ -298,6 +304,33 @@ pub fn payload_kind(payload: &api::Payload) -> &'static str {
         api::Payload::ConvertOfficePdf(_) => "convert_office_pdf",
         api::Payload::RepositoryOperation(_) => "repository",
         api::Payload::BackgroundOperation(_) => "background",
+    }
+}
+
+pub fn activity(payload: &api::Payload) -> WorkerActivity {
+    match payload {
+        api::Payload::ScriptRun(_) => WorkerActivity::Command,
+        api::Payload::BackgroundOperation(operation)
+            if operation.action == api::BackgroundAction::Start =>
+        {
+            WorkerActivity::Command
+        }
+        api::Payload::FileContent(_) => WorkerActivity::FileRead,
+        api::Payload::FileOperation(operation) => match operation.endpoint {
+            api::FileEndpoint::Write
+            | api::FileEndpoint::Edit
+            | api::FileEndpoint::WriteBinary
+            | api::FileEndpoint::Rename
+            | api::FileEndpoint::WriteBatch => WorkerActivity::FileEdit,
+            api::FileEndpoint::Read
+            | api::FileEndpoint::ListDirectory
+            | api::FileEndpoint::Glob
+            | api::FileEndpoint::Grep
+            | api::FileEndpoint::Conventions
+            | api::FileEndpoint::ConventionChains
+            | api::FileEndpoint::GlobRead => WorkerActivity::FileRead,
+        },
+        _ => WorkerActivity::Internal,
     }
 }
 

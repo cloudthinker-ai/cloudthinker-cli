@@ -33,6 +33,8 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 dirs = "6"
 fs2 = "0.4"
 cap-std = "4"
+rustls-native-certs = "0.8"
+rustls-webpki = { version = "0.103", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["process", "fs"] }

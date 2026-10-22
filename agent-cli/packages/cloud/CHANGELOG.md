@@ -1,3 +1,8 @@
+## [0.9.0]
+
+- A cloud write that waits for your approval now sends a desktop notification, so you can switch away while the agent works; set `CLOUDTHINKER_NOTIFY=0` to turn it off.
+- Under `cloudthinker remote`, the key line reads `ctrl+z detach · ctrl+d quit`, the full key list says Ctrl+Z detaches while the agent keeps running, and the status line names the machine the agent runs on, for example `~/app (main) · on product-team-4`.
+
 ## [0.8.3-dev.1]
 
 - Persist each flush snapshot before delivery, including entries from later flushes while an earlier append is in flight, so shutdown timeouts leave a retryable outbox.

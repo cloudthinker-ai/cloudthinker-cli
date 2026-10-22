@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -64,6 +65,13 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return 0
+    if not os.environ.get("CT_CYBER_DISCOVERY_CA_FILE"):
+        print(
+            "cyber-discovery: CT_CYBER_DISCOVERY_CA_FILE is not set; "
+            "run discovery through `cloudthinker`",
+            file=sys.stderr,
+        )
+        return 1
     try:
         with contextlib.redirect_stdout(sys.stderr):
             report = run_discovery(

@@ -183,7 +183,7 @@ pub fn deliverables(dir: &Dir) -> Result<Value, &'static str> {
 pub fn execute(dir: &Dir, operation: &api::FileOperation) -> Result<Value, &'static str> {
     use api::FileEndpoint as E;
     let r = &operation.request;
-    if r.trusted_root.is_some() {
+    if r.trusted_root.is_some() || r.create_if_absent.unwrap_or(false) {
         return Err("TRUSTED_ROOT_REJECTED");
     }
     let path = r.file_path.as_deref().or(r.path.as_deref()).unwrap_or(".");
@@ -645,6 +645,42 @@ fn io_error(error: std::io::Error) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn worker_rejects_server_only_memory_bootstrap_fields() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = Dir::open_ambient_dir(root.path(), cap_std::ambient_authority()).unwrap();
+        for operation in [
+            json!({
+                "kind": "file_operation",
+                "endpoint": "write",
+                "request": {
+                    "file_path": ".memory/MEMORY.md",
+                    "content": "template",
+                    "trusted_root": "workspace_memory"
+                }
+            }),
+            json!({
+                "kind": "file_operation",
+                "endpoint": "write",
+                "request": {
+                    "file_path": ".memory/MEMORY.md",
+                    "content": "template",
+                    "create_if_absent": true
+                }
+            }),
+        ] {
+            let request: api::FileOperation = serde_json::from_value(operation).unwrap();
+            assert_eq!(
+                execute(&dir, &request).unwrap_err(),
+                "TRUSTED_ROOT_REJECTED"
+            );
+        }
+        assert_eq!(
+            read(&dir, ".memory/MEMORY.md", MAX_BYTES).unwrap_err(),
+            "FILE_NOT_FOUND"
+        );
+    }
 
     #[test]
     fn deliverables_preserve_nested_file_nodes_without_reading_large_files() {

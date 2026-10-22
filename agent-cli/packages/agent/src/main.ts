@@ -19,6 +19,8 @@ import { applyGuard } from "./guard.ts";
 import { registerIdentity } from "./identity.ts";
 import { isLocalReview, withoutLocalReviewFlag } from "./local-review-mode.ts";
 import { modelScopeArgs } from "./models.ts";
+import { registerTurnNotify } from "./notify.ts";
+import { registerRemoteDetach } from "./remote-leave.ts";
 import { registerScrollPill } from "./scroll-pill.ts";
 import { AGENT_HELP, checkSurface } from "./surface.ts";
 import bundledSubagents from "./subagents.ts";
@@ -68,6 +70,8 @@ await main([...themes, ...tuiMode, ...modelScopeArgs(argv), ...argv], {
 		{ name: "background", factory: (pi) => { registerBackgroundCommands(pi); } },
 		{ name: "verbosity", factory: (pi) => { registerVerbosity(pi); } },
 		{ name: "scroll-pill", factory: (pi) => { registerScrollPill(pi); } },
+		{ name: "notify", factory: (pi) => { registerTurnNotify(pi); } },
+		{ name: "remote", factory: (pi) => { registerRemoteDetach(pi); } },
 		...(localReview ? [] : [
 			{ name: "subagents", factory: bundledSubagents },
 			{ name: "btw", factory: bundledBtw },

@@ -309,7 +309,7 @@ fn bundle_process_status(bundle: &Path) -> Option<i32> {
 }
 
 fn http_client() -> CtResult<reqwest::Client> {
-    reqwest::Client::builder()
+    crate::tls::http_client_builder()
         .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
         .build()

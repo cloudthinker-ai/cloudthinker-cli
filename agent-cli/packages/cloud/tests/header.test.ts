@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { hostname } from "node:os";
 import test from "node:test";
 import { stripVTControlCharacters } from "node:util";
-import { initTheme } from "@earendil-works/pi-coding-agent";
+import { initTheme, keyText } from "@earendil-works/pi-coding-agent";
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { TUI } from "@earendil-works/pi-tui";
 import { visibleWidth } from "@earendil-works/pi-tui";
@@ -11,7 +12,9 @@ import {
 	UNLINKED_LINE,
 	type HeaderState,
 	type HeaderStyler,
+	buildHints,
 	formatHeaderText,
+	remoteHost,
 	SessionHeader,
 } from "../src/header.ts";
 import { LOGO_WIDTH, renderLogo } from "../src/logo.ts";
@@ -237,4 +240,22 @@ test("CA-AWARE-12: header identity text cannot carry terminal control sequences"
 	assert.doesNotMatch(rendered, /[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/);
 	assert.match(rendered, /acme/);
 	assert.match(rendered, /@acme\.io/);
+});
+
+test("under cloudthinker remote the key line names detach and quit, and a local agent keeps clear/exit", () => {
+	initTheme("dark");
+	const remote = buildHints(plain, true);
+	const local = buildHints(plain, false);
+	assert.equal(
+		stripVTControlCharacters(remote.compact),
+		`${keyText("app.interrupt")} interrupt · ctrl+z detach · ${keyText("app.exit")} quit · / commands · ! bash · ${keyText("app.tools.expand")} transcript`,
+	);
+	assert.match(stripVTControlCharacters(local.compact), /clear\/exit · \/ commands/);
+	assert.doesNotMatch(stripVTControlCharacters(local.compact), /detach/);
+	assert.match(stripVTControlCharacters(remote.expanded), /^ctrl\+z to detach \(the agent keeps running\)$/m);
+	assert.doesNotMatch(stripVTControlCharacters(remote.expanded), /to suspend/);
+	assert.doesNotMatch(stripVTControlCharacters(local.expanded), /to detach/);
+	assert.equal(remoteHost({}), undefined);
+	assert.equal(remoteHost({ CLOUDTHINKER_REMOTE: "0" }), undefined);
+	assert.equal(remoteHost({ CLOUDTHINKER_REMOTE: "1" }), hostname());
 });

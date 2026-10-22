@@ -15,6 +15,8 @@ import { applyCodeBlockNumbers, COPY_USAGE, copyCodeBlock, copyCommandIndex, typ
 import { applyMermaidUi } from "./mermaid.ts";
 import { applyCloudModelGuidance, applyCloudOnlyModels } from "./models.ts";
 import { applyQueuedMessagesUi } from "./queue-ui.ts";
+import { applyRemoteAttach } from "./remote-attach.ts";
+import { applyRemoteLeave } from "./remote-leave.ts";
 import { applyReasoningUiGuard } from "./reasoning-ui.ts";
 import { applySkillCatalogGuard } from "./skill-catalog.ts";
 import { applyScrollPill } from "./scroll-pill.ts";
@@ -205,4 +207,6 @@ export function applyGuard(): void {
 	applyToolGroups();
 	applyCloudOnlyModels();
 	applyCloudModelGuidance();
+	applyRemoteAttach();
+	applyRemoteLeave();
 }

@@ -1,3 +1,5 @@
+import { hostname } from "node:os";
+
 import { keyHint, keyText, rawKeyHint } from "@earendil-works/pi-coding-agent";
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
@@ -28,6 +30,12 @@ export interface HeaderState {
 	autoMode?: boolean;
 }
 
+export const REMOTE_DETACH_KEY = "ctrl+z";
+
+export function remoteHost(env: Readonly<Record<string, string | undefined>> = process.env): string | undefined {
+	return env.CLOUDTHINKER_REMOTE === "1" ? hostname() : undefined;
+}
+
 export const AUTO_LABEL = "Auto";
 export const MANUAL_LABEL = "Manual";
 
@@ -53,12 +61,15 @@ function formatSessionLine(state: HeaderState, styler: HeaderStyler): string {
 	return parts.join(styler.fg("muted", " · "));
 }
 
-export function buildHints(styler: HeaderStyler): HeaderHints {
+export function buildHints(styler: HeaderStyler, remote = remoteHost() !== undefined): HeaderHints {
 	const separator = styler.fg("muted", " · ");
+	const leave = remote
+		? [rawKeyHint(REMOTE_DETACH_KEY, "detach"), keyHint("app.exit", "quit")]
+		: [rawKeyHint(`${keyText("app.clear")}/${keyText("app.exit")}`, "clear/exit")];
 	return {
 		compact: [
 			keyHint("app.interrupt", "interrupt"),
-			rawKeyHint(`${keyText("app.clear")}/${keyText("app.exit")}`, "clear/exit"),
+			...leave,
 			rawKeyHint("/", "commands"),
 			rawKeyHint("!", "bash"),
 			keyHint("app.tools.expand", "transcript"),
@@ -68,7 +79,9 @@ export function buildHints(styler: HeaderStyler): HeaderHints {
 			keyHint("app.clear", "to clear"),
 			rawKeyHint(`${keyText("app.clear")} twice`, "to exit"),
 			keyHint("app.exit", "to exit (empty)"),
-			keyHint("app.suspend", "to suspend"),
+			remote
+				? rawKeyHint(REMOTE_DETACH_KEY, "to detach (the agent keeps running)")
+				: keyHint("app.suspend", "to suspend"),
 			keyHint("tui.editor.deleteToLineEnd", "to delete to end"),
 			rawKeyHint(
 				`${keyText("app.model.cycleForward")}/${keyText("app.model.cycleBackward")}`,

@@ -248,7 +248,7 @@ fn verify_sha256(archive: &[u8], expected_hex: &str, tool: &str) -> CtResult<()>
 }
 
 fn http_client() -> CtResult<reqwest::Client> {
-    reqwest::Client::builder()
+    crate::tls::http_client_builder()
         .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
         .build()
@@ -307,8 +307,8 @@ mod tests {
 
     fn zip_with(member: &str, data: &[u8]) -> Vec<u8> {
         let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
-        let options: zip::write::FileOptions<'_, ()> =
-            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
         writer.start_file(member, options).unwrap();
         writer.write_all(data).unwrap();
         writer.finish().unwrap().into_inner()

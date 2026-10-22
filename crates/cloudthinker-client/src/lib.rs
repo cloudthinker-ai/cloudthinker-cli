@@ -17,6 +17,8 @@ mod outposts;
 pub use outposts::OutpostStatus;
 mod retry;
 mod review_url;
+mod tls;
+pub use tls::{https_client, trusted_roots_pem};
 mod toolpack;
 pub mod worker_api;
 pub use cloudthinker_api::types as worker_types;

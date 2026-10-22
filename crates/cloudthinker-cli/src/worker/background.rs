@@ -153,7 +153,7 @@ fn launch_mode(probe: Result<BTreeMap<String, String>, String>, inside_unit: boo
     }
 }
 
-async fn probe_transient_scope(
+pub(crate) async fn probe_transient_scope(
     environment: &BTreeMap<String, String>,
 ) -> Result<BTreeMap<String, String>, String> {
     if !cfg!(target_os = "linux") {

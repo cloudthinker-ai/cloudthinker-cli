@@ -196,6 +196,10 @@ pub struct StartArgs {
     #[arg(long, value_enum, default_value_t = LogFormat::Text)]
     log_format: LogFormat,
 
+    /// Also print each file and shell step, for debugging.
+    #[arg(short, long)]
+    verbose: bool,
+
     /// Serve /healthz and /metrics on this address, for example 127.0.0.1:9464.
     #[arg(long)]
     health_addr: Option<SocketAddr>,
@@ -398,14 +402,15 @@ async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
     use std::sync::Arc;
     use tokio_util::sync::CancellationToken;
     let json_logs = args.log_format == LogFormat::Json;
-    telemetry::init(json_logs, usize::from(args.concurrency));
+    telemetry::init(json_logs, usize::from(args.concurrency), args.verbose);
     if !args.workdir.is_dir() {
         return Err(CtError::Usage(
             "--workdir must name an existing directory".into(),
         ));
     }
-    let label = args.label.as_deref().unwrap_or("outpost folder");
-    if label.contains('/') || label.contains('\\') || label.chars().any(char::is_control) {
+    if let Some(label) = args.label.as_deref()
+        && (label.contains('/') || label.contains('\\') || label.chars().any(char::is_control))
+    {
         return Err(CtError::Usage(
             "--label must be a short display name, not a path".into(),
         ));
@@ -459,6 +464,7 @@ async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
     });
     let signals = runtime::Signals::default();
     let handler = signals.clone();
+    let draining = executor.clone();
     let listen = |kind| {
         tokio::signal::unix::signal(kind)
             .map_err(|_| CtError::Protocol("worker signal handler unavailable".into()))
@@ -467,6 +473,7 @@ async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
     let mut interrupt = listen(tokio::signal::unix::SignalKind::interrupt())?;
     tokio::spawn(async move {
         tokio::select! {_=interrupt.recv()=>{},_=term.recv()=>{}}
+        telemetry::stopping(draining.running());
         handler.drain.cancel();
         tokio::select! {_=interrupt.recv()=>{},_=term.recv()=>{}}
         telemetry::emit(
@@ -490,11 +497,22 @@ async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
         }
         telemetry::serve(listener, health_stop.clone());
     }
-    let serving = output::worker_serving_line(&credential.name, label);
     if json_logs {
-        telemetry::emit(Level::Info, "worker_serving", Fields::default(), &serving);
+        telemetry::emit(Level::Info, "worker_serving", Fields::default(), "");
     } else {
-        output::progress(&serving);
+        let name = if credential.name == worker_credentials::UNNAMED_OUTPOST {
+            output::short_id(credential.target_id)
+        } else {
+            credential.name.clone()
+        };
+        output::print_worker_header(&output::WorkerHeader {
+            name: &name,
+            folder: &executor.identity.path,
+            label: args.label.as_deref(),
+            server: base_url,
+            concurrency: args.concurrency,
+            version: CLI_VERSION,
+        });
     }
     let outcome = runtime::run(
         client,
@@ -506,6 +524,9 @@ async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
     )
     .await;
     health_stop.cancel();
+    if outcome.is_ok() {
+        telemetry::stopped();
+    }
     outcome
 }
 

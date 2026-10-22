@@ -12,6 +12,7 @@ pub enum Module {
     CyberVerify,
     CyberReport,
     Worker,
+    Remote,
 }
 
 impl Module {
@@ -27,6 +28,7 @@ impl Module {
             Self::CyberVerify => include_str!("../skills/cloudthinker-cli/cyber-verify.md"),
             Self::CyberReport => include_str!("../skills/cloudthinker-cli/cyber-report.md"),
             Self::Worker => include_str!("../skills/cloudthinker-cli/worker.md"),
+            Self::Remote => include_str!("../skills/cloudthinker-cli/remote.md"),
         }
     }
 }

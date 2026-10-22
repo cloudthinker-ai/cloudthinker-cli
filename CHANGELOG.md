@@ -1,3 +1,17 @@
+## [0.9.1]
+
+- Stop trusting the compromised eMudhra certificate roots (emSign ECC Root CA - G3, emSign Root CA - C1, emSign ECC Root CA - C3) and the Comodo AAA root that cross-signs them. Every CLI request, `cloudthinker update`, local Cyber discovery, and the bundled agent (now built with Bun 1.4.4) reject a forged HTTPS certificate from these chains, even when the operating system still trusts them. Other roots from the operating system trust store keep working. If you still run 0.8.3 or older on an untrusted network, update your operating system's CA certificates before you update the CLI.
+- 0.9.1 is the first published release after 0.8.3, so it also ships the 0.9.0 changes: `cloudthinker remote` runs the agent on your remote machine with one command, and the TLS and HTTP/2 libraries move to their patched releases.
+- Keep the packaged Cyber discovery runtime in sync with canonical finding review helpers. Cloud Pentest uses Recon, Hunter, Verifier and Critic profiles while Recon is centralized under the single `cyber-recon` ID; saved Recon children with earlier guidance digests may need a fresh assignment. Critic returns its review through ordinary child completion.
+- Keep CLI workers compatible with backend file-operation envelopes used during first-time workspace-memory setup.
+- Add paging to Cyber result lists and clarify identity checks and evidence repair.
+- `worker start` prints calmer output. A header names the Worker, its folder, the server, the no-sandbox warning, and how to stop it. Each run prints one start line and one summary line with its duration and its shell commands, file reads, and file edits. A failed or timed-out command gets its own plain line. A lost connection prints one line, and `Reconnected.` follows. Ctrl-C prints on its own line and says how many commands still run. Times are short local times. Add `--verbose` (`-v`) to see each operation.
+
+## [0.9.0]
+
+- `cloudthinker remote` runs the agent on your remote machine with one command: name the machine once (`cloudthinker remote vm`), then a bare `cloudthinker remote` returns to it and picks the folder for you, or shows one short list of running agents and recent folders. Ctrl+Z detaches and the agent keeps running; Ctrl+D, Ctrl+C twice, and `/quit` first ask whether to detach or quit, so leaving never kills work by accident. When the network drops, a banner says it is reconnecting and the same screen comes back; Ctrl+V pastes a laptop image, dragged files are copied over, and the remote machine needs nothing besides `cloudthinker`.
+- Update the TLS and HTTP/2 libraries the CLI uses for every request to their patched releases. They fix a TLS downgrade, a TLS secret that debug output could reveal, and crashes or memory growth a malicious server could trigger.
+
 ## [0.8.3]
 
 - Regenerated the CLI API schema and bundled Cyber discovery runtime so Ultra pentest runs accept their manifest.

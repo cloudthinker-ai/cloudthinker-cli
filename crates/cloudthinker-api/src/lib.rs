@@ -5780,6 +5780,13 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "cited_flow_id": {
+    ///      "title": "Cited Flow Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "code_review_merge_request_id": {
     ///      "title": "Code Review Merge Request Id",
     ///      "type": [
@@ -6025,6 +6032,8 @@ pub mod types {
         pub can_apply_fix: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub category: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub cited_flow_id: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub code_review_merge_request_id: ::std::option::Option<::uuid::Uuid>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -10690,6 +10699,13 @@ pub mod types {
     ///        "type": "string"
     ///      }
     ///    },
+    ///    "create_if_absent": {
+    ///      "title": "Create If Absent",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "dst_path": {
     ///      "title": "Dst Path",
     ///      "type": [
@@ -10988,6 +11004,8 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub convention_patterns: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub create_if_absent: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub dst_path: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub file_path: ::std::option::Option<::std::string::String>,
@@ -11062,6 +11080,7 @@ pub mod types {
                 context_before: Default::default(),
                 convention_filenames: Default::default(),
                 convention_patterns: Default::default(),
+                create_if_absent: Default::default(),
                 dst_path: Default::default(),
                 file_path: Default::default(),
                 file_paths: Default::default(),
@@ -14105,16 +14124,28 @@ pub mod types {
     ///
     ///``ultra`` has the same destructive-probing allowance as ``full`` but
     /// also turns on the saturation loop: the agent keeps hunting new
-    /// attack surface in further waves until two in a row find nothing new
-    /// (the `cyber-scan-modes-ultra` depth leaf). It is the highest blast
-    /// radius.
+    /// attack surface in further passes until one complete pass adds no new
+    /// finding or surface record (the `cyber-scan-modes-ultra` depth leaf).
+    /// It is the highest blast radius.
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
     ///  "title": "Intensity",
-    ///  "description": "Per-run probing intensity: safe|aggressive|full|ultra.\n\nConsolidates two legacy flags into one: the dead PentestRun.safe_mode\n(hardcoded True, never varied) and the live App.allow_active_probing\nconsent gate (destructive DELETE/data-changing probing). App carries a\ndefault_intensity that seeds new runs; PentestRun and CyberSchedule each\nfreeze their own chosen intensity at construction (a schedule's frozen\nintensity survives a later change to the App's default).\n\n``ultra`` has the same destructive-probing allowance as ``full`` but also\nturns on the saturation loop: the agent keeps hunting new attack surface in\nfurther waves until two in a row find nothing new (the `cyber-scan-modes-ultra`\ndepth leaf). It is the highest blast radius.",
+    ///  "description": "Per-run probing intensity:
+    /// safe|aggressive|full|ultra.\n\nConsolidates two legacy flags into one:
+    /// the dead PentestRun.safe_mode\n(hardcoded True, never varied) and the
+    /// live App.allow_active_probing\nconsent gate (destructive
+    /// DELETE/data-changing probing). App carries a\ndefault_intensity that
+    /// seeds new runs; PentestRun and CyberSchedule each\nfreeze their own
+    /// chosen intensity at construction (a schedule's frozen\nintensity
+    /// survives a later change to the App's default).\n\n``ultra`` has the same
+    /// destructive-probing allowance as ``full`` but also\nturns on the
+    /// saturation loop: the agent keeps hunting new attack surface in\nfurther
+    /// passes until one complete pass adds no new finding or surface record
+    /// (the `cyber-scan-modes-ultra`\ndepth leaf). It is the highest blast
+    /// radius.",
     ///  "type": "string",
     ///  "enum": [
     ///    "safe",
@@ -19047,6 +19078,13 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "comparison_base_sha": {
+    ///      "title": "Comparison Base Sha",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "credential_ref": {
     ///      "title": "Credential Ref",
     ///      "type": [
@@ -19182,6 +19220,8 @@ pub mod types {
         pub branch: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub commit_sha: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub comparison_base_sha: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub credential_ref: ::std::option::Option<::uuid::Uuid>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -27284,6 +27324,13 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "policy_templates_enabled": {
+    ///      "title": "Policy Templates Enabled",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "policy_tool_enabled": {
     ///      "title": "Policy Tool Enabled",
     ///      "type": [
@@ -27346,6 +27393,8 @@ pub mod types {
         pub owner_id: ::std::option::Option<::uuid::Uuid>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub policy_enforcement_enabled: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub policy_templates_enabled: ::std::option::Option<bool>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub policy_tool_enabled: ::std::option::Option<bool>,
         #[serde(default)]
@@ -27778,6 +27827,13 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "policy_templates_enabled": {
+    ///      "title": "Policy Templates Enabled",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "policy_tool_enabled": {
     ///      "title": "Policy Tool Enabled",
     ///      "type": [
@@ -27845,6 +27901,8 @@ pub mod types {
         pub owner_id: ::std::option::Option<::uuid::Uuid>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub policy_enforcement_enabled: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub policy_templates_enabled: ::std::option::Option<bool>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub policy_tool_enabled: ::std::option::Option<bool>,
         #[serde(default)]

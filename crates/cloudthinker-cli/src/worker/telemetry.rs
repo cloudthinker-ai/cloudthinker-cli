@@ -10,13 +10,13 @@ use axum::extract::State;
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use chrono::{SecondsFormat, Utc};
+use chrono::{Local, SecondsFormat, Utc};
 use cloudthinker_client::{CtError, CtResult};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::engine::output;
+use crate::engine::output::{self, ConsoleEvent, WorkerActivity, WorkerConsole};
 
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 const HEALTHY_POLL_AGE: Duration = Duration::from_secs(60);
@@ -75,6 +75,9 @@ pub struct Fields<'a> {
     pub operation_kind: Option<&'a str>,
     pub outcome: Option<&'a str>,
     pub duration_ms: Option<u128>,
+    pub operation_id: Option<Uuid>,
+    pub activity: Option<WorkerActivity>,
+    pub error_code: Option<&'a str>,
 }
 
 #[derive(Default)]
@@ -93,6 +96,8 @@ struct Series {
 
 struct Telemetry {
     json: bool,
+    verbose: bool,
+    console: Mutex<WorkerConsole>,
     capacity: usize,
     started: Instant,
     state: AtomicU8,
@@ -105,9 +110,11 @@ struct Telemetry {
 static TELEMETRY: OnceLock<Arc<Telemetry>> = OnceLock::new();
 
 impl Telemetry {
-    fn new(json: bool, capacity: usize) -> Self {
+    fn new(json: bool, capacity: usize, verbose: bool) -> Self {
         Self {
             json,
+            verbose,
+            console: Mutex::new(WorkerConsole::new(output::worker_console_style(), verbose)),
             capacity,
             started: Instant::now(),
             state: AtomicU8::new(WorkerState::Starting as u8),
@@ -159,8 +166,9 @@ impl Telemetry {
     }
 }
 
-pub fn init(json: bool, capacity: usize) {
-    let _ = TELEMETRY.set(Arc::new(Telemetry::new(json, capacity)));
+pub fn init(json: bool, capacity: usize, verbose: bool) {
+    let verbose = verbose || debug_enabled();
+    let _ = TELEMETRY.set(Arc::new(Telemetry::new(json, capacity, verbose)));
 }
 
 pub fn set_state(state: WorkerState) {
@@ -207,15 +215,78 @@ pub fn operation(kind: &str, outcome: &str, elapsed: Duration) {
 pub fn emit(level: Level, event: &str, fields: Fields<'_>, text: &str) {
     match TELEMETRY.get() {
         Some(telemetry) if telemetry.json => {
-            if level == Level::Debug && !debug_enabled() {
+            if level == Level::Debug && !telemetry.verbose {
                 return;
             }
             eprintln!("{}", json_line(level, event, fields));
         }
-        _ => match level {
+        Some(telemetry) => telemetry.show(console_event(level, event, &fields, text)),
+        None => match level {
             Level::Debug => output::worker_debug(text),
             Level::Info => output::worker_event(text),
             Level::Warn => output::warn(text),
+        },
+    }
+}
+
+pub fn stopping(running: usize) {
+    show(ConsoleEvent::Stopping { running });
+}
+
+pub fn stopped() {
+    show(ConsoleEvent::Stopped);
+}
+
+fn show(event: ConsoleEvent<'_>) {
+    if let Some(telemetry) = TELEMETRY.get()
+        && !telemetry.json
+    {
+        telemetry.show(event);
+    }
+}
+
+impl Telemetry {
+    fn show(&self, event: ConsoleEvent<'_>) {
+        let Ok(mut console) = self.console.lock() else {
+            return;
+        };
+        let lines = console.handle(Local::now(), event);
+        output::print_worker_lines(&lines);
+    }
+}
+
+fn console_event<'a>(
+    level: Level,
+    event: &str,
+    fields: &Fields<'a>,
+    text: &'a str,
+) -> ConsoleEvent<'a> {
+    match (event, fields.assignment_id) {
+        ("worker_online", _) => ConsoleEvent::Online,
+        ("connection_lost", _) => ConsoleEvent::ConnectionLost { detail: text },
+        ("worker_draining", _) => ConsoleEvent::Silent,
+        ("worker_cancelling", _) => ConsoleEvent::Cancelling,
+        ("assignment_claimed", Some(run)) => ConsoleEvent::RunStarted { run },
+        ("assignment_finished", Some(run)) => ConsoleEvent::RunFinished { run },
+        ("assignment_stopped", Some(run)) => ConsoleEvent::RunStopped { run, reason: text },
+        ("operation_started", Some(run)) => ConsoleEvent::OperationStarted {
+            run,
+            operation: fields.operation_id,
+            kind: fields.operation_kind.unwrap_or("operation"),
+        },
+        ("operation_finished", Some(run)) => ConsoleEvent::OperationFinished {
+            run,
+            operation: fields.operation_id,
+            kind: fields.operation_kind.unwrap_or("operation"),
+            activity: fields.activity.unwrap_or(WorkerActivity::Internal),
+            outcome: fields.outcome.unwrap_or("succeeded"),
+            code: fields.error_code,
+            duration_ms: fields.duration_ms.unwrap_or(0),
+        },
+        _ => match level {
+            Level::Debug => ConsoleEvent::Detail { text },
+            Level::Info => ConsoleEvent::Note { text },
+            Level::Warn => ConsoleEvent::Warning { text },
         },
     }
 }
@@ -423,7 +494,7 @@ mod tests {
 
     #[tokio::test]
     async fn worker_health_and_metrics_endpoints_keep_their_contract() {
-        let telemetry = Arc::new(Telemetry::new(false, 4));
+        let telemetry = Arc::new(Telemetry::new(false, 4, false));
         let listener = bind("127.0.0.1:0".parse().unwrap()).await.unwrap();
         let address = listener.local_addr().unwrap();
         let stop = CancellationToken::new();
@@ -490,6 +561,9 @@ mod tests {
                 operation_kind: Some("script"),
                 outcome: Some("succeeded"),
                 duration_ms: Some(42),
+                operation_id: Some(Uuid::nil()),
+                activity: Some(WorkerActivity::Command),
+                error_code: Some("TIMEOUT"),
             },
         );
         let value: serde_json::Value = serde_json::from_str(&line).unwrap();

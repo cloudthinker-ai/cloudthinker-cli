@@ -1,3 +1,9 @@
+## [0.9.0]
+
+- Under `cloudthinker remote`, the agent redraws its full screen when you reattach, at the new window size, with mouse and keys working.
+- A turn that takes 10 seconds or more ends with a desktop notification, in a local session and under `cloudthinker remote` (OSC 9, or OSC 99 on kitty, also through tmux); set `CLOUDTHINKER_NOTIFY=0` to turn it off.
+- Under `cloudthinker remote`, leaving never kills work by accident: Ctrl+Z and the new `/detach` command detach while the agent keeps running, and Ctrl+D on an empty prompt, Ctrl+C twice, `/quit`, and `/exit` first ask `Leave the agent on <machine>?`, where Enter detaches, Quit stops the agent, and Esc returns to it.
+
 ## [0.8.3-dev.1]
 
 - A drag over several rows of an answer pastes Markdown: table rows as a Markdown table with its header, code as plain code with wrapped lines joined (fenced when other text is selected too), and paragraphs and links as their Markdown source. The note says what was copied, such as "Copied table (2 rows) as Markdown". A plain-text code block shows only its number, `[1]`.

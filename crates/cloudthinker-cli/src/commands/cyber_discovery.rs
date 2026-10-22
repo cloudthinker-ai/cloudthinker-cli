@@ -181,13 +181,25 @@ pub async fn discover(
             return ExitCode::JobFailed;
         }
     };
-    let environment = match child_environment(path) {
+    let mut environment = match child_environment(path) {
         Ok(environment) => environment,
         Err(error) => {
             output::eprintln_error(&error.to_string());
             return ExitCode::Usage;
         }
     };
+    let ca_file = roots.root.join("trusted-roots.pem");
+    if let Err(error) = write_private_file(
+        &ca_file,
+        cloudthinker_client::trusted_roots_pem().as_bytes(),
+    ) {
+        output::eprintln_error(&error);
+        return ExitCode::JobFailed;
+    }
+    environment.insert(
+        OsString::from("CT_CYBER_DISCOVERY_CA_FILE"),
+        ca_file.into_os_string(),
+    );
     let output_result =
         run_or_reuse(&client, &brief, &roots, &environment, max_urls, timeout).await;
     let (health, artifacts, artifacts_path, runner_succeeded) = match output_result {
