@@ -39,6 +39,7 @@ use rand as _;
 use serde as _;
 use supports_color as _;
 use tokio as _;
+#[cfg(unix)]
 use unicode_width as _;
 
 use std::collections::VecDeque;

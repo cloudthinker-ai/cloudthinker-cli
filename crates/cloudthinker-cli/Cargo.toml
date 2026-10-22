@@ -36,9 +36,9 @@ tempfile = "3"
 clap_complete = "4"
 chrono.workspace = true
 fs2 = "0.4"
-unicode-width = "0.2"
 
 [target.'cfg(unix)'.dependencies]
+unicode-width = "0.2"
 axum = { version = "0.8", default-features = false, features = ["tokio", "http1"] }
 base64.workspace = true
 flate2.workspace = true
