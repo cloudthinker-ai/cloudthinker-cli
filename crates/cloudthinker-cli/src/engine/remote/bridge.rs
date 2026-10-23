@@ -151,7 +151,9 @@ async fn spawn_host(name: &str) -> Result<(), BridgeError> {
     let program = std::env::current_exe().map_err(|error| {
         bridge_error(&format!("could not find the cloudthinker program: {error}"))
     })?;
-    let environment: BTreeMap<String, String> = std::env::vars().collect();
+    let environment: BTreeMap<String, String> = std::env::vars_os()
+        .filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?)))
+        .collect();
     let mut command =
         if lingering(&environment) && probe_transient_scope(&environment).await.is_ok() {
             let mut command = tokio::process::Command::new("systemd-run");

@@ -228,7 +228,13 @@ struct GitOutput {
 }
 
 fn git(dir: &Path, args: &[&str], timeout: Duration) -> Option<GitOutput> {
-    let mut child = Command::new("git")
+    let mut command = Command::new("git");
+    for (key, _) in std::env::vars_os() {
+        if key.as_encoded_bytes().starts_with(b"CLOUDTHINKER_") {
+            command.env_remove(key);
+        }
+    }
+    let mut child = command
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -549,7 +555,13 @@ fn read_records(state: &Path) -> Vec<Record> {
 fn is_clean(path: &Path) -> Option<bool> {
     let output = git(
         path,
-        &["status", "--porcelain", "--untracked-files=all"],
+        &[
+            "-c",
+            "core.fsmonitor=false",
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+        ],
         LOCAL_GIT_TIMEOUT,
     )?;
     output.ok.then(|| output.stdout.trim().is_empty())

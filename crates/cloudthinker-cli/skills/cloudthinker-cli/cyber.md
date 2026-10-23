@@ -19,8 +19,10 @@ tool results also sync, so keep secrets out of their output.
 - Check target reachability, expected authentication, the local runtime and
   required tools before discovery. Repair setup where possible and record limitations.
 - `[cyber.context]` holds useful paths or URLs, such as `api_spec` or `notes`.
-  `[cyber.auth]` maps roles to environment-variable names. Keep credentials out
-  of config, prompts, reports, and logs.
+  `[cyber.auth]` maps roles to environment-variable names. In the project
+  config, name a `CYBER_<ROLE>_AUTH` variable, such as `CYBER_OWNER_AUTH`; the
+  CLI ignores other names there. Save any other name with `--user`. Keep
+  credentials out of config, prompts, reports, and logs.
 - Use the configured identities that fit the check. For authorization tests,
   compare the same resource across identities against its expected access rules;
   matching HTTP status codes alone do not establish a vulnerability.

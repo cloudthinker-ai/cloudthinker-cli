@@ -140,7 +140,7 @@ fn write_local_review_stub(
     let script = dir.join("cloudthinker-agent");
     let args_file = dir.join("argv");
     let script_body = format!(
-        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CT_REVIEW_ARGS\"\npwd > \"$CT_REVIEW_CWD\"\nsleep {delay}\nprintf '%s\\n' '{}'\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CT_REVIEW_ARGS\"\ncat > \"$CT_REVIEW_STDIN\"\npwd > \"$CT_REVIEW_CWD\"\nsleep {delay}\nprintf '%s\\n' '{}'\n",
         answer.replace('\'', "'\\''")
     );
     std::fs::write(&script, script_body).unwrap();
@@ -161,6 +161,7 @@ fn run_local_review(
         .env("CLOUDTHINKER_AGENT_BIN", script)
         .env("CT_REVIEW_ARGS", script.parent().unwrap().join("argv"))
         .env("CT_REVIEW_CWD", script.parent().unwrap().join("cwd"))
+        .env("CT_REVIEW_STDIN", script.parent().unwrap().join("stdin"))
         .args(args);
     command.output().unwrap()
 }
@@ -195,8 +196,11 @@ fn ca_lr_01_local_agent_reads_checkout_and_prints_findings_without_cloud_transcr
     assert!(argv.contains("--no-extensions"));
     assert!(argv.contains("--no-skills"));
     assert!(argv.contains("--no-context-files"));
-    assert!(argv.contains("Review this checkout as a local coding agent"));
-    assert!(argv.contains("fn value() { 2 }"));
+    assert!(argv.contains("--print"));
+    assert!(!argv.contains("fn value() { 2 }"));
+    let prompt = std::fs::read_to_string(stub.parent().unwrap().join("stdin")).unwrap();
+    assert!(prompt.contains("Review this checkout as a local coding agent"));
+    assert!(prompt.contains("fn value() { 2 }"));
     let cwd = std::fs::read_to_string(stub.parent().unwrap().join("cwd")).unwrap();
     assert_eq!(
         std::fs::canonicalize(cwd.trim()).unwrap(),

@@ -95,14 +95,21 @@ pub fn emit_json<T: Serialize>(value: &T) -> Result<(), String> {
     emit_json_to(&mut out, value)
 }
 
-pub fn write_json_file<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
+pub fn write_private_json_file<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
-    write_file(path, &bytes)
+    write_private_file(path, &bytes)
 }
 
-pub fn write_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
+pub fn write_private_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let mut options = OpenOptions::new();
     options.write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options
+            .mode(0o600)
+            .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits().cast_signed());
+    }
     match symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
             return Err(format!(
@@ -120,6 +127,12 @@ pub fn write_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
         Err(error) => return Err(error.to_string()),
     }
     let mut file = options.open(path).map_err(|error| error.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .map_err(|error| error.to_string())?;
+    }
     file.write_all(bytes).map_err(|error| error.to_string())?;
     file.sync_all().map_err(|error| error.to_string())
 }
@@ -133,7 +146,7 @@ fn emit_json_to<T: Serialize>(out: &mut impl Write, value: &T) -> Result<(), Str
 /// Write the bare answer to stdout (`chat -p` human mode). Nothing else.
 pub fn print_answer(answer: &str) -> Result<(), String> {
     let mut out = std::io::stdout().lock();
-    write_line(&mut out, answer)
+    write_line(&mut out, &terminal_lines(answer))
 }
 
 /// Write the raw access token to stdout, verbatim and alone. It is a secret a
@@ -334,14 +347,23 @@ fn format_whoami(identity: &CliIdentity) -> String {
 pub fn terminal_text(value: &str) -> String {
     value
         .chars()
-        .filter(|character| {
-            !character.is_control()
-                && !matches!(
-                    character,
-                    '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
-                )
-        })
+        .filter(|&character| terminal_safe(character))
         .collect()
+}
+
+fn terminal_lines(value: &str) -> String {
+    value
+        .chars()
+        .filter(|&character| matches!(character, '\n' | '\t') || terminal_safe(character))
+        .collect()
+}
+
+fn terminal_safe(character: char) -> bool {
+    !character.is_control()
+        && !matches!(
+            character,
+            '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+        )
 }
 
 /// Write one human-mode result line to stdout (`update`'s outcome message).
@@ -374,17 +396,17 @@ pub fn print_status_summary(view: &RunView) -> Result<(), String> {
     write_line(&mut out, &format!("run:    {}", view.run_id))?;
     write_line(&mut out, &format!("status: {}", status_label(view.status)))?;
     if let Some(kind) = &view.failure_kind {
-        write_line(&mut out, &format!("reason: {kind}"))?;
+        write_line(&mut out, &format!("reason: {}", terminal_text(kind)))?;
     }
     if let Some(url) = &view.web_url
         && view.status == RunStatus::RequiredApproval
     {
-        write_line(&mut out, &format!("approve: {url}"))?;
+        write_line(&mut out, &format!("approve: {}", terminal_text(url)))?;
     }
     if view.status == RunStatus::Succeeded
         && let Some(answer) = &view.answer
     {
-        write_line(&mut out, &format!("\n{answer}"))?;
+        write_line(&mut out, &format!("\n{}", terminal_lines(answer)))?;
     }
     Ok(())
 }
@@ -427,9 +449,16 @@ pub fn print_review_status_summary(view: &ReviewView) -> Result<(), String> {
     let mut out = std::io::stdout().lock();
     write_line(
         &mut out,
-        &format!("mr:       {} ({})", view.mr_iid, view.provider),
+        &format!(
+            "mr:       {} ({})",
+            view.mr_iid,
+            terminal_text(&view.provider)
+        ),
     )?;
-    write_line(&mut out, &format!("title:    {}", view.title))?;
+    write_line(
+        &mut out,
+        &format!("title:    {}", terminal_text(&view.title)),
+    )?;
     write_line(
         &mut out,
         &format!("status:   {}", review_status_label(view.status)),
@@ -440,7 +469,7 @@ pub fn print_review_status_summary(view: &ReviewView) -> Result<(), String> {
     )?;
     write_line(&mut out, &format!("findings: {}", view.findings_count))?;
     if let Some(url) = &view.url {
-        write_line(&mut out, &format!("url:      {url}"))?;
+        write_line(&mut out, &format!("url:      {}", terminal_text(url)))?;
     }
     Ok(())
 }
@@ -929,7 +958,11 @@ pub fn print_review_findings(view: &ReviewView) -> Result<(), String> {
             &mut out,
             &format!(
                 "[{}] {} ({}) — {}{}",
-                finding.severity, location, category, finding.issue_title, resolved
+                terminal_text(&finding.severity),
+                terminal_text(&location),
+                terminal_text(category),
+                terminal_text(&finding.issue_title),
+                resolved
             ),
         )?;
     }
@@ -1001,7 +1034,7 @@ fn review_verdict_label(verdict: ReviewVerdict) -> &'static str {
 
 /// Progress note to stderr (skipped in `--json` mode by the caller).
 pub fn progress(message: &str) {
-    eprintln!("{message}");
+    eprintln!("{}", terminal_lines(message));
 }
 
 const STEP_TICK: std::time::Duration = std::time::Duration::from_millis(80);
@@ -1056,6 +1089,7 @@ pub fn done(message: &str) {
 
 /// One labeled stderr line; color is suppressed off-TTY and under NO_COLOR.
 fn labeled_eprintln(label: &str, color: AnsiColors, message: &str) {
+    let message = terminal_lines(message);
     if stderr_supports_color() {
         eprintln!("{} {message}", label.color(color).bold());
     } else {
@@ -1483,6 +1517,14 @@ mod tests {
             cli_version_status: None,
             workers_disabled: None,
         }
+    }
+
+    #[test]
+    fn stderr_lines_keep_newlines_and_drop_terminal_controls() {
+        assert_eq!(
+            terminal_lines("Enter this code:\n  AB\u{1b}]52;c;cHdu\u{7}CD\u{202e}"),
+            "Enter this code:\n  AB]52;c;cHduCD"
+        );
     }
 
     #[test]

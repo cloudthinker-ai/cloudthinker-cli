@@ -208,6 +208,10 @@ fn install(base_url: &str, workspace: Option<&str>, args: ServiceInstallArgs) ->
         .map_err(|_| CtError::Store("worker executable path unavailable".into()))?
         .canonicalize()
         .map_err(|_| CtError::Store("worker executable path unavailable".into()))?;
+    #[cfg(unix)]
+    if let Some(user) = scope.system_user() {
+        require_trusted_executable(&executable, user.uid)?;
+    }
     let executable = path_text(&executable, "worker executable")?;
     let workdir = path_text(&target.workdir, "workdir")?;
     let mut argv = vec![executable, "--url".into(), origin];
@@ -272,6 +276,29 @@ fn install(base_url: &str, workspace: Option<&str>, args: ServiceInstallArgs) ->
         human.push_str(&hint);
     }
     emit(&output, &human, args.json)
+}
+
+#[cfg(unix)]
+fn require_trusted_executable(executable: &Path, account_uid: u32) -> CtResult<()> {
+    use std::os::unix::fs::MetadataExt;
+
+    for path in executable.ancestors() {
+        if path.as_os_str().is_empty() {
+            continue;
+        }
+        let metadata = fs::metadata(path).map_err(|error| {
+            CtError::Store(format!("cannot inspect {}: {error}", path.display()))
+        })?;
+        let writable_by_others = metadata.mode() & 0o022 != 0;
+        let trusted_owner = metadata.uid() == 0 || metadata.uid() == account_uid;
+        if writable_by_others || !trusted_owner {
+            return Err(CtError::Usage(format!(
+                "refusing to install a system service: {} is writable by other users or owned by another account; install cloudthinker in a root-owned directory such as /usr/local/bin",
+                path.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 struct LingerReport {
@@ -770,7 +797,19 @@ fn manager_command(program: &str) -> Command {
     if let Some(path) = test_manager_path(program) {
         return Command::new(path);
     }
-    Command::new(program)
+    Command::new(system_program(program))
+}
+
+fn system_program(program: &str) -> PathBuf {
+    #[cfg(unix)]
+    if rustix::process::geteuid().as_raw() == 0 {
+        return ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+            .iter()
+            .map(|directory| Path::new(directory).join(program))
+            .find(|path| path.is_file())
+            .unwrap_or_else(|| Path::new("/usr/bin").join(program));
+    }
+    PathBuf::from(program)
 }
 
 #[cfg(test)]

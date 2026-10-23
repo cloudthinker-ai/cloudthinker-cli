@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use axum::Router;
 use axum::extract::{Query, State};
+use axum::http::StatusCode;
 use axum::response::Html;
 use axum::routing::get;
 use base64::Engine;
@@ -107,11 +108,11 @@ impl Loopback {
         self.addr.ip()
     }
 
-    /// Serve exactly one `/callback`, returning the one-time code.
+    /// Serve `/callback` until one carries our `state`, returning the one-time code.
     ///
-    /// A `state` that does not match the one we generated is rejected without
-    /// yielding a code and without leaving the server listening (fail-closed
-    /// against a forged callback).
+    /// A callback whose `state` does not match the one we generated gets a 400
+    /// and is ignored, so a forged request can neither inject a code nor end the
+    /// login; the wait ends on the real callback or the timeout.
     pub async fn wait_for_code(self, timeout: Duration) -> CtResult<String> {
         let (tx, rx) = oneshot::channel::<CallbackOutcome>();
         let shared = Arc::new(Shared {
@@ -147,9 +148,9 @@ impl Loopback {
         match outcome {
             CallbackOutcome::Code(code) => Ok(code),
             CallbackOutcome::Denied => Err(CtError::LoginDenied),
-            CallbackOutcome::StateMismatch => {
-                Err(CtError::Auth("consent callback state mismatch".into()))
-            }
+            CallbackOutcome::Failed(reason) => Err(CtError::Auth(format!(
+                "sign-in failed: the server returned {reason}; run `cloudthinker login` again"
+            ))),
         }
     }
 }
@@ -157,7 +158,7 @@ impl Loopback {
 enum CallbackOutcome {
     Code(String),
     Denied,
-    StateMismatch,
+    Failed(String),
 }
 
 struct Shared {
@@ -201,40 +202,70 @@ fn close_html(outcome: &CallbackOutcome) -> String {
             "No access was granted. You can close this window and return to your terminal.",
             true,
         ),
-        CallbackOutcome::StateMismatch => close_page(
-            "Sign-in couldn&rsquo;t complete",
-            "This sign-in link is invalid or expired. Run cloudthinker login again from your terminal.",
+        CallbackOutcome::Failed(_) => close_page(
+            "Sign-in failed",
+            "The sign-in server reported an error. Return to your terminal and run cloudthinker login again.",
             true,
         ),
     }
 }
 
+fn mismatch_html() -> String {
+    close_page(
+        "Sign-in couldn&rsquo;t complete",
+        "This sign-in link is invalid or expired. Run cloudthinker login again from your terminal.",
+        true,
+    )
+}
+
 async fn callback(
     State(shared): State<Arc<Shared>>,
     Query(params): Query<HashMap<String, String>>,
-) -> ([(axum::http::HeaderName, &'static str); 1], Html<String>) {
-    let outcome = classify(&shared.expected_state, &params);
+) -> (
+    StatusCode,
+    [(axum::http::HeaderName, &'static str); 1],
+    Html<String>,
+) {
+    // `Connection: close` avoids a parked keep-alive socket hanging the NEXT
+    // login (codex tiny_http gotcha, server.rs:509).
+    let close = [(axum::http::header::CONNECTION, "close")];
+    let Some(outcome) = classify(&shared.expected_state, &params) else {
+        return (StatusCode::BAD_REQUEST, close, Html(mismatch_html()));
+    };
     let html = close_html(&outcome);
     if let Ok(mut guard) = shared.tx.lock()
         && let Some(sender) = guard.take()
     {
         let _ = sender.send(outcome);
     }
-    // `Connection: close` avoids a parked keep-alive socket hanging the NEXT
-    // login (codex tiny_http gotcha, server.rs:509).
-    ([(axum::http::header::CONNECTION, "close")], Html(html))
+    (StatusCode::OK, close, Html(html))
 }
 
-fn classify(expected_state: &str, params: &HashMap<String, String>) -> CallbackOutcome {
-    if params.get("error").map(String::as_str) == Some("access_denied") {
-        return CallbackOutcome::Denied;
+fn classify(expected_state: &str, params: &HashMap<String, String>) -> Option<CallbackOutcome> {
+    if params.get("state").map(String::as_str) != Some(expected_state) {
+        return None;
     }
-    match params.get("state") {
-        Some(state) if state == expected_state => match params.get("code") {
-            Some(code) if !code.is_empty() => CallbackOutcome::Code(code.clone()),
-            _ => CallbackOutcome::StateMismatch,
-        },
-        _ => CallbackOutcome::StateMismatch,
+    match params.get("error").map(String::as_str) {
+        Some("access_denied") => return Some(CallbackOutcome::Denied),
+        Some(error) => return Some(CallbackOutcome::Failed(error_code(error))),
+        None => {}
+    }
+    params
+        .get("code")
+        .filter(|code| !code.is_empty())
+        .map(|code| CallbackOutcome::Code(code.clone()))
+}
+
+fn error_code(raw: &str) -> String {
+    let code: String = raw
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .take(64)
+        .collect();
+    if code.is_empty() {
+        "an unknown error".to_string()
+    } else {
+        code
     }
 }
 
@@ -261,7 +292,7 @@ mod tests {
     fn close_html_differs_per_outcome() {
         let ok = close_html(&CallbackOutcome::Code("c".into()));
         let denied = close_html(&CallbackOutcome::Denied);
-        let mismatch = close_html(&CallbackOutcome::StateMismatch);
+        let mismatch = mismatch_html();
         assert!(ok.contains("You&rsquo;re all set"));
         assert!(ok.contains("#0d9488")); // success accent, not the error red
         assert!(denied.contains("Sign-in denied"));
@@ -319,17 +350,47 @@ mod tests {
         );
     }
 
-    // CA-CLI-3: a callback whose state does not match is rejected (fail closed),
-    // yielding no code.
+    // CA-CLI-3: a callback whose state does not match gets a 400 and yields no
+    // code, and it does not end the login: a forged code or a stateless denial
+    // is ignored until the real callback arrives.
     #[tokio::test]
-    async fn ca_cli_3_state_mismatch_is_rejected() {
+    async fn ca_cli_3_state_mismatch_is_ignored_until_the_real_callback() {
         let loopback = Loopback::bind("state-real".into()).unwrap();
         let port = loopback.port();
         let server =
             tokio::spawn(async move { loopback.wait_for_code(Duration::from_secs(5)).await });
-        hit_callback(port, "code=abc&state=state-forged").await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        for forged in [
+            "code=forged&state=state-forged",
+            "error=access_denied",
+            "error=access_denied&state=state-forged",
+        ] {
+            let response = reqwest::get(format!("http://127.0.0.1:{port}/callback?{forged}"))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 400, "{forged}");
+        }
+        hit_callback(port, "code=abc&state=state-real").await;
         let result = server.await.unwrap();
-        assert!(matches!(result, Err(CtError::Auth(_))), "got {result:?}");
+        assert_eq!(result.unwrap(), "abc");
+    }
+
+    #[tokio::test]
+    async fn a_provider_error_with_the_real_state_ends_the_wait() {
+        let loopback = Loopback::bind("state-err".into()).unwrap();
+        let port = loopback.port();
+        let server =
+            tokio::spawn(async move { loopback.wait_for_code(Duration::from_secs(5)).await });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        hit_callback(port, "error=server_error%1b%5B31m&state=state-err").await;
+        let result = server.await.unwrap();
+        match result {
+            Err(CtError::Auth(message)) => {
+                assert!(message.contains("server_error31m"), "{message}");
+                assert!(!message.contains('\u{1b}'), "{message}");
+            }
+            other => panic!("expected an auth error, got {other:?}"),
+        }
     }
 
     // CA-CLI-5: no callback within the wait window times out.

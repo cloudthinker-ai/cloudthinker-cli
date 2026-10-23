@@ -17,6 +17,7 @@ const CLI_VERSION_HEADER: &str = "x-cloudthinker-cli-version";
 const ROTATE_HEADER: &str = "x-cloudthinker-credential-rotate";
 const ROTATE_PATH: &str = "/api/v1/executor-workers/credential/rotate";
 const STATUS_PATH: &str = "/api/v1/executor-workers/credential";
+const MAX_REPLY_BYTES: usize = 64 * 1024;
 const UNAUTHORIZED_CODE: &str = "EXECUTOR_WORKER_UNAUTHORIZED";
 const UNAUTHORIZED_FALLBACK: &str = "This Worker's credential expired or was revoked. Enroll it again with the command from the Workers page.";
 const OUTDATED_CODE: &str = "EXECUTOR_WORKER_OUTDATED";
@@ -128,10 +129,11 @@ impl WorkerClient {
         observe(&self.observed, reply.headers());
         let status = reply.status();
         if status.is_success() {
-            return reply.json().await.map_err(|_| protocol_mismatch());
+            let body = read_capped(reply).await.ok_or_else(protocol_mismatch)?;
+            return serde_json::from_slice(&body).map_err(|_| protocol_mismatch());
         }
         let wait = retry_after(reply.headers());
-        let body = reply.text().await.ok();
+        let body = read_capped_text(reply).await;
         Err(rejected(status.as_u16(), body.as_deref(), wait).await)
     }
 
@@ -558,6 +560,27 @@ fn is_retryable(status: u16) -> bool {
     matches!(status, 408 | 429) || (500..=599).contains(&status)
 }
 
+async fn read_capped(mut reply: reqwest::Response) -> Option<Vec<u8>> {
+    if reply
+        .content_length()
+        .is_some_and(|len| len > MAX_REPLY_BYTES as u64)
+    {
+        return None;
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = reply.chunk().await.ok()? {
+        if body.len().saturating_add(chunk.len()) > MAX_REPLY_BYTES {
+            return None;
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Some(body)
+}
+
+async fn read_capped_text(reply: reqwest::Response) -> Option<String> {
+    String::from_utf8(read_capped(reply).await?).ok()
+}
+
 fn protocol_mismatch() -> CtError {
     CtError::Protocol(
         "worker response does not match the protocol; run `cloudthinker update` and try again"
@@ -602,7 +625,7 @@ async fn worker_error(observed: &Observed, error: cloudthinker_api::Error<()>) -
             observe(observed, response.headers());
             let status = response.status().as_u16();
             let wait = retry_after(response.headers());
-            let body = response.text().await.ok();
+            let body = read_capped_text(response).await;
             rejected(status, body.as_deref(), wait).await
         }
         other => match other.status().map(|status| status.as_u16()) {
@@ -758,6 +781,26 @@ mod tests {
             .register(&registration())
             .await
             .expect_err("the mocked response is not a worker")
+    }
+
+    #[tokio::test]
+    async fn an_oversized_credential_reply_is_a_protocol_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(STATUS_PATH))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_raw(vec![b' '; MAX_REPLY_BYTES + 1], "application/json"),
+            )
+            .mount(&server)
+            .await;
+
+        let error = worker(&server.uri())
+            .credential_status()
+            .await
+            .expect_err("oversized reply is refused");
+
+        assert!(matches!(error, CtError::Protocol(_)), "got {error:?}");
     }
 
     #[test]

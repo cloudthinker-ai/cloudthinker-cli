@@ -789,6 +789,7 @@ pub async fn scan(
             }
             let header = auth_header
                 .as_ref()
+                .filter(|_| row.targets_origin_of(&plan.target_ref))
                 .map(|(name, value)| (name.as_str(), value.as_str()));
             let probe = client.cyber_probe(&row.method, &row.url, header).await?;
             observations.push(probe.to_observation(&row.row_id, &worker, &row.url));
@@ -1185,6 +1186,30 @@ mod tests {
             executable: true,
             note: String::new(),
         }]));
+    }
+
+    #[test]
+    fn a_probe_row_must_target_the_frozen_target_origin() {
+        let row = |url: &str| PlanCheck {
+            row_id: "row-a".into(),
+            asset_type: "endpoint".into(),
+            method: "GET".into(),
+            url: url.into(),
+            locator: "GET /".into(),
+            executable: true,
+            note: String::new(),
+        };
+        assert!(row("https://app.example.test/v1").targets_origin_of("app.example.test"));
+        assert!(
+            row("https://app.example.test:443/").targets_origin_of("https://APP.example.test/")
+        );
+        assert!(row("http://localhost:3000/a").targets_origin_of("http://localhost:3000"));
+        assert!(!row("https://evil.test/").targets_origin_of("app.example.test"));
+        assert!(!row("https://app.example.test.evil.test/").targets_origin_of("app.example.test"));
+        assert!(!row("https://app.example.test@evil.test/").targets_origin_of("app.example.test"));
+        assert!(!row("http://app.example.test/").targets_origin_of("app.example.test"));
+        assert!(!row("https://app.example.test:8443/").targets_origin_of("app.example.test"));
+        assert!(!row("http://169.254.169.254/").targets_origin_of(""));
     }
 
     #[test]

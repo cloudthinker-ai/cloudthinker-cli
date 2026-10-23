@@ -7,6 +7,9 @@ use sha2::{Digest, Sha256};
 use super::{BUNDLE_DIR_NAME, create_dir, fs_error};
 use crate::error::{CtError, CtResult};
 
+const MAX_BUNDLE_BYTES: u64 = 1024 * 1024 * 1024;
+pub(super) const MAX_BUNDLE_ENTRIES: usize = 10_000;
+
 pub(super) struct SidecarVerifiedArchive {
     bytes: Vec<u8>,
     asset: String,
@@ -36,7 +39,13 @@ impl SidecarVerifiedArchive {
 pub(super) fn extract_bundle(archive: &VerifiedArchive, dest: &Path) -> CtResult<()> {
     let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(archive.0.as_slice()));
     let entries = tar.entries().map_err(archive_read_error)?;
-    for entry in entries {
+    let mut remaining = MAX_BUNDLE_BYTES;
+    for (index, entry) in entries.enumerate() {
+        if index >= MAX_BUNDLE_ENTRIES {
+            return Err(CtError::AgentInstall(format!(
+                "release archive has more than {MAX_BUNDLE_ENTRIES} entries"
+            )));
+        }
         let mut entry = entry.map_err(archive_read_error)?;
         let path = entry.path().map_err(archive_read_error)?.into_owned();
         let relative = bundle_relative_path(&path).ok_or_else(|| {
@@ -56,7 +65,8 @@ pub(super) fn extract_bundle(archive: &VerifiedArchive, dest: &Path) -> CtResult
                     create_dir(parent)?;
                 }
                 let mode = entry.header().mode().unwrap_or(0o644);
-                write_file(&mut entry, &target, mode)?;
+                let written = write_file(&mut entry, &target, mode, remaining)?;
+                remaining -= written;
             }
             _ => {
                 return Err(CtError::AgentInstall(format!(
@@ -73,10 +83,17 @@ fn archive_read_error(e: impl Display) -> CtError {
     CtError::AgentInstall(format!("unreadable release archive: {e}"))
 }
 
-fn write_file(source: &mut impl Read, target: &Path, mode: u32) -> CtResult<()> {
+fn write_file(source: &mut impl Read, target: &Path, mode: u32, budget: u64) -> CtResult<u64> {
     let mut file = std::fs::File::create(target).map_err(|e| fs_error("write", target, &e))?;
-    std::io::copy(source, &mut file).map_err(|e| fs_error("write", target, &e))?;
-    apply_mode(&file, mode).map_err(|e| fs_error("write", target, &e))
+    let written = std::io::copy(&mut source.take(budget.saturating_add(1)), &mut file)
+        .map_err(|e| fs_error("write", target, &e))?;
+    if written > budget {
+        return Err(CtError::AgentInstall(format!(
+            "release archive expands past {MAX_BUNDLE_BYTES} bytes"
+        )));
+    }
+    apply_mode(&file, mode).map_err(|e| fs_error("write", target, &e))?;
+    Ok(written)
 }
 
 #[cfg(unix)]

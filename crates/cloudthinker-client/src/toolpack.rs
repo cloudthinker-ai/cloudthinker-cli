@@ -214,8 +214,15 @@ fn extract_member(archive: &[u8], member: &str) -> CtResult<Vec<u8>> {
         )));
     }
     let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)
+    file.by_ref()
+        .take(MAX_MEMBER_BYTES.saturating_add(1))
+        .read_to_end(&mut bytes)
         .map_err(|e| CtError::ToolInstall(format!("could not read {member}: {e}")))?;
+    if bytes.len() as u64 > MAX_MEMBER_BYTES {
+        return Err(CtError::ToolInstall(format!(
+            "archive member {member} is larger than the {MAX_MEMBER_BYTES} byte limit"
+        )));
+    }
     Ok(bytes)
 }
 

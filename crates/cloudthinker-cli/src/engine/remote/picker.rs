@@ -6,6 +6,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use super::catalog::{expand, tilde};
 use super::paths::name_for_folder;
 use super::wire::{Catalog, RunningAgent, Size};
+use crate::engine::output::terminal_text;
 
 const MAX_MATCHES: usize = 8;
 const MAX_PATH: usize = 4096;
@@ -92,7 +93,7 @@ pub fn resolve(typed: &str, home: &str) -> String {
 }
 
 pub fn display_folder(cwd: &str, home: &str) -> String {
-    tilde(Path::new(cwd), Path::new(home))
+    terminal_text(&tilde(Path::new(cwd), Path::new(home)))
 }
 
 pub fn uptime(now: u64, started: u64) -> String {
@@ -628,6 +629,7 @@ impl<'a> Picker<'a> {
 }
 
 fn detail(title: &str, time: &str) -> String {
+    let title = terminal_text(title);
     if title.is_empty() {
         time.to_string()
     } else {
@@ -991,6 +993,28 @@ mod tests {
                 .replace("\x1b[0m", "");
             let text = text.split("\x1b[?25").next().unwrap_or_default();
             assert!(text.width() <= 39, "{text}");
+        }
+    }
+
+    #[test]
+    fn folders_and_titles_lose_terminal_controls_before_drawing() {
+        let catalog = catalog(
+            vec![running(
+                "app-1",
+                "/home/me/app\u{1b}]0;owned\u{7}",
+                "fix\u{1b}[2J login",
+                None,
+            )],
+            vec![recent(
+                "/home/me/api\u{202e}",
+                "review\u{1b}]52;c;cHdu\u{7}",
+                DAY,
+                None,
+            )],
+        );
+        let view = Picker::new(&catalog, "vm", NOW).view(SIZE);
+        for line in texts(&view) {
+            assert!(!line.contains(['\u{1b}', '\u{7}', '\u{202e}']), "{line:?}");
         }
     }
 

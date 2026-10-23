@@ -133,10 +133,11 @@ pub(super) async fn run_local_review(
             "--session-dir",
         ])
         .arg(session_dir.path())
-        .args(["--print", "-p", prompt])
+        .arg("--print")
         .env(URL_ENV_VAR, base_url)
         .env_remove(WORKSPACE_ENV_VAR)
         .env_remove(BIN_ENV_VAR)
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
@@ -146,14 +147,26 @@ pub(super) async fn run_local_review(
     if let Some(own_binary) = own_binary() {
         command.env(BIN_ENV_VAR, own_binary);
     }
-    let child = command.spawn().map_err(|error| {
+    let mut child = command.spawn().map_err(|error| {
         output::eprintln_error(&format!(
             "could not run local CloudThinker Agent {}: {error}",
             binary.display()
         ));
         ExitCode::JobFailed
     })?;
-    let result = tokio::time::timeout(timeout, child.wait_with_output()).await;
+    let mut stdin = child.stdin.take().ok_or_else(|| {
+        output::eprintln_error("could not send the review to the local CloudThinker Agent");
+        ExitCode::JobFailed
+    })?;
+    let feed = async move {
+        use tokio::io::AsyncWriteExt;
+        let _ = stdin.write_all(prompt.as_bytes()).await;
+    };
+    let result = tokio::time::timeout(timeout, async {
+        let ((), output) = tokio::join!(feed, child.wait_with_output());
+        output
+    })
+    .await;
     let output = match result {
         Ok(Ok(output)) if output.status.success() => output,
         Ok(Ok(output)) => {

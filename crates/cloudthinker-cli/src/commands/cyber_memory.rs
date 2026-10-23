@@ -72,9 +72,11 @@ fn save_snapshot(
     let findings_path = output_dir.join("findings.json");
     let surface_path = output_dir.join("surface.json");
     let sources_path = context_dir.join("sources.json");
-    output::write_json_file(&findings_path, &snapshot.findings).map_err(std::io::Error::other)?;
-    output::write_json_file(&surface_path, &snapshot.surface).map_err(std::io::Error::other)?;
-    output::write_json_file(&sources_path, &snapshot.context_sources)
+    output::write_private_json_file(&findings_path, &snapshot.findings)
+        .map_err(std::io::Error::other)?;
+    output::write_private_json_file(&surface_path, &snapshot.surface)
+        .map_err(std::io::Error::other)?;
+    output::write_private_json_file(&sources_path, &snapshot.context_sources)
         .map_err(std::io::Error::other)?;
     for file in &snapshot.context_files {
         let relative = Path::new(&file.relative_path);
@@ -88,15 +90,15 @@ fn save_snapshot(
                 "context file path is not relative and normalized",
             ));
         }
+        let mut directory = output_dir.to_path_buf();
+        if let Some(parent) = relative.parent() {
+            for component in parent.components() {
+                directory.push(component);
+                ensure_directory(&directory)?;
+            }
+        }
         let target = output_dir.join(relative);
-        let parent = target.parent().ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "context file has no parent",
-            )
-        })?;
-        ensure_directory(parent)?;
-        output::write_file(&target, &file.bytes).map_err(std::io::Error::other)?;
+        output::write_private_file(&target, &file.bytes).map_err(std::io::Error::other)?;
     }
     Ok(PullSummary {
         app_id: snapshot.app_id,
@@ -123,7 +125,14 @@ fn ensure_directory(path: &Path) -> std::io::Result<()> {
             format!("output path is not a directory: {}", path.display()),
         )),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            fs::create_dir_all(path)?;
+            let mut builder = fs::DirBuilder::new();
+            builder.recursive(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                builder.mode(0o700);
+            }
+            builder.create(path)?;
             let metadata = symlink_metadata(path)?;
             if metadata.file_type().is_symlink() || !metadata.is_dir() {
                 return Err(std::io::Error::new(
@@ -191,6 +200,29 @@ mod tests {
         fs::write(output_dir.join("findings.json"), b"stale").unwrap();
         save_snapshot(&output_dir, &snapshot).unwrap();
         assert_eq!(fs::read(output_dir.join("findings.json")).unwrap(), b"[]");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pull_writes_private_files_and_refuses_an_intermediate_symlink() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+
+        let temp = tempdir().unwrap();
+        let output_dir = temp.path().join("memory");
+        save_snapshot(&output_dir, &snapshot()).unwrap();
+        let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&output_dir), 0o700);
+        assert_eq!(mode(&output_dir.join("context/files")), 0o700);
+        assert_eq!(mode(&output_dir.join("findings.json")), 0o600);
+        assert_eq!(mode(&output_dir.join("context/files/schema.json")), 0o600);
+
+        let elsewhere = temp.path().join("elsewhere");
+        fs::create_dir(&elsewhere).unwrap();
+        fs::remove_file(output_dir.join("context/files/schema.json")).unwrap();
+        fs::remove_dir(output_dir.join("context/files")).unwrap();
+        symlink(&elsewhere, output_dir.join("context/files")).unwrap();
+        assert!(save_snapshot(&output_dir, &snapshot()).is_err());
+        assert!(elsewhere.read_dir().unwrap().next().is_none());
     }
 
     #[cfg(unix)]

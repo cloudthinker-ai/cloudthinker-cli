@@ -1,3 +1,8 @@
+## [0.9.2]
+
+- `cloudthinker review` now sends the change to the local agent on stdin, not in the command line, and it no longer runs the git filter programs a checkout configures. A stray request to the login callback no longer cancels `cloudthinker login`. A project `.cloudthinker/config.toml` can name only `CYBER_<ROLE>_AUTH` variables as Cyber identities; save any other name with `cyber config set --user`. As root, `worker service` runs `systemctl`, `loginctl`, `launchctl`, `getent`, and `dscl` only from the system folders.
+- Harden the CLI against a hostile server, repository, or local user. Login no longer follows a redirect to another site with your tokens, and server replies, downloads, and archives have size limits. Credentials, `cyber memory pull` output, and the project Cyber config stay private and refuse symlinks. A Cyber probe now sends your configured identity only to the run's target address. Server text loses terminal control characters before the CLI prints it. `worker service install --system` refuses a program that another user can replace. The TLS certificate checker also moves to its patched release.
+
 ## [0.9.1]
 
 - Stop trusting the compromised eMudhra certificate roots (emSign ECC Root CA - G3, emSign Root CA - C1, emSign ECC Root CA - C3) and the Comodo AAA root that cross-signs them. Every CLI request, `cloudthinker update`, local Cyber discovery, and the bundled agent (now built with Bun 1.4.4) reject a forged HTTPS certificate from these chains, even when the operating system still trusts them. Other roots from the operating system trust store keep working. If you still run 0.8.3 or older on an untrusted network, update your operating system's CA certificates before you update the CLI.

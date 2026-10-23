@@ -14,7 +14,7 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
@@ -57,7 +57,7 @@ pub enum WorkspaceSelector {
 }
 
 /// A persisted credential set for one API host.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StoredToken {
     pub access_token: String,
     /// Absent for the env-var store (which cannot refresh).
@@ -69,6 +69,21 @@ pub struct StoredToken {
     pub workspace_id: Option<Uuid>,
     #[serde(default)]
     pub workspace_name: Option<String>,
+}
+
+impl std::fmt::Debug for StoredToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StoredToken")
+            .field("access_token", &"<redacted>")
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("expires_at", &self.expires_at)
+            .field("workspace_id", &self.workspace_id)
+            .field("workspace_name", &self.workspace_name)
+            .finish()
+    }
 }
 
 impl StoredToken {
@@ -383,8 +398,7 @@ impl FileStore {
     fn acquire_mutation_lock(&self) -> CtResult<StoreLock> {
         let lock_path = self.path.with_extension("lock");
         if let Some(parent) = lock_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| CtError::Store(format!("credentials dir create: {e}")))?;
+            create_private_dir_all(parent)?;
         }
         let lock = open_lock_file(&lock_path)?;
         lock.lock_exclusive()
@@ -447,8 +461,7 @@ impl FileStore {
 
     fn write_all(&self, all: &CredentialsFile) -> CtResult<()> {
         if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| CtError::Store(format!("credentials dir create: {e}")))?;
+            create_private_dir_all(parent)?;
         }
         let json = serde_json::to_string_pretty(all)
             .map_err(|e| CtError::Store(format!("credentials encode: {e}")))?;
@@ -608,6 +621,19 @@ impl TokenStore for FileStore {
     fn refresh_enabled(&self) -> bool {
         true
     }
+}
+
+fn create_private_dir_all(path: &Path) -> CtResult<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder
+        .create(path)
+        .map_err(|e| CtError::Store(format!("credentials dir create: {e}")))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -903,11 +929,27 @@ mod tests {
     fn ca_cli_6_file_store_writes_owner_only_mode() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("credentials.json");
+        let path = dir.path().join("state").join("credentials.json");
         let store = FileStore::new(path.clone(), "app.example.com");
         store.save(&stored("access", "refresh")).unwrap();
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "credentials file must be 0600");
+        let dir_mode = std::fs::metadata(dir.path().join("state"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(dir_mode, 0o700, "credentials dir must be 0700");
+    }
+
+    #[test]
+    fn stored_token_debug_redacts_secrets() {
+        let rendered = format!(
+            "{:?}",
+            stored("secret-access-value", "secret-refresh-value")
+        );
+        assert!(!rendered.contains("secret-access-value"));
+        assert!(!rendered.contains("secret-refresh-value"));
     }
 
     // CA-CLI-6: the adjacent mutation lock carries the same owner-only mode.

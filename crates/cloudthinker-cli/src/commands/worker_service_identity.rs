@@ -6,8 +6,8 @@ use cloudthinker_client::{CtError, CtResult};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::ServicePlatform;
 use super::worker_service_descriptor::validate_unix_user;
+use super::{ServicePlatform, system_program};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct SystemUser {
@@ -20,13 +20,13 @@ pub(super) fn lookup_user(name: &str) -> CtResult<SystemUser> {
     validate_unix_user(name)?;
     let platform = ServicePlatform::current()?;
     let record = match platform {
-        ServicePlatform::Systemd => Command::new("getent")
+        ServicePlatform::Systemd => Command::new(system_program("getent"))
             .args(["passwd", name])
             .output()
             .ok()
             .filter(|output| output.status.success())
             .and_then(|output| parse_passwd(&String::from_utf8_lossy(&output.stdout), name)),
-        ServicePlatform::Launchd => Command::new("dscl")
+        ServicePlatform::Launchd => Command::new(system_program("dscl"))
             .args([
                 ".",
                 "-read",

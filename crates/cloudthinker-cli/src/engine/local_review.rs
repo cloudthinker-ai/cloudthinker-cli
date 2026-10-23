@@ -15,6 +15,8 @@ const MAX_ANSWER_BYTES: usize = 64 * 1024;
 const MAX_TITLE_BYTES: usize = 300;
 const MAX_EXPLANATION_BYTES: usize = 4_000;
 const MAX_SUGGESTED_FIX_BYTES: usize = 4_000;
+const MAX_GIT_STDERR_BYTES: u64 = 64 * 1024;
+const FILTER_SETTINGS: [&str; 3] = ["clean", "smudge", "process"];
 
 #[derive(Debug, Clone)]
 pub struct ReviewScope {
@@ -128,7 +130,8 @@ pub fn collect_snapshot(cwd: &Path, scope: &ReviewScope) -> Result<ReviewSnapsho
         .trim()
         .to_string();
     let base_sha = resolve_base_sha(&repository, &head_sha, scope.base_ref.as_deref())?;
-    let mut changed_files = tracked_paths(&repository, &base_sha)?;
+    let filters = filter_overrides(&repository)?;
+    let mut changed_files = tracked_paths(&repository, &filters, &base_sha)?;
     let untracked = untracked_paths(&repository)?;
     changed_files.extend(untracked.iter().cloned());
     enforce_file_limit(changed_files.len())?;
@@ -138,10 +141,10 @@ pub fn collect_snapshot(cwd: &Path, scope: &ReviewScope) -> Result<ReviewSnapsho
         ));
     }
     validate_changed_files(&repository, &changed_files)?;
-    let mut diff = tracked_diff(&repository, &base_sha)?;
+    let mut diff = tracked_diff(&repository, &filters, &base_sha)?;
     for path in untracked {
         let remaining = MAX_DIFF_BYTES.saturating_sub(diff.len());
-        diff.push_str(&untracked_diff(&repository, &path, remaining)?);
+        diff.push_str(&untracked_diff(&repository, &filters, &path, remaining)?);
     }
     validate_diff(&diff)?;
     let changed_lines = changed_line_map(&diff).map_err(ReviewError::UnsupportedInput)?;
@@ -182,19 +185,83 @@ fn resolve_base_sha(
         })
 }
 
-fn tracked_paths(repository: &Path, base_sha: &str) -> Result<BTreeSet<String>, ReviewError> {
-    let paths = git_bytes_limited(
+fn filter_overrides(repository: &Path) -> Result<Vec<String>, ReviewError> {
+    let output = git_output_limited(
         repository,
         &[
-            "diff",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--no-renames",
+            "config",
+            "--null",
             "--name-only",
-            "-z",
-            base_sha,
-            "--",
+            "--get-regexp",
+            r"^filter\.",
         ],
+        MAX_PATH_LIST_BYTES,
+        "git filter configuration",
+    )?;
+    if !matches!(output.status.code(), Some(0 | 1)) {
+        return Err(ReviewError::Git(git_error(&output)));
+    }
+    let mut drivers = BTreeSet::new();
+    for key in output
+        .stdout
+        .split(|byte| matches!(*byte, b'\0' | b'\n'))
+        .filter(|key| !key.is_empty())
+    {
+        let key = std::str::from_utf8(key).map_err(|_| {
+            ReviewError::UnsupportedInput("git filter configuration is not UTF-8".into())
+        })?;
+        if let Some((driver, _)) = key
+            .strip_prefix("filter.")
+            .and_then(|rest| rest.rsplit_once('.'))
+        {
+            if driver.contains('=') {
+                return Err(ReviewError::UnsupportedInput(format!(
+                    "git filter driver {driver:?} cannot be disabled for local review"
+                )));
+            }
+            drivers.insert(driver.to_string());
+        }
+    }
+    let mut overrides = Vec::with_capacity(drivers.len() * 8);
+    for driver in drivers {
+        for setting in FILTER_SETTINGS {
+            overrides.push("-c".to_string());
+            overrides.push(format!("filter.{driver}.{setting}="));
+        }
+        overrides.push("-c".to_string());
+        overrides.push(format!("filter.{driver}.required=false"));
+    }
+    Ok(overrides)
+}
+
+fn with_filters<'a>(filters: &'a [String], args: &[&'a str]) -> Vec<&'a str> {
+    filters
+        .iter()
+        .map(String::as_str)
+        .chain(args.iter().copied())
+        .collect()
+}
+
+fn tracked_paths(
+    repository: &Path,
+    filters: &[String],
+    base_sha: &str,
+) -> Result<BTreeSet<String>, ReviewError> {
+    let paths = git_bytes_limited(
+        repository,
+        &with_filters(
+            filters,
+            &[
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--no-renames",
+                "--name-only",
+                "-z",
+                base_sha,
+                "--",
+            ],
+        ),
         MAX_PATH_LIST_BYTES,
         "review file list",
     )?;
@@ -248,21 +315,28 @@ fn validate_changed_files(
     Ok(())
 }
 
-fn tracked_diff(repository: &Path, base_sha: &str) -> Result<String, ReviewError> {
+fn tracked_diff(
+    repository: &Path,
+    filters: &[String],
+    base_sha: &str,
+) -> Result<String, ReviewError> {
     let bytes = git_bytes_limited(
         repository,
-        &[
-            "-c",
-            "core.quotePath=false",
-            "diff",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--no-color",
-            "--no-renames",
-            "--unified=3",
-            base_sha,
-            "--",
-        ],
+        &with_filters(
+            filters,
+            &[
+                "-c",
+                "core.quotePath=false",
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--no-color",
+                "--no-renames",
+                "--unified=3",
+                base_sha,
+                "--",
+            ],
+        ),
         MAX_DIFF_BYTES,
         "review diff",
     )?;
@@ -271,22 +345,30 @@ fn tracked_diff(repository: &Path, base_sha: &str) -> Result<String, ReviewError
     })
 }
 
-fn untracked_diff(repository: &Path, path: &str, limit: usize) -> Result<String, ReviewError> {
+fn untracked_diff(
+    repository: &Path,
+    filters: &[String],
+    path: &str,
+    limit: usize,
+) -> Result<String, ReviewError> {
     let output = git_output_limited(
         repository,
-        &[
-            "-c",
-            "core.quotePath=false",
-            "diff",
-            "--no-index",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--no-color",
-            "--unified=3",
-            "--",
-            "/dev/null",
-            path,
-        ],
+        &with_filters(
+            filters,
+            &[
+                "-c",
+                "core.quotePath=false",
+                "diff",
+                "--no-index",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--no-color",
+                "--unified=3",
+                "--",
+                "/dev/null",
+                path,
+            ],
+        ),
         limit,
         "review diff",
     )?;
@@ -397,47 +479,72 @@ pub fn validate_result(
     })
 }
 
+struct Hunk {
+    old_left: u64,
+    new_left: u64,
+    line: u64,
+}
+
 fn changed_line_map(diff: &str) -> Result<BTreeMap<String, BTreeSet<u64>>, String> {
+    let malformed = || "could not parse a changed-file hunk".to_string();
     let mut changed = BTreeMap::new();
     let mut current_file: Option<String> = None;
-    let mut line: Option<u64> = None;
+    let mut hunk: Option<Hunk> = None;
     for row in diff.lines() {
+        if let Some(open) = hunk
+            .as_mut()
+            .filter(|open| open.old_left > 0 || open.new_left > 0)
+        {
+            match row.as_bytes().first() {
+                Some(b'+') => {
+                    open.new_left = open.new_left.checked_sub(1).ok_or_else(malformed)?;
+                    if let Some(path) = &current_file {
+                        changed
+                            .entry(path.clone())
+                            .or_insert_with(BTreeSet::new)
+                            .insert(open.line);
+                    }
+                    open.line = open.line.saturating_add(1);
+                }
+                Some(b' ') => {
+                    open.old_left = open.old_left.checked_sub(1).ok_or_else(malformed)?;
+                    open.new_left = open.new_left.checked_sub(1).ok_or_else(malformed)?;
+                    open.line = open.line.saturating_add(1);
+                }
+                Some(b'-') => {
+                    open.old_left = open.old_left.checked_sub(1).ok_or_else(malformed)?;
+                }
+                Some(b'\\') => {}
+                _ => return Err(malformed()),
+            }
+            continue;
+        }
+        hunk = None;
         if row.starts_with("diff --git ") || row == "+++ /dev/null" {
             current_file = None;
-            line = None;
         } else if let Some(path) = row.strip_prefix("+++ b/") {
             current_file = Some(path.to_string());
         } else if row.starts_with("@@ ") {
-            line = parse_new_line(row)?;
-        } else if let (Some(path), Some(current_line)) = (&current_file, &mut line) {
-            match row.as_bytes().first() {
-                Some(b'+') if !row.starts_with("+++") => {
-                    changed
-                        .entry(path.clone())
-                        .or_insert_with(BTreeSet::new)
-                        .insert(*current_line);
-                    *current_line += 1;
-                }
-                Some(b' ') => *current_line += 1,
-                Some(b'-') | Some(b'\\') => {}
-                _ => {}
-            }
+            hunk = Some(parse_hunk(row).ok_or_else(malformed)?);
         }
     }
     Ok(changed)
 }
 
-fn parse_new_line(header: &str) -> Result<Option<u64>, String> {
-    let new_range = header
-        .split_once('+')
-        .and_then(|(_, suffix)| suffix.split_once(' '))
-        .map(|(range, _)| range)
-        .ok_or_else(|| "could not parse a changed-file hunk".to_string())?;
-    let (start, _) = new_range.split_once(',').unwrap_or((new_range, "1"));
-    let start = start
-        .parse::<u64>()
-        .map_err(|_| "could not parse a changed-file line range".to_string())?;
-    Ok((start > 0).then_some(start))
+fn parse_hunk(header: &str) -> Option<Hunk> {
+    let mut ranges = header.strip_prefix("@@ ")?.split(' ');
+    let (_, old_left) = parse_range(ranges.next()?.strip_prefix('-')?)?;
+    let (line, new_left) = parse_range(ranges.next()?.strip_prefix('+')?)?;
+    Some(Hunk {
+        old_left,
+        new_left,
+        line,
+    })
+}
+
+fn parse_range(range: &str) -> Option<(u64, u64)> {
+    let (start, count) = range.split_once(',').unwrap_or((range, "1"));
+    Some((start.parse().ok()?, count.parse().ok()?))
 }
 
 fn parse_paths(bytes: &[u8]) -> Result<BTreeSet<String>, ReviewError> {
@@ -503,23 +610,42 @@ fn git_output_limited(
         .stdout
         .take()
         .ok_or_else(|| ReviewError::Git("git stdout was unavailable".into()))?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| ReviewError::Git("git stderr was unavailable".into()))?;
+    let stderr_reader = std::thread::spawn(move || {
+        let mut kept = Vec::new();
+        let _ = (&mut stderr)
+            .take(MAX_GIT_STDERR_BYTES)
+            .read_to_end(&mut kept);
+        let _ = std::io::copy(&mut stderr, &mut std::io::sink());
+        kept
+    });
     let mut bytes = Vec::with_capacity(limit.saturating_add(1));
-    stdout
+    let read = stdout
         .take(limit.saturating_add(1) as u64)
-        .read_to_end(&mut bytes)
-        .map_err(|error| ReviewError::Git(format!("could not read git output: {error}")))?;
-    if bytes.len() > limit {
+        .read_to_end(&mut bytes);
+    if read.is_err() || bytes.len() > limit {
         let _ = child.kill();
-        let _ = child.wait_with_output();
-        return Err(ReviewError::UnsupportedInput(format!(
-            "{label} exceeds its configured size limit"
-        )));
+        let _ = child.wait();
+        let _ = stderr_reader.join();
+        return Err(match read {
+            Err(error) => ReviewError::Git(format!("could not read git output: {error}")),
+            Ok(_) => {
+                ReviewError::UnsupportedInput(format!("{label} exceeds its configured size limit"))
+            }
+        });
     }
-    let mut output = child
-        .wait_with_output()
+    let status = child
+        .wait()
         .map_err(|error| ReviewError::Git(format!("could not wait for git: {error}")))?;
-    output.stdout = bytes;
-    Ok(output)
+    let stderr = stderr_reader.join().unwrap_or_default();
+    Ok(Output {
+        status,
+        stdout: bytes,
+        stderr,
+    })
 }
 
 fn git_command(cwd: &Path, args: &[&str]) -> Command {
@@ -847,6 +973,32 @@ mod tests {
         fs::write(temp.path().join("src.rs"), "fn value() { 2 }\n").expect("source");
         collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).expect("snapshot");
         assert!(!sentinel.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn repository_filter_driver_is_not_executed() {
+        let temp = repository();
+        let sentinel = temp.path().join("filter-ran");
+        let clean = format!("touch {}; cat", sentinel.display());
+        git(temp.path(), &["config", "filter.evil.clean", &clean]);
+        git(temp.path(), &["config", "filter.evil.required", "true"]);
+        fs::write(temp.path().join(".gitattributes"), "*.rs filter=evil\n").expect("attributes");
+        fs::write(temp.path().join("src.rs"), "fn value() { 2 }\n").expect("source");
+        fs::write(temp.path().join("new.rs"), "fn added() {}\n").expect("new source");
+        collect_snapshot(temp.path(), &ReviewScope { base_ref: None }).expect("snapshot");
+        assert!(!sentinel.exists());
+    }
+
+    #[test]
+    fn added_lines_that_look_like_headers_stay_in_their_file() {
+        let diff = "diff --git a/src.rs b/src.rs\n--- a/src.rs\n+++ b/src.rs\n@@ -1,1 +1,4 @@\n fn value() {}\n+++ b/other.rs\n+++ /dev/null\n+tail\n";
+        let changed = changed_line_map(diff).expect("diff parses");
+        assert_eq!(changed.len(), 1);
+        assert_eq!(
+            changed.get("src.rs").expect("src.rs lines"),
+            &BTreeSet::from([2, 3, 4])
+        );
     }
 
     #[test]

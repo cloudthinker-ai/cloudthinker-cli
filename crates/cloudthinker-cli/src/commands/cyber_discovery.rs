@@ -594,6 +594,15 @@ fn create_private_dir(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn open_nofollow(options: &mut OpenOptions, path: &Path) -> std::io::Result<File> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(rustix::fs::OFlags::NOFOLLOW.bits().cast_signed());
+    }
+    options.open(path)
+}
+
 fn open_private_file(path: &Path) -> Result<File, String> {
     let mut options = OpenOptions::new();
     options.create(true).read(true).write(true);
@@ -654,7 +663,18 @@ fn copy_context_entry(
         ));
     }
     if metadata.is_file() {
-        let bytes = metadata.len();
+        let stage_error = |error: std::io::Error| {
+            format!("cannot stage Cyber context {}: {error}", source.display())
+        };
+        let mut file = open_nofollow(OpenOptions::new().read(true), source).map_err(stage_error)?;
+        let opened = file.metadata().map_err(stage_error)?;
+        if !opened.is_file() {
+            return Err(format!(
+                "Cyber context is not a regular file: {}",
+                source.display()
+            ));
+        }
+        let bytes = opened.len();
         if bytes > MAX_CONTEXT_FILE_BYTES
             || total_bytes.saturating_add(bytes) > MAX_CONTEXT_TOTAL_BYTES
         {
@@ -667,9 +687,18 @@ fn copy_context_entry(
         let filename = source
             .file_name()
             .ok_or_else(|| format!("Cyber context file has no filename: {}", source.display()))?;
-        fs::copy(source, destination.join(filename))
-            .map_err(|error| format!("cannot stage Cyber context {}: {error}", source.display()))?;
-        *total_bytes += bytes;
+        let mut options = OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut staged =
+            open_nofollow(&mut options, &destination.join(filename)).map_err(stage_error)?;
+        let copied = std::io::copy(&mut std::io::Read::take(&mut file, bytes), &mut staged)
+            .map_err(stage_error)?;
+        *total_bytes += copied;
         return Ok(());
     }
     if metadata.is_dir() {

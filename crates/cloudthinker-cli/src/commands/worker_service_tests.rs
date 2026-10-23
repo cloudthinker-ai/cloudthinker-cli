@@ -494,3 +494,19 @@ fn the_linger_setting_is_read_from_loginctl_output() {
     assert_eq!(parse_linger("Linger=no\n"), Some(false));
     assert_eq!(parse_linger("State=active\n"), None);
 }
+
+#[cfg(unix)]
+#[test]
+fn a_system_service_refuses_an_executable_other_users_can_replace() {
+    let root = tempfile::tempdir().unwrap();
+    let executable = root.path().join("cloudthinker");
+    fs::write(&executable, b"binary").unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o777)).unwrap();
+
+    let error = require_trusted_executable(&executable, 0).unwrap_err();
+
+    assert!(
+        matches!(&error, CtError::Usage(message) if message.contains(&executable.display().to_string())),
+        "got {error:?}"
+    );
+}

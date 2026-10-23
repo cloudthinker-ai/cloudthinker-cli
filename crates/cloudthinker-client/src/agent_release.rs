@@ -28,6 +28,7 @@ const REQUEST_TIMEOUT_SECS: u64 = 600;
 
 /// Largest release asset the installer buffers; a bigger response is refused.
 const MAX_ASSET_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_CHECKSUM_BYTES: u64 = 64 * 1024;
 
 /// The executable of a freshly installed bundle, plus each stale version the
 /// install could not remove.
@@ -113,14 +114,14 @@ pub async fn install_agent(
     let sidecar = download(
         &http,
         &asset_url(release_base, version, &format!("{asset}.sha256")),
-        MAX_ASSET_BYTES,
+        MAX_CHECKSUM_BYTES,
     )
     .await?;
     let archive = archive::verify_digest(archive, &sidecar, &asset)?;
     let inventory = download(
         &http,
         &asset_url(release_base, version, CHECKSUM_INVENTORY),
-        64 * 1024,
+        MAX_CHECKSUM_BYTES,
     )
     .await?;
     let archive = archive.verify_inventory(&inventory)?;
@@ -415,6 +416,24 @@ mod tests {
             .unwrap()
             .verify_inventory(&checksum)
             .unwrap()
+    }
+
+    #[test]
+    fn extraction_refuses_an_archive_with_too_many_entries() {
+        let root = tempfile::tempdir().unwrap();
+        let names = (0..=archive::MAX_BUNDLE_ENTRIES)
+            .map(|index| format!("cloudthinker-agent/f{index}"))
+            .collect::<Vec<_>>();
+        let entries = names
+            .iter()
+            .map(|name| (name.as_str(), b"".as_slice(), 0o644_u32))
+            .collect::<Vec<_>>();
+        let archive = tar_gz(&entries);
+
+        let error = archive::extract_bundle(&verified_archive(&archive), root.path())
+            .expect_err("entry count is capped");
+
+        assert!(error.to_string().contains("entries"), "got {error}");
     }
 
     #[cfg(unix)]

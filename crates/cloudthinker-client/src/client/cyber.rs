@@ -563,6 +563,31 @@ pub struct PlanCheck {
     pub note: String,
 }
 
+impl PlanCheck {
+    pub fn targets_origin_of(&self, target_ref: &str) -> bool {
+        let Some(target) = target_origin(target_ref) else {
+            return false;
+        };
+        url::Url::parse(&self.url).is_ok_and(|row| {
+            row.scheme() == target.scheme()
+                && row.host_str() == target.host_str()
+                && row.port_or_known_default() == target.port_or_known_default()
+        })
+    }
+}
+
+fn target_origin(target_ref: &str) -> Option<url::Url> {
+    let trimmed = target_ref.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.contains("://") {
+        url::Url::parse(trimmed).ok()
+    } else {
+        url::Url::parse(&format!("https://{trimmed}")).ok()
+    }
+}
+
 /// The backend-issued plan: the whole bounded to-do list for one run.
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkPlan {

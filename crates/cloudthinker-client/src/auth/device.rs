@@ -34,7 +34,9 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = CtResult<DeviceTokenPoll>>,
 {
-    let deadline = Instant::now() + authorization.expires_in;
+    let deadline = Instant::now()
+        .checked_add(authorization.expires_in)
+        .ok_or_else(|| CtError::Protocol("device response has invalid expires_in".into()))?;
     let mut interval = authorization.interval;
 
     loop {
@@ -201,6 +203,19 @@ mod tests {
             .chain(calls.windows(2).map(|pair| pair[1] - pair[0]))
             .collect::<Vec<_>>();
         assert_eq!(actual, [5, 20, 25].map(Duration::from_secs));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn huge_expires_in_is_a_protocol_error() {
+        let authorization = authorization(u64::MAX, 5);
+
+        let error = wait_for_device_token_with(&authorization, expired(), || async {
+            Ok(DeviceTokenPoll::Token(token()))
+        })
+        .await
+        .expect_err("overflowing deadline is rejected");
+
+        assert!(matches!(error, CtError::Protocol(_)));
     }
 
     #[tokio::test(start_paused = true)]

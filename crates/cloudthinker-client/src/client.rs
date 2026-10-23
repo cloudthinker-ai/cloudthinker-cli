@@ -207,6 +207,7 @@ impl CtClient {
         let timeout = Duration::from_secs(REQUEST_TIMEOUT_SECS);
         let anon_http = crate::tls::http_client_builder()
             .timeout(timeout)
+            .redirect(same_origin_redirects())
             .build()
             .map_err(|e| CtError::Transport(format!("http client build: {e}")))?;
         let probe_http = crate::tls::http_client_builder()
@@ -684,10 +685,29 @@ impl CtClient {
     }
 }
 
+const MAX_REDIRECTS: usize = 10;
+
+fn same_origin_redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let next = attempt.url();
+        let same_origin = attempt.previous().first().is_some_and(|first| {
+            first.scheme() == next.scheme()
+                && first.host_str() == next.host_str()
+                && first.port_or_known_default() == next.port_or_known_default()
+        });
+        if same_origin && attempt.previous().len() <= MAX_REDIRECTS {
+            attempt.follow()
+        } else {
+            attempt.stop()
+        }
+    })
+}
+
 fn build_authed_http(access: &str, timeout: Duration) -> CtResult<reqwest::Client> {
     let mut headers = reqwest::header::HeaderMap::new();
-    let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {access}"))
+    let mut value = reqwest::header::HeaderValue::from_str(&format!("Bearer {access}"))
         .map_err(|e| CtError::Auth(format!("invalid token header: {e}")))?;
+    value.set_sensitive(true);
     headers.insert(reqwest::header::AUTHORIZATION, value);
     crate::tls::http_client_builder()
         .timeout(timeout)
@@ -1061,6 +1081,33 @@ mod tests {
             token.workspace_id,
             Some(Uuid::parse_str("55555555-5555-4555-8555-555555555555").unwrap())
         );
+    }
+
+    #[tokio::test]
+    async fn token_exchange_does_not_follow_a_cross_origin_redirect() {
+        let server = MockServer::start().await;
+        let elsewhere = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/login/cli/token"))
+            .respond_with(ResponseTemplate::new(307).insert_header(
+                "location",
+                format!("{}/api/v1/login/cli/token", elsewhere.uri()),
+            ))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&elsewhere)
+            .await;
+
+        let client = CtClient::new(server.uri(), Arc::new(MockTokenStore::new(None))).unwrap();
+        let result = client
+            .exchange_code("one-time-code", &valid_verifier())
+            .await;
+
+        assert!(result.is_err());
+        assert!(elsewhere.received_requests().await.unwrap().is_empty());
     }
 
     #[tokio::test]

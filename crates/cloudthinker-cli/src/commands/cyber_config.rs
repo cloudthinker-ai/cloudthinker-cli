@@ -9,7 +9,9 @@
 //! `[cyber.auth]` maps a test identity's role to the environment variable that
 //! holds its auth header (`primary = "CYBER_PRIMARY_AUTH"`), so an authorization
 //! test drives several identities from one line each. Every value under `auth.`
-//! is an env-var name, never a secret; the header's shape stays in the env.
+//! is an env-var name, never a secret; the header's shape stays in the env. A
+//! project file comes from the repository, so its identities must name a
+//! `CYBER_<ROLE>_AUTH` variable; only the user file may name any variable.
 //!
 //! This is intentionally a small line-oriented TOML editor. Preserving the
 //! original lines keeps comments and unrelated keys intact without introducing a
@@ -21,6 +23,7 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -102,6 +105,12 @@ pub fn set(key: &str, value: &str, user: bool, json: bool) -> ExitCode {
         );
         return ExitCode::Usage;
     }
+    if is_auth_key(leaf) && !user && !project_auth_env(value) {
+        output::eprintln_error(
+            "a project identity must name a CYBER_<ROLE>_AUTH environment variable; use --user to save another name",
+        );
+        return ExitCode::Usage;
+    }
     let path = if user { user_path() } else { project_path() };
     if let Err(error) = write_key(&path, leaf, value) {
         output::eprintln_error(&error);
@@ -129,14 +138,36 @@ pub fn set_project_key(key: &str, value: &str) -> Result<(), String> {
 
 fn write_key(path: &Path, leaf: &str, value: &str) -> Result<(), String> {
     let full_key = format!("{CYBER_PREFIX}.{leaf}");
-    if let Some(parent) = path.parent()
-        && let Err(error) = fs::create_dir_all(parent)
-    {
-        return Err(format!("cannot create {}: {error}", parent.display()));
+    if let Some(parent) = path.parent() {
+        if let Err(error) = fs::create_dir_all(parent) {
+            return Err(format!("cannot create {}: {error}", parent.display()));
+        }
+        if fs::symlink_metadata(parent).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+            return Err(format!(
+                "refusing to write through symlink {}",
+                parent.display()
+            ));
+        }
+    }
+    if fs::symlink_metadata(path).is_ok_and(|metadata| !metadata.is_file()) {
+        return Err(format!(
+            "refusing to write {}: it is not a regular file",
+            path.display()
+        ));
     }
     let content = fs::read_to_string(path).unwrap_or_default();
     let updated = upsert_line(&content, &full_key, value);
-    fs::write(path, updated).map_err(|error| format!("cannot write {}: {error}", path.display()))
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(rustix::fs::OFlags::NOFOLLOW.bits().cast_signed());
+    }
+    options
+        .open(path)
+        .and_then(|mut file| file.write_all(updated.as_bytes()))
+        .map_err(|error| format!("cannot write {}: {error}", path.display()))
 }
 
 fn project_path() -> PathBuf {
@@ -158,8 +189,19 @@ fn user_path() -> PathBuf {
 /// keyed by leaf (`app`, `auth.primary`). Never carries a derived default.
 pub fn resolved_values() -> BTreeMap<String, String> {
     let mut merged = read_values(&user_path());
-    merged.extend(read_values(&project_path()));
+    merged.extend(trusted_project_values(read_values(&project_path())));
     strip_cyber(&merged)
+}
+
+fn trusted_project_values(values: BTreeMap<String, String>) -> BTreeMap<String, String> {
+    values
+        .into_iter()
+        .filter(|(key, value)| !is_auth_key(strip_prefix(key)) || project_auth_env(value))
+        .collect()
+}
+
+fn project_auth_env(name: &str) -> bool {
+    name.starts_with("CYBER_") && name.ends_with("_AUTH") && valid_env_name(name)
 }
 
 /// The Cyber facts a run actually uses: an explicit value wins over the derived
@@ -214,6 +256,7 @@ fn strip_cyber(merged: &BTreeMap<String, String>) -> BTreeMap<String, String> {
         .iter()
         .filter_map(|(key, value)| {
             key.strip_prefix(&format!("{CYBER_PREFIX}."))
+                .filter(|leaf| !is_auth_key(leaf) || valid_env_name(value))
                 .map(|leaf| (leaf.to_string(), value.clone()))
         })
         .collect()
@@ -507,7 +550,7 @@ mod tests {
     use super::{
         configured_probe_header, effective_from, is_auth_key, is_context_key, missing_from,
         mode_for, parse_header_line, parse_line, parse_section, read_values, strip_cyber,
-        strip_prefix, upsert_line, valid_env_name,
+        strip_prefix, trusted_project_values, upsert_line, valid_env_name, write_key,
     };
     use cloudthinker_client::CyberMode;
     use std::collections::BTreeMap;
@@ -668,6 +711,43 @@ mod tests {
     }
 
     #[test]
+    fn a_project_identity_must_name_a_cyber_auth_variable() {
+        let trusted = trusted_project_values(map(&[
+            ("cyber.app", "APP-1"),
+            ("cyber.auth.primary", "CYBER_PRIMARY_AUTH"),
+            ("cyber.auth.stolen", "GITHUB_TOKEN"),
+            ("cyber.auth.prefix_only", "CYBER_SESSION"),
+        ]));
+        assert_eq!(trusted.get("cyber.app"), Some(&"APP-1".to_string()));
+        assert_eq!(
+            trusted.get("cyber.auth.primary"),
+            Some(&"CYBER_PRIMARY_AUTH".to_string())
+        );
+        assert!(!trusted.contains_key("cyber.auth.stolen"));
+        assert!(!trusted.contains_key("cyber.auth.prefix_only"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn config_set_refuses_a_symlinked_project_config() {
+        let temp = tempfile::tempdir().unwrap();
+        let victim = temp.path().join("victim");
+        std::fs::write(&victim, "keep\n").unwrap();
+        let config_dir = temp.path().join(".cloudthinker");
+        std::fs::create_dir(&config_dir).unwrap();
+        let config = config_dir.join("config.toml");
+        std::os::unix::fs::symlink(&victim, &config).unwrap();
+
+        assert!(write_key(&config, "app", "APP-1").is_err());
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep\n");
+
+        let linked_dir = temp.path().join("linked");
+        std::os::unix::fs::symlink(temp.path(), &linked_dir).unwrap();
+        assert!(write_key(&linked_dir.join("config.toml"), "app", "APP-1").is_err());
+        assert!(!temp.path().join("config.toml").exists());
+    }
+
+    #[test]
     fn nested_cyber_tables_write_under_the_cyber_prefix() {
         let after = upsert_line("", "cyber.app", "APP-1");
         assert_eq!(after, "[cyber]\napp = \"APP-1\"\n");
@@ -681,9 +761,11 @@ mod tests {
         let merged = map(&[
             ("cyber.app", "APP-1"),
             ("cyber.auth.test_user_env", "USER"),
+            ("cyber.auth.hostile", "Bearer secret"),
             ("review.repo", "owner/name"),
         ]);
         let stripped = strip_cyber(&merged);
+        assert!(!stripped.contains_key("auth.hostile"));
         assert_eq!(stripped.get("app"), Some(&"APP-1".to_string()));
         assert_eq!(
             stripped.get("auth.test_user_env"),
