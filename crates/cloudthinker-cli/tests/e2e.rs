@@ -32,6 +32,7 @@ use axum as _;
 use clap as _;
 use clap_complete as _;
 use cloudthinker_client as _;
+use console as _;
 use indicatif as _;
 use open as _;
 use owo_colors as _;

@@ -21,7 +21,7 @@ use super::executor::WorkdirExecutor;
 use super::journal::{self, Delivery, Journal, JournalState};
 use super::telemetry::{self, Fields, Level, WorkerState};
 use super::worktree::{self, Workspace};
-use crate::engine::output;
+use crate::engine::output::{self, CheckResult};
 use crate::engine::watch::{Poll, WatchConfig, watch};
 
 const WORKER_TRANSPORT_RETRY_TIMEOUT: Duration = Duration::from_secs(60);
@@ -205,12 +205,15 @@ async fn session(
         );
     }
     validate_registration_target(expected_target_id, worker.target_id)?;
+    let mut check_session = None;
+    let mut check_run = None;
     if !flags.verified.load(std::sync::atomic::Ordering::SeqCst) {
-        if until_drained(&shutdown, client.conformance(worker.worker_id))
-            .await?
-            .is_none()
-        {
+        let Some(check) = until_drained(&shutdown, client.conformance(worker.worker_id)).await?
+        else {
             return Ok(());
+        };
+        if !check.complete {
+            check_session = Some(check.session_id);
         }
         flags
             .verified
@@ -304,8 +307,24 @@ async fn session(
             _=shutdown.cancelled()=>break Ok(()),
             completed=tasks.join_next(), if !tasks.is_empty()=>{
                 match completed {
-                    Some(Ok((id,Ok(()))))=>{seen.remove(&id);telemetry::set_active(tasks.len());telemetry::emit(Level::Info,"assignment_finished",Fields{assignment_id:Some(id),..Fields::default()},&format!("Assignment {id} finished."));},
-                    Some(Ok((id,Err(error))))=>{seen.remove(&id);telemetry::set_active(tasks.len()); if stops_worker(&error) {break Err(error);} telemetry::emit(Level::Warn,"assignment_stopped",Fields{assignment_id:Some(id),outcome:Some("error"),..Fields::default()},&error.to_string());},
+                    Some(Ok((id,Ok(()))))=>{
+                        seen.remove(&id);telemetry::set_active(tasks.len());telemetry::emit(Level::Info,"assignment_finished",Fields{assignment_id:Some(id),..Fields::default()},&format!("Assignment {id} finished."));
+                        if check_run==Some(id) {
+                            check_run=None;
+                            let check=match until_drained(&shutdown, client.conformance(worker.worker_id)).await {
+                                Ok(None)=>break Ok(()),
+                                Err(error) if stops_worker(&error)=>break Err(error),
+                                check=>check,
+                            };
+                            let result=match &check {
+                                Ok(Some(check)) if check.complete=>CheckResult::Verified,
+                                Ok(Some(api::WorkerConformancePublic{verification_error:Some(code),..}))=>CheckResult::Failed{code},
+                                _=>CheckResult::Unknown,
+                            };
+                            telemetry::check_finished(id,result);
+                        }
+                    },
+                    Some(Ok((id,Err(error))))=>{seen.remove(&id);telemetry::set_active(tasks.len()); check_run=check_run.filter(|run| *run!=id); if stops_worker(&error) {break Err(error);} telemetry::emit(Level::Warn,"assignment_stopped",Fields{assignment_id:Some(id),outcome:Some("error"),..Fields::default()},&error.to_string());},
                     _=>break Err(CtError::Protocol("worker assignment task stopped".into())),
                 }
             }
@@ -326,6 +345,11 @@ async fn session(
                     match client.claim(worker.worker_id,assignment.assignment_id).await {
                         Ok(lease)=>{
                             seen.insert(lease.assignment_id);
+                            if check_session.is_some_and(|session| session==lease.session_id) {
+                                check_session=None;
+                                check_run=Some(lease.assignment_id);
+                                telemetry::check_started(lease.assignment_id);
+                            }
                             telemetry::emit(Level::Info,"assignment_claimed",Fields{assignment_id:Some(lease.assignment_id),..Fields::default()},&format!("Assignment {} claimed for session {}.", lease.assignment_id, lease.session_id));
                             let client=client.clone();let executor=executor.clone();let tokens=(stop.child_token(),signals.abort.clone());let permits=permits.clone();
                             tasks.spawn(async move {(lease.assignment_id,serve(client,executor,lease,tokens,permits).await)});

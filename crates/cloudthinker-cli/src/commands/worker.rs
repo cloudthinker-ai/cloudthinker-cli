@@ -207,6 +207,13 @@ pub struct StartArgs {
     /// Read the worker credential from this machine's worker store, as an installed service does.
     #[arg(long, hide = true)]
     stored_credential: bool,
+
+    /// Run the worker as a background service that keeps running after you close this terminal.
+    #[arg(
+        long,
+        conflicts_with_all = ["env", "inherit_env", "reset_folder", "log_format", "verbose", "health_addr", "stored_credential"]
+    )]
+    background: bool,
 }
 
 #[derive(Debug, Args)]
@@ -249,7 +256,7 @@ async fn doctor(_base_url: &str, _args: DoctorArgs) -> ExitCode {
 async fn execute(base_url: &str, workspace: Option<&str>, args: WorkerArgs) -> CtResult<()> {
     match args.command {
         WorkerCommand::Doctor(_) => Ok(()),
-        WorkerCommand::Start(args) => start(base_url, args).await,
+        WorkerCommand::Start(args) => start(base_url, workspace, args).await,
         WorkerCommand::BgShim(args) => bg_shim(args).await,
         WorkerCommand::Service { command } => worker_service::execute(base_url, workspace, command),
         WorkerCommand::Worktrees { command } => worktrees(base_url, command),
@@ -391,7 +398,7 @@ fn build_registration(
 }
 
 #[cfg(unix)]
-async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
+async fn start(base_url: &str, workspace: Option<&str>, args: StartArgs) -> CtResult<()> {
     use crate::worker::{
         background::ShimImage,
         config::WorkdirIdentity,
@@ -417,6 +424,23 @@ async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
     }
     let store = WorkerStore::open_default(base_url)?;
     let (credential, rotates) = resolve_credential(base_url, &store, &args).await?;
+    if args.background {
+        if !rotates {
+            return Err(CtError::Usage(
+                "--background needs a credential saved on this machine; start once with --register instead of CLOUDTHINKER_WORKER_TOKEN".into(),
+            ));
+        }
+        return worker_service::background(
+            base_url,
+            workspace,
+            worker_service::BackgroundRequest {
+                target_id: credential.target_id,
+                workdir: args.workdir,
+                concurrency: args.concurrency,
+                label: args.label,
+            },
+        );
+    }
     if args.reset_folder {
         WorkdirIdentity::forget(&args.workdir, store.state_root())?;
     }
@@ -531,7 +555,7 @@ async fn start(base_url: &str, args: StartArgs) -> CtResult<()> {
 }
 
 #[cfg(not(unix))]
-async fn start(_base_url: &str, _args: StartArgs) -> CtResult<()> {
+async fn start(_base_url: &str, _workspace: Option<&str>, _args: StartArgs) -> CtResult<()> {
     Err(CtError::Usage("worker requires Linux or macOS".into()))
 }
 

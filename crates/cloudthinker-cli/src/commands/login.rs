@@ -1,6 +1,7 @@
 //! `cloudthinker login` — browser PKCE login over a loopback callback.
 
 use std::future::Future;
+use std::io::IsTerminal;
 use std::time::Duration;
 
 use cloudthinker_client::{
@@ -9,6 +10,7 @@ use cloudthinker_client::{
 };
 
 use crate::engine::exit::{self, ExitCode};
+use crate::engine::login_menu::{self, Method};
 use crate::engine::login_mode::{self, LoginEnvironment, LoginFlow};
 use crate::engine::output;
 
@@ -41,9 +43,16 @@ async fn log_in(base_url: &str, options: LoginOptions) -> ExitCode {
     };
 
     let no_browser = options.no_browser;
-    match login_mode::choose(&LoginEnvironment::from_process(options.device_auth)) {
+    let environment = LoginEnvironment::from_process(options.device_auth);
+    let detected = login_mode::choose(&environment);
+    let headless = matches!(detected, LoginFlow::HeadlessDevice(_));
+    let flow = match ask_flow(&environment, detected) {
+        Some(flow) => flow,
+        None => return ExitCode::Interrupted,
+    };
+    match flow {
         LoginFlow::Device => {
-            return run_device_login(&client, store.as_ref(), no_browser).await;
+            return run_device_login(&client, store.as_ref(), no_browser || headless).await;
         }
         LoginFlow::HeadlessDevice(reason) => {
             output::progress(&login_mode::switch_line(reason));
@@ -68,23 +77,26 @@ async fn log_in(base_url: &str, options: LoginOptions) -> ExitCode {
 
     // Always print the URL so a headless environment (or a failed browser open)
     // still has a path forward.
+    let offer_copy = copy_offered();
     output::progress(&format!(
-        "Open this URL to authorize CloudThinker:\n  {url}"
+        "Open this URL to authorize CloudThinker:\n  {url}{}",
+        copy_hint(offer_copy)
     ));
     if !no_browser {
         let _ = open::that(&url);
     }
 
-    let code = match loopback.wait_for_code(LOGIN_WAIT).await {
-        Ok(code) => code,
-        Err(err) => {
+    let waited = offering_copy(offer_copy, url.as_str(), loopback.wait_for_code(LOGIN_WAIT)).await;
+    let code = match waited {
+        None => return ExitCode::Interrupted,
+        Some(Ok(code)) => code,
+        Some(Err(err)) => {
             return exit::report(&callback_wait_error(
                 err,
                 &cloudthinker_client::login_command(base_url),
             ));
         }
     };
-
     let token = match client.exchange_code(&code, &pkce.verifier).await {
         Ok(token) => token,
         Err(err) => return exit::report(&err),
@@ -93,23 +105,133 @@ async fn log_in(base_url: &str, options: LoginOptions) -> ExitCode {
     finish_login(store.as_ref(), &token)
 }
 
+fn ask_flow(environment: &LoginEnvironment, detected: LoginFlow) -> Option<LoginFlow> {
+    let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+    if !interactive || login_mode::explicit(environment).is_some() {
+        return Some(detected);
+    }
+    let suggested = match detected {
+        LoginFlow::Browser => Method::Browser,
+        LoginFlow::Device | LoginFlow::HeadlessDevice(_) => Method::Code,
+    };
+    match login_menu::ask(suggested) {
+        Ok(Some(Method::Browser)) => Some(LoginFlow::Browser),
+        Ok(Some(Method::Code)) => Some(LoginFlow::Device),
+        Ok(None) => None,
+        Err(_) => Some(detected),
+    }
+}
+
+fn copy_offered() -> bool {
+    cfg!(unix)
+        && std::io::stdin().is_terminal()
+        && std::io::stdout().is_terminal()
+        && std::io::stderr().is_terminal()
+}
+
+fn copy_hint(offered: bool) -> &'static str {
+    if offered {
+        "\n\nPress c to copy the URL."
+    } else {
+        ""
+    }
+}
+
+#[cfg(unix)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WaitKey {
+    Copy,
+    Interrupt,
+    Other,
+}
+
+#[cfg(unix)]
+fn wait_key(bytes: &[u8]) -> WaitKey {
+    if bytes.contains(&0x03) {
+        WaitKey::Interrupt
+    } else if bytes.iter().any(|byte| matches!(byte, b'c' | b'C')) {
+        WaitKey::Copy
+    } else {
+        WaitKey::Other
+    }
+}
+
+#[cfg(unix)]
+async fn offering_copy<T>(offered: bool, url: &str, wait: impl Future<Output = T>) -> Option<T> {
+    use crate::engine::remote::clipboard::{self, Copied};
+    use crate::engine::remote::tty::RawTerminal;
+
+    tokio::pin!(wait);
+    let mut terminal = if offered {
+        RawTerminal::prompt().ok()
+    } else {
+        None
+    };
+    loop {
+        let Some(active) = terminal.as_ref() else {
+            return Some(wait.await);
+        };
+        let mut closed = false;
+        tokio::select! {
+            result = &mut wait => return Some(result),
+            input = active.input.read() => match input.map(|bytes| (bytes.is_empty(), wait_key(&bytes))) {
+                Ok((true, _)) | Err(_) => closed = true,
+                Ok((false, WaitKey::Interrupt)) => {
+                    let _ = active.output.write_all(b"\r\n").await;
+                    return None;
+                }
+                Ok((false, WaitKey::Copy)) => {
+                    let remote = LoginEnvironment::from_process(false).ssh;
+                    let line = match clipboard::write_text(url, remote).await {
+                        Copied::Clipboard => "Copied the URL.\r\n".to_owned(),
+                        Copied::Terminal => format!(
+                            "{}Asked your terminal to copy the URL. If nothing pastes, select the URL above.\r\n",
+                            clipboard::osc52(url)
+                        ),
+                    };
+                    let _ = active.output.write_all(line.as_bytes()).await;
+                }
+                Ok((false, WaitKey::Other)) => {}
+            },
+        }
+        if closed {
+            terminal = None;
+        }
+    }
+}
+
+#[cfg(not(unix))]
+async fn offering_copy<T>(_offered: bool, _url: &str, wait: impl Future<Output = T>) -> Option<T> {
+    Some(wait.await)
+}
+
 async fn run_device_login(client: &CtClient, store: &dyn TokenStore, no_browser: bool) -> ExitCode {
     let authorization = match client.start_device_authorization().await {
         Ok(authorization) => authorization,
         Err(err) => return exit::report(&err),
     };
 
+    let offer_copy = copy_offered();
     output::progress(&format!(
-        "Open this URL to authorize CloudThinker:\n  {}\n\nEnter this code:\n  {}",
-        authorization.verification_uri, authorization.user_code
+        "Open this URL to authorize CloudThinker:\n  {}\n\nEnter this code:\n  {}{}",
+        authorization.verification_uri,
+        authorization.user_code,
+        copy_hint(offer_copy)
     ));
     if !no_browser {
         let _ = open::that(&authorization.verification_uri);
     }
 
-    let token = match wait_for_device_token(client, &authorization).await {
-        Ok(token) => token,
-        Err(err) => return exit::report(&err),
+    let waited = offering_copy(
+        offer_copy,
+        &authorization.verification_uri,
+        wait_for_device_token(client, &authorization),
+    )
+    .await;
+    let token = match waited {
+        None => return ExitCode::Interrupted,
+        Some(Ok(token)) => token,
+        Some(Err(err)) => return exit::report(&err),
     };
     finish_login(store, &token)
 }
@@ -325,6 +447,17 @@ mod tests {
 
         assert!(matches!(result, Err(ExitCode::Ok)));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn c_copies_and_ctrl_c_cancels_while_login_waits() {
+        assert_eq!(wait_key(b"c"), WaitKey::Copy);
+        assert_eq!(wait_key(b"C"), WaitKey::Copy);
+        assert_eq!(wait_key(b"\x03"), WaitKey::Interrupt);
+        assert_eq!(wait_key(b"c\x03"), WaitKey::Interrupt);
+        assert_eq!(wait_key(b"\r"), WaitKey::Other);
+        assert_eq!(wait_key(b"\x1b[A"), WaitKey::Other);
     }
 
     #[test]

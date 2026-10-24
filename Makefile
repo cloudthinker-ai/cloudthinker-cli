@@ -55,6 +55,7 @@ test:
 	python3 $(CLI_DIR)/scripts/test_check_release.py
 	python3 $(CLI_DIR)/scripts/test_changelog.py
 	python3 $(CLI_DIR)/scripts/test_fixup_spec.py
+	python3 $(CLI_DIR)/scripts/test_patch_installer.py
 	python3 $(CLI_DIR)/scripts/test_prune_spec.py
 	python3 $(CLI_DIR)/scripts/test_cloudthinker_local.py
 

@@ -175,7 +175,8 @@ cloudthinker worker start --outpost my-project --workdir "$PWD" --concurrency 4
 
 File tools stay inside the selected directory. Shell commands run under your OS
 account and are not sandboxed. To keep an outpost available after the terminal
-closes, run `cloudthinker worker service install`. It writes a systemd user unit
+closes, add `--background` to `worker start`, or run `cloudthinker worker
+service install`. It writes a systemd user unit
 on Linux or a LaunchAgent on macOS. `cloudthinker --skill worker` gives the full
 guide.
 

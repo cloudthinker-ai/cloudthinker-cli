@@ -2388,6 +2388,11 @@ pub mod types {
     ///        "$ref": "#/components/schemas/AppPublic"
     ///      }
     ///    },
+    ///    "open_findings_total": {
+    ///      "title": "Open Findings Total",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
     ///    "total": {
     ///      "title": "Total",
     ///      "type": "integer"
@@ -2401,6 +2406,8 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub available_target_types: ::std::vec::Vec<TargetType>,
         pub data: ::std::vec::Vec<AppPublic>,
+        #[serde(default)]
+        pub open_findings_total: i64,
         pub total: i64,
     }
 
@@ -26210,6 +26217,13 @@ pub mod types {
     ///      "title": "Session Id",
     ///      "type": "string",
     ///      "format": "uuid"
+    ///    },
+    ///    "verification_error": {
+    ///      "title": "Verification Error",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
     ///    }
     ///  },
     ///  "additionalProperties": false
@@ -26221,6 +26235,8 @@ pub mod types {
     pub struct WorkerConformancePublic {
         pub complete: bool,
         pub session_id: ::uuid::Uuid,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub verification_error: ::std::option::Option<::std::string::String>,
     }
 
     ///`WorkerHeartbeatRequest`

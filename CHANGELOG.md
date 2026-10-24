@@ -1,3 +1,10 @@
+## [0.9.3]
+
+- `cloudthinker worker start --background` runs the worker as a background service in one step and turns on Linux lingering. The Worker console prints `Waiting for work.` after each run and after a passed folder check, and its banner names `--background`.
+- The install one-liner now opens the login right after it installs `cloudthinker` in a terminal, unless you are already logged in. `cloudthinker login` asks how you want to log in: with the browser, or with a code for SSH and remote sessions. Use the arrow keys or press 1 or 2. While login waits, press c to copy the login URL: the CLI uses the system clipboard on your machine, and asks your terminal to copy it (OSC 52) over SSH. `--device-auth` and `CLOUDTHINKER_LOGIN` still skip the question, and `CLOUDTHINKER_CLI_NO_LOGIN=1` skips the login during install.
+- `worker start` now shows the folder check as one line, `Checking that agents can work in this folder…`, and then `Folder verified in <time>. Start a chat in CloudThinker to work here.` Its test commands, including one that times out on purpose, no longer print as run failures.
+- When the folder check fails, `worker start` now says why, for example `Folder check failed: The folder was too large to check.`, and what to do next.
+
 ## [0.9.2]
 
 - `cloudthinker review` now sends the change to the local agent on stdin, not in the command line, and it no longer runs the git filter programs a checkout configures. A stray request to the login callback no longer cancels `cloudthinker login`. A project `.cloudthinker/config.toml` can name only `CYBER_<ROLE>_AUTH` variables as Cyber identities; save any other name with `cyber config set --user`. As root, `worker service` runs `systemctl`, `loginctl`, `launchctl`, `getent`, and `dscl` only from the system folders.

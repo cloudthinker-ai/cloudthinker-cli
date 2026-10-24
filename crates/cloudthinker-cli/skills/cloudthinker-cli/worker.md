@@ -50,7 +50,16 @@ LaunchAgent cannot skip that restart, so unload it and enroll again.
 Pass `--label` to `worker start` to name the served folder. The Workers page
 shows the label for each worker.
 
-To keep an outpost available after its terminal closes, register a per-user
+To keep an outpost available after its terminal closes, add `--background` to
+the `worker start` command you ran in the terminal. It installs and starts the
+per-user service below for the same outpost, folder, concurrency, and label,
+then prints the commands for status, logs, and stop. On Linux it also turns on
+lingering, or prints the `loginctl enable-linger <user>` command when it cannot.
+It needs a credential saved on this machine, so it does not accept
+`CLOUDTHINKER_WORKER_TOKEN`, `--env`, `--inherit-env`, or the log flags. Without
+a service manager it fails and tells you to run without `--background`.
+
+To manage the service step by step, register a per-user
 service. Installation writes a native systemd user unit on Linux or a LaunchAgent
 on macOS and does not start it:
 
@@ -116,6 +125,10 @@ The default shell environment contains PATH, HOME, LANG, TERM, USER, and TMPDIR.
 Add individual variables by name with `--env NAME`; the value comes from the worker's own environment, so `NAME=VALUE` is not accepted; use `--inherit-env` only when the
 whole environment belongs to the work being served. Worker credentials and shell
 startup injection variables are always excluded.
+
+In the terminal, the worker prints one start line and one summary line per run,
+then `Waiting for work.` when nothing else runs, including after the first
+folder check passes. `--verbose` adds each step.
 
 Press Ctrl-C or send SIGTERM to stop claiming assignments and drain current
 work; the worker prints how many commands are still running, or that nothing

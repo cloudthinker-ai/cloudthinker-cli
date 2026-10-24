@@ -16,7 +16,7 @@ use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::engine::output::{self, ConsoleEvent, WorkerActivity, WorkerConsole};
+use crate::engine::output::{self, CheckResult, ConsoleEvent, WorkerActivity, WorkerConsole};
 
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 const HEALTHY_POLL_AGE: Duration = Duration::from_secs(60);
@@ -235,6 +235,14 @@ pub fn stopping(running: usize) {
 
 pub fn stopped() {
     show(ConsoleEvent::Stopped);
+}
+
+pub fn check_started(run: Uuid) {
+    show(ConsoleEvent::CheckStarted { run });
+}
+
+pub fn check_finished(run: Uuid, result: CheckResult<'_>) {
+    show(ConsoleEvent::CheckFinished { run, result });
 }
 
 fn show(event: ConsoleEvent<'_>) {

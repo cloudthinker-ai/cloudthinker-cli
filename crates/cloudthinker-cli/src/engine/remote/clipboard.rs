@@ -1,6 +1,9 @@
 use std::process::Stdio;
 use std::time::Duration;
 
+use base64::Engine;
+use tokio::io::AsyncWriteExt;
+
 #[cfg(not(target_os = "macos"))]
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
@@ -117,6 +120,73 @@ fn lists_png(types: &[u8]) -> bool {
         .any(|line| line.trim() == "image/png")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Copied {
+    Clipboard,
+    Terminal,
+}
+
+pub fn osc52(text: &str) -> String {
+    format!(
+        "\x1b]52;c;{}\x07",
+        base64::engine::general_purpose::STANDARD.encode(text)
+    )
+}
+
+pub async fn write_text(text: &str, remote_session: bool) -> Copied {
+    if remote_session {
+        return Copied::Terminal;
+    }
+    for (program, args) in text_writers() {
+        if tokio::time::timeout(READ_TIMEOUT, pipe(program, args, text))
+            .await
+            .unwrap_or(false)
+        {
+            return Copied::Clipboard;
+        }
+    }
+    Copied::Terminal
+}
+
+fn text_writers() -> Vec<(&'static str, &'static [&'static str])> {
+    if cfg!(target_os = "macos") {
+        return vec![("pbcopy", &[])];
+    }
+    let set = |name: &str| std::env::var_os(name).is_some_and(|value| !value.is_empty());
+    let mut writers: Vec<(&'static str, &'static [&'static str])> = Vec::new();
+    if set("WAYLAND_DISPLAY") {
+        writers.push(("wl-copy", &[]));
+    }
+    if set("DISPLAY") {
+        writers.push(("xclip", &["-selection", "clipboard"]));
+        writers.push(("xsel", &["--clipboard", "--input"]));
+    }
+    if set("WSL_DISTRO_NAME") || set("WSL_INTEROP") {
+        writers.push(("clip.exe", &[]));
+    }
+    writers
+}
+
+async fn pipe(program: &str, args: &[&str], text: &str) -> bool {
+    let Ok(mut child) = Command::new(program)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let Some(mut stdin) = child.stdin.take() else {
+        return false;
+    };
+    if stdin.write_all(text.as_bytes()).await.is_err() {
+        return false;
+    }
+    drop(stdin);
+    child.wait().await.is_ok_and(|status| status.success())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,6 +203,14 @@ mod tests {
         assert!(lists_png(b"text/plain\nimage/png\n"));
         assert!(lists_png(b"TARGETS\r\nimage/png\r\n"));
         assert!(!lists_png(b"text/plain\nimage/jpeg\n"));
+    }
+
+    #[test]
+    fn osc52_carries_the_text_as_base64() {
+        assert_eq!(
+            osc52("https://x.io/?a=1&b=2"),
+            "\x1b]52;c;aHR0cHM6Ly94LmlvLz9hPTEmYj0y\x07"
+        );
     }
 
     #[cfg(not(target_os = "macos"))]

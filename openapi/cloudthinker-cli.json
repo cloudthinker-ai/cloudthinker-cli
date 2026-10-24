@@ -721,6 +721,11 @@
             "title": "Data",
             "type": "array"
           },
+          "open_findings_total": {
+            "default": 0,
+            "title": "Open Findings Total",
+            "type": "integer"
+          },
           "total": {
             "title": "Total",
             "type": "integer"
@@ -7799,6 +7804,11 @@
           "session_id": {
             "format": "uuid",
             "title": "Session Id",
+            "type": "string"
+          },
+          "verification_error": {
+            "nullable": true,
+            "title": "Verification Error",
             "type": "string"
           }
         },

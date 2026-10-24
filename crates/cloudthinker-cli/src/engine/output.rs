@@ -24,7 +24,7 @@ use uuid::Uuid;
 mod worker_console;
 
 pub use worker_console::{
-    ConsoleEvent, ConsoleStyle, WorkerActivity, WorkerConsole, WorkerHeader, short_id,
+    CheckResult, ConsoleEvent, ConsoleStyle, WorkerActivity, WorkerConsole, WorkerHeader, short_id,
     worker_header_lines,
 };
 

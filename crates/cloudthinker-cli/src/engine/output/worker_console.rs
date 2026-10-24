@@ -41,6 +41,13 @@ pub enum ConsoleEvent<'a> {
     RunFinished {
         run: Uuid,
     },
+    CheckStarted {
+        run: Uuid,
+    },
+    CheckFinished {
+        run: Uuid,
+        result: CheckResult<'a>,
+    },
     RunStopped {
         run: Uuid,
         reason: &'a str,
@@ -60,6 +67,25 @@ pub enum ConsoleEvent<'a> {
         text: &'a str,
     },
     Silent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CheckResult<'a> {
+    Verified,
+    Failed { code: &'a str },
+    Unknown,
+}
+
+const NEW_COMMAND: &str = "Stop the worker, then run a new command from CloudThinker.";
+
+fn check_failure(code: &str) -> String {
+    match code {
+        "FILE_SCAN_LIMIT_EXCEEDED" => "The folder was too large to check.".to_owned(),
+        code => format!(
+            "The worker could not finish its checks ({}).",
+            terminal_text(code)
+        ),
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -175,6 +201,12 @@ pub struct WorkerConsole {
     offline: bool,
     online_once: bool,
     runs: HashMap<Uuid, Tally>,
+    checks: HashMap<Uuid, CheckRun>,
+}
+
+struct CheckRun {
+    started: DateTime<Local>,
+    held: Vec<String>,
 }
 
 pub struct WorkerHeader<'a> {
@@ -250,6 +282,14 @@ pub fn worker_header_lines(header: &WorkerHeader<'_>, style: ConsoleStyle) -> Ve
     } else {
         "  Press Ctrl-C to stop.".to_owned()
     };
+    let background = if style.color {
+        format!(
+            "  To keep it running after you close this terminal, add {}.",
+            "--background".bold()
+        )
+    } else {
+        "  To keep it running after you close this terminal, add --background.".to_owned()
+    };
     vec![
         title,
         row("Name", terminal_text(header.name)),
@@ -259,6 +299,7 @@ pub fn worker_header_lines(header: &WorkerHeader<'_>, style: ConsoleStyle) -> Ve
         String::new(),
         warning,
         stop,
+        background,
         String::new(),
     ]
 }
@@ -288,6 +329,7 @@ impl WorkerConsole {
             offline: false,
             online_once: false,
             runs: HashMap::new(),
+            checks: HashMap::new(),
         }
     }
 
@@ -317,6 +359,12 @@ impl WorkerConsole {
             format!("{}  {symbol} {}", time.dimmed(), text.dimmed())
         } else {
             format!("{}  {symbol} {text}", time.dimmed())
+        }
+    }
+
+    fn push_idle(&self, now: DateTime<Local>, lines: &mut Vec<String>) {
+        if self.runs.is_empty() && self.checks.is_empty() && !self.offline {
+            lines.push(self.line(now, Mark::Online, "Waiting for work."));
         }
     }
 
@@ -351,8 +399,57 @@ impl WorkerConsole {
                     lines.push(self.line(now, Mark::Detail, &terminal_text(detail)));
                 }
             }
+            ConsoleEvent::CheckStarted { run } => {
+                self.checks.insert(
+                    run,
+                    CheckRun {
+                        started: now,
+                        held: Vec::new(),
+                    },
+                );
+                lines.push(self.line(
+                    now,
+                    Mark::Start,
+                    "Checking that agents can work in this folder…",
+                ));
+            }
+            ConsoleEvent::CheckFinished { run, result } => {
+                let Some(check) = self.checks.remove(&run) else {
+                    return lines;
+                };
+                let elapsed = (now - check.started).num_milliseconds().max(0);
+                let duration = human_duration(u128::try_from(elapsed).unwrap_or(0));
+                lines.push(match result {
+                    CheckResult::Verified => self.line(
+                        now,
+                        Mark::Done,
+                        &format!(
+                            "Folder verified in {duration}. Start a chat in CloudThinker to work here."
+                        ),
+                    ),
+                    CheckResult::Failed { code } => self.line(
+                        now,
+                        Mark::Failed,
+                        &format!("Folder check failed: {} {NEW_COMMAND}", check_failure(code)),
+                    ),
+                    CheckResult::Unknown => self.line(
+                        now,
+                        Mark::Warn,
+                        "The folder check finished, but its result could not be read. See the worker in CloudThinker.",
+                    ),
+                });
+                if matches!(result, CheckResult::Unknown) {
+                    lines.extend(check.held);
+                }
+                if matches!(result, CheckResult::Verified) {
+                    self.push_idle(now, &mut lines);
+                }
+            }
             ConsoleEvent::RunStarted { run } => {
                 self.runs.insert(run, Tally::new(now));
+                if self.checks.contains_key(&run) {
+                    return lines;
+                }
                 lines.push(self.line(now, Mark::Start, &format!("Run {} started", short_id(run))));
             }
             ConsoleEvent::OperationStarted {
@@ -397,11 +494,12 @@ impl WorkerConsole {
                         }
                         None => format!("{noun} failed after {duration}"),
                     };
-                    lines.push(self.line(
-                        now,
-                        Mark::Failed,
-                        &format!("Run {}: {text}", short_id(run)),
-                    ));
+                    let line =
+                        self.line(now, Mark::Failed, &format!("Run {}: {text}", short_id(run)));
+                    match self.checks.get_mut(&run) {
+                        Some(check) => check.held.push(line),
+                        None => lines.push(line),
+                    }
                 }
                 if self.verbose {
                     let result = match code {
@@ -438,10 +536,28 @@ impl WorkerConsole {
                 } else {
                     Mark::Done
                 };
-                lines.push(self.line(now, mark, &text));
+                let line = self.line(now, mark, &text);
+                match self.checks.get_mut(&run) {
+                    Some(check) => check.held.push(line),
+                    None => {
+                        lines.push(line);
+                        self.push_idle(now, &mut lines);
+                    }
+                }
             }
             ConsoleEvent::RunStopped { run, reason } => {
                 self.runs.remove(&run);
+                if self.checks.remove(&run).is_some() {
+                    lines.push(self.line(
+                        now,
+                        Mark::Failed,
+                        &format!(
+                            "The folder check stopped: {}. {NEW_COMMAND}",
+                            terminal_text(reason)
+                        ),
+                    ));
+                    return lines;
+                }
                 lines.push(self.line(
                     now,
                     Mark::Failed,
@@ -451,6 +567,7 @@ impl WorkerConsole {
                         terminal_text(reason)
                     ),
                 ));
+                self.push_idle(now, &mut lines);
             }
             ConsoleEvent::Stopping { running } => {
                 let text = if running == 0 {
@@ -538,8 +655,8 @@ mod tests {
         }
     }
 
-    fn session(console: &mut WorkerConsole) -> Vec<String> {
-        let events = [
+    fn session_events() -> Vec<(DateTime<Local>, ConsoleEvent<'static>)> {
+        vec![
             (at(16, 42, 43), ConsoleEvent::Online),
             (at(16, 42, 43), ConsoleEvent::RunStarted { run: run_id() }),
             (
@@ -627,8 +744,11 @@ mod tests {
             (at(16, 50, 53), ConsoleEvent::Stopping { running: 0 }),
             (at(16, 50, 53), ConsoleEvent::Silent),
             (at(16, 50, 54), ConsoleEvent::Stopped),
-        ];
-        events
+        ]
+    }
+
+    fn session(console: &mut WorkerConsole) -> Vec<String> {
+        session_events()
             .into_iter()
             .flat_map(|(now, event)| console.handle(now, event))
             .collect()
@@ -654,6 +774,7 @@ mod tests {
 
   ! Shell commands run as your user, with no sandbox. File tools stay in this folder.
   Press Ctrl-C to stop.
+  To keep it running after you close this terminal, add --background.
 "
         );
     }
@@ -667,11 +788,89 @@ mod tests {
 16:42:43  → Run e1d607f2 started
 16:42:49  ✗ Run e1d607f2: a shell command timed out after 107 ms
 16:42:55  ! Run e1d607f2 done in 12s · 3 commands (1 timed out), 1 file read, 1 file edit
+16:42:55  ● Waiting for work.
 16:48:30  ! Connection lost, reconnecting…
 16:48:32  ● Reconnected.
 
 16:50:53    Stopping… nothing running.
 16:50:54    Stopped."
+        );
+    }
+
+    #[test]
+    fn the_folder_check_reads_as_a_check_not_as_a_run_with_failures() {
+        let checked = |result| {
+            let mut events = session_events();
+            events.insert(
+                1,
+                (at(16, 42, 43), ConsoleEvent::CheckStarted { run: run_id() }),
+            );
+            let finished = events
+                .iter()
+                .position(|(_, event)| matches!(event, ConsoleEvent::RunFinished { .. }))
+                .unwrap();
+            events.insert(
+                finished + 1,
+                (
+                    at(16, 42, 55),
+                    ConsoleEvent::CheckFinished {
+                        run: run_id(),
+                        result,
+                    },
+                ),
+            );
+            let mut console = WorkerConsole::new(PLAIN, false);
+            events
+                .into_iter()
+                .flat_map(|(now, event)| console.handle(now, event))
+                .collect::<Vec<String>>()
+        };
+        let verified = checked(CheckResult::Verified);
+        assert_eq!(
+            verified[..3].join("\n"),
+            "16:42:43  ● Online. Waiting for work.
+16:42:43  → Checking that agents can work in this folder…
+16:42:55  ✓ Folder verified in 12s. Start a chat in CloudThinker to work here."
+        );
+        assert!(!verified.iter().any(|line| line.contains("timed out")));
+        let unknown = checked(CheckResult::Unknown);
+        assert_eq!(
+            unknown[2],
+            "16:42:55  ! The folder check finished, but its result could not be read. See the worker in CloudThinker."
+        );
+        assert!(
+            unknown[3].contains("Run e1d607f2: a shell command timed out"),
+            "{unknown:#?}"
+        );
+    }
+
+    #[test]
+    fn a_failed_folder_check_says_why() {
+        let mut console = WorkerConsole::new(PLAIN, false);
+        let mut lines = console.handle(at(9, 0, 0), ConsoleEvent::CheckStarted { run: run_id() });
+        for code in ["FILE_SCAN_LIMIT_EXCEEDED", "EXECUTOR_CONFORMANCE_MISMATCH"] {
+            console.handle(at(9, 0, 0), ConsoleEvent::CheckStarted { run: run_id() });
+            lines.extend(console.handle(
+                at(9, 0, 4),
+                ConsoleEvent::CheckFinished {
+                    run: run_id(),
+                    result: CheckResult::Failed { code },
+                },
+            ));
+        }
+        console.handle(at(9, 0, 0), ConsoleEvent::CheckStarted { run: run_id() });
+        lines.extend(console.handle(
+            at(9, 0, 4),
+            ConsoleEvent::RunStopped {
+                run: run_id(),
+                reason: "the lease was taken away",
+            },
+        ));
+        assert_eq!(
+            lines[1..].join("\n"),
+            "09:00:04  ✗ Folder check failed: The folder was too large to check. Stop the worker, then run a new command from CloudThinker.
+09:00:04  ✗ Folder check failed: The worker could not finish its checks (EXECUTOR_CONFORMANCE_MISMATCH). Stop the worker, then run a new command from CloudThinker.
+09:00:04  ✗ The folder check stopped: the lease was taken away. Stop the worker, then run a new command from CloudThinker."
         );
     }
 
@@ -741,8 +940,10 @@ mod tests {
             "2026-10-22 09:00:00  → Run e1d607f2 started
 2026-10-22 09:00:01  ✗ Run e1d607f2: a file edit failed after 3 ms (PATH_OUTSIDE_WORKDIR)
 2026-10-22 09:01:30  ! Run e1d607f2 done in 1m 30s · 1 file read (1 failed), 1 file edit (1 failed)
+2026-10-22 09:01:30  ● Waiting for work.
 2026-10-22 09:02:00  → Run e1d607f2 started
 2026-10-22 09:02:04  ✓ Run e1d607f2 done in 4.0s
+2026-10-22 09:02:04  ● Waiting for work.
 2026-10-22 09:03:00    Stopping. Waiting for 2 tasks to finish; press Ctrl-C again to cancel.
 2026-10-22 09:03:05  ! Cancelling running tasks."
         );
@@ -765,7 +966,7 @@ mod tests {
         ));
         lines.extend(console.handle(at(9, 0, 4), ConsoleEvent::RunFinished { run: run_id() }));
         assert_eq!(
-            lines.last().map(String::as_str),
+            lines.iter().rev().nth(1).map(String::as_str),
             Some("09:00:04  ! Run e1d607f2 done in 4.0s · 1 file read (1 failed)")
         );
     }

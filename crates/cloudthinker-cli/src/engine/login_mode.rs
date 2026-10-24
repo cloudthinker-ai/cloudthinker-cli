@@ -43,9 +43,9 @@ impl LoginEnvironment {
     }
 }
 
-pub fn choose(environment: &LoginEnvironment) -> LoginFlow {
+pub fn explicit(environment: &LoginEnvironment) -> Option<LoginFlow> {
     if environment.device_auth_flag {
-        return LoginFlow::Device;
+        return Some(LoginFlow::Device);
     }
     match environment
         .mode_override
@@ -54,9 +54,15 @@ pub fn choose(environment: &LoginEnvironment) -> LoginFlow {
         .map(str::to_ascii_lowercase)
         .as_deref()
     {
-        Some("browser") => return LoginFlow::Browser,
-        Some("device") => return LoginFlow::Device,
-        _ => {}
+        Some("browser") => Some(LoginFlow::Browser),
+        Some("device") => Some(LoginFlow::Device),
+        _ => None,
+    }
+}
+
+pub fn choose(environment: &LoginEnvironment) -> LoginFlow {
+    if let Some(flow) = explicit(environment) {
+        return flow;
     }
     if environment.browser_helper || environment.wsl {
         return LoginFlow::Browser;

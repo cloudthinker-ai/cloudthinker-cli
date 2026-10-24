@@ -298,6 +298,7 @@ jobs:
         run: |
           dist build ${{ needs.plan.outputs.tag-flag }} --output-format=json "--artifacts=global" > dist-manifest.json
           echo "dist ran successfully"
+          python3 scripts/patch_installer.py target/distrib/cloudthinker-cli-installer.sh
 
           cp dist-manifest.json "$BUILD_MANIFEST_NAME"
       # Hand the global artifacts and manifest to the host job via the Actions

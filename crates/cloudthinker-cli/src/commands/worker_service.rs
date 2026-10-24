@@ -186,6 +186,90 @@ pub fn execute(base_url: &str, workspace: Option<&str>, command: ServiceCommand)
 }
 
 fn install(base_url: &str, workspace: Option<&str>, args: ServiceInstallArgs) -> CtResult<()> {
+    let json = args.json;
+    let (spec, state, linger) = install_service(base_url, workspace, args)?;
+    let mut output = spec.target.output(state);
+    output.linger = linger.as_ref().map(|report| report.state);
+    let flags = spec.target.scope_flags();
+    let mut human = format!(
+        "Worker service {state}; start it with cloudthinker worker service start --outpost {} --workdir {}{flags}",
+        spec.target.target_id,
+        spec.target.workdir.display()
+    );
+    if let Some(hint) = linger.and_then(|report| report.hint) {
+        human.push('\n');
+        human.push_str(&hint);
+    }
+    emit(&output, &human, json)
+}
+
+pub struct BackgroundRequest {
+    pub target_id: Uuid,
+    pub workdir: PathBuf,
+    pub concurrency: u16,
+    pub label: Option<String>,
+}
+
+pub fn background(
+    base_url: &str,
+    workspace: Option<&str>,
+    request: BackgroundRequest,
+) -> CtResult<()> {
+    let args = ServiceInstallArgs {
+        outpost: Some(request.target_id.to_string()),
+        workdir: request.workdir,
+        concurrency: request.concurrency,
+        label: request.label,
+        enable_linger: env::consts::OS == "linux",
+        scope: ServiceScopeArgs {
+            system: false,
+            user: None,
+        },
+        json: false,
+    };
+    let unavailable = |error: CtError| match error {
+        CtError::Store(detail) => CtError::Usage(format!(
+            "Could not run the worker in the background: {detail}. Run cloudthinker worker start without --background to keep it in this terminal."
+        )),
+        error => error,
+    };
+    let (spec, _, linger) = install_service(base_url, workspace, args).map_err(unavailable)?;
+    manager_start(&spec.target).map_err(unavailable)?;
+    let target = &spec.target;
+    let selector = format!(
+        "--outpost {} --workdir {}",
+        target.target_id,
+        target.workdir.display()
+    );
+    let mut lines = vec![
+        format!(
+            "Worker is running in the background ({}).",
+            target.manager_name()
+        ),
+        format!("  Status  cloudthinker worker service status {selector}"),
+        format!("  Logs    {}", log_command(target)),
+        format!("  Stop    cloudthinker worker service stop {selector}"),
+    ];
+    if let Some(hint) = linger.and_then(|report| report.hint) {
+        lines.push(String::new());
+        lines.push(hint);
+    }
+    crate::engine::output::print_worker_lines(&lines);
+    Ok(())
+}
+
+fn log_command(target: &ServiceTarget) -> String {
+    match target.platform {
+        ServicePlatform::Systemd => format!("{} -f", target.logs()),
+        ServicePlatform::Launchd => format!("tail -f {}", target.logs()),
+    }
+}
+
+fn install_service(
+    base_url: &str,
+    workspace: Option<&str>,
+    args: ServiceInstallArgs,
+) -> CtResult<(ServiceSpec, &'static str, Option<LingerReport>)> {
     let origin = origin_of(base_url)?;
     let scope = scope_of(&args.scope)?;
     if args.enable_linger && ServicePlatform::current()? != ServicePlatform::Systemd {
@@ -263,19 +347,7 @@ fn install(base_url: &str, workspace: Option<&str>, args: ServiceInstallArgs) ->
     } else {
         Some(ensure_linger(args.enable_linger))
     };
-    let mut output = spec.target.output(state);
-    output.linger = linger.as_ref().map(|report| report.state);
-    let flags = spec.target.scope_flags();
-    let mut human = format!(
-        "Worker service {state}; start it with cloudthinker worker service start --outpost {} --workdir {}{flags}",
-        spec.target.target_id,
-        spec.target.workdir.display()
-    );
-    if let Some(hint) = linger.and_then(|report| report.hint) {
-        human.push('\n');
-        human.push_str(&hint);
-    }
-    emit(&output, &human, args.json)
+    Ok((spec, state, linger))
 }
 
 #[cfg(unix)]
