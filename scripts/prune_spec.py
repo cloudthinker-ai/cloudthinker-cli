@@ -117,6 +117,17 @@ _CYBER_PATHS = frozenset(
     }
 )
 
+_CONNECTIONS_PATHS = frozenset(
+    {
+        "/api/v1/builtin-connection",
+        "/api/v1/builtin-connection/{builtin_id}",
+        "/api/v1/builtin-connection/{builtin_id}/test-status",
+        "/api/v1/builtin-connection/{builtin_id}/retry",
+        "/api/v1/mcp-connection",
+        "/api/v1/mcp-connection/{mcp_conn_id}/test-status",
+    }
+)
+
 _CLOUD_PATHS = frozenset({
     "/api/v1/agent-cli/sessions",
     "/api/v1/agent-cli/connections",
@@ -140,21 +151,59 @@ ALLOWED_PATHS = (
     | _RESOLVE_PATHS
     | _OPTIMIZE_PATHS
     | _CYBER_PATHS
+    | _CONNECTIONS_PATHS
 )
 
 _HTTP_METHODS = frozenset({"get", "put", "post", "delete", "patch", "options", "head"})
 _GET_ONLY_PATHS = frozenset(
     {
         "/api/v1/appsec/apps/{app_id}/context",
+        "/api/v1/builtin-connection",
+        "/api/v1/builtin-connection/{builtin_id}",
+        "/api/v1/builtin-connection/{builtin_id}/test-status",
+        "/api/v1/mcp-connection",
+        "/api/v1/mcp-connection/{mcp_conn_id}/test-status",
         "/api/v1/incidents/",
         "/api/v1/incidents/{incident_id}",
         "/api/v1/recommendations/",
     }
 )
 
+_BUILTIN_CONNECTION_UNREAD = frozenset(
+    {
+        "env",
+        "tools",
+        "config",
+        "builtin_connection_type",
+        "connection_env_type",
+        "environment",
+        "aws_auth_method",
+        "aws_external_id",
+        "oauth_redirect_uri",
+        "category",
+        "classification",
+        "suggested_alias",
+        "connection_template_id",
+        "host_key",
+        "ssh_endpoint",
+    }
+)
+
 _UNREAD_PROPERTIES = {
     "IncidentPublic": frozenset({"declaration_actor_kind"}),
+    "BuiltinConnectionsPublic": frozenset({"categories"}),
+    "BuiltinConnectionPublic": _BUILTIN_CONNECTION_UNREAD,
+    "BuiltinConnectionDetail": _BUILTIN_CONNECTION_UNREAD,
+    "MCPConnectionPublic": frozenset({"config", "tools"}),
+    "ConnectionMCPConfigPublic": frozenset({"headers"}),
+    "ConnectionTestStatus": frozenset({"classification"}),
 }
+
+_UNTYPED_ERROR_SCHEMAS = frozenset({"ConnectionErrorResponse"})
+
+_OPEN_ENUM_SCHEMAS = frozenset(
+    {"ConnectionStatus", "ConnectionTestPhase", "AuthType", "MCPTransportType"}
+)
 
 
 def _drop_unread_properties(schemas: dict) -> dict:
@@ -173,6 +222,28 @@ def _drop_unread_properties(schemas: dict) -> dict:
             schema["required"] = [key for key in schema["required"] if key not in dropped]
         kept[name] = schema
     return kept
+
+
+def _open_enums(schemas: dict) -> dict:
+    opened = dict(schemas)
+    for name in _OPEN_ENUM_SCHEMAS & set(opened):
+        schema = opened[name]
+        kept = {key: schema[key] for key in ("title", "description") if key in schema}
+        opened[name] = {**kept, "type": "string"}
+    return opened
+
+
+def _drop_typed_error_responses(operation: dict) -> dict:
+    responses = operation.get("responses")
+    if not isinstance(responses, dict):
+        return operation
+    kept: dict = {}
+    for status, response in responses.items():
+        refs: set[str] = set()
+        _collect_refs(response, refs)
+        if str(status).startswith("2") or not refs & _UNTYPED_ERROR_SCHEMAS:
+            kept[status] = response
+    return {**operation, "responses": kept}
 
 
 def _collect_refs(node: object, out: set[str]) -> None:
@@ -235,14 +306,16 @@ def prune(spec: dict) -> dict:
             if method.lower() in _HTTP_METHODS:
                 op = dict(item[method])
                 op.pop("security", None)
-                item[method] = op
+                item[method] = _drop_typed_error_responses(op)
         kept_paths[path] = item
 
     pruned = dict(spec)
     pruned["paths"] = {p: kept_paths[p] for p in sorted(kept_paths)}
     components = dict(spec.get("components", {}))
     components.pop("securitySchemes", None)
-    components["schemas"] = _drop_unread_properties(components.get("schemas", {}))
+    components["schemas"] = _open_enums(
+        _drop_unread_properties(components.get("schemas", {}))
+    )
     pruned["components"] = components
     pruned.pop("security", None)
     prune_unused_schemas(pruned)

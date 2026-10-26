@@ -161,6 +161,8 @@ use engine::exit::ExitCode;
 
 const DEFAULT_BASE_URL: &str = cloudthinker_client::DEFAULT_BASE_URL;
 const DEFAULT_TIMEOUT_SECS: u64 = 2400;
+const CONNECTION_TEST_TIMEOUT_SECS: u64 = 300;
+const CONNECT_WAIT_TIMEOUT_SECS: u64 = 900;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -206,6 +208,8 @@ enum Command {
     Incident(IncidentArgs),
     /// List cost and efficiency recommendations with their monthly savings.
     Recommendations(RecommendationsArgs),
+    /// List your workspace's Connections, check their tests, retry one, or open the page to add one.
+    Connections(ConnectionsArgs),
     /// Log in. Over SSH or without a display, it shows a short code instead of a browser.
     Login(LoginArgs),
     /// Log out and clear stored credentials.
@@ -925,6 +929,76 @@ enum RecommendationsSub {
 }
 
 #[derive(Debug, Args)]
+#[command(
+    after_help = "Examples:\n  cloudthinker connections list\n  cloudthinker connections status aws --wait\n  cloudthinker connections retry <CONNECTION_ID> --wait --json\n  cloudthinker connections connect-url github --wait\n\nA TARGET is a connection id, alias, or prefix from `connections list`.\n\nExit codes: 0 ok; 1 the test failed or no connection matches; 2 the target matches several connections or the prefix is unknown; 3 you lack access; 4 timeout; 130 Ctrl-C."
+)]
+struct ConnectionsArgs {
+    #[command(subcommand)]
+    command: ConnectionsSub,
+}
+
+#[derive(Debug, Subcommand)]
+enum ConnectionsSub {
+    /// List the connections added to the selected workspace.
+    #[command(visible_alias = "ls")]
+    List {
+        /// Print JSON on stdout instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show one connection: its type, status, and where it points.
+    Show {
+        /// A connection id, alias, or prefix from `connections list`.
+        target: String,
+        /// Print JSON on stdout instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show the result of a connection's latest test; `--wait` blocks until the test ends.
+    Status {
+        /// A connection id, alias, or prefix from `connections list`.
+        target: String,
+        /// Poll until the test succeeds, fails, times out, or is cancelled.
+        #[arg(long)]
+        wait: bool,
+        /// Stop waiting after this many seconds (the test keeps running).
+        #[arg(long, default_value_t = CONNECTION_TEST_TIMEOUT_SECS)]
+        timeout: u64,
+        /// Print JSON on stdout instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Test a built-in connection again with its saved credentials (workspace admins).
+    Retry {
+        /// A connection id, alias, or prefix from `connections list`.
+        target: String,
+        /// Poll until the new test ends.
+        #[arg(long)]
+        wait: bool,
+        /// Stop waiting after this many seconds (the test keeps running).
+        #[arg(long, default_value_t = CONNECTION_TEST_TIMEOUT_SECS)]
+        timeout: u64,
+        /// Print JSON on stdout instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print the web page that adds a connection, and open it on a desktop; credentials stay in the browser.
+    ConnectUrl {
+        /// The connection type to add, such as `aws` or `github`.
+        prefix: String,
+        /// Poll until a new connection of this type is added and its first test ends.
+        #[arg(long)]
+        wait: bool,
+        /// Stop waiting after this many seconds.
+        #[arg(long, default_value_t = CONNECT_WAIT_TIMEOUT_SECS)]
+        timeout: u64,
+        /// Print JSON on stdout instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Args)]
 struct UpdateArgs {
     /// Install the latest release even when already up to date.
     #[arg(long)]
@@ -965,6 +1039,7 @@ fn shows_update_notice(command: &Command) -> bool {
             | Command::Review(_)
             | Command::Incident(_)
             | Command::Recommendations(_)
+            | Command::Connections(_)
             | Command::Login(_)
             | Command::Logout(_)
             | Command::Whoami { .. }
@@ -1141,6 +1216,66 @@ async fn run_command(
                 .await
             }
         },
+        Command::Connections(args) => {
+            let workspace = workspace.as_deref();
+            let wait = |enabled, timeout_secs| commands::connections::Wait {
+                enabled,
+                timeout_secs,
+            };
+            match args.command {
+                ConnectionsSub::List { json } => {
+                    commands::connections::run_list(base_url, workspace, json).await
+                }
+                ConnectionsSub::Show { target, json } => {
+                    commands::connections::run_show(base_url, workspace, &target, json).await
+                }
+                ConnectionsSub::Status {
+                    target,
+                    wait: enabled,
+                    timeout,
+                    json,
+                } => {
+                    commands::connections::run_status(
+                        base_url,
+                        workspace,
+                        &target,
+                        wait(enabled, timeout),
+                        json,
+                    )
+                    .await
+                }
+                ConnectionsSub::Retry {
+                    target,
+                    wait: enabled,
+                    timeout,
+                    json,
+                } => {
+                    commands::connections::run_retry(
+                        base_url,
+                        workspace,
+                        &target,
+                        wait(enabled, timeout),
+                        json,
+                    )
+                    .await
+                }
+                ConnectionsSub::ConnectUrl {
+                    prefix,
+                    wait: enabled,
+                    timeout,
+                    json,
+                } => {
+                    commands::connections::run_connect_url(
+                        base_url,
+                        workspace,
+                        &prefix,
+                        wait(enabled, timeout),
+                        json,
+                    )
+                    .await
+                }
+            }
+        }
         Command::Recommendations(args) => match args.command {
             RecommendationsSub::Ls {
                 status,

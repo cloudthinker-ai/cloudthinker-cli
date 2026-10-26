@@ -19,6 +19,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::config::WorkdirIdentity;
 use super::files::relative;
+use super::sandbox::SandboxPlan;
 
 pub(crate) const STREAM_CAP_BYTES: u64 = 32 * 1024 * 1024;
 pub(crate) const PAGE_ENCODED_BYTES: usize = 1024 * 1024;
@@ -70,6 +71,11 @@ pub struct ShimImage {
     #[cfg(not(target_os = "linux"))]
     path: PathBuf,
     launch: Launch,
+}
+
+struct Spawn<'a> {
+    environment: &'a BTreeMap<String, String>,
+    sandbox: Option<&'a SandboxPlan>,
 }
 
 pub enum Launch {
@@ -192,6 +198,7 @@ pub(crate) async fn execute(
     shim: Arc<ShimImage>,
     op: api::BackgroundOperation,
     environment: BTreeMap<String, String>,
+    sandbox: Option<SandboxPlan>,
     deadline: DateTime<Utc>,
     cancel: CancellationToken,
 ) -> Result<Value, &'static str> {
@@ -201,7 +208,7 @@ pub(crate) async fn execute(
     validate_task_id(&op.task_id)?;
     match op.action {
         api::BackgroundAction::Start => {
-            start(identity, shim, op, environment, deadline, cancel).await
+            start(identity, shim, op, environment, sandbox, deadline, cancel).await
         }
         api::BackgroundAction::Tail => {
             let wait = tail_wait(op.wait_seconds, deadline);
@@ -258,6 +265,7 @@ async fn start(
     shim: Arc<ShimImage>,
     op: api::BackgroundOperation,
     environment: BTreeMap<String, String>,
+    sandbox: Option<SandboxPlan>,
     deadline: DateTime<Utc>,
     cancel: CancellationToken,
 ) -> Result<Value, &'static str> {
@@ -279,16 +287,11 @@ async fn start(
     let Some((task, cwd)) = prepared? else {
         return Ok(json!({"started": false}));
     };
-    let outcome = launch(
-        &task,
-        cwd,
-        &shim,
-        &environment,
-        timeout_secs,
-        deadline,
-        cancel,
-    )
-    .await;
+    let spawn = Spawn {
+        environment: sandbox.as_ref().map_or(&environment, |plan| &plan.env),
+        sandbox: sandbox.as_ref(),
+    };
+    let outcome = launch(&task, cwd, &shim, spawn, timeout_secs, deadline, cancel).await;
     if outcome.is_err() {
         let _ = tokio::task::spawn_blocking(move || abort(&identity, &task_id)).await;
     }
@@ -337,17 +340,21 @@ async fn launch(
     task: &TaskDir,
     cwd: OwnedFd,
     shim: &ShimImage,
-    environment: &BTreeMap<String, String>,
+    spawn: Spawn<'_>,
     timeout_secs: u64,
     deadline: DateTime<Utc>,
     cancel: CancellationToken,
 ) -> Result<(), &'static str> {
-    let mut child = shim
-        .command(environment)?
+    let mut command = shim.command(spawn.environment)?;
+    command
         .args(["worker", "bg-shim", "--task-dir"])
         .arg(&task.path)
         .arg("--timeout-secs")
-        .arg(timeout_secs.to_string())
+        .arg(timeout_secs.to_string());
+    if let Some(plan) = spawn.sandbox {
+        command.arg("--sandbox").args(plan.arguments());
+    }
+    let mut child = command
         .stdin(Stdio::from(cwd))
         .stderr(Stdio::null())
         .spawn()
@@ -795,6 +802,7 @@ mod tests {
                 self.shim.clone(),
                 op,
                 BTreeMap::new(),
+                None,
                 deadline,
                 cancel,
             )

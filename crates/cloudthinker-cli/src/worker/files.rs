@@ -234,17 +234,36 @@ pub fn execute(dir: &Dir, operation: &api::FileOperation) -> Result<Value, &'sta
 }
 
 fn read_op(dir: &Dir, path: &str, r: &api::FileRequest) -> Result<Value, &'static str> {
-    let bytes = read(
-        dir,
-        path,
-        r.max_bytes
-            .and_then(|v| usize::try_from(v).ok())
-            .unwrap_or(MAX_BYTES),
-    )?;
+    let limit = r
+        .max_bytes
+        .and_then(|v| usize::try_from(v).ok())
+        .unwrap_or(MAX_BYTES);
+    let bytes = match read(dir, path, limit) {
+        Err("FILE_TOO_LARGE")
+            if r.auto_detect_binary.unwrap_or(false)
+                && read_prefix(dir, path, 12).is_ok_and(|head| image_mime(&head).is_some()) =>
+        {
+            return Err("IMAGE_TOO_LARGE");
+        }
+        other => other?,
+    };
     if r.binary.unwrap_or(false) {
         return Ok(
             json!({"status":"success", "file_path":path,"content_base64":base64::engine::general_purpose::STANDARD.encode(bytes)}),
         );
+    }
+    if r.auto_detect_binary.unwrap_or(false)
+        && let Some(mime) = image_mime(&bytes)
+    {
+        return Ok(json!({
+            "status":"success",
+            "file_path":path,
+            "content":null,
+            "is_binary":true,
+            "mime_type":mime,
+            "content_base64":base64::engine::general_purpose::STANDARD.encode(&bytes),
+            "convention_files":[],
+        }));
     }
     let text = String::from_utf8(bytes).map_err(|_| "FILE_BINARY")?;
     let offset = number(r.offset.as_ref(), 0).max(0) as usize;
@@ -264,6 +283,20 @@ fn read_op(dir: &Dir, path: &str, r: &api::FileRequest) -> Result<Value, &'stati
     let mut value = json!({"status":"success","file_path":path,"total_lines":total_lines});
     value["content"] = Value::String(body);
     Ok(value)
+}
+
+fn image_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP".as_slice()) {
+        Some("image/webp")
+    } else {
+        None
+    }
 }
 
 fn edit_op(dir: &Dir, path: &str, r: &api::FileRequest) -> Result<Value, &'static str> {
@@ -645,6 +678,61 @@ fn io_error(error: std::io::Error) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auto_detect_read_returns_images_and_binary_as_base64() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = Dir::open_ambient_dir(root.path(), cap_std::ambient_authority()).unwrap();
+        let png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR".as_slice();
+        let jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10].as_slice();
+        let blob = [0x00, 0xFE, 0xFF, 0x80].as_slice();
+        for (name, bytes, mime) in [
+            ("shot.png", png, Some("image/png")),
+            ("shot.jpg", jpeg, Some("image/jpeg")),
+            ("notes.txt", b"hello\nworld".as_slice(), None),
+        ] {
+            write(&dir, name, bytes).unwrap();
+            let request: api::FileOperation = serde_json::from_value(json!({
+                "kind": "file_operation",
+                "endpoint": "read",
+                "request": {"file_path": name, "auto_detect_binary": true}
+            }))
+            .unwrap();
+            let result = execute(&dir, &request).unwrap();
+            match mime {
+                Some(mime) => {
+                    assert_eq!(result["is_binary"], true, "{name}");
+                    assert_eq!(result["mime_type"], mime, "{name}");
+                    assert_eq!(
+                        result["content_base64"],
+                        base64::engine::general_purpose::STANDARD.encode(bytes),
+                        "{name}"
+                    );
+                }
+                None => {
+                    assert_eq!(result.get("is_binary"), None, "{name}");
+                    assert_eq!(result["content"], "1\thello\n2\tworld", "{name}");
+                }
+            }
+        }
+        let large = [png, &vec![0; MAX_BYTES]].concat();
+        std::fs::write(root.path().join("large.png"), large).unwrap();
+        let request: api::FileOperation = serde_json::from_value(json!({
+            "kind": "file_operation",
+            "endpoint": "read",
+            "request": {"file_path": "large.png", "auto_detect_binary": true}
+        }))
+        .unwrap();
+        assert_eq!(execute(&dir, &request), Err("IMAGE_TOO_LARGE"));
+        write(&dir, "blob.bin", blob).unwrap();
+        let request: api::FileOperation = serde_json::from_value(json!({
+            "kind": "file_operation",
+            "endpoint": "read",
+            "request": {"file_path": "blob.bin", "auto_detect_binary": true}
+        }))
+        .unwrap();
+        assert_eq!(execute(&dir, &request).unwrap_err(), "FILE_BINARY");
+    }
 
     #[test]
     fn worker_rejects_server_only_memory_bootstrap_fields() {

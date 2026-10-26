@@ -39,6 +39,13 @@ The installer supports macOS (Apple Silicon and Intel) and Linux (x86_64 and
 arm64). It puts the `cloudthinker` binary in `~/.local/bin` and adds that
 directory to your `PATH`. Open a new shell after the install.
 
+In a terminal, the installer asks once whether to use `ct` as a shortcut for
+`cloudthinker`, before opening login. Press Enter to keep `cloudthinker`.
+Choose Yes to add a persistent alias for Bash, Zsh, or Fish, then open a new
+terminal. Both names work. Existing `ct` commands, aliases, and functions in
+your shell settings stay unchanged. Updates and automated installs skip the prompt.
+Other shells show a hint for setting up the shortcut yourself.
+
 Every release is on the [releases page](https://github.com/cloudthinker-ai/cloudthinker-cli/releases),
 with a SHA-256 checksum for each archive.
 

@@ -41,16 +41,19 @@ pub use auth::store::{
 };
 pub use cli_config::{CliConfig, cli_config_path, effective_default_url, resolve_base_url};
 pub use client::{
-    CliIdentity, Coverage, CoverageReport, CoverageRow, CoverageStatus, CtClient, CyberApp,
-    CyberDiscoveryTarget, CyberDomain, CyberExecutionHost, CyberExport, CyberFinding,
-    CyberFindingPage, CyberFindingStatus, CyberIntensity, CyberMemoryContextSource,
-    CyberMemoryFile, CyberMemorySnapshot, CyberMode, CyberRun, CyberRunBrief, CyberRunResult,
-    CyberSessionEntry, CyberSeverity, CyberTriageState, DEFAULT_BASE_URL, DeviceAuthorization,
-    DeviceTokenPoll, EvidenceFile, EvidenceReceipt, EvidenceSkipped, FindingFilter, IncidentStatus,
-    IncidentView, LocalCyberWorkspace, LogoutOutcome, Observation, Partition, PlanCheck,
-    ProbeOutcome, RecommendationStatus, RecommendationView, ReviewFinding, ReviewSeverityCounts,
-    ReviewStatus, ReviewVerdict, ReviewView, RunListItem, RunStatus, RunView, SettleResult, Shard,
-    SubmittedRun, Surface, WorkPlan, login_command, origin_of, persistent_store, resolve_store,
+    CliIdentity, ConnectionDetail, ConnectionKind, ConnectionLocation, ConnectionMatch,
+    ConnectionStatus, ConnectionTest, ConnectionTestPhase, ConnectionView, Connections, Coverage,
+    CoverageReport, CoverageRow, CoverageStatus, CtClient, CyberApp, CyberDiscoveryTarget,
+    CyberDomain, CyberExecutionHost, CyberExport, CyberFinding, CyberFindingPage,
+    CyberFindingStatus, CyberIntensity, CyberMemoryContextSource, CyberMemoryFile,
+    CyberMemorySnapshot, CyberMode, CyberRun, CyberRunBrief, CyberRunResult, CyberSessionEntry,
+    CyberSeverity, CyberTriageState, DEFAULT_BASE_URL, DeviceAuthorization, DeviceTokenPoll,
+    EvidenceFile, EvidenceReceipt, EvidenceSkipped, FindingFilter, IncidentStatus, IncidentView,
+    LocalCyberWorkspace, LogoutOutcome, Observation, Partition, PlanCheck, ProbeOutcome,
+    RecommendationStatus, RecommendationView, ReviewFinding, ReviewSeverityCounts, ReviewStatus,
+    ReviewVerdict, ReviewView, RunListItem, RunStatus, RunView, SettleResult, Shard, SubmittedRun,
+    Surface, WorkPlan, login_command, origin_of, persistent_store, resolve_store,
+    validate_connect_prefix,
 };
 pub use cyber_run_guard::{wait_for_run_stop, while_run_running};
 pub use discovery::{

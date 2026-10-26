@@ -64,6 +64,9 @@ enum WorkerCommand {
     /// Supervise one background command for a running worker.
     #[command(hide = true)]
     BgShim(BgShimArgs),
+    /// Run one command inside the Landlock sandbox of a running worker.
+    #[command(hide = true)]
+    SandboxExec(SandboxExecArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -224,6 +227,31 @@ pub struct BgShimArgs {
     /// Stop the command after this many seconds.
     #[arg(long)]
     pub timeout_secs: u64,
+    /// Run the command inside the Landlock sandbox.
+    #[arg(long)]
+    pub sandbox: bool,
+    /// Let the sandboxed command read and run files beneath this path; repeat for more.
+    #[arg(long, value_name = "PATH", requires = "sandbox")]
+    pub read: Vec<PathBuf>,
+    /// Let the sandboxed command read and write files beneath this path; repeat for more.
+    #[arg(long, value_name = "PATH", requires = "sandbox")]
+    pub write: Vec<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct SandboxExecArgs {
+    /// Only check that this machine fully enforces the sandbox, then exit.
+    #[arg(long, conflicts_with_all = ["read", "write", "command"])]
+    pub probe: bool,
+    /// Let the command read and run files beneath this path; repeat for more.
+    #[arg(long, value_name = "PATH")]
+    pub read: Vec<PathBuf>,
+    /// Let the command read and write files beneath this path; repeat for more.
+    #[arg(long, value_name = "PATH")]
+    pub write: Vec<PathBuf>,
+    /// The program to run and its arguments, after `--`.
+    #[arg(last = true, required_unless_present = "probe")]
+    pub command: Vec<std::ffi::OsString>,
 }
 
 #[derive(Serialize)]
@@ -258,6 +286,7 @@ async fn execute(base_url: &str, workspace: Option<&str>, args: WorkerArgs) -> C
         WorkerCommand::Doctor(_) => Ok(()),
         WorkerCommand::Start(args) => start(base_url, workspace, args).await,
         WorkerCommand::BgShim(args) => bg_shim(args).await,
+        WorkerCommand::SandboxExec(args) => sandbox_exec(args),
         WorkerCommand::Service { command } => worker_service::execute(base_url, workspace, command),
         WorkerCommand::Worktrees { command } => worktrees(base_url, command),
         WorkerCommand::Outpost {
@@ -360,6 +389,7 @@ fn build_registration(
     identity: &crate::worker::config::WorkdirIdentity,
     concurrency: u16,
     label: Option<&str>,
+    sandbox: &crate::worker::sandbox::Support,
 ) -> CtResult<api::RegisterWorkerRequest> {
     let os = if cfg!(target_os = "macos") {
         "darwin"
@@ -375,6 +405,9 @@ fn build_registration(
     ];
     if crate::worker::worktree::git_supports_worktrees() {
         capabilities.push(api::ExecutorCapability::Worktree);
+    }
+    if sandbox.is_ready() {
+        capabilities.push(api::ExecutorCapability::Sandbox);
     }
     Ok(api::RegisterWorkerRequest {
         worker_instance_id: Uuid::new_v4(),
@@ -403,7 +436,9 @@ async fn start(base_url: &str, workspace: Option<&str>, args: StartArgs) -> CtRe
         background::ShimImage,
         config::WorkdirIdentity,
         executor::WorkdirExecutor,
-        runtime, shell,
+        runtime,
+        sandbox::SandboxContext,
+        shell,
         telemetry::{self, Fields, Level},
     };
     use std::sync::Arc;
@@ -452,7 +487,13 @@ async fn start(base_url: &str, workspace: Option<&str>, args: StartArgs) -> CtRe
     let environment = shell::environment(&args.env, args.inherit_env)
         .map_err(|code| CtError::Usage(code.into()))?;
     let client = WorkerClient::new(base_url, &credential.token, CLI_VERSION)?;
-    let registration = build_registration(&identity, args.concurrency, args.label.as_deref())?;
+    let sandbox = SandboxContext::detect(store.state_root(), &identity.path).await;
+    let registration = build_registration(
+        &identity,
+        args.concurrency,
+        args.label.as_deref(),
+        &sandbox.support,
+    )?;
     let shim = match std::env::current_exe() {
         Ok(path) => ShimImage::open(path, &environment).await,
         Err(error) => Err(error),
@@ -471,6 +512,7 @@ async fn start(base_url: &str, workspace: Option<&str>, args: StartArgs) -> CtRe
         environment,
         vec![credential.token.clone()],
         shim,
+        sandbox,
     ));
     let rotation: Option<runtime::RotationHook> = rotates.then(|| {
         let rotator = Arc::new(Rotator {
@@ -697,6 +739,30 @@ async fn bg_shim(args: BgShimArgs) -> CtResult<()> {
 #[cfg(not(unix))]
 async fn bg_shim(_args: BgShimArgs) -> CtResult<()> {
     Err(CtError::Usage("worker requires Linux or macOS".into()))
+}
+
+#[cfg(unix)]
+fn sandbox_exec(args: SandboxExecArgs) -> CtResult<()> {
+    use crate::worker::sandbox;
+    use std::os::unix::process::CommandExt;
+    let refused = |error: sandbox::SandboxError| CtError::Usage(error.to_string());
+    if args.probe {
+        return sandbox::probe_self().map_err(refused);
+    }
+    let (program, arguments) = args
+        .command
+        .split_first()
+        .ok_or_else(|| CtError::Usage("name the command to run after `--`".into()))?;
+    sandbox::restrict(&args.read, &args.write).map_err(refused)?;
+    let error = std::process::Command::new(program).args(arguments).exec();
+    Err(CtError::Usage(format!(
+        "the sandboxed command could not start: {error}"
+    )))
+}
+
+#[cfg(not(unix))]
+fn sandbox_exec(_args: SandboxExecArgs) -> CtResult<()> {
+    Err(CtError::Usage("the sandbox needs Linux".into()))
 }
 
 #[cfg(test)]

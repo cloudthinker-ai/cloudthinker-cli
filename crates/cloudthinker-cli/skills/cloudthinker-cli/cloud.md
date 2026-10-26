@@ -2,6 +2,8 @@
 
 Use this module when the user asks you to inspect or change cloud resources using CloudThinker Connections or MCP tools while you retain the reasoning loop. Examples: inspect AWS EC2 instances, investigate Kubernetes workload health, or list PagerDuty incidents through its SDK. Use `cloud` for direct execution; `chat` delegates reasoning to CloudThinker Agent in the cloud.
 
+`cloud connections` lists what your agent can execute through: prefixes, aliases, and skills. `connections` (the connections module) manages each Connection's lifecycle: ids, status, tests, and retry.
+
 ## Start once
 
 1. Establish the intended origin and workspace with `cloudthinker whoami --json`. Pass the same global `--url` and `--workspace` on subsequent calls when explicitly selected. If login is missing, use the auth module. Never read or print credentials.

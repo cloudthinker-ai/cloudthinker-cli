@@ -10,6 +10,7 @@ use uuid::Uuid;
 use super::worker::DoctorArgs;
 use super::worker_service;
 use crate::engine::{exit::ExitCode, output};
+use crate::worker::sandbox::{self, SandboxContext, Support};
 use crate::worker::worktree::WORKTREES_DIR;
 
 const CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -114,6 +115,9 @@ async fn collect(base_url: &str, args: &DoctorArgs) -> Vec<Check> {
     checks.push(state_dir_check(base_url));
     checks.push(service_check(base_url, &credential, args.workdir()));
     checks.push(git_check());
+    checks.push(sandbox_check(
+        sandbox_support(base_url, args.workdir()).await,
+    ));
     checks
 }
 
@@ -501,6 +505,36 @@ fn git_check() -> Check {
         Check::pass("git", text)
     } else {
         Check::new("git", Status::Warn, format!("{text} is too old.")).with_fix(fix)
+    }
+}
+
+async fn sandbox_support(base_url: &str, workdir: &Path) -> Support {
+    match (
+        WorkerStore::default_state_root(base_url),
+        workdir.canonicalize(),
+    ) {
+        (Ok(state_root), Ok(served)) => SandboxContext::detect(&state_root, &served).await.support,
+        _ => sandbox::probe().await,
+    }
+}
+
+fn sandbox_check(support: Support) -> Check {
+    match support {
+        Support::Ready => Check::pass(
+            "sandbox",
+            "Sandbox (Loupe): Landlock and the UNIX socket filter are enforced, so Loupe can run merge-request code here.",
+        ),
+        Support::Unavailable(reason) => Check::new(
+            "sandbox",
+            Status::Warn,
+            format!(
+                "Sandbox (Loupe): unavailable, {}.",
+                reason.trim_end_matches('.')
+            ),
+        )
+        .with_fix(
+            "Serve a project folder, not your home folder, from Linux 6.2 or newer with Landlock enabled (`landlock` in /sys/kernel/security/lsm). macOS and Windows cannot run Loupe.",
+        ),
     }
 }
 

@@ -3437,6 +3437,13 @@ pub mod types {
     ///      "title": "Lease Token",
     ///      "type": "string"
     ///    },
+    ///    "sandbox": {
+    ///      "title": "Sandbox",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "session_id": {
     ///      "title": "Session Id",
     ///      "type": "string",
@@ -3472,6 +3479,8 @@ pub mod types {
         pub filesystem_id: ::std::option::Option<::uuid::Uuid>,
         pub lease_expires_at: ::chrono::DateTime<::chrono::offset::Utc>,
         pub lease_token: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub sandbox: ::std::option::Option<bool>,
         pub session_id: ::uuid::Uuid,
         pub state: AssignmentState,
         pub target_id: ::uuid::Uuid,
@@ -3833,6 +3842,62 @@ pub mod types {
             value: ::std::string::String,
         ) -> ::std::result::Result<Self, self::error::ConversionError> {
             value.parse()
+        }
+    }
+
+    ///`AuthType`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AuthType",
+    ///  "type": "string"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    #[serde(transparent)]
+    pub struct AuthType(pub ::std::string::String);
+    impl ::std::ops::Deref for AuthType {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<AuthType> for ::std::string::String {
+        fn from(value: AuthType) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::convert::From<::std::string::String> for AuthType {
+        fn from(value: ::std::string::String) -> Self {
+            Self(value)
+        }
+    }
+
+    impl ::std::str::FromStr for AuthType {
+        type Err = ::std::convert::Infallible;
+        fn from_str(value: &str) -> ::std::result::Result<Self, Self::Err> {
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::fmt::Display for AuthType {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            self.0.fmt(f)
         }
     }
 
@@ -4467,6 +4532,425 @@ pub mod types {
                     <D::Error as ::serde::de::Error>::custom(e.to_string())
                 })
         }
+    }
+
+    ///Detail response for a single connection — adds SSH-specific fields.
+    ///
+    ///Fingerprints and the endpoint triple are server-computed from the
+    /// decrypted env (backend-kit/conventions.md); never exposed on the
+    /// list tier because they are only needed on the single-connection
+    /// view.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "BuiltinConnectionDetail",
+    ///  "description": "Detail response for a single connection — adds
+    /// SSH-specific fields.\n\nFingerprints and the endpoint triple are
+    /// server-computed from the decrypted\nenv (backend-kit/conventions.md);
+    /// never exposed on the list tier because they\nare only needed on the
+    /// single-connection view.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "id",
+    ///    "is_connected",
+    ///    "is_sandbox_supported",
+    ///    "name",
+    ///    "prefix",
+    ///    "updated_at"
+    ///  ],
+    ///  "properties": {
+    ///    "alias": {
+    ///      "title": "Alias",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "aliases": {
+    ///      "title": "Aliases",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "auth_type": {
+    ///      "$ref": "#/components/schemas/AuthType"
+    ///    },
+    ///    "can_enable_costops_on_connect": {
+    ///      "title": "Can Enable Costops On Connect",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "can_retry": {
+    ///      "title": "Can Retry",
+    ///      "default": true,
+    ///      "type": "boolean"
+    ///    },
+    ///    "costops_auto_refresh_enabled": {
+    ///      "title": "Costops Auto Refresh Enabled",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "description": {
+    ///      "title": "Description",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "documentation_url": {
+    ///      "title": "Documentation Url",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "has_code_review_setup": {
+    ///      "title": "Has Code Review Setup",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "is_connected": {
+    ///      "title": "Is Connected",
+    ///      "type": "boolean"
+    ///    },
+    ///    "is_multi_instance_capable": {
+    ///      "title": "Is Multi Instance Capable",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "is_sandbox_supported": {
+    ///      "title": "Is Sandbox Supported",
+    ///      "type": "boolean"
+    ///    },
+    ///    "locations": {
+    ///      "title": "Locations",
+    ///      "description": "Saved URL, host, region and tenant values, shown so
+    /// the user sees where the Connection points",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ConnectionLocation"
+    ///      }
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "prefix": {
+    ///      "title": "Prefix",
+    ///      "type": "string"
+    ///    },
+    ///    "production_policy_gated": {
+    ///      "title": "Production Policy Gated",
+    ///      "description": "Whether this deployment's Connection rollout policy
+    /// keeps this prefix below production. This is not live production
+    /// configuration.",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/ConnectionStatus"
+    ///    },
+    ///    "status_message": {
+    ///      "title": "Status Message",
+    ///      "default": "",
+    ///      "type": "string"
+    ///    },
+    ///    "updated_at": {
+    ///      "title": "Updated At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct BuiltinConnectionDetail {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub alias: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub aliases: ::std::vec::Vec<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub auth_type: ::std::option::Option<AuthType>,
+        #[serde(default)]
+        pub can_enable_costops_on_connect: bool,
+        #[serde(default = "defaults::default_bool::<true>")]
+        pub can_retry: bool,
+        #[serde(default)]
+        pub costops_auto_refresh_enabled: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub description: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub documentation_url: ::std::option::Option<::std::string::String>,
+        #[serde(default)]
+        pub has_code_review_setup: bool,
+        pub id: ::uuid::Uuid,
+        pub is_connected: bool,
+        #[serde(default)]
+        pub is_multi_instance_capable: bool,
+        pub is_sandbox_supported: bool,
+        ///Saved URL, host, region and tenant values, shown so the user sees
+        /// where the Connection points
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub locations: ::std::vec::Vec<ConnectionLocation>,
+        pub name: ::std::string::String,
+        pub prefix: ::std::string::String,
+        ///Whether this deployment's Connection rollout policy keeps this
+        /// prefix below production. This is not live production configuration.
+        #[serde(default)]
+        pub production_policy_gated: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub status: ::std::option::Option<ConnectionStatus>,
+        #[serde(default)]
+        pub status_message: ::std::string::String,
+        pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
+    }
+
+    ///202 response shape for `POST /builtin-connection/{id}` and OAuth
+    /// exchange.
+    ///
+    ///Returned immediately after persisting the row with status=TESTING and
+    ///enqueueing the Celery test job. Frontend polls `GET /test-status` for
+    ///progress until a terminal phase.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "BuiltinConnectionInstallResponse",
+    ///  "description": "202 response shape for `POST /builtin-connection/{id}`
+    /// and OAuth exchange.\n\nReturned immediately after persisting the row
+    /// with status=TESTING and\nenqueueing the Celery test job. Frontend polls
+    /// `GET /test-status` for\nprogress until a terminal phase.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "connection",
+    ///    "test_status"
+    ///  ],
+    ///  "properties": {
+    ///    "connection": {
+    ///      "$ref": "#/components/schemas/BuiltinConnectionPublic"
+    ///    },
+    ///    "test_status": {
+    ///      "$ref": "#/components/schemas/ConnectionTestStatus"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct BuiltinConnectionInstallResponse {
+        pub connection: BuiltinConnectionPublic,
+        pub test_status: ConnectionTestStatus,
+    }
+
+    ///`BuiltinConnectionPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "BuiltinConnectionPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "id",
+    ///    "is_connected",
+    ///    "is_sandbox_supported",
+    ///    "name",
+    ///    "prefix",
+    ///    "updated_at"
+    ///  ],
+    ///  "properties": {
+    ///    "alias": {
+    ///      "title": "Alias",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "aliases": {
+    ///      "title": "Aliases",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "auth_type": {
+    ///      "$ref": "#/components/schemas/AuthType"
+    ///    },
+    ///    "can_enable_costops_on_connect": {
+    ///      "title": "Can Enable Costops On Connect",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "can_retry": {
+    ///      "title": "Can Retry",
+    ///      "default": true,
+    ///      "type": "boolean"
+    ///    },
+    ///    "costops_auto_refresh_enabled": {
+    ///      "title": "Costops Auto Refresh Enabled",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "description": {
+    ///      "title": "Description",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "documentation_url": {
+    ///      "title": "Documentation Url",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "has_code_review_setup": {
+    ///      "title": "Has Code Review Setup",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "is_connected": {
+    ///      "title": "Is Connected",
+    ///      "type": "boolean"
+    ///    },
+    ///    "is_multi_instance_capable": {
+    ///      "title": "Is Multi Instance Capable",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "is_sandbox_supported": {
+    ///      "title": "Is Sandbox Supported",
+    ///      "type": "boolean"
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "prefix": {
+    ///      "title": "Prefix",
+    ///      "type": "string"
+    ///    },
+    ///    "production_policy_gated": {
+    ///      "title": "Production Policy Gated",
+    ///      "description": "Whether this deployment's Connection rollout policy
+    /// keeps this prefix below production. This is not live production
+    /// configuration.",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/ConnectionStatus"
+    ///    },
+    ///    "status_message": {
+    ///      "title": "Status Message",
+    ///      "default": "",
+    ///      "type": "string"
+    ///    },
+    ///    "updated_at": {
+    ///      "title": "Updated At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct BuiltinConnectionPublic {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub alias: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub aliases: ::std::vec::Vec<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub auth_type: ::std::option::Option<AuthType>,
+        #[serde(default)]
+        pub can_enable_costops_on_connect: bool,
+        #[serde(default = "defaults::default_bool::<true>")]
+        pub can_retry: bool,
+        #[serde(default)]
+        pub costops_auto_refresh_enabled: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub description: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub documentation_url: ::std::option::Option<::std::string::String>,
+        #[serde(default)]
+        pub has_code_review_setup: bool,
+        pub id: ::uuid::Uuid,
+        pub is_connected: bool,
+        #[serde(default)]
+        pub is_multi_instance_capable: bool,
+        pub is_sandbox_supported: bool,
+        pub name: ::std::string::String,
+        pub prefix: ::std::string::String,
+        ///Whether this deployment's Connection rollout policy keeps this
+        /// prefix below production. This is not live production configuration.
+        #[serde(default)]
+        pub production_policy_gated: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub status: ::std::option::Option<ConnectionStatus>,
+        #[serde(default)]
+        pub status_message: ::std::string::String,
+        pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
+    }
+
+    ///`BuiltinConnectionsPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "BuiltinConnectionsPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "data"
+    ///  ],
+    ///  "properties": {
+    ///    "connected_count": {
+    ///      "title": "Connected Count",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "data": {
+    ///      "title": "Data",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/BuiltinConnectionPublic"
+    ///      }
+    ///    },
+    ///    "popular_prefixes": {
+    ///      "title": "Popular Prefixes",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct BuiltinConnectionsPublic {
+        #[serde(default)]
+        pub connected_count: i64,
+        pub data: ::std::vec::Vec<BuiltinConnectionPublic>,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub popular_prefixes: ::std::vec::Vec<::std::string::String>,
     }
 
     ///WHY a target's `base_ref` is empty or set — resolves the `base_ref==""`
@@ -5392,6 +5876,90 @@ pub mod types {
         pub user_id: ::uuid::Uuid,
         pub workspace_id: ::uuid::Uuid,
         pub workspace_name: ::std::string::String,
+    }
+
+    ///`CloseReasonKind`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CloseReasonKind",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "resolved",
+    ///    "resource_not_found",
+    ///    "no_longer_saves"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum CloseReasonKind {
+        #[serde(rename = "resolved")]
+        Resolved,
+        #[serde(rename = "resource_not_found")]
+        ResourceNotFound,
+        #[serde(rename = "no_longer_saves")]
+        NoLongerSaves,
+    }
+
+    impl ::std::fmt::Display for CloseReasonKind {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Resolved => f.write_str("resolved"),
+                Self::ResourceNotFound => f.write_str("resource_not_found"),
+                Self::NoLongerSaves => f.write_str("no_longer_saves"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for CloseReasonKind {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "resolved" => Ok(Self::Resolved),
+                "resource_not_found" => Ok(Self::ResourceNotFound),
+                "no_longer_saves" => Ok(Self::NoLongerSaves),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CloseReasonKind {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CloseReasonKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CloseReasonKind {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
     }
 
     ///`CloudConnectionEntry`
@@ -6986,6 +7554,210 @@ pub mod types {
                     <D::Error as ::serde::de::Error>::custom(e.to_string())
                 })
         }
+    }
+
+    ///A saved non-secret field that names where the Connection points.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectionLocation",
+    ///  "description": "A saved non-secret field that names where the
+    /// Connection points.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "key",
+    ///    "value"
+    ///  ],
+    ///  "properties": {
+    ///    "key": {
+    ///      "title": "Key",
+    ///      "type": "string"
+    ///    },
+    ///    "value": {
+    ///      "title": "Value",
+    ///      "description": "Saved value with any userinfo and query removed",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct ConnectionLocation {
+        pub key: ::std::string::String,
+        ///Saved value with any userinfo and query removed
+        pub value: ::std::string::String,
+    }
+
+    ///`ConnectionStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectionStatus",
+    ///  "type": "string"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    #[serde(transparent)]
+    pub struct ConnectionStatus(pub ::std::string::String);
+    impl ::std::ops::Deref for ConnectionStatus {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<ConnectionStatus> for ::std::string::String {
+        fn from(value: ConnectionStatus) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::convert::From<::std::string::String> for ConnectionStatus {
+        fn from(value: ::std::string::String) -> Self {
+            Self(value)
+        }
+    }
+
+    impl ::std::str::FromStr for ConnectionStatus {
+        type Err = ::std::convert::Infallible;
+        fn from_str(value: &str) -> ::std::result::Result<Self, Self::Err> {
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::fmt::Display for ConnectionStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            self.0.fmt(f)
+        }
+    }
+
+    ///`ConnectionTestPhase`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectionTestPhase",
+    ///  "type": "string"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    #[serde(transparent)]
+    pub struct ConnectionTestPhase(pub ::std::string::String);
+    impl ::std::ops::Deref for ConnectionTestPhase {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<ConnectionTestPhase> for ::std::string::String {
+        fn from(value: ConnectionTestPhase) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::convert::From<::std::string::String> for ConnectionTestPhase {
+        fn from(value: ::std::string::String) -> Self {
+            Self(value)
+        }
+    }
+
+    impl ::std::str::FromStr for ConnectionTestPhase {
+        type Err = ::std::convert::Infallible;
+        fn from_str(value: &str) -> ::std::result::Result<Self, Self::Err> {
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::fmt::Display for ConnectionTestPhase {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            self.0.fmt(f)
+        }
+    }
+
+    ///Phase report for an in-flight or recently-finished connection test.
+    ///
+    ///Connection id IS the job id — there is no separate job_id field.
+    ///Backed by Redis (key `conn:test:{id}`) with 1h TTL. Falls back to
+    ///deriving phase from `Connection.status` if Redis is empty.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectionTestStatus",
+    ///  "description": "Phase report for an in-flight or recently-finished connection test.\n\nConnection id IS the job id — there is no separate job_id field.\nBacked by Redis (key `conn:test:{id}`) with 1h TTL. Falls back to\nderiving phase from `Connection.status` if Redis is empty.",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "phase"
+    ///  ],
+    ///  "properties": {
+    ///    "elapsed_ms": {
+    ///      "title": "Elapsed Ms",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "last_error": {
+    ///      "title": "Last Error",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "phase": {
+    ///      "$ref": "#/components/schemas/ConnectionTestPhase"
+    ///    },
+    ///    "started_at": {
+    ///      "title": "Started At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct ConnectionTestStatus {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub elapsed_ms: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub last_error: ::std::option::Option<::std::string::String>,
+        pub phase: ConnectionTestPhase,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub started_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
     }
 
     ///A short-lived presigned GET for one context file, plus what it renders
@@ -9665,7 +10437,8 @@ pub mod types {
     ///    "connections",
     ///    "mcp",
     ///    "background_shell",
-    ///    "worktree"
+    ///    "worktree",
+    ///    "sandbox"
     ///  ]
     ///}
     /// ```
@@ -9699,6 +10472,8 @@ pub mod types {
         BackgroundShell,
         #[serde(rename = "worktree")]
         Worktree,
+        #[serde(rename = "sandbox")]
+        Sandbox,
     }
 
     impl ::std::fmt::Display for ExecutorCapability {
@@ -9712,6 +10487,7 @@ pub mod types {
                 Self::Mcp => f.write_str("mcp"),
                 Self::BackgroundShell => f.write_str("background_shell"),
                 Self::Worktree => f.write_str("worktree"),
+                Self::Sandbox => f.write_str("sandbox"),
             }
         }
     }
@@ -9728,6 +10504,7 @@ pub mod types {
                 "mcp" => Ok(Self::Mcp),
                 "background_shell" => Ok(Self::BackgroundShell),
                 "worktree" => Ok(Self::Worktree),
+                "sandbox" => Ok(Self::Sandbox),
                 _ => Err("invalid value".into()),
             }
         }
@@ -15585,6 +16362,166 @@ pub mod types {
         }
     }
 
+    ///`McpConnectionPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "MCPConnectionPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "id",
+    ///    "mcp_transport_type",
+    ///    "name",
+    ///    "prefix",
+    ///    "status",
+    ///    "status_message"
+    ///  ],
+    ///  "properties": {
+    ///    "description": {
+    ///      "title": "Description",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "mcp_transport_type": {
+    ///      "$ref": "#/components/schemas/MCPTransportType"
+    ///    },
+    ///    "name": {
+    ///      "title": "Name",
+    ///      "type": "string"
+    ///    },
+    ///    "prefix": {
+    ///      "title": "Prefix",
+    ///      "type": "string"
+    ///    },
+    ///    "status": {
+    ///      "$ref": "#/components/schemas/ConnectionStatus"
+    ///    },
+    ///    "status_message": {
+    ///      "title": "Status Message",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct McpConnectionPublic {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub description: ::std::option::Option<::std::string::String>,
+        pub id: ::uuid::Uuid,
+        pub mcp_transport_type: McpTransportType,
+        pub name: ::std::string::String,
+        pub prefix: ::std::string::String,
+        pub status: ConnectionStatus,
+        pub status_message: ::std::string::String,
+    }
+
+    ///`McpConnectionsPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "MCPConnectionsPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "count",
+    ///    "data"
+    ///  ],
+    ///  "properties": {
+    ///    "connected_count": {
+    ///      "title": "Connected Count",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "count": {
+    ///      "title": "Count",
+    ///      "type": "integer"
+    ///    },
+    ///    "data": {
+    ///      "title": "Data",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/MCPConnectionPublic"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct McpConnectionsPublic {
+        #[serde(default)]
+        pub connected_count: i64,
+        pub count: i64,
+        pub data: ::std::vec::Vec<McpConnectionPublic>,
+    }
+
+    ///`McpTransportType`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "MCPTransportType",
+    ///  "type": "string"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    #[serde(transparent)]
+    pub struct McpTransportType(pub ::std::string::String);
+    impl ::std::ops::Deref for McpTransportType {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<McpTransportType> for ::std::string::String {
+        fn from(value: McpTransportType) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::convert::From<::std::string::String> for McpTransportType {
+        fn from(value: ::std::string::String) -> Self {
+            Self(value)
+        }
+    }
+
+    impl ::std::str::FromStr for McpTransportType {
+        type Err = ::std::convert::Infallible;
+        fn from_str(value: &str) -> ::std::result::Result<Self, Self::Err> {
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::fmt::Display for McpTransportType {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            self.0.fmt(f)
+        }
+    }
+
     ///`MemoryRevisionPolicy`
     ///
     /// <details><summary>JSON schema</summary>
@@ -17566,6 +18503,64 @@ pub mod types {
         pub session_id: ::uuid::Uuid,
     }
 
+    ///`PendingCloseProposalPublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "PendingCloseProposalPublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "created_at",
+    ///    "id",
+    ///    "reason",
+    ///    "reason_kind"
+    ///  ],
+    ///  "properties": {
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": "string",
+    ///      "format": "date-time"
+    ///    },
+    ///    "evidence": {
+    ///      "title": "Evidence",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "id": {
+    ///      "title": "Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "reason": {
+    ///      "title": "Reason",
+    ///      "type": "string"
+    ///    },
+    ///    "reason_kind": {
+    ///      "$ref": "#/components/schemas/CloseReasonKind"
+    ///    },
+    ///    "target_status": {
+    ///      "$ref": "#/components/schemas/RecommendationStatus"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct PendingCloseProposalPublic {
+        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub evidence: ::std::option::Option<::std::string::String>,
+        pub id: ::uuid::Uuid,
+        pub reason: ::std::string::String,
+        pub reason_kind: CloseReasonKind,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub target_status: ::std::option::Option<RecommendationStatus>,
+    }
+
     ///`PillarId`
     ///
     /// <details><summary>JSON schema</summary>
@@ -17975,6 +18970,9 @@ pub mod types {
     ///      "default": 0,
     ///      "type": "integer"
     ///    },
+    ///    "pending_close": {
+    ///      "$ref": "#/components/schemas/PendingCloseProposalPublic"
+    ///    },
     ///    "pillar_id": {
     ///      "$ref": "#/components/schemas/PillarId"
     ///    },
@@ -18115,6 +19113,8 @@ pub mod types {
         pub last_verified_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         #[serde(default)]
         pub number: i64,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub pending_close: ::std::option::Option<PendingCloseProposalPublic>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub pillar_id: ::std::option::Option<PillarId>,
         #[serde(default)]
@@ -22139,6 +23139,13 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "outside_sandbox": {
+    ///      "title": "Outside Sandbox",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "policy_lease": {
     ///      "title": "Policy Lease",
     ///      "type": [
@@ -22200,6 +23207,8 @@ pub mod types {
         pub memory_write_context: ::std::option::Option<MemoryWriteContext>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub needs_skills: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub outside_sandbox: ::std::option::Option<bool>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub policy_lease:
             ::std::option::Option<::serde_json::Map<::std::string::String, ::serde_json::Value>>,
@@ -30182,6 +31191,207 @@ impl Client {
         }
     }
 
+    ///Get Builtin Connections
+    ///
+    ///Get all available builtin connections.
+    ///
+    ///Sends a `GET` request to `/api/v1/builtin-connection`
+    ///
+    ///Arguments:
+    /// - `search`: Filter builtin connections by name (case-insensitive)
+    /// - `workspace_id`
+    pub async fn builtin_connection_get_builtin_connections<'a>(
+        &'a self,
+        search: Option<&'a str>,
+        workspace_id: Option<&'a ::serde_json::Value>,
+    ) -> Result<ResponseValue<types::BuiltinConnectionsPublic>, Error<()>> {
+        let url = format!("{}/api/v1/builtin-connection", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new("search", &search))
+            .query(&progenitor_client::QueryParam::new(
+                "workspace_id",
+                &workspace_id,
+            ))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "builtin_connection_get_builtin_connections",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Get Builtin Connection
+    ///
+    ///Get a single builtin connection with SSH host-key fingerprints for the
+    /// detail view.
+    ///
+    ///Sends a `GET` request to `/api/v1/builtin-connection/{builtin_id}`
+    pub async fn builtin_connection_get_builtin_connection<'a>(
+        &'a self,
+        builtin_id: &'a ::uuid::Uuid,
+        workspace_id: Option<&'a ::serde_json::Value>,
+    ) -> Result<ResponseValue<types::BuiltinConnectionDetail>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/builtin-connection/{}",
+            self.baseurl,
+            encode_path(&builtin_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new(
+                "workspace_id",
+                &workspace_id,
+            ))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "builtin_connection_get_builtin_connection",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Retry Builtin Connection
+    ///
+    ///Re-run the connection test for an existing builtin connection.
+    ///
+    ///Reuses the credentials already stored encrypted on the row — the request
+    ///body carries no credential surface, so retry is safe for any caller with
+    ///`connectors:edit` who can already see the row.
+    ///
+    ///Sends a `POST` request to
+    /// `/api/v1/builtin-connection/{builtin_id}/retry`
+    pub async fn builtin_connection_retry_builtin_connection<'a>(
+        &'a self,
+        builtin_id: &'a ::uuid::Uuid,
+        workspace_id: Option<&'a ::serde_json::Value>,
+    ) -> Result<ResponseValue<types::BuiltinConnectionInstallResponse>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/builtin-connection/{}/retry",
+            self.baseurl,
+            encode_path(&builtin_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new(
+                "workspace_id",
+                &workspace_id,
+            ))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "builtin_connection_retry_builtin_connection",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            202u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Get Connection Test Status
+    ///
+    ///Return the current phase of a connection's async test job.
+    ///
+    ///Reads from Redis (`conn:test:{id}` key, 1h TTL); falls back to deriving
+    ///phase from the row's persisted status when Redis is empty (e.g. after
+    ///TTL expiry or worker restart). See `_resolve_phase_status` for the
+    ///workspace-scoping and cache-warming contract.
+    ///
+    ///Sends a `GET` request to
+    /// `/api/v1/builtin-connection/{builtin_id}/test-status`
+    pub async fn builtin_connection_get_connection_test_status<'a>(
+        &'a self,
+        builtin_id: &'a ::uuid::Uuid,
+        workspace_id: Option<&'a ::serde_json::Value>,
+    ) -> Result<ResponseValue<types::ConnectionTestStatus>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/builtin-connection/{}/test-status",
+            self.baseurl,
+            encode_path(&builtin_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new(
+                "workspace_id",
+                &workspace_id,
+            ))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "builtin_connection_get_connection_test_status",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
     ///List Headless Runs
     ///
     ///Sends a `GET` request to `/api/v1/cli/runs`
@@ -31567,6 +32777,99 @@ impl Client {
             .build()?;
         let info = OperationInfo {
             operation_id: "login_refresh_token",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Get Mcp Connections
+    ///
+    ///Sends a `GET` request to `/api/v1/mcp-connection`
+    pub async fn mcp_connection_get_mcp_connections<'a>(
+        &'a self,
+        workspace_id: Option<&'a ::serde_json::Value>,
+    ) -> Result<ResponseValue<types::McpConnectionsPublic>, Error<()>> {
+        let url = format!("{}/api/v1/mcp-connection", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new(
+                "workspace_id",
+                &workspace_id,
+            ))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "mcp_connection_get_mcp_connections",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Get Mcp Connection Test Status
+    ///
+    ///Return the current phase of an MCP connection's async test job.
+    ///
+    ///Reads from Redis (``conn:test:{id}`` key, 1h TTL); falls back to
+    /// deriving phase from the row's persisted status when Redis is empty.
+    /// See ``_resolve_phase_status`` for the workspace-scoping and
+    /// cache-warming contract.
+    ///
+    ///Sends a `GET` request to
+    /// `/api/v1/mcp-connection/{mcp_conn_id}/test-status`
+    pub async fn mcp_connection_get_mcp_connection_test_status<'a>(
+        &'a self,
+        mcp_conn_id: &'a ::uuid::Uuid,
+        workspace_id: Option<&'a ::serde_json::Value>,
+    ) -> Result<ResponseValue<types::ConnectionTestStatus>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/mcp-connection/{}/test-status",
+            self.baseurl,
+            encode_path(&mcp_conn_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new(
+                "workspace_id",
+                &workspace_id,
+            ))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "mcp_connection_get_mcp_connection_test_status",
         };
         self.pre(&mut request, &info).await?;
         let result = self.exec(request, &info).await;

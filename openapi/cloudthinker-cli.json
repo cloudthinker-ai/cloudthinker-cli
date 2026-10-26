@@ -1123,6 +1123,11 @@
             "title": "Lease Token",
             "type": "string"
           },
+          "sandbox": {
+            "nullable": true,
+            "title": "Sandbox",
+            "type": "boolean"
+          },
           "session_id": {
             "format": "uuid",
             "title": "Session Id",
@@ -1221,6 +1226,10 @@
           "degraded"
         ],
         "title": "AuthStatus",
+        "type": "string"
+      },
+      "AuthType": {
+        "title": "AuthType",
         "type": "string"
       },
       "AutofixDisabledReason": {
@@ -1332,6 +1341,268 @@
         ],
         "title": "BgTaskStatus",
         "type": "string"
+      },
+      "BuiltinConnectionDetail": {
+        "description": "Detail response for a single connection \u2014 adds SSH-specific fields.\n\nFingerprints and the endpoint triple are server-computed from the decrypted\nenv (backend-kit/conventions.md); never exposed on the list tier because they\nare only needed on the single-connection view.",
+        "properties": {
+          "alias": {
+            "nullable": true,
+            "title": "Alias",
+            "type": "string"
+          },
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "auth_type": {
+            "$ref": "#/components/schemas/AuthType"
+          },
+          "can_enable_costops_on_connect": {
+            "default": false,
+            "title": "Can Enable Costops On Connect",
+            "type": "boolean"
+          },
+          "can_retry": {
+            "default": true,
+            "title": "Can Retry",
+            "type": "boolean"
+          },
+          "costops_auto_refresh_enabled": {
+            "default": false,
+            "title": "Costops Auto Refresh Enabled",
+            "type": "boolean"
+          },
+          "description": {
+            "nullable": true,
+            "title": "Description",
+            "type": "string"
+          },
+          "documentation_url": {
+            "nullable": true,
+            "title": "Documentation Url",
+            "type": "string"
+          },
+          "has_code_review_setup": {
+            "default": false,
+            "title": "Has Code Review Setup",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_connected": {
+            "title": "Is Connected",
+            "type": "boolean"
+          },
+          "is_multi_instance_capable": {
+            "default": false,
+            "title": "Is Multi Instance Capable",
+            "type": "boolean"
+          },
+          "is_sandbox_supported": {
+            "title": "Is Sandbox Supported",
+            "type": "boolean"
+          },
+          "locations": {
+            "description": "Saved URL, host, region and tenant values, shown so the user sees where the Connection points",
+            "items": {
+              "$ref": "#/components/schemas/ConnectionLocation"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "production_policy_gated": {
+            "default": false,
+            "description": "Whether this deployment's Connection rollout policy keeps this prefix below production. This is not live production configuration.",
+            "title": "Production Policy Gated",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConnectionStatus"
+          },
+          "status_message": {
+            "default": "",
+            "title": "Status Message",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "is_connected",
+          "is_sandbox_supported",
+          "updated_at"
+        ],
+        "title": "BuiltinConnectionDetail",
+        "type": "object"
+      },
+      "BuiltinConnectionInstallResponse": {
+        "description": "202 response shape for `POST /builtin-connection/{id}` and OAuth exchange.\n\nReturned immediately after persisting the row with status=TESTING and\nenqueueing the Celery test job. Frontend polls `GET /test-status` for\nprogress until a terminal phase.",
+        "properties": {
+          "connection": {
+            "$ref": "#/components/schemas/BuiltinConnectionPublic"
+          },
+          "test_status": {
+            "$ref": "#/components/schemas/ConnectionTestStatus"
+          }
+        },
+        "required": [
+          "connection",
+          "test_status"
+        ],
+        "title": "BuiltinConnectionInstallResponse",
+        "type": "object"
+      },
+      "BuiltinConnectionPublic": {
+        "properties": {
+          "alias": {
+            "nullable": true,
+            "title": "Alias",
+            "type": "string"
+          },
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "auth_type": {
+            "$ref": "#/components/schemas/AuthType"
+          },
+          "can_enable_costops_on_connect": {
+            "default": false,
+            "title": "Can Enable Costops On Connect",
+            "type": "boolean"
+          },
+          "can_retry": {
+            "default": true,
+            "title": "Can Retry",
+            "type": "boolean"
+          },
+          "costops_auto_refresh_enabled": {
+            "default": false,
+            "title": "Costops Auto Refresh Enabled",
+            "type": "boolean"
+          },
+          "description": {
+            "nullable": true,
+            "title": "Description",
+            "type": "string"
+          },
+          "documentation_url": {
+            "nullable": true,
+            "title": "Documentation Url",
+            "type": "string"
+          },
+          "has_code_review_setup": {
+            "default": false,
+            "title": "Has Code Review Setup",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_connected": {
+            "title": "Is Connected",
+            "type": "boolean"
+          },
+          "is_multi_instance_capable": {
+            "default": false,
+            "title": "Is Multi Instance Capable",
+            "type": "boolean"
+          },
+          "is_sandbox_supported": {
+            "title": "Is Sandbox Supported",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "production_policy_gated": {
+            "default": false,
+            "description": "Whether this deployment's Connection rollout policy keeps this prefix below production. This is not live production configuration.",
+            "title": "Production Policy Gated",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConnectionStatus"
+          },
+          "status_message": {
+            "default": "",
+            "title": "Status Message",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "is_connected",
+          "is_sandbox_supported",
+          "updated_at"
+        ],
+        "title": "BuiltinConnectionPublic",
+        "type": "object"
+      },
+      "BuiltinConnectionsPublic": {
+        "properties": {
+          "connected_count": {
+            "default": 0,
+            "title": "Connected Count",
+            "type": "integer"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/BuiltinConnectionPublic"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "popular_prefixes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Popular Prefixes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "BuiltinConnectionsPublic",
+        "type": "object"
       },
       "ChangeFocusBaseState": {
         "description": "WHY a target's `base_ref` is empty or set \u2014 resolves the `base_ref==\"\"`\noverload into an explicit, observable state (Gap #3).\n\n- `incremental`: `base_ref` is a real prior-run SHA; a diff is rendered.\n- `first_run`: no prior successful run for this repo yet.\n- `unchanged`: prior head SHA == current HEAD SHA (full scan, no wasted diff).\n- `provider_unsupported`: the provider couldn't resolve a base (e.g. branch\n  pagination cap in `ref_validation.branch_ref_exists`) \u2014 reserved for a\n  future producer; `_derive_diff_focus` does not emit this value today\n  (an unresolved HEAD omits the repo entirely rather than recording a row).",
@@ -1575,6 +1846,15 @@
         ],
         "title": "CliWhoAmIResponse",
         "type": "object"
+      },
+      "CloseReasonKind": {
+        "enum": [
+          "resolved",
+          "resource_not_found",
+          "no_longer_saves"
+        ],
+        "title": "CloseReasonKind",
+        "type": "string"
       },
       "CloudConnectionEntry": {
         "properties": {
@@ -2355,6 +2635,63 @@
         "title": "CompleteWorkerOperationRequest",
         "type": "object"
       },
+      "ConnectionLocation": {
+        "description": "A saved non-secret field that names where the Connection points.",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "value": {
+            "description": "Saved value with any userinfo and query removed",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "title": "ConnectionLocation",
+        "type": "object"
+      },
+      "ConnectionStatus": {
+        "title": "ConnectionStatus",
+        "type": "string"
+      },
+      "ConnectionTestPhase": {
+        "title": "ConnectionTestPhase",
+        "type": "string"
+      },
+      "ConnectionTestStatus": {
+        "description": "Phase report for an in-flight or recently-finished connection test.\n\nConnection id IS the job id \u2014 there is no separate job_id field.\nBacked by Redis (key `conn:test:{id}`) with 1h TTL. Falls back to\nderiving phase from `Connection.status` if Redis is empty.",
+        "properties": {
+          "elapsed_ms": {
+            "nullable": true,
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "last_error": {
+            "nullable": true,
+            "title": "Last Error",
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/ConnectionTestPhase"
+          },
+          "started_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase"
+        ],
+        "title": "ConnectionTestStatus",
+        "type": "object"
+      },
       "ContextSourceContentUrl": {
         "description": "A short-lived presigned GET for one context file, plus what it renders as.\n\n``content_type`` is derived from the filename, NOT read from storage \u2014 every\ncontext object is stored as ``application/octet-stream``, so the stored value\ntells the client nothing about how to preview the file.",
         "properties": {
@@ -3090,7 +3427,8 @@
           "connections",
           "mcp",
           "background_shell",
-          "worktree"
+          "worktree",
+          "sandbox"
         ],
         "title": "ExecutorCapability",
         "type": "string"
@@ -4922,6 +5260,78 @@
         "title": "LocalToolAnnouncement",
         "type": "object"
       },
+      "MCPConnectionPublic": {
+        "properties": {
+          "description": {
+            "nullable": true,
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mcp_transport_type": {
+            "$ref": "#/components/schemas/MCPTransportType"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prefix": {
+            "title": "Prefix",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConnectionStatus"
+          },
+          "status_message": {
+            "title": "Status Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "prefix",
+          "mcp_transport_type",
+          "status",
+          "status_message"
+        ],
+        "title": "MCPConnectionPublic",
+        "type": "object"
+      },
+      "MCPConnectionsPublic": {
+        "properties": {
+          "connected_count": {
+            "default": 0,
+            "title": "Connected Count",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/MCPConnectionPublic"
+            },
+            "title": "Data",
+            "type": "array"
+          }
+        },
+        "required": [
+          "data",
+          "count"
+        ],
+        "title": "MCPConnectionsPublic",
+        "type": "object"
+      },
+      "MCPTransportType": {
+        "title": "MCPTransportType",
+        "type": "string"
+      },
       "MRState": {
         "enum": [
           "open",
@@ -5564,6 +5974,44 @@
         "title": "PendingAssignmentPublic",
         "type": "object"
       },
+      "PendingCloseProposalPublic": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence": {
+            "nullable": true,
+            "title": "Evidence",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "reason_kind": {
+            "$ref": "#/components/schemas/CloseReasonKind"
+          },
+          "target_status": {
+            "$ref": "#/components/schemas/RecommendationStatus",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "reason_kind",
+          "reason",
+          "created_at"
+        ],
+        "title": "PendingCloseProposalPublic",
+        "type": "object"
+      },
       "PillarId": {
         "enum": [
           "COST_OPTIMIZATION",
@@ -5749,6 +6197,10 @@
             "default": 0,
             "title": "Number",
             "type": "integer"
+          },
+          "pending_close": {
+            "$ref": "#/components/schemas/PendingCloseProposalPublic",
+            "nullable": true
           },
           "pillar_id": {
             "$ref": "#/components/schemas/PillarId",
@@ -6801,6 +7253,11 @@
           "needs_skills": {
             "nullable": true,
             "title": "Needs Skills",
+            "type": "boolean"
+          },
+          "outside_sandbox": {
+            "nullable": true,
+            "title": "Outside Sandbox",
             "type": "boolean"
           },
           "policy_lease": {
@@ -10498,6 +10955,180 @@
         ]
       }
     },
+    "/api/v1/builtin-connection": {
+      "get": {
+        "description": "Get all available builtin connections.",
+        "operationId": "builtin-connection-get_builtin_connections",
+        "parameters": [
+          {
+            "description": "Filter builtin connections by name (case-insensitive)",
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "description": "Filter builtin connections by name (case-insensitive)",
+              "nullable": true,
+              "title": "Search",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuiltinConnectionsPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Builtin Connections",
+        "tags": [
+          "builtin-connection"
+        ]
+      }
+    },
+    "/api/v1/builtin-connection/{builtin_id}": {
+      "get": {
+        "description": "Get a single builtin connection with SSH host-key fingerprints for the detail view.",
+        "operationId": "builtin-connection-get_builtin_connection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "builtin_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Builtin Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuiltinConnectionDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Builtin Connection",
+        "tags": [
+          "builtin-connection"
+        ]
+      }
+    },
+    "/api/v1/builtin-connection/{builtin_id}/retry": {
+      "post": {
+        "description": "Re-run the connection test for an existing builtin connection.\n\nReuses the credentials already stored encrypted on the row \u2014 the request\nbody carries no credential surface, so retry is safe for any caller with\n`connectors:edit` who can already see the row.",
+        "operationId": "builtin-connection-retry_builtin_connection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "builtin_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Builtin Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuiltinConnectionInstallResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Retry Builtin Connection",
+        "tags": [
+          "builtin-connection"
+        ]
+      }
+    },
+    "/api/v1/builtin-connection/{builtin_id}/test-status": {
+      "get": {
+        "description": "Return the current phase of a connection's async test job.\n\nReads from Redis (`conn:test:{id}` key, 1h TTL); falls back to deriving\nphase from the row's persisted status when Redis is empty (e.g. after\nTTL expiry or worker restart). See `_resolve_phase_status` for the\nworkspace-scoping and cache-warming contract.",
+        "operationId": "builtin-connection-get_connection_test_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "builtin_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Builtin Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionTestStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Connection Test Status",
+        "tags": [
+          "builtin-connection"
+        ]
+      }
+    },
     "/api/v1/cli/runs": {
       "get": {
         "operationId": "cli-list_headless_runs",
@@ -11972,6 +12603,81 @@
         "summary": "Refresh Token",
         "tags": [
           "login"
+        ]
+      }
+    },
+    "/api/v1/mcp-connection": {
+      "get": {
+        "operationId": "mcp-connection-get_mcp_connections",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPConnectionsPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Mcp Connections",
+        "tags": [
+          "mcp-connection"
+        ]
+      }
+    },
+    "/api/v1/mcp-connection/{mcp_conn_id}/test-status": {
+      "get": {
+        "description": "Return the current phase of an MCP connection's async test job.\n\nReads from Redis (``conn:test:{id}`` key, 1h TTL); falls back to deriving\nphase from the row's persisted status when Redis is empty. See\n``_resolve_phase_status`` for the workspace-scoping and cache-warming\ncontract.",
+        "operationId": "mcp-connection-get_mcp_connection_test_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mcp_conn_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mcp Conn Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionTestStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Mcp Connection Test Status",
+        "tags": [
+          "mcp-connection"
         ]
       }
     },

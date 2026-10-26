@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
 use super::files::relative;
+use super::sandbox::{self, SandboxPlan};
 
 const TAIL_BYTES: usize = 65536;
 
@@ -74,6 +75,7 @@ pub async fn execute(
     dir: &Dir,
     script: &api::ScriptRun,
     environment: &BTreeMap<String, String>,
+    sandbox: Option<&SandboxPlan>,
     deadline: DateTime<Utc>,
     cancel: CancellationToken,
 ) -> Result<Value, &'static str> {
@@ -93,12 +95,19 @@ pub async fn execute(
         .filter(|t| t.is_finite() && *t > 0.0)
         .map(|t| duration.min(Duration::from_secs_f64(t.min(3600.0))))
         .unwrap_or(duration);
-    let mut child = Command::new("/bin/bash")
+    let bash = std::path::Path::new("/bin/bash");
+    let mut command = match sandbox {
+        Some(plan) => sandbox::exec_command(plan, bash),
+        None => {
+            let mut command = Command::new(bash);
+            command.env_clear().envs(environment);
+            command
+        }
+    };
+    let mut child = command
         .arg("-c")
         .arg(&script.script)
         .current_dir(cwd_path)
-        .env_clear()
-        .envs(environment)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -208,6 +217,7 @@ mod tests {
             &dir,
             &script,
             &BTreeMap::new(),
+            None,
             Utc::now() + chrono::Duration::seconds(5),
             CancellationToken::new(),
         )
@@ -230,6 +240,7 @@ mod tests {
             &dir,
             &script,
             &BTreeMap::new(),
+            None,
             Utc::now() + chrono::Duration::milliseconds(100),
             CancellationToken::new(),
         )
@@ -257,6 +268,7 @@ mod tests {
             &dir,
             &script,
             &BTreeMap::new(),
+            None,
             Utc::now() + chrono::Duration::seconds(60),
             cancel,
         )
@@ -281,6 +293,7 @@ mod tests {
             &dir,
             &script,
             &BTreeMap::new(),
+            None,
             Utc::now() + chrono::Duration::seconds(60),
             CancellationToken::new(),
         )
@@ -306,6 +319,7 @@ mod tests {
                 &dir,
                 &script,
                 &BTreeMap::new(),
+                None,
                 Utc::now() + chrono::Duration::seconds(5),
                 CancellationToken::new(),
             )

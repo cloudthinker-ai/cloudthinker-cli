@@ -1,6 +1,5 @@
 use std::io::Write;
 use std::os::unix::process::ExitStatusExt;
-use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -21,6 +20,7 @@ use crate::worker::background::{
     CANCEL_GRACE, COMMAND_FILE, EXIT_FILE, LOCK_FILE, MANIFEST_FILE, STDERR_FILE, STDOUT_FILE,
     STREAM_CAP_BYTES, TRUNCATED_FILE, TaskManifest,
 };
+use crate::worker::sandbox;
 
 const DRAIN_IDLE: Duration = Duration::from_millis(500);
 const DRAIN_CEILING: Duration = CANCEL_GRACE;
@@ -43,7 +43,7 @@ pub async fn run(args: BgShimArgs) -> CtResult<()> {
     write_manifest(&dir, args.timeout_secs)?;
     fchdir(std::io::stdin()).map_err(|_| shim_error("working directory unreachable"))?;
     let recorder = Arc::new(Recorder::new());
-    let mut child = match spawn_child(&args.task_dir) {
+    let mut child = match spawn_child(&args) {
         Ok(child) => child,
         Err(_) => return write_exit(&dir, SPAWN_FAILED_EXIT),
     };
@@ -134,13 +134,27 @@ fn write_manifest(dir: &Dir, timeout_secs: u64) -> CtResult<()> {
     )
 }
 
-fn spawn_child(task_dir: &Path) -> std::io::Result<Child> {
-    let mut command = Command::new("/bin/bash");
+fn spawn_child(args: &BgShimArgs) -> std::io::Result<Child> {
+    let script = args.task_dir.join(COMMAND_FILE);
+    let mut command = if args.sandbox {
+        let mut command = Command::new(sandbox::executable());
+        command.args(["worker", "sandbox-exec"]);
+        for path in args.read.iter().chain(std::iter::once(&script)) {
+            command.arg("--read").arg(path);
+        }
+        for path in &args.write {
+            command.arg("--write").arg(path);
+        }
+        command.args(["--", "/bin/bash"]);
+        command
+    } else {
+        Command::new("/bin/bash")
+    };
     for key in STRIPPED_ENV {
         command.env_remove(key);
     }
     command
-        .arg(task_dir.join(COMMAND_FILE))
+        .arg(&script)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

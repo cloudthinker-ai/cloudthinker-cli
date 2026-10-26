@@ -12,7 +12,9 @@ use crate::engine::output::WorkerActivity;
 use super::{
     background::{self, ShimImage},
     config::WorkdirIdentity,
-    files, shell,
+    files,
+    sandbox::{self, SandboxContext, SandboxPlan},
+    shell,
     skill_bundles::{SKILL_BUNDLES_ENV, SkillBundleChunk, SkillBundleStore},
     telemetry::{self, Fields, Level},
     worktree::{WORKTREE_CODE, Workspace, Worktrees},
@@ -26,6 +28,7 @@ pub struct WorkdirExecutor {
     secrets: Mutex<Vec<String>>,
     bundles: SkillBundleStore,
     shim: Arc<ShimImage>,
+    sandbox: SandboxContext,
     pub worktrees: Worktrees,
     running: AtomicUsize,
 }
@@ -51,6 +54,7 @@ impl WorkdirExecutor {
         mut environment: BTreeMap<String, String>,
         mut secrets: Vec<String>,
         shim: ShimImage,
+        sandbox: SandboxContext,
     ) -> Self {
         secrets.push(identity.path.to_string_lossy().into_owned());
         let bundles = SkillBundleStore::new(&identity.state);
@@ -64,6 +68,7 @@ impl WorkdirExecutor {
             secrets: Mutex::new(secrets),
             bundles,
             shim: Arc::new(shim),
+            sandbox,
             worktrees,
             running: AtomicUsize::new(0),
         }
@@ -86,8 +91,12 @@ impl WorkdirExecutor {
         cancel: CancellationToken,
         worker: uuid::Uuid,
         client: &WorkerClient,
-        workspace: Option<&Workspace>,
+        placement: (Option<&Workspace>, bool),
     ) -> CtResult<api::WorkerOperationResult> {
+        let (workspace, sandboxed) = placement;
+        if sandboxed && !self.sandbox.support.is_ready() {
+            return failure_with(sandbox::UNAVAILABLE_CODE, sandbox::UNAVAILABLE_MESSAGE);
+        }
         let _running = Running::enter(&self.running);
         let started = std::time::Instant::now();
         let kind = payload_kind(&envelope.payload);
@@ -113,8 +122,26 @@ impl WorkdirExecutor {
             },
         };
         identity.revalidate()?;
+        let runs_commands = match &envelope.payload {
+            api::Payload::ScriptRun(script) => !super::runtime::script_outside_sandbox(script),
+            api::Payload::BackgroundOperation(_) => true,
+            _ => false,
+        };
+        let plan = (sandboxed && runs_commands).then(|| {
+            self.sandbox.plan(
+                &identity.path,
+                &self.identity.path,
+                self.bundles.root(),
+                &self.environment,
+            )
+        });
+        if let Some(plan) = &plan
+            && let Err(code) = plan.prepare_home(&identity.root)
+        {
+            return failure(code);
+        }
         let output = self
-            .dispatch(envelope, cancel, worker, client, &identity)
+            .dispatch(envelope, cancel, worker, client, &identity, plan)
             .await?;
         let code = match &output {
             Err(code) => Some((*code).to_owned()),
@@ -223,6 +250,7 @@ impl WorkdirExecutor {
         worker: uuid::Uuid,
         client: &WorkerClient,
         identity: &Arc<WorkdirIdentity>,
+        plan: Option<SandboxPlan>,
     ) -> CtResult<Dispatched> {
         Ok(match &envelope.payload {
             api::Payload::SkillBundleChunk(chunk) => match SkillBundleChunk::from_api(chunk) {
@@ -244,6 +272,7 @@ impl WorkdirExecutor {
                 &identity.root,
                 script,
                 &self.environment,
+                plan.as_ref(),
                 envelope.deadline_at,
                 cancel,
             )
@@ -254,6 +283,7 @@ impl WorkdirExecutor {
                 self.shim.clone(),
                 op.clone(),
                 self.environment.clone(),
+                plan,
                 envelope.deadline_at,
                 cancel,
             )
@@ -411,7 +441,13 @@ mod tests {
             .unwrap();
         Fixture {
             _temporary: temporary,
-            executor: WorkdirExecutor::new(identity, BTreeMap::new(), Vec::new(), shim),
+            executor: WorkdirExecutor::new(
+                identity,
+                BTreeMap::new(),
+                Vec::new(),
+                shim,
+                SandboxContext::unavailable("tests run without the sandbox"),
+            ),
             client: WorkerClient::new("http://127.0.0.1:1", "test-token", "0.8.0").unwrap(),
         }
     }
@@ -459,7 +495,7 @@ mod tests {
                     cancel,
                     uuid::Uuid::new_v4(),
                     &self.client,
-                    None,
+                    (None, false),
                 )
                 .await
         }
@@ -510,6 +546,34 @@ mod tests {
             "[redacted] [redacted] [redacted] [redacted]"
         );
         assert!(!serde_json::to_string(&body).unwrap().contains("secret"));
+    }
+
+    #[tokio::test]
+    async fn a_sandboxed_lease_on_a_worker_without_the_sandbox_fails_closed() {
+        let fixture = fixture().await;
+        let result = fixture
+            .executor
+            .execute(
+                &Arc::new(envelope(
+                    json!({"kind":"script","script":"printf escaped > escaped"}),
+                )),
+                CancellationToken::new(),
+                uuid::Uuid::new_v4(),
+                &fixture.client,
+                (None, true),
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.state, api::WorkerOperationResultState::Failed);
+        let body = decode(&result);
+        assert_eq!(body["error"]["code"], sandbox::UNAVAILABLE_CODE);
+        assert!(
+            body["message"]
+                .as_str()
+                .unwrap()
+                .contains("Landlock enabled")
+        );
+        assert!(!fixture.executor.identity.path.join("escaped").exists());
     }
 
     #[tokio::test]

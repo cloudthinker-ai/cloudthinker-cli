@@ -468,6 +468,7 @@ async fn serve(
         return Ok(());
     };
     let workspace = workspace_of(&lease);
+    let sandboxed = lease_sandboxed(&lease);
     let cancel = abort.child_token();
     let _cancel_on_drop = cancel.clone().drop_guard();
     let journal = Journal::open(
@@ -573,7 +574,7 @@ async fn serve(
                             permit=permits.acquire_owned()=>permit,
                         };
                         let _permit=match permit {Ok(permit)=>permit,Err(_)=>return (envelope.operation_id,Err(CtError::Protocol("worker operation capacity unavailable".into())))};
-                        (envelope.operation_id,execute(client,executor,journal,envelope,(lease.worker_id,workspace.as_ref()),(cancel,operation_drain),state).await)});
+                        (envelope.operation_id,execute(client,executor,journal,envelope,(lease.worker_id,workspace.as_ref(),sandboxed),(cancel,operation_drain),state).await)});
                 }
                 journal.apply(move |j| j.advance_cursor(j.cursor().max(after))).await?;
             }
@@ -694,11 +695,11 @@ async fn execute(
     executor: Arc<WorkdirExecutor>,
     journal: Journal,
     envelope: api::OperationEnvelope,
-    placement: (Uuid, Option<&Workspace>),
+    placement: (Uuid, Option<&Workspace>, bool),
     tokens: (CancellationToken, CancellationToken),
     state: JournalState,
 ) -> CtResult<()> {
-    let (worker, workspace) = placement;
+    let (worker, workspace, sandboxed) = placement;
     let (cancel, drain) = tokens;
     let envelope = Arc::new(envelope);
     let operation_id = envelope.operation_id;
@@ -730,7 +731,7 @@ async fn execute(
             super::executor::cancelled()?
         } else {
             executor
-                .execute(&envelope, cancel, worker, &client, workspace)
+                .execute(&envelope, cancel, worker, &client, (workspace, sandboxed))
                 .await?
         };
         let durable_result = result.clone();
@@ -768,6 +769,14 @@ fn workspace_of(lease: &api::AssignmentLease) -> Option<Workspace> {
         filesystem_id: lease.filesystem_id?,
         base_branch: mode.base_branch.as_str().to_owned(),
     })
+}
+
+fn lease_sandboxed(lease: &api::AssignmentLease) -> bool {
+    lease.sandbox == Some(true)
+}
+
+pub(super) fn script_outside_sandbox(script: &api::ScriptRun) -> bool {
+    script.outside_sandbox == Some(true)
 }
 
 fn validate(lease: &api::AssignmentLease, envelope: &api::OperationEnvelope) -> CtResult<()> {
@@ -1070,6 +1079,7 @@ mod tests {
             worker_id: Uuid::new_v4(),
             filesystem_id: None,
             workspace_mode: None,
+            sandbox: None,
         };
         let body = serde_json::to_string(&lease).unwrap();
         let attempts = Arc::new(AtomicUsize::new(0));
@@ -1300,6 +1310,7 @@ mod tests {
             worker_id: Uuid::new_v4(),
             filesystem_id: None,
             workspace_mode: None,
+            sandbox: None,
         };
         let deadline = lease_retry_deadline(&lease);
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -1329,6 +1340,7 @@ mod tests {
             worker_id: Uuid::new_v4(),
             filesystem_id: None,
             workspace_mode: None,
+            sandbox: None,
         };
 
         assert!(renewal_wait(&lease) < Duration::from_secs(2));

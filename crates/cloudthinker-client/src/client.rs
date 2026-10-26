@@ -21,6 +21,7 @@ use crate::auth::store::{
 use crate::error::{CtError, CtResult, to_ct_error};
 use crate::retry::classify;
 
+mod connections;
 mod cyber;
 mod incidents;
 mod memory;
@@ -28,6 +29,10 @@ mod recommendations;
 mod reviews;
 #[cfg(test)]
 use crate::review_url::{MrCoordinates, MrProvider};
+pub use connections::{
+    ConnectionDetail, ConnectionKind, ConnectionLocation, ConnectionMatch, ConnectionStatus,
+    ConnectionTest, ConnectionTestPhase, ConnectionView, Connections, validate_connect_prefix,
+};
 pub use cyber::{
     Coverage, CoverageReport, CoverageRow, CoverageStatus, CyberApp, CyberDiscoveryTarget,
     CyberDomain, CyberExecutionHost, CyberExport, CyberFinding, CyberFindingPage,

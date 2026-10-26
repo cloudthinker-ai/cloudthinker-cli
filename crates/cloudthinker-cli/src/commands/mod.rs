@@ -7,6 +7,7 @@ pub mod bg_shim;
 pub mod chat;
 pub mod cloud;
 pub mod completion;
+pub mod connections;
 pub mod cyber;
 pub mod cyber_config;
 pub mod cyber_discovery;

@@ -21,7 +21,12 @@ use owo_colors::{AnsiColors, OwoColorize};
 use serde::Serialize;
 use uuid::Uuid;
 
+mod connections;
 mod worker_console;
+
+pub use connections::{
+    ConnectLink, emit_connect_link, emit_connection, emit_connection_test, emit_connections,
+};
 
 pub use worker_console::{
     CheckResult, ConsoleEvent, ConsoleStyle, WorkerActivity, WorkerConsole, WorkerHeader, short_id,

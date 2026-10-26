@@ -34,9 +34,15 @@ use clap_complete as _;
 use cloudthinker_client as _;
 use console as _;
 use indicatif as _;
+#[cfg(target_os = "linux")]
+use landlock as _;
+#[cfg(target_os = "linux")]
+use libc as _;
 use open as _;
 use owo_colors as _;
 use rand as _;
+#[cfg(target_os = "linux")]
+use seccompiler as _;
 use serde as _;
 use supports_color as _;
 use tokio as _;
@@ -2329,6 +2335,7 @@ fn ca_cli_skill_exports_bundled_modules_offline() {
         ("auth", "auth.md"),
         ("chat", "chat.md"),
         ("cloud", "cloud.md"),
+        ("connections", "connections.md"),
         ("review", "review.md"),
         ("cyber", "cyber.md"),
         ("cyber-scan", "cyber-scan.md"),
@@ -4054,4 +4061,977 @@ mod remote {
     fn tty_reset() -> &'static str {
         "\x1b[?1000l"
     }
+}
+
+type Route = (String, &'static str, String);
+
+struct RoutedApi {
+    base_url: String,
+    requests: Arc<Mutex<Vec<String>>>,
+    stop: Arc<AtomicBool>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl RoutedApi {
+    fn start(routes: Vec<Route>) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_thread = stop.clone();
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let requests_thread = requests.clone();
+        let mut queues: std::collections::HashMap<String, VecDeque<(String, String)>> =
+            std::collections::HashMap::new();
+        for (route, status, body) in routes {
+            queues
+                .entry(route)
+                .or_default()
+                .push_back((status.to_string(), body));
+        }
+        let handle = std::thread::spawn(move || {
+            while !stop_thread.load(Ordering::SeqCst) {
+                match listener.accept() {
+                    Ok((mut socket, _)) => {
+                        let data = read_request(&mut socket);
+                        let request = String::from_utf8_lossy(&data).into_owned();
+                        let mut words = request.lines().next().unwrap_or_default().split(' ');
+                        let method = words.next().unwrap_or_default();
+                        let path = words
+                            .next()
+                            .unwrap_or_default()
+                            .split('?')
+                            .next()
+                            .unwrap_or_default();
+                        let route = format!("{method} {path}");
+                        requests_thread.lock().unwrap().push(route.clone());
+                        let (status, body) = match queues.get_mut(&route) {
+                            Some(queue) if queue.len() > 1 => queue.pop_front().unwrap(),
+                            Some(queue) => queue.front().cloned().unwrap(),
+                            None => ("500 Internal Server Error".into(), "{}".into()),
+                        };
+                        let response = format!(
+                            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                        let _ = socket.write_all(response.as_bytes());
+                        let _ = socket.flush();
+                    }
+                    Err(ref error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+        Self {
+            base_url: format!("http://{addr}"),
+            requests,
+            stop,
+            handle: Some(handle),
+        }
+    }
+
+    fn count(&self, route: &str) -> usize {
+        self.requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|seen| seen.as_str() == route)
+            .count()
+    }
+
+    fn methods(&self, method: &str) -> usize {
+        self.requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|seen| seen.starts_with(&format!("{method} ")))
+            .count()
+    }
+}
+
+impl Drop for RoutedApi {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+const AWS_ID: &str = "aaaaaaaa-0000-4000-8000-000000000001";
+const AWS_SECOND_ID: &str = "aaaaaaaa-0000-4000-8000-000000000002";
+const GITHUB_ID: &str = "aaaaaaaa-0000-4000-8000-000000000003";
+const MCP_ID: &str = "bbbbbbbb-0000-4000-8000-000000000001";
+const TEMPLATE_ID: &str = "cccccccc-0000-4000-8000-000000000001";
+const BUILTIN_LIST: &str = "GET /api/v1/builtin-connection";
+const MCP_LIST: &str = "GET /api/v1/mcp-connection";
+const WORKSPACE_ID: &str = "11111111-1111-4111-8111-111111111111";
+
+fn builtin_row(id: &str, prefix: &str, alias: Option<&str>, installed: bool) -> serde_json::Value {
+    serde_json::json!({
+        "id": id,
+        "name": format!("{prefix} account"),
+        "prefix": prefix,
+        "alias": alias,
+        "aliases": [],
+        "builtin_connection_type": "cloud",
+        "env": [{"key": "AWS_SECRET_ACCESS_KEY", "value": "****wxyz", "type": "string"}],
+        "tools": [{"name": "ec2_describe", "is_enabled": true}],
+        "config": {"role_arn": "arn:aws:iam::123456789012:role/ct"},
+        "is_connected": installed,
+        "is_sandbox_supported": true,
+        "connection_env_type": "production",
+        "status": "connected",
+        "status_message": "",
+        "auth_type": "STATIC",
+        "can_retry": true,
+        "updated_at": "2026-10-24T00:00:00Z"
+    })
+}
+
+fn oauth_row(id: &str, prefix: &str) -> serde_json::Value {
+    let mut row = builtin_row(id, prefix, None, true);
+    row["auth_type"] = "OAUTH".into();
+    row["can_retry"] = false.into();
+    row
+}
+
+fn mcp_row(status: &str, message: &str) -> serde_json::Value {
+    serde_json::json!({
+        "id": MCP_ID,
+        "name": "Docs MCP",
+        "prefix": "docs",
+        "mcp_transport_type": "streamable_http",
+        "config": {"url": "https://mcp.example.com/mcp", "headers": {"Authorization": {"configured": true, "last4": "9f3c"}}},
+        "tools": [{"name": "search", "is_enabled": true}],
+        "status": status,
+        "status_message": message,
+        "description": null
+    })
+}
+
+fn builtin_list(rows: &[serde_json::Value]) -> String {
+    serde_json::json!({"data": rows, "connected_count": rows.len(), "popular_prefixes": []})
+        .to_string()
+}
+
+fn mcp_list(rows: &[serde_json::Value]) -> String {
+    serde_json::json!({"data": rows, "count": rows.len(), "connected_count": rows.len()})
+        .to_string()
+}
+
+fn test_status(phase: &str, last_error: Option<&str>) -> String {
+    serde_json::json!({"phase": phase, "started_at": "2026-10-24T00:00:00Z", "elapsed_ms": 1500, "last_error": last_error}).to_string()
+}
+
+fn builtin_test_route(id: &str) -> String {
+    format!("GET /api/v1/builtin-connection/{id}/test-status")
+}
+
+fn workspace_routes(builtin: &[serde_json::Value], mcp: &[serde_json::Value]) -> Vec<Route> {
+    vec![
+        (BUILTIN_LIST.into(), "200 OK", builtin_list(builtin)),
+        (MCP_LIST.into(), "200 OK", mcp_list(mcp)),
+    ]
+}
+
+fn standard_workspace() -> Vec<Route> {
+    workspace_routes(
+        &[
+            builtin_row(AWS_ID, "aws", Some("aws-prod"), true),
+            builtin_row(TEMPLATE_ID, "github", None, false),
+        ],
+        &[mcp_row("connected", "")],
+    )
+}
+
+fn routed(mut base: Vec<Route>, extra: Vec<Route>) -> RoutedApi {
+    base.extend(extra);
+    RoutedApi::start(base)
+}
+
+fn connections_cli(base_url: &str) -> Command {
+    let mut cmd = cli(base_url);
+    cmd.env("CLOUDTHINKER_LOGIN", "device")
+        .timeout(Duration::from_secs(60));
+    cmd
+}
+
+fn run_connections(api: &RoutedApi, args: &[&str]) -> (Option<i32>, String, String) {
+    let output = connections_cli(&api.base_url)
+        .arg("connections")
+        .args(args)
+        .output()
+        .unwrap();
+    (
+        output.status.code(),
+        String::from_utf8(output.stdout).unwrap(),
+        String::from_utf8(output.stderr).unwrap(),
+    )
+}
+
+// CA-CLI-22: `connections list` shows installed builtin and MCP rows and leaves catalog templates out.
+#[test]
+fn ca_cli_22_list_shows_installed_connections_only() {
+    let api = RoutedApi::start(standard_workspace());
+
+    let (code, stdout, stderr) = run_connections(&api, &["list", "--json"]);
+
+    assert_eq!(code, Some(0), "{stderr}");
+    let rows: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap();
+    let ids: Vec<&str> = rows.iter().map(|row| row["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, [AWS_ID, MCP_ID]);
+    assert_eq!(rows[0]["kind"], "builtin");
+    assert_eq!(rows[1]["kind"], "mcp");
+    assert!(!stdout.contains(TEMPLATE_ID));
+
+    let (code, stdout, _) = run_connections(&api, &["list"]);
+    assert_eq!(code, Some(0));
+    assert!(stdout.starts_with("CONNECTION ID\tTYPE\tPREFIX\tALIAS\tSTATUS\tNAME\n"));
+    assert!(stdout.contains(&format!("{AWS_ID}\tbuiltin\taws\taws-prod\tconnected")));
+}
+
+// CA-CLI-23: an empty workspace says "No connections." and points at connect-url.
+#[test]
+fn ca_cli_23_empty_list_points_at_connect_url() {
+    let api = RoutedApi::start(workspace_routes(
+        &[builtin_row(TEMPLATE_ID, "github", None, false)],
+        &[],
+    ));
+
+    let (code, stdout, stderr) = run_connections(&api, &["list"]);
+
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("No connections."));
+    assert!(stderr.contains("cloudthinker connections connect-url <prefix>"));
+}
+
+// CA-CLI-24: a target that matches several connections lists their ids and sends no further request.
+#[test]
+fn ca_cli_24_ambiguous_target_lists_candidates() {
+    let api = routed(
+        workspace_routes(
+            &[
+                builtin_row(AWS_ID, "aws", Some("aws-prod"), true),
+                builtin_row(AWS_SECOND_ID, "aws", Some("aws-dev"), true),
+            ],
+            &[],
+        ),
+        vec![(
+            builtin_test_route(AWS_SECOND_ID),
+            "200 OK",
+            test_status("succeeded", None),
+        )],
+    );
+
+    let (code, _, stderr) = run_connections(&api, &["status", "aws"]);
+
+    assert_eq!(code, Some(2), "{stderr}");
+    assert!(
+        stderr.contains(AWS_ID) && stderr.contains(AWS_SECOND_ID),
+        "{stderr}"
+    );
+    assert_eq!(api.count(BUILTIN_LIST), 1);
+    assert_eq!(api.count(MCP_LIST), 1);
+    assert_eq!(api.methods("GET"), 2);
+
+    let (code, _, stderr) = run_connections(&api, &["status", "aws-dev", "--json"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(api.count(&builtin_test_route(AWS_SECOND_ID)), 1);
+}
+
+// CA-CLI-25: an unknown target, or one the server reports missing (another workspace), says no connection matches.
+#[test]
+fn ca_cli_25_unknown_target_hints_at_workspace() {
+    let api = routed(
+        standard_workspace(),
+        vec![(
+            builtin_test_route(AWS_ID),
+            "404 Not Found",
+            r#"{"detail":"Connection not found"}"#.into(),
+        )],
+    );
+
+    for target in ["dddddddd-0000-4000-8000-000000000009", "azure", AWS_ID] {
+        let (code, stdout, stderr) = run_connections(&api, &["status", target]);
+        assert_eq!(code, Some(1), "{target}: {stderr}");
+        assert!(stdout.is_empty());
+        assert!(stderr.contains("no connection matches"), "{stderr}");
+        assert!(stderr.contains("--workspace"), "{stderr}");
+    }
+}
+
+// CA-CLI-26: `show --json` never prints credentials, env, config, tools, or MCP headers.
+#[test]
+fn ca_cli_26_show_json_omits_credentials() {
+    let mut detail = builtin_row(AWS_ID, "aws", Some("aws-prod"), true);
+    detail["locations"] = serde_json::json!([{"key": "AWS_REGION", "value": "us-east-1"}]);
+    detail["ssh_endpoint"] = serde_json::json!({"host": "10.0.0.1", "user": "root", "port": "22"});
+    let api = routed(
+        standard_workspace(),
+        vec![(
+            format!("GET /api/v1/builtin-connection/{AWS_ID}"),
+            "200 OK",
+            detail.to_string(),
+        )],
+    );
+
+    for target in ["aws-prod", "docs"] {
+        let (code, stdout, stderr) = run_connections(&api, &["show", target, "--json"]);
+        assert_eq!(code, Some(0), "{stderr}");
+        let shown: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        assert!(shown["id"].is_string());
+        for secret in ["env", "config", "tools", "headers", "ssh_endpoint"] {
+            assert!(
+                shown.get(secret).is_none(),
+                "{target} leaked {secret}: {stdout}"
+            );
+        }
+        for value in ["****wxyz", "role_arn", "9f3c", "Authorization"] {
+            assert!(!stdout.contains(value), "{target} leaked {value}: {stdout}");
+        }
+    }
+    let (_, stdout, _) = run_connections(&api, &["show", "aws-prod", "--json"]);
+    let shown: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(shown["locations"][0]["value"], "us-east-1");
+}
+
+// CA-CLI-27: `status` without --wait exits 1 on a failed phase and 0 while running or after success.
+#[test]
+fn ca_cli_27_status_exit_follows_the_phase() {
+    for (phase, expected) in [("failed", 1), ("running_script", 0), ("succeeded", 0)] {
+        let api = routed(
+            standard_workspace(),
+            vec![(
+                builtin_test_route(AWS_ID),
+                "200 OK",
+                test_status(
+                    phase,
+                    (phase == "failed").then_some("AccessDenied: role trust"),
+                ),
+            )],
+        );
+
+        let (code, stdout, stderr) = run_connections(&api, &["status", AWS_ID, "--json"]);
+
+        assert_eq!(code, Some(expected), "{phase}: {stderr}");
+        let test: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(test["phase"], phase);
+        assert_eq!(api.count(&builtin_test_route(AWS_ID)), 1);
+        if expected == 1 {
+            assert!(stderr.contains("AccessDenied: role trust"), "{stderr}");
+        }
+    }
+}
+
+// CA-CLI-28: `status --wait` polls until the test succeeds.
+#[test]
+fn ca_cli_28_wait_polls_until_success() {
+    let route = builtin_test_route(AWS_ID);
+    let api = routed(
+        standard_workspace(),
+        vec![
+            (route.clone(), "200 OK", test_status("running_script", None)),
+            (route.clone(), "200 OK", test_status("succeeded", None)),
+        ],
+    );
+
+    let (code, stdout, stderr) = run_connections(&api, &["status", "aws-prod", "--wait"]);
+
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(stdout.contains("test:       succeeded"), "{stdout}");
+    assert_eq!(api.count(&route), 2);
+}
+
+// CA-CLI-29: a wait that ends failed, timed out, or cancelled exits 1 with the reason on stderr.
+#[test]
+fn ca_cli_29_wait_failure_reports_the_reason() {
+    for (phase, reason) in [
+        ("failed", "AccessDenied: role trust"),
+        ("timeout", "sandbox did not answer"),
+        ("cancelled", "Cancelled by user"),
+    ] {
+        let api = routed(
+            standard_workspace(),
+            vec![(
+                builtin_test_route(AWS_ID),
+                "200 OK",
+                test_status(phase, Some(reason)),
+            )],
+        );
+        let (code, _, stderr) = run_connections(&api, &["status", AWS_ID, "--wait"]);
+        assert_eq!(code, Some(1), "{phase}: {stderr}");
+        assert!(stderr.contains(reason), "{stderr}");
+    }
+
+    let mut failed_row = builtin_row(AWS_ID, "aws", Some("aws-prod"), true);
+    failed_row["status"] = "error".into();
+    failed_row["status_message"] = "The provider rejected the token.".into();
+    let api = routed(
+        standard_workspace(),
+        vec![
+            (
+                builtin_test_route(AWS_ID),
+                "200 OK",
+                test_status("failed", None),
+            ),
+            (
+                format!("GET /api/v1/builtin-connection/{AWS_ID}"),
+                "200 OK",
+                failed_row.to_string(),
+            ),
+        ],
+    );
+    let (code, stdout, stderr) = run_connections(&api, &["status", AWS_ID, "--wait", "--json"]);
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(
+        stderr.contains("The provider rejected the token."),
+        "{stderr}"
+    );
+    let test: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(test["last_error"], "The provider rejected the token.");
+
+    let api = routed(
+        workspace_routes(&[], &[mcp_row("error", "401 from https://mcp.example.com")]),
+        vec![(
+            format!("GET /api/v1/mcp-connection/{MCP_ID}/test-status"),
+            "200 OK",
+            test_status("failed", None),
+        )],
+    );
+    let (code, stdout, stderr) = run_connections(&api, &["status", "docs", "--wait", "--json"]);
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(
+        stderr.contains("401 from https://mcp.example.com"),
+        "{stderr}"
+    );
+    let test: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(test["last_error"], "401 from https://mcp.example.com");
+}
+
+// CA-CLI-30: an expired --timeout exits 4 and prints the resume command.
+#[test]
+fn ca_cli_30_wait_timeout_prints_resume_hint() {
+    let api = routed(
+        standard_workspace(),
+        vec![(
+            builtin_test_route(AWS_ID),
+            "200 OK",
+            test_status("queued", None),
+        )],
+    );
+
+    let (code, stdout, stderr) =
+        run_connections(&api, &["status", "aws-prod", "--wait", "--timeout", "1"]);
+
+    assert_eq!(code, Some(4), "{stderr}");
+    assert!(stdout.is_empty());
+    assert!(
+        stderr.contains(&format!("cloudthinker connections status {AWS_ID} --wait")),
+        "{stderr}"
+    );
+}
+
+// CA-CLI-31: Ctrl-C during a wait stops cleanly with exit 130 and the resume command.
+#[cfg(unix)]
+#[test]
+fn ca_cli_31_ctrl_c_stops_the_wait() {
+    let route = builtin_test_route(AWS_ID);
+    let api = routed(
+        standard_workspace(),
+        vec![(route.clone(), "200 OK", test_status("running_script", None))],
+    );
+    let child = std::process::Command::new(assert_cmd::cargo::cargo_bin("cloudthinker"))
+        .env("CLOUDTHINKER_TOKEN", "test-access-token")
+        .env("CLOUDTHINKER_URL", &api.base_url)
+        .env_remove("CLOUDTHINKER_WORKSPACE")
+        .args(["connections", "status", AWS_ID, "--wait"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let started = std::time::Instant::now();
+    while api.count(&route) == 0 {
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "no test-status poll"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    rustix::process::kill_process(
+        rustix::process::Pid::from_child(&child),
+        rustix::process::Signal::INT,
+    )
+    .unwrap();
+    let output = child.wait_with_output().unwrap();
+
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(130), "{stderr}");
+    assert!(output.stdout.is_empty());
+    assert!(
+        stderr.contains(&format!("cloudthinker connections status {AWS_ID} --wait")),
+        "{stderr}"
+    );
+}
+
+// CA-CLI-32: a retry the server forbids exits 3 with its reason and the admin hint.
+#[test]
+fn ca_cli_32_retry_forbidden_asks_an_admin() {
+    let api = routed(
+        standard_workspace(),
+        vec![(
+            format!("POST /api/v1/builtin-connection/{AWS_ID}/retry"),
+            "403 Forbidden",
+            r#"{"detail":"Missing permission: connectors:edit"}"#.into(),
+        )],
+    );
+
+    let (code, _, stderr) = run_connections(&api, &["retry", "aws-prod"]);
+
+    assert_eq!(code, Some(3), "{stderr}");
+    assert!(
+        stderr.contains("Missing permission: connectors:edit"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("ask a workspace admin"), "{stderr}");
+}
+
+// CA-CLI-33: a retry while a test runs says it is already testing and how to follow it.
+#[test]
+fn ca_cli_33_retry_conflict_points_at_status_wait() {
+    let api = routed(
+        standard_workspace(),
+        vec![(
+            format!("POST /api/v1/builtin-connection/{AWS_ID}/retry"),
+            "409 Conflict",
+            r#"{"error":{"code":"CONNECTION_TESTING","message":"A connection test is already in progress.","retryable":false},"request_id":"r1","detail":{"message":"A connection test is already in progress.","code":"CONNECTION_TESTING"}}"#.into(),
+        )],
+    );
+
+    let (code, _, stderr) = run_connections(&api, &["retry", AWS_ID]);
+
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(stderr.contains("already testing"), "{stderr}");
+    assert!(
+        stderr.contains(&format!("cloudthinker connections status {AWS_ID} --wait")),
+        "{stderr}"
+    );
+}
+
+// CA-CLI-34: `retry` on an MCP connection is a usage error and sends no POST.
+#[test]
+fn ca_cli_34_retry_rejects_mcp_without_a_request() {
+    let api = RoutedApi::start(standard_workspace());
+
+    let (code, _, stderr) = run_connections(&api, &["retry", "docs"]);
+
+    assert_eq!(code, Some(2), "{stderr}");
+    assert!(stderr.contains("built-in connections only"), "{stderr}");
+    assert_eq!(api.methods("POST"), 0);
+}
+
+// CA-CLI-35: `retry` on an OAuth connection points at connect-url and sends no POST.
+#[test]
+fn ca_cli_35_retry_on_oauth_points_at_reconnect() {
+    let api = RoutedApi::start(workspace_routes(&[oauth_row(GITHUB_ID, "github")], &[]));
+
+    let (code, _, stderr) = run_connections(&api, &["retry", "github"]);
+
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(
+        stderr.contains("cloudthinker connections connect-url github"),
+        "{stderr}"
+    );
+    assert_eq!(api.methods("POST"), 0);
+}
+
+fn connect_routes() -> RoutedApi {
+    routed(
+        standard_workspace(),
+        vec![(
+            "GET /api/v1/cli/whoami".into(),
+            "200 OK",
+            WHOAMI_BODY.into(),
+        )],
+    )
+}
+
+// CA-CLI-36: `connect-url` prints the connectors page for a known prefix and rejects a bad or unknown one.
+#[test]
+fn ca_cli_36_connect_url_builds_the_install_link() {
+    let api = connect_routes();
+
+    let (code, stdout, stderr) = run_connections(&api, &["connect-url", "github"]);
+
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(
+        stdout,
+        format!(
+            "{}/connectors?tab=builtin-connections&install=github&wsId={WORKSPACE_ID}\n",
+            api.base_url
+        )
+    );
+
+    for prefix in ["GitHub", "a/b", "x?tab=1"] {
+        let (code, stdout, stderr) = run_connections(&api, &["connect-url", prefix]);
+        assert_eq!(code, Some(2), "{prefix}: {stderr}");
+        assert!(stdout.is_empty());
+    }
+    assert_eq!(api.count(BUILTIN_LIST), 1);
+
+    let (code, stdout, stderr) = run_connections(&api, &["connect-url", "azure"]);
+    assert_eq!(code, Some(2), "{stderr}");
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("`azure`"), "{stderr}");
+}
+
+// CA-CLI-37: `--skill connections` prints offline and every connections subcommand explains itself.
+#[test]
+fn ca_cli_37_connections_skill_and_help() {
+    let expected = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("skills/cloudthinker-cli/connections.md"),
+    )
+    .unwrap();
+    Command::cargo_bin("cloudthinker")
+        .unwrap()
+        .env("CLOUDTHINKER_URL", "http://127.0.0.1:1")
+        .env_remove("CLOUDTHINKER_TOKEN")
+        .args(["--skill", "connections"])
+        .timeout(Duration::from_secs(5))
+        .assert()
+        .success()
+        .stdout(expected);
+
+    let help = Command::cargo_bin("cloudthinker")
+        .unwrap()
+        .arg("--help")
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8(help.stdout)
+            .unwrap()
+            .contains("connections")
+    );
+    for sub in ["list", "show", "status", "retry", "connect-url"] {
+        let output = Command::cargo_bin("cloudthinker")
+            .unwrap()
+            .args(["connections", sub, "--help"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0), "{sub}");
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn connect_url_with_opener(api: &RoutedApi, opener_exit: i32, ssh: bool) -> (String, String) {
+    let bin = tempfile::tempdir().unwrap();
+    let marker = bin.path().join("opened");
+    let opener = bin.path().join("xdg-open");
+    std::fs::write(
+        &opener,
+        format!(
+            "#!/bin/sh\necho \"$1\" > '{}'\nexit {opener_exit}\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&opener, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let mut command = cli(&api.base_url);
+    command
+        .env("PATH", bin.path())
+        .env("DISPLAY", ":0")
+        .env_remove("CLOUDTHINKER_LOGIN")
+        .env_remove("BROWSER")
+        .env_remove("WSL_DISTRO_NAME")
+        .env_remove("WSL_INTEROP")
+        .env_remove("SSH_CONNECTION")
+        .env_remove("SSH_CLIENT")
+        .env_remove("SSH_TTY")
+        .timeout(Duration::from_secs(60))
+        .args(["connections", "connect-url", "github", "--json"]);
+    if ssh {
+        command.env("SSH_CONNECTION", "10.0.0.2 51000 10.0.0.1 22");
+    }
+    let output = command.output().unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let opened = std::fs::read_to_string(&marker).unwrap_or_default();
+    (String::from_utf8(output.stdout).unwrap(), opened)
+}
+
+// CA-CLI-38: on a desktop connect-url opens the page and prints it; over SSH it only prints; a failed open is ignored.
+#[cfg(target_os = "linux")]
+#[test]
+fn ca_cli_38_connect_url_opens_only_where_login_would() {
+    let api = connect_routes();
+    let url = format!(
+        "{}/connectors?tab=builtin-connections&install=github&wsId={WORKSPACE_ID}",
+        api.base_url
+    );
+
+    let (stdout, opened) = connect_url_with_opener(&api, 0, false);
+    let link: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(link["url"], url.as_str());
+    assert_eq!(link["opened"], true);
+    assert_eq!(opened.trim(), url);
+
+    let (stdout, opened) = connect_url_with_opener(&api, 0, true);
+    let link: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(link["url"], url.as_str());
+    assert_eq!(link["opened"], false);
+    assert!(opened.is_empty());
+
+    let (stdout, opened) = connect_url_with_opener(&api, 1, false);
+    let link: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(link["url"], url.as_str());
+    assert_eq!(link["opened"], false);
+    assert_eq!(opened.trim(), url);
+}
+
+// CA-CLI-39: `connect-url --wait` waits for a new connection of that prefix, then follows its test.
+#[test]
+fn ca_cli_39_connect_url_wait_follows_the_new_connection() {
+    let existing = builtin_row(AWS_ID, "aws", Some("aws-prod"), true);
+    let added = builtin_row(AWS_SECOND_ID, "aws", Some("aws-2"), true);
+    for (phase, expected) in [("succeeded", 0), ("failed", 1)] {
+        let api = routed(
+            vec![
+                (
+                    BUILTIN_LIST.into(),
+                    "200 OK",
+                    builtin_list(std::slice::from_ref(&existing)),
+                ),
+                (
+                    BUILTIN_LIST.into(),
+                    "200 OK",
+                    builtin_list(std::slice::from_ref(&existing)),
+                ),
+                (
+                    BUILTIN_LIST.into(),
+                    "200 OK",
+                    builtin_list(&[existing.clone(), added.clone()]),
+                ),
+                (MCP_LIST.into(), "200 OK", mcp_list(&[])),
+            ],
+            vec![
+                (
+                    "GET /api/v1/cli/whoami".into(),
+                    "200 OK",
+                    WHOAMI_BODY.into(),
+                ),
+                (
+                    builtin_test_route(AWS_SECOND_ID),
+                    "200 OK",
+                    test_status(phase, (phase == "failed").then_some("bad key")),
+                ),
+            ],
+        );
+
+        let (code, stdout, stderr) =
+            run_connections(&api, &["connect-url", "aws", "--wait", "--json"]);
+
+        assert_eq!(code, Some(expected), "{phase}: {stderr}");
+        let link: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+        assert_eq!(link["connection"]["id"], AWS_SECOND_ID);
+        assert_eq!(link["test"]["phase"], phase);
+        assert!(stderr.contains("/connectors?tab=builtin-connections&install=aws"));
+        assert_eq!(api.count(&builtin_test_route(AWS_ID)), 0);
+    }
+
+    let mut errored = builtin_row(AWS_ID, "aws", Some("aws-prod"), true);
+    errored["status"] = "error".into();
+    let mut reconnected = errored.clone();
+    reconnected["status"] = "testing".into();
+    let api = routed(
+        vec![
+            (
+                BUILTIN_LIST.into(),
+                "200 OK",
+                builtin_list(std::slice::from_ref(&errored)),
+            ),
+            (
+                BUILTIN_LIST.into(),
+                "200 OK",
+                builtin_list(std::slice::from_ref(&errored)),
+            ),
+            (
+                BUILTIN_LIST.into(),
+                "200 OK",
+                builtin_list(std::slice::from_ref(&reconnected)),
+            ),
+            (MCP_LIST.into(), "200 OK", mcp_list(&[])),
+        ],
+        vec![
+            (
+                "GET /api/v1/cli/whoami".into(),
+                "200 OK",
+                WHOAMI_BODY.into(),
+            ),
+            (
+                builtin_test_route(AWS_ID),
+                "200 OK",
+                test_status("succeeded", None),
+            ),
+        ],
+    );
+    let (code, stdout, stderr) = run_connections(&api, &["connect-url", "aws", "--wait", "--json"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    let link: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(link["connection"]["id"], AWS_ID);
+    assert!(stderr.contains("was reconnected"), "{stderr}");
+
+    let api = connect_routes();
+    let (code, stdout, stderr) = run_connections(
+        &api,
+        &[
+            "connect-url",
+            "github",
+            "--wait",
+            "--timeout",
+            "0",
+            "--json",
+        ],
+    );
+    assert_eq!(code, Some(4), "{stderr}");
+    let link: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(
+        link["url"].as_str().unwrap().contains("install=github"),
+        "{stdout}"
+    );
+    assert!(
+        link["connection"].is_null() && link["test"].is_null(),
+        "{stdout}"
+    );
+
+    let (code, _, stderr) =
+        run_connections(&api, &["connect-url", "github", "--wait", "--timeout", "1"]);
+    assert_eq!(code, Some(4), "{stderr}");
+    assert!(
+        stderr.contains("Timed out before a new github connection"),
+        "{stderr}"
+    );
+}
+
+// CA-CLI-40: unknown server values decode and render raw
+#[test]
+fn ca_cli_40_unknown_server_values_render_raw() {
+    let mut row = builtin_row(AWS_ID, "aws", Some("aws-prod"), true);
+    row["status"] = "paused".into();
+    row["auth_type"] = "SAML".into();
+    let mut mcp = mcp_row("rotating", "");
+    mcp["mcp_transport_type"] = "websocket".into();
+    let route = builtin_test_route(AWS_ID);
+    let api = routed(
+        workspace_routes(&[row], &[mcp]),
+        vec![
+            (
+                route.clone(),
+                "200 OK",
+                test_status("verifying_quota", None),
+            ),
+            (
+                route.clone(),
+                "200 OK",
+                test_status("verifying_quota", None),
+            ),
+            (route.clone(), "200 OK", test_status("succeeded", None)),
+        ],
+    );
+
+    let (code, stdout, stderr) = run_connections(&api, &["list", "--json"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    let rows: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(rows[0]["status"], "paused");
+    assert_eq!(rows[0]["auth"], "SAML");
+    assert_eq!(rows[1]["status"], "rotating");
+    assert_eq!(rows[1]["transport"], "websocket");
+    let (code, stdout, _) = run_connections(&api, &["list"]);
+    assert_eq!(code, Some(0));
+    assert!(
+        stdout.contains(&format!("{AWS_ID}\tbuiltin\taws\taws-prod\tpaused")),
+        "{stdout}"
+    );
+
+    let (code, stdout, stderr) = run_connections(&api, &["status", AWS_ID, "--json"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    let test: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(test["phase"], "verifying_quota");
+    assert_eq!(test["terminal"], false);
+
+    let (code, stdout, stderr) = run_connections(&api, &["status", AWS_ID, "--wait", "--json"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    let test: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(test["phase"], "succeeded");
+    assert_eq!(api.count(&route), 3);
+
+    let mut hostile = builtin_row(AWS_ID, "aws", Some("aws-prod"), true);
+    hostile["status"] = "pau\u{1b}[31msed\u{7}".into();
+    let mut unset = builtin_row(AWS_SECOND_ID, "aws", Some("aws-dev"), true);
+    unset["status"] = serde_json::Value::Null;
+    let mut unset_detail = unset.clone();
+    unset_detail["locations"] = serde_json::json!([]);
+    let mut hostile_detail = hostile.clone();
+    hostile_detail["locations"] = serde_json::json!([]);
+    let api = routed(
+        workspace_routes(&[hostile, unset], &[]),
+        vec![
+            (
+                route.clone(),
+                "200 OK",
+                test_status("verify\u{1b}]0;owned\u{7}ing", None),
+            ),
+            (
+                format!("GET /api/v1/builtin-connection/{AWS_SECOND_ID}"),
+                "200 OK",
+                unset_detail.to_string(),
+            ),
+            (
+                format!("GET /api/v1/builtin-connection/{AWS_ID}"),
+                "200 OK",
+                hostile_detail.to_string(),
+            ),
+        ],
+    );
+    let clean = |text: &str| !text.contains('\u{1b}') && !text.contains('\u{7}');
+    let (code, stdout, stderr) = run_connections(&api, &["list"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(clean(&stdout), "{stdout:?}");
+    assert!(stdout.contains(&format!("{AWS_ID}\tbuiltin\taws\taws-prod\tpau[31msed\t")));
+    assert!(stdout.contains(&format!(
+        "{AWS_SECOND_ID}\tbuiltin\taws\taws-dev\tunknown\t"
+    )));
+    let (code, stdout, _) = run_connections(&api, &["list", "--json"]);
+    assert_eq!(code, Some(0));
+    let rows: Vec<serde_json::Value> = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(rows[0]["status"], "pau\u{1b}[31msed\u{7}");
+    assert_eq!(rows[1]["status"], "unknown");
+    let (code, stdout, _) = run_connections(&api, &["show", "aws-prod"]);
+    assert_eq!(code, Some(0));
+    assert!(
+        clean(&stdout) && stdout.contains("status:     pau[31msed\n"),
+        "{stdout:?}"
+    );
+    let (code, stdout, _) = run_connections(&api, &["show", "aws-dev"]);
+    assert_eq!(code, Some(0));
+    assert!(stdout.contains("status:     unknown\n"), "{stdout}");
+    let (code, stdout, stderr) = run_connections(&api, &["status", AWS_ID]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert!(clean(&stdout) && clean(&stderr), "{stdout:?} {stderr:?}");
+    assert!(
+        stdout.contains("test:       verify]0;owneding\n"),
+        "{stdout:?}"
+    );
 }
