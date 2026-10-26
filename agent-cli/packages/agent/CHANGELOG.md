@@ -1,3 +1,7 @@
+## [0.10.0]
+
+- The bundled agent uses undici 8.12.2, which fixes two denial-of-service flaws and a Subresource Integrity bypass (GHSA-xjj6-f33q-929c, GHSA-4qv8-2p9j-2685, GHSA-f72v-6w45-q472).
+
 ## [0.9.0]
 
 - Under `cloudthinker remote`, the agent redraws its full screen when you reattach, at the new window size, with mouse and keys working.
