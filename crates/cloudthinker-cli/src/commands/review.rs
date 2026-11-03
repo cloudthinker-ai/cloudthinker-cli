@@ -1,6 +1,12 @@
 use std::time::Duration;
 
-use cloudthinker_client::{CtError, ReviewSeverityCounts, ReviewStatus, ReviewView, parse_mr_url};
+use cloudthinker_client::{
+    CtClient, CtError, LoupeReadiness, LoupeReadinessCheckName, LoupeReadinessState,
+    LoupeSetupScope, ReviewSeverityCounts, ReviewStatus, ReviewView, parse_mr_url,
+    valid_setup_web_url,
+    worker_types::{ExecutorChoiceKind, ExecutorScope},
+};
+use serde::Serialize;
 
 use crate::engine::exit::{self, ExitCode};
 use crate::engine::local_review::{self, FindingSeverity, LocalFinding, ReviewScope};
@@ -8,6 +14,247 @@ use crate::engine::output::{self, ReviewEnvelope};
 use crate::engine::watch::{Poll, WatchConfig, watch};
 
 use super::build_client;
+
+pub async fn run_setup(base_url: &str, workspace: Option<&str>, worker: Option<&str>) -> ExitCode {
+    let client = match setup_client(base_url, workspace).await {
+        Ok(client) => client,
+        Err(error) => return exit::report(&error),
+    };
+    let target = match setup_worker(&client, worker).await {
+        Ok(target) => target,
+        Err(error) => return exit::report(&error),
+    };
+    let conversation = match client.start_loupe_setup_conversation(target).await {
+        Ok(conversation) => conversation,
+        Err(error) => return exit::report(&error),
+    };
+    if !valid_setup_web_url(&conversation.web_url) {
+        output::eprintln_error(
+            "The frontend link is unavailable. Ask an administrator to configure FRONTEND_HOST, then retry.",
+        );
+        return ExitCode::JobFailed;
+    }
+    let conversation_url = output::terminal_text(&conversation.web_url);
+    output::progress(&format!("Setup conversation: {conversation_url}"));
+    match output::print_text(&format!(
+        "Continue setup and answer any questions: {conversation_url}\n"
+    )) {
+        Ok(()) => ExitCode::Ok,
+        Err(error) => exit::report(&CtError::Transport(error)),
+    }
+}
+
+async fn setup_client(base_url: &str, workspace: Option<&str>) -> Result<CtClient, CtError> {
+    if !super::env_token_is_set() || workspace.is_none() {
+        return build_client(base_url, workspace);
+    }
+    let expected = workspace
+        .and_then(|value| value.parse::<uuid::Uuid>().ok())
+        .ok_or_else(|| {
+            CtError::Usage("With CLOUDTHINKER_TOKEN, --workspace must be a workspace ID.".into())
+        })?;
+    let client = build_client(base_url, None)?;
+    let identity = client.whoami().await?;
+    if identity.workspace_id != expected {
+        return Err(CtError::Usage(
+            "CLOUDTHINKER_TOKEN belongs to a different workspace. Use the matching workspace or token."
+                .into(),
+        ));
+    }
+    Ok(client)
+}
+
+async fn setup_worker(client: &CtClient, selector: Option<&str>) -> Result<uuid::Uuid, CtError> {
+    if let Some(id) = selector.and_then(|value| value.parse::<uuid::Uuid>().ok()) {
+        return Ok(id);
+    }
+    let choices = client.list_outposts().await?;
+    let shared: Vec<_> = choices
+        .iter()
+        .filter(|choice| {
+            choice.kind == ExecutorChoiceKind::Outpost
+                && choice.scope == ExecutorScope::Workspace
+                && choice.target_id.is_some()
+        })
+        .filter(|choice| selector.is_none_or(|name| choice.name == name))
+        .collect();
+    match shared.as_slice() {
+        [choice] => choice.target_id.ok_or_else(|| CtError::Usage("Worker has no ID".into())),
+        [] => Err(CtError::Usage(
+            "No matching shared Worker. List Workers with `cloudthinker worker outpost ls`.".into(),
+        )),
+        _ => Err(CtError::Usage(
+            "Choose a shared Worker with --worker <name-or-id>; list them with `cloudthinker worker outpost ls`.".into(),
+        )),
+    }
+}
+
+const DOCTOR_LIMIT: &str = "These are prerequisite checks only. App startup, sign-in, browser journeys, and base comparison were not verified.";
+
+#[derive(Serialize)]
+struct DoctorReport {
+    prerequisites: LoupeReadiness,
+    loupe_readiness: String,
+    coverage: &'static str,
+}
+
+pub struct DoctorOptions<'a> {
+    pub base_url: &'a str,
+    pub workspace: Option<&'a str>,
+    pub json: bool,
+    pub worker: Option<uuid::Uuid>,
+    pub connection: Option<uuid::Uuid>,
+    pub provider: Option<&'a str>,
+    pub repository: Option<&'a str>,
+}
+
+fn check_name(name: LoupeReadinessCheckName) -> &'static str {
+    match name {
+        LoupeReadinessCheckName::Checkout => "App checkout",
+        LoupeReadinessCheckName::Node => "Node.js",
+        LoupeReadinessCheckName::Bun => "Bun",
+        LoupeReadinessCheckName::Playwright => "Playwright",
+        LoupeReadinessCheckName::Chromium => "Chromium",
+        LoupeReadinessCheckName::SignIn => "Saved sign-in file",
+        LoupeReadinessCheckName::DevEnv => "Development environment file",
+        LoupeReadinessCheckName::AppRuntime => "App runtime",
+        LoupeReadinessCheckName::Sandbox => "Worker sandbox",
+    }
+}
+
+fn state_label(state: LoupeReadinessState) -> &'static str {
+    match state {
+        LoupeReadinessState::Off => "No Worker is selected",
+        LoupeReadinessState::Ready => "Required prerequisites passed",
+        LoupeReadinessState::NeedsSetup => "Worker needs setup",
+        LoupeReadinessState::Busy => "Worker is busy",
+        LoupeReadinessState::Offline => "Worker is offline",
+        LoupeReadinessState::NoAnswer => "Worker did not answer",
+        LoupeReadinessState::Unavailable => "Worker is unavailable",
+    }
+}
+
+fn setup_state_label(state: cloudthinker_client::LoupeSetupState) -> &'static str {
+    match state {
+        cloudthinker_client::LoupeSetupState::NotChecked => "not checked",
+        cloudthinker_client::LoupeSetupState::Partial => "partial",
+        cloudthinker_client::LoupeSetupState::Full => "full",
+    }
+}
+
+pub async fn run_doctor(options: DoctorOptions<'_>) -> ExitCode {
+    let client = match build_client(options.base_url, options.workspace) {
+        Ok(client) => client,
+        Err(error) => return exit::report(&error),
+    };
+    let scope = match (
+        options.worker,
+        options.connection,
+        options.provider,
+        options.repository,
+    ) {
+        (Some(worker), Some(connection), Some(provider), Some(repository)) => {
+            Some(LoupeSetupScope {
+                worker,
+                connection,
+                provider,
+                repository,
+            })
+        }
+        (_, None, None, None) => None,
+        _ => {
+            output::eprintln_error(
+                "Provide --worker, --connection, --provider and --repository together.",
+            );
+            return ExitCode::Usage;
+        }
+    };
+    let prerequisites = match client
+        .check_loupe_readiness(options.worker, scope.as_ref())
+        .await
+    {
+        Ok(prerequisites) => prerequisites,
+        Err(error) => return exit::report(&error),
+    };
+    let report = DoctorReport {
+        loupe_readiness: prerequisites
+            .observed
+            .as_ref()
+            .map_or_else(|| "not_checked".to_string(), |view| view.state.to_string()),
+        coverage: if prerequisites.observed.is_some() {
+            "Stored setup observations; app journeys were not rechecked by this command."
+        } else {
+            DOCTOR_LIMIT
+        },
+        prerequisites,
+    };
+    let printed = if options.json {
+        output::emit_json(&report)
+    } else {
+        let mut lines = vec![format!(
+            "Loupe prerequisites: {}",
+            state_label(report.prerequisites.state)
+        )];
+        if let Some(repository) = &report.prerequisites.repository {
+            lines.push(format!("Repository: {repository}"));
+        }
+        if let Some(detail) = &report.prerequisites.detail {
+            lines.push(detail.to_owned());
+        }
+        for check in &report.prerequisites.checks {
+            let result = if check.passed {
+                "passed"
+            } else if check.required {
+                "needs setup"
+            } else {
+                "optional, missing"
+            };
+            let detail = check
+                .detail
+                .as_ref()
+                .map(|detail| format!(" ({detail})"))
+                .unwrap_or_default();
+            lines.push(format!("{}: {result}{detail}", check_name(check.name)));
+        }
+        if let Some(observed) = &report.prerequisites.observed {
+            lines.push(format!("Setup: {}", setup_state_label(observed.state)));
+            lines.push(format!(
+                "Enabled: {}",
+                if observed.enabled { "yes" } else { "no" }
+            ));
+            if let Some(checked_at) = &observed.checked_at {
+                lines.push(format!(
+                    "Observed at: {} UTC",
+                    checked_at
+                        .with_timezone(&chrono::Utc)
+                        .format("%Y-%m-%d %H:%M")
+                ));
+            }
+            if observed.check_pending {
+                lines.push("A new setup check is in progress.".to_owned());
+            }
+            lines.push(observed.detail.to_owned());
+        }
+        lines.push(report.coverage.to_owned());
+        output::print_lines(&lines)
+    };
+    if let Err(error) = printed {
+        output::eprintln_error(&error);
+        return ExitCode::JobFailed;
+    }
+    if matches!(report.prerequisites.state, LoupeReadinessState::Ready)
+        && report.prerequisites.observed.as_ref().is_some_and(|view| {
+            matches!(view.state, cloudthinker_client::LoupeSetupState::Full)
+                && view.enabled
+                && view.generation.is_some()
+                && !view.check_pending
+        })
+    {
+        ExitCode::Ok
+    } else {
+        ExitCode::JobFailed
+    }
+}
 
 pub struct LocalReviewOptions<'a> {
     pub base_url: &'a str,

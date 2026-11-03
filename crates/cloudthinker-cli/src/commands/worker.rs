@@ -67,6 +67,9 @@ enum WorkerCommand {
     /// Run one command inside the Landlock sandbox of a running worker.
     #[command(hide = true)]
     SandboxExec(SandboxExecArgs),
+    /// Run the session-network HTTP egress proxy that enforces the host allowlist.
+    #[command(hide = true)]
+    EgressProxy(EgressProxyArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -179,7 +182,7 @@ pub struct StartArgs {
     #[arg(long)]
     register: Option<String>,
 
-    /// Short display name for the served folder.
+    /// Short display name for the served folder. Defaults to `<folder> · <hostname>`.
     #[arg(long)]
     label: Option<String>,
 
@@ -236,6 +239,23 @@ pub struct BgShimArgs {
     /// Let the sandboxed command read and write files beneath this path; repeat for more.
     #[arg(long, value_name = "PATH", requires = "sandbox")]
     pub write: Vec<PathBuf>,
+    /// Run the command inside this session container instead of on this machine.
+    #[arg(
+        long,
+        value_name = "NAME",
+        conflicts_with = "sandbox",
+        requires_all = ["container_runtime", "container_cwd"]
+    )]
+    pub container: Option<String>,
+    /// The Docker program that reaches the session container.
+    #[arg(long, value_name = "PATH", requires = "container")]
+    pub container_runtime: Option<PathBuf>,
+    /// The folder inside the session container where the command starts.
+    #[arg(long, value_name = "PATH", requires = "container")]
+    pub container_cwd: Option<PathBuf>,
+    /// Pass this environment variable into the session container; repeat for more.
+    #[arg(long = "container-env", value_name = "KEY", requires = "container")]
+    pub container_env: Vec<String>,
 }
 
 #[derive(Debug, Args)]
@@ -287,6 +307,7 @@ async fn execute(base_url: &str, workspace: Option<&str>, args: WorkerArgs) -> C
         WorkerCommand::Start(args) => start(base_url, workspace, args).await,
         WorkerCommand::BgShim(args) => bg_shim(args).await,
         WorkerCommand::SandboxExec(args) => sandbox_exec(args),
+        WorkerCommand::EgressProxy(args) => egress_proxy(args).await,
         WorkerCommand::Service { command } => worker_service::execute(base_url, workspace, command),
         WorkerCommand::Worktrees { command } => worktrees(base_url, command),
         WorkerCommand::Outpost {
@@ -385,11 +406,52 @@ fn resolve<'a>(
 }
 
 #[cfg(unix)]
+fn default_label(workdir: &std::path::Path) -> Option<String> {
+    let resolved = std::fs::canonicalize(workdir).ok();
+    let folder = resolved
+        .as_deref()
+        .unwrap_or(workdir)
+        .file_name()?
+        .to_str()
+        .map(label_safe)
+        .filter(|name| !name.is_empty())?;
+    Some(match hostname() {
+        Some(host) => format!("{folder} · {host}"),
+        None => folder,
+    })
+}
+
+#[cfg(unix)]
+fn label_safe(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .filter(|ch| !ch.is_control())
+        .map(|ch| if ch == '/' || ch == '\\' { '-' } else { ch })
+        .collect()
+}
+
+#[cfg(unix)]
+fn hostname() -> Option<String> {
+    let raw = std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .ok()
+        .or_else(|| {
+            std::process::Command::new("hostname")
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .and_then(|output| String::from_utf8(output.stdout).ok())
+        })?;
+    Some(label_safe(&raw)).filter(|host| !host.is_empty())
+}
+
+#[cfg(unix)]
 fn build_registration(
     identity: &crate::worker::config::WorkdirIdentity,
     concurrency: u16,
     label: Option<&str>,
     sandbox: &crate::worker::sandbox::Support,
+    containers: bool,
 ) -> CtResult<api::RegisterWorkerRequest> {
     let os = if cfg!(target_os = "macos") {
         "darwin"
@@ -408,6 +470,9 @@ fn build_registration(
     }
     if sandbox.is_ready() {
         capabilities.push(api::ExecutorCapability::Sandbox);
+    }
+    if containers {
+        capabilities.push(api::ExecutorCapability::ContainerIsolation);
     }
     Ok(api::RegisterWorkerRequest {
         worker_instance_id: Uuid::new_v4(),
@@ -431,10 +496,11 @@ fn build_registration(
 }
 
 #[cfg(unix)]
-async fn start(base_url: &str, workspace: Option<&str>, args: StartArgs) -> CtResult<()> {
+async fn start(base_url: &str, workspace: Option<&str>, mut args: StartArgs) -> CtResult<()> {
     use crate::worker::{
         background::ShimImage,
         config::WorkdirIdentity,
+        container::{Containers, Detection, Runtime},
         executor::WorkdirExecutor,
         runtime,
         sandbox::SandboxContext,
@@ -450,7 +516,8 @@ async fn start(base_url: &str, workspace: Option<&str>, args: StartArgs) -> CtRe
             "--workdir must name an existing directory".into(),
         ));
     }
-    if let Some(label) = args.label.as_deref()
+    let label = args.label.take().or_else(|| default_label(&args.workdir));
+    if let Some(label) = label.as_deref()
         && (label.contains('/') || label.contains('\\') || label.chars().any(char::is_control))
     {
         return Err(CtError::Usage(
@@ -472,7 +539,7 @@ async fn start(base_url: &str, workspace: Option<&str>, args: StartArgs) -> CtRe
                 target_id: credential.target_id,
                 workdir: args.workdir,
                 concurrency: args.concurrency,
-                label: args.label,
+                label,
             },
         );
     }
@@ -488,12 +555,24 @@ async fn start(base_url: &str, workspace: Option<&str>, args: StartArgs) -> CtRe
         .map_err(|code| CtError::Usage(code.into()))?;
     let client = WorkerClient::new(base_url, &credential.token, CLI_VERSION)?;
     let sandbox = SandboxContext::detect(store.state_root(), &identity.path).await;
+    let runtime = match Runtime::detect_async().await {
+        Detection::Ready(runtime) => Some(runtime),
+        Detection::Unavailable(_) => None,
+    };
     let registration = build_registration(
         &identity,
         args.concurrency,
-        args.label.as_deref(),
+        label.as_deref(),
         &sandbox.support,
+        runtime.is_some(),
     )?;
+    let containers = Containers::new(
+        runtime,
+        identity.installation_id,
+        identity.workdir_id,
+        &identity.state,
+    );
+    containers.remove_labelled().await;
     let shim = match std::env::current_exe() {
         Ok(path) => ShimImage::open(path, &environment).await,
         Err(error) => Err(error),
@@ -507,13 +586,17 @@ async fn start(base_url: &str, workspace: Option<&str>, args: StartArgs) -> CtRe
             &format!("Background jobs are unavailable inside this service unit: {reason}"),
         );
     }
-    let executor = Arc::new(WorkdirExecutor::new(
-        identity,
-        environment,
-        vec![credential.token.clone()],
-        shim,
-        sandbox,
-    ));
+    let executor = Arc::new(
+        WorkdirExecutor::new(
+            identity,
+            environment,
+            vec![credential.token.clone()],
+            shim,
+            sandbox,
+        )
+        .with_containers(containers),
+    );
+    let containers_executor = executor.clone();
     let rotation: Option<runtime::RotationHook> = rotates.then(|| {
         let rotator = Arc::new(Rotator {
             store,
@@ -574,7 +657,7 @@ async fn start(base_url: &str, workspace: Option<&str>, args: StartArgs) -> CtRe
         output::print_worker_header(&output::WorkerHeader {
             name: &name,
             folder: &executor.identity.path,
-            label: args.label.as_deref(),
+            label: label.as_deref(),
             server: base_url,
             concurrency: args.concurrency,
             version: CLI_VERSION,
@@ -589,6 +672,7 @@ async fn start(base_url: &str, workspace: Option<&str>, args: StartArgs) -> CtRe
         rotation,
     )
     .await;
+    containers_executor.containers.shutdown().await;
     health_stop.cancel();
     if outcome.is_ok() {
         telemetry::stopped();
@@ -765,6 +849,31 @@ fn sandbox_exec(_args: SandboxExecArgs) -> CtResult<()> {
     Err(CtError::Usage("the sandbox needs Linux".into()))
 }
 
+#[derive(Debug, Args)]
+pub struct EgressProxyArgs {
+    /// Address and port to listen on.
+    #[arg(long)]
+    pub listen: std::net::SocketAddr,
+    /// File with one allowed host pattern per line.
+    #[arg(long)]
+    pub allowlist_file: PathBuf,
+    /// Destination port to allow; repeat for more (default 80 and 443).
+    #[arg(long = "allow-port")]
+    pub allow_port: Vec<u16>,
+}
+
+#[cfg(unix)]
+async fn egress_proxy(args: EgressProxyArgs) -> CtResult<()> {
+    crate::worker::egress_proxy::run(args.listen, args.allowlist_file, args.allow_port)
+        .await
+        .map_err(|error| CtError::Usage(format!("egress proxy failed: {error}")))
+}
+
+#[cfg(not(unix))]
+async fn egress_proxy(_args: EgressProxyArgs) -> CtResult<()> {
+    Err(CtError::Usage("worker requires Linux or macOS".into()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -790,6 +899,11 @@ mod tests {
             cli_version: None,
             cli_version_status: None,
             workers_disabled: None,
+            isolation: None,
+            container_image: None,
+            egress_allowlist: Vec::new(),
+            ip_allowlist: Vec::new(),
+            isolation_supported: false,
         }
     }
 

@@ -1,8 +1,9 @@
+use std::io::{BufRead, IsTerminal, Write};
 use std::time::{Duration, Instant};
 
 use cloudthinker_client::{
-    ConnectionDetail, ConnectionKind, ConnectionMatch, ConnectionStatus, ConnectionTest,
-    ConnectionView, CtClient, CtError, validate_connect_prefix,
+    ConnectionDetail, ConnectionDisconnectPhase, ConnectionKind, ConnectionMatch, ConnectionStatus,
+    ConnectionTest, ConnectionView, CtClient, CtError, explicit_url, validate_connect_prefix,
 };
 use uuid::Uuid;
 
@@ -133,6 +134,160 @@ pub async fn run_retry(
     )
     .await;
     finish_test(&connection, test, target, json)
+}
+
+pub async fn run_disconnect(
+    base_url: &str,
+    workspace: Option<&str>,
+    target: &str,
+    yes: bool,
+    json: bool,
+) -> ExitCode {
+    let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+    if consent_gate(yes, interactive) == Consent::Refuse {
+        return refuse_without_yes(base_url, workspace, target);
+    }
+    let client = match build_client(base_url, workspace) {
+        Ok(client) => client,
+        Err(err) => return exit::report(&err),
+    };
+    let mut input = std::io::BufReader::new(std::io::stdin());
+    disconnect_with(&client, target, yes, json, interactive, &mut input).await
+}
+
+async fn disconnect_with(
+    client: &CtClient,
+    target: &str,
+    yes: bool,
+    json: bool,
+    interactive: bool,
+    input: &mut impl BufRead,
+) -> ExitCode {
+    let gate = consent_gate(yes, interactive);
+    if gate == Consent::Refuse {
+        return ExitCode::Usage;
+    }
+    let connection = match find(client, target).await {
+        Ok(connection) => connection,
+        Err(code) => return code,
+    };
+    if gate == Consent::Ask {
+        let prompt = confirm_prompt(
+            &connection.name,
+            connection.kind,
+            &connection.prefix,
+            connection.id,
+        );
+        if !ask(&prompt, input) {
+            output::progress("Cancelled. Nothing was disconnected.");
+            return ExitCode::JobFailed;
+        }
+    }
+    let accepted = match client
+        .disconnect_connection(connection.id, connection.kind)
+        .await
+    {
+        Ok(accepted) => accepted,
+        Err(CtError::Api { status: 404, .. }) => return no_match(target),
+        Err(err) => return exit::report(&err),
+    };
+    let code = if accepted.disconnect_phase == ConnectionDisconnectPhase::Failed {
+        output::eprintln_error(&format!(
+            "disconnecting `{}` failed: {}",
+            output::terminal_text(&accepted.connection.name),
+            accepted
+                .disconnect_error
+                .as_deref()
+                .unwrap_or("no reason was reported")
+        ));
+        ExitCode::JobFailed
+    } else {
+        output::progress(
+            "Disconnect started. CloudThinker finishes it in the background, and the connection leaves `cloudthinker connections list` when it is done.",
+        );
+        ExitCode::Ok
+    };
+    match output::emit_connection_disconnect(&accepted, json) {
+        Ok(()) => code,
+        Err(error) => exit::finish_output(Err(error)),
+    }
+}
+
+fn refuse_without_yes(base_url: &str, workspace: Option<&str>, target: &str) -> ExitCode {
+    output::eprintln_error(&format!(
+        "`connections disconnect` deletes a connection, and it cannot ask you to confirm without a terminal. Run it again with --yes: {}",
+        output::terminal_text(&disconnect_command(
+            explicit_url(base_url).as_deref(),
+            workspace,
+            target
+        ))
+    ));
+    ExitCode::Usage
+}
+
+fn disconnect_command(url: Option<&str>, workspace: Option<&str>, target: &str) -> String {
+    let mut words = vec!["cloudthinker".to_string()];
+    if let Some(url) = url {
+        words.extend(["--url".to_string(), output::shell_word(url)]);
+    }
+    if let Some(workspace) = workspace {
+        words.extend(["--workspace".to_string(), output::shell_word(workspace)]);
+    }
+    words.extend([
+        "connections".to_string(),
+        "disconnect".to_string(),
+        output::shell_word(target),
+        "--yes".to_string(),
+    ]);
+    words.join(" ")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Consent {
+    Given,
+    Ask,
+    Refuse,
+}
+
+fn consent_gate(yes: bool, interactive: bool) -> Consent {
+    match (yes, interactive) {
+        (true, _) => Consent::Given,
+        (false, true) => Consent::Ask,
+        (false, false) => Consent::Refuse,
+    }
+}
+
+fn confirm_prompt(name: &str, kind: ConnectionKind, prefix: &str, id: Uuid) -> String {
+    format!(
+        "Disconnect `{}` ({} {}, {id})? This deletes the connection and its saved credentials from the workspace, and agents can no longer use it. [y/N] ",
+        output::terminal_text(name),
+        kind.label(),
+        output::terminal_text(prefix)
+    )
+}
+
+fn ask(prompt: &str, input: &mut impl BufRead) -> bool {
+    eprint!("{prompt}");
+    if let Err(error) = std::io::stderr().flush() {
+        output::eprintln_error(&format!(
+            "could not show the confirmation question: {error}; nothing was disconnected"
+        ));
+        return false;
+    }
+    let mut line = String::new();
+    match input.read_line(&mut line) {
+        Ok(_) => accepts(&line),
+        Err(error) => {
+            output::eprintln_error(&format!(
+                "could not read your answer: {error}; nothing was disconnected"
+            ));
+            false
+        }
+    }
+}
+
+fn accepts(line: &str) -> bool {
+    matches!(line.trim(), "y" | "Y" | "yes" | "Yes" | "YES")
 }
 
 pub async fn run_connect_url(
@@ -267,12 +422,17 @@ async fn resolve(
     target: &str,
 ) -> Result<(CtClient, ConnectionView), ExitCode> {
     let client = build_client(base_url, workspace).map_err(|err| exit::report(&err))?;
+    let connection = find(&client, target).await?;
+    Ok((client, connection))
+}
+
+async fn find(client: &CtClient, target: &str) -> Result<ConnectionView, ExitCode> {
     let connections = client
         .list_connections()
         .await
         .map_err(|err| exit::report(&err))?;
     match connections.resolve(target) {
-        ConnectionMatch::One(connection) => Ok((client, *connection)),
+        ConnectionMatch::One(connection) => Ok(*connection),
         ConnectionMatch::None => Err(no_match(target)),
         ConnectionMatch::Many(candidates) => {
             output::eprintln_error(&format!(
@@ -435,4 +595,167 @@ fn open_in_browser(url: &str) -> bool {
         return false;
     }
     open::that(url).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+    use std::sync::Arc;
+
+    use cloudthinker_client::{ConnectionKind, CtClient, StoredToken, TokenStore};
+    use uuid::Uuid;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::{
+        Consent, accepts, ask, confirm_prompt, consent_gate, disconnect_command, disconnect_with,
+    };
+    use crate::engine::exit::ExitCode;
+
+    const AWS_ID: &str = "aaaaaaaa-0000-4000-8000-000000000001";
+
+    struct AccessToken;
+
+    impl TokenStore for AccessToken {
+        fn load(&self) -> cloudthinker_client::CtResult<Option<StoredToken>> {
+            Ok(Some(StoredToken {
+                access_token: "access".into(),
+                refresh_token: None,
+                expires_at: None,
+                workspace_id: None,
+                workspace_name: None,
+            }))
+        }
+
+        fn save(&self, _token: &StoredToken) -> cloudthinker_client::CtResult<()> {
+            Ok(())
+        }
+
+        fn clear(&self) -> cloudthinker_client::CtResult<()> {
+            Ok(())
+        }
+
+        fn refresh_enabled(&self) -> bool {
+            false
+        }
+    }
+
+    async fn workspace_with_aws() -> MockServer {
+        let server = MockServer::start().await;
+        let builtin = format!(
+            r#"{{"data":[{{"id":"{AWS_ID}","name":"aws account","prefix":"aws","alias":"aws-prod","aliases":[],"builtin_connection_type":"cloud","is_connected":true,"is_sandbox_supported":true,"connection_env_type":"production","status":"connected","status_message":"","auth_type":"STATIC","can_retry":true,"updated_at":"2026-10-30T00:00:00Z"}}],"connected_count":1}}"#
+        );
+        let accepted = format!(
+            r#"{{"connection":{{"id":"{AWS_ID}","name":"aws account","prefix":"aws","alias":"aws-prod","aliases":[],"builtin_connection_type":"cloud","is_connected":true,"is_sandbox_supported":true,"connection_env_type":"production","status":"disconnecting","status_message":"Disconnect queued","auth_type":"STATIC","can_retry":true,"updated_at":"2026-10-30T00:00:00Z"}},"disconnect_status":{{"phase":"queued"}}}}"#
+        );
+        Mock::given(method("GET"))
+            .and(path("/api/v1/builtin-connection"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(builtin, "application/json"))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/mcp-connection"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(
+                r#"{"data":[],"count":0,"connected_count":0}"#,
+                "application/json",
+            ))
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path(format!("/api/v1/builtin-connection/{AWS_ID}")))
+            .respond_with(ResponseTemplate::new(202).set_body_raw(accepted, "application/json"))
+            .mount(&server)
+            .await;
+        server
+    }
+
+    async fn deletes(server: &MockServer) -> usize {
+        server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .filter(|request| request.method.as_str() == "DELETE")
+            .count()
+    }
+
+    #[tokio::test]
+    async fn declining_the_question_sends_no_delete() {
+        let server = workspace_with_aws().await;
+        let client = CtClient::new(server.uri(), Arc::new(AccessToken)).unwrap();
+
+        for answer in ["n\n", "\n", ""] {
+            let code = disconnect_with(
+                &client,
+                "aws-prod",
+                false,
+                true,
+                true,
+                &mut Cursor::new(answer),
+            )
+            .await;
+            assert_eq!(code, ExitCode::JobFailed, "{answer:?}");
+        }
+        assert_eq!(deletes(&server).await, 0);
+
+        let code = disconnect_with(
+            &client,
+            "aws-prod",
+            false,
+            true,
+            true,
+            &mut Cursor::new("y\n"),
+        )
+        .await;
+        assert_eq!(code, ExitCode::Ok);
+        assert_eq!(deletes(&server).await, 1);
+    }
+
+    #[test]
+    fn refusal_hint_keeps_the_host_and_workspace() {
+        assert_eq!(
+            disconnect_command(None, None, "aws-prod"),
+            "cloudthinker connections disconnect aws-prod --yes"
+        );
+        assert_eq!(
+            disconnect_command(
+                Some("https://dev.cloudthinker.io"),
+                Some("Team Ops"),
+                "it's mine; rm -rf /"
+            ),
+            r"cloudthinker --url https://dev.cloudthinker.io --workspace 'Team Ops' connections disconnect 'it'\''s mine; rm -rf /' --yes"
+        );
+    }
+
+    #[test]
+    fn disconnect_asks_on_a_terminal_and_refuses_without_one() {
+        assert_eq!(consent_gate(true, true), Consent::Given);
+        assert_eq!(consent_gate(true, false), Consent::Given);
+        assert_eq!(consent_gate(false, true), Consent::Ask);
+        assert_eq!(consent_gate(false, false), Consent::Refuse);
+    }
+
+    #[test]
+    fn disconnect_prompt_names_the_connection() {
+        let id = Uuid::from_u128(7);
+        let prompt = confirm_prompt("AWS \u{1b}[31mprod", ConnectionKind::Builtin, "aws", id);
+        assert!(
+            prompt.starts_with(&format!("Disconnect `AWS [31mprod` (builtin aws, {id})? ")),
+            "{prompt}"
+        );
+        assert!(prompt.ends_with("[y/N] "), "{prompt}");
+    }
+
+    #[test]
+    fn only_an_explicit_yes_confirms_a_disconnect() {
+        for line in ["y\n", "Y", "yes\n", " Yes "] {
+            assert!(accepts(line), "{line:?}");
+        }
+        for line in ["", "\n", "n", "no", "yep", "aws"] {
+            assert!(!accepts(line), "{line:?}");
+        }
+        assert!(ask("", &mut Cursor::new("yes\n")));
+        assert!(!ask("", &mut Cursor::new("\n")));
+        assert!(!ask("", &mut Cursor::new("")));
+    }
 }

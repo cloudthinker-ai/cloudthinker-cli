@@ -21,17 +21,24 @@ use crate::auth::store::{
 use crate::error::{CtError, CtResult, to_ct_error};
 use crate::retry::classify;
 
+mod agents;
 mod connections;
 mod cyber;
+mod doctor;
 mod incidents;
 mod memory;
+mod policy;
 mod recommendations;
 mod reviews;
+mod trace;
+mod workspaces;
 #[cfg(test)]
 use crate::review_url::{MrCoordinates, MrProvider};
+pub use agents::{AgentChatSelection, AgentKind, AgentMatch, AgentView, Agents};
 pub use connections::{
-    ConnectionDetail, ConnectionKind, ConnectionLocation, ConnectionMatch, ConnectionStatus,
-    ConnectionTest, ConnectionTestPhase, ConnectionView, Connections, validate_connect_prefix,
+    ConnectionDetail, ConnectionDisconnect, ConnectionDisconnectPhase, ConnectionKind,
+    ConnectionLocation, ConnectionMatch, ConnectionStatus, ConnectionTest, ConnectionTestPhase,
+    ConnectionView, Connections, validate_connect_prefix,
 };
 pub use cyber::{
     Coverage, CoverageReport, CoverageRow, CoverageStatus, CyberApp, CyberDiscoveryTarget,
@@ -43,10 +50,21 @@ pub use cyber::{
 };
 #[cfg(test)]
 use cyber::{observation_batches, validate_observation_ids};
+pub use doctor::{DoctorCause, DoctorCheck, DoctorCoverage, DoctorReport, DoctorStatus, diagnose};
 pub use incidents::{IncidentStatus, IncidentView};
 pub use memory::{CyberMemoryContextSource, CyberMemoryFile, CyberMemorySnapshot};
+pub use policy::{
+    POLICY_DOCUMENT_MAX_BYTES, PolicyImportCounts, PolicyImportIssue, PolicyImportMode,
+    PolicyImportOptions, PolicyImportReport, PolicyImportRule, PolicyImportSection,
+};
 pub use recommendations::{RecommendationStatus, RecommendationView};
-pub use reviews::{ReviewFinding, ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView};
+pub use reviews::{
+    LoupeReadiness, LoupeReadinessCheck, LoupeReadinessCheckName, LoupeReadinessState,
+    LoupeSetupConversation, LoupeSetupObservation, LoupeSetupScope, LoupeSetupState, ReviewFinding,
+    ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView, valid_setup_web_url,
+};
+pub use trace::{ConversationTrace, TRACE_MAX_MESSAGES};
+pub use workspaces::{WorkspaceView, Workspaces};
 
 pub const DEFAULT_BASE_URL: &str = "https://app.cloudthinker.io";
 const REQUEST_TIMEOUT_SECS: u64 = 30;
@@ -194,6 +212,7 @@ impl RunView {
 /// The authenticated client. Cheap to clone-share via `Arc`.
 pub struct CtClient {
     base_url: String,
+    request_timeout: Duration,
     store: Arc<dyn TokenStore>,
     refresh: RefreshCoordinator,
     // Reqwest pools connections; rebuild only when the bearer token rotates so
@@ -208,8 +227,19 @@ pub struct CtClient {
 
 impl CtClient {
     pub fn new(base_url: impl Into<String>, store: Arc<dyn TokenStore>) -> CtResult<Self> {
-        let base_url = normalize_base_url(&base_url.into())?;
-        let timeout = Duration::from_secs(REQUEST_TIMEOUT_SECS);
+        Self::with_request_timeout(
+            base_url.into(),
+            store,
+            Duration::from_secs(REQUEST_TIMEOUT_SECS),
+        )
+    }
+
+    pub(crate) fn with_request_timeout(
+        base_url: String,
+        store: Arc<dyn TokenStore>,
+        timeout: Duration,
+    ) -> CtResult<Self> {
+        let base_url = normalize_base_url(&base_url)?;
         let anon_http = crate::tls::http_client_builder()
             .timeout(timeout)
             .redirect(same_origin_redirects())
@@ -223,6 +253,7 @@ impl CtClient {
         let refresh = RefreshCoordinator::new(base_url.clone(), store.clone(), anon_http.clone());
         Ok(Self {
             base_url,
+            request_timeout: timeout,
             store,
             refresh,
             http_cache: Mutex::new(None),
@@ -289,6 +320,17 @@ impl CtClient {
         conversation_id: Option<Uuid>,
         selected_agent_reference: Option<&str>,
     ) -> CtResult<SubmittedRun> {
+        self.submit_run_with_key(prompt, conversation_id, selected_agent_reference, None)
+            .await
+    }
+
+    pub async fn submit_run_with_key(
+        &self,
+        prompt: &str,
+        conversation_id: Option<Uuid>,
+        selected_agent_reference: Option<&str>,
+        idempotency_key: Option<&str>,
+    ) -> CtResult<SubmittedRun> {
         let prompt_field = prompt
             .parse::<cloudthinker_api::types::SubmitHeadlessRunRequestPrompt>()
             .map_err(|_| CtError::Usage("prompt must be 1–50000 characters".into()))?;
@@ -298,7 +340,10 @@ impl CtClient {
         }
         let body = cloudthinker_api::types::SubmitHeadlessRunRequest {
             conversation_id,
-            idempotency_key: None,
+            idempotency_key: idempotency_key
+                .map(str::parse)
+                .transpose()
+                .map_err(|_| CtError::Usage("invalid run idempotency key".into()))?,
             prompt: prompt_field,
             selection: cloudthinker_api::types::SavedSelection {
                 option_id: "mode:pro".parse().map_err(|error| {
@@ -601,8 +646,7 @@ impl CtClient {
         )
             -> Result<cloudthinker_api::ResponseValue<T>, cloudthinker_api::Error<()>>,
     {
-        self.authed_with_timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS), call)
-            .await
+        self.authed_with_timeout(self.request_timeout, call).await
     }
 
     pub(crate) async fn authed_with_timeout<T, F>(&self, timeout: Duration, call: F) -> CtResult<T>
@@ -779,17 +823,25 @@ pub fn login_command(url: &str) -> String {
 }
 
 fn login_command_for(url: &str, effective_default: &str) -> String {
+    match explicit_url_for(url, effective_default) {
+        Some(url) => format!("cloudthinker login --url {url}"),
+        None => "cloudthinker login".into(),
+    }
+}
+
+pub fn explicit_url(url: &str) -> Option<String> {
+    explicit_url_for(url, &crate::cli_config::effective_default_url())
+}
+
+fn explicit_url_for(url: &str, effective_default: &str) -> Option<String> {
     let default_origin = origin_of(effective_default);
     match (origin_of(url), url::Url::parse(url)) {
-        (Ok(origin), _) if default_origin.as_ref().is_ok_and(|d| *d == origin) => {
-            "cloudthinker login".into()
+        (Ok(origin), _) if default_origin.as_ref().is_ok_and(|d| *d == origin) => None,
+        (Ok(_), Ok(parsed)) if matches!(parsed.path(), "" | "/") => {
+            Some(parsed.origin().ascii_serialization())
         }
-        (Ok(_), Ok(parsed)) if matches!(parsed.path(), "" | "/") => format!(
-            "cloudthinker login --url {}",
-            parsed.origin().ascii_serialization()
-        ),
-        (Ok(_), Ok(_)) => format!("cloudthinker login --url {}", url.trim_end_matches('/')),
-        _ => "cloudthinker login".into(),
+        (Ok(_), Ok(_)) => Some(url.trim_end_matches('/').to_string()),
+        _ => None,
     }
 }
 
@@ -862,6 +914,10 @@ fn file_store(base_url: &str, workspace: Option<&str>) -> CtResult<Arc<dyn Token
     )?))
 }
 
+fn exceeds_chars(value: &str, limit: usize) -> bool {
+    value.len() > limit && value.chars().nth(limit).is_some()
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -869,7 +925,7 @@ mod tests {
     use super::*;
     use crate::auth::refresh::PROACTIVE_REFRESH_SKEW_SECS;
     use crate::test_support::{MockTokenStore, stored, token_json};
-    use wiremock::matchers::{body_json, method, path, query_param};
+    use wiremock::matchers::{body_json, method, path, query_param, query_param_is_missing};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
@@ -1872,6 +1928,7 @@ mod tests {
                 .and(query_param("mr_iid", "42"))
                 .and(query_param("project_path", "group/my-repo"))
                 .and(query_param("provider", "gitlab"))
+                .and(query_param_is_missing("cyber_vocabulary"))
                 .respond_with(ResponseTemplate::new(200).set_body_json(payload))
                 .mount(&server)
                 .await;
@@ -1940,7 +1997,8 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/api/v1/appsec/apps/"))
-            .respond_with(ResponseTemplate::new(404))
+            .and(query_param("cyber_vocabulary", "2"))
+            .respond_with(ResponseTemplate::new(409))
             .mount(&server)
             .await;
         let client = CtClient::new(
@@ -1950,7 +2008,7 @@ mod tests {
         .unwrap();
         let err = client.cyber_list_apps().await.unwrap_err();
         assert!(
-            matches!(err, CtError::Api { status: 404, .. }),
+            matches!(err, CtError::Api { status: 409, .. }),
             "got {err:?}"
         );
     }

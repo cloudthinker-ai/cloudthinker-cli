@@ -1,8 +1,187 @@
 use serde::Serialize;
 
 use super::CtClient;
-use crate::error::CtResult;
+use crate::error::{CtError, CtResult};
 use crate::review_url::{MrCoordinates, MrProvider};
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoupeReadinessState {
+    Off,
+    Ready,
+    NeedsSetup,
+    Busy,
+    Offline,
+    NoAnswer,
+    Unavailable,
+}
+
+impl From<cloudthinker_api::types::LoupeReadinessState> for LoupeReadinessState {
+    fn from(value: cloudthinker_api::types::LoupeReadinessState) -> Self {
+        use cloudthinker_api::types::LoupeReadinessState as State;
+        match value {
+            State::Off => Self::Off,
+            State::Ready => Self::Ready,
+            State::NeedsSetup => Self::NeedsSetup,
+            State::Busy => Self::Busy,
+            State::Offline => Self::Offline,
+            State::NoAnswer => Self::NoAnswer,
+            State::Unavailable => Self::Unavailable,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LoupeReadinessCheck {
+    pub name: LoupeReadinessCheckName,
+    pub passed: bool,
+    pub required: bool,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoupeReadinessCheckName {
+    Checkout,
+    Node,
+    Bun,
+    Playwright,
+    Chromium,
+    SignIn,
+    DevEnv,
+    AppRuntime,
+    Sandbox,
+}
+
+impl From<cloudthinker_api::types::LoupeReadinessCheckName> for LoupeReadinessCheckName {
+    fn from(value: cloudthinker_api::types::LoupeReadinessCheckName) -> Self {
+        use cloudthinker_api::types::LoupeReadinessCheckName as Name;
+        match value {
+            Name::Checkout => Self::Checkout,
+            Name::Node => Self::Node,
+            Name::Bun => Self::Bun,
+            Name::Playwright => Self::Playwright,
+            Name::Chromium => Self::Chromium,
+            Name::SignIn => Self::SignIn,
+            Name::DevEnv => Self::DevEnv,
+            Name::AppRuntime => Self::AppRuntime,
+            Name::Sandbox => Self::Sandbox,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LoupeReadiness {
+    pub state: LoupeReadinessState,
+    pub target_id: Option<uuid::Uuid>,
+    pub repository: Option<String>,
+    pub detail: Option<String>,
+    pub checks: Vec<LoupeReadinessCheck>,
+    pub observed: Option<LoupeSetupObservation>,
+}
+
+pub struct LoupeSetupScope<'a> {
+    pub worker: uuid::Uuid,
+    pub connection: uuid::Uuid,
+    pub provider: &'a str,
+    pub repository: &'a str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LoupeSetupConversation {
+    pub conversation_id: uuid::Uuid,
+    pub needs_initial_message: bool,
+    pub web_url: String,
+}
+
+pub fn valid_setup_web_url(value: &str) -> bool {
+    url::Url::parse(value).is_ok_and(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && url.host_str().is_some()
+            && url.username().is_empty()
+            && url.password().is_none()
+    })
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoupeSetupState {
+    NotChecked,
+    Partial,
+    Full,
+}
+
+impl std::fmt::Display for LoupeSetupState {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::NotChecked => "not_checked",
+            Self::Partial => "partial",
+            Self::Full => "full",
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LoupeSetupObservation {
+    pub state: LoupeSetupState,
+    pub provider: String,
+    pub repository: String,
+    pub target_id: uuid::Uuid,
+    pub connection_id: uuid::Uuid,
+    pub checked_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub generation: Option<uuid::Uuid>,
+    pub check_pending: bool,
+    pub has_saved_observations: bool,
+    pub enabled: bool,
+    pub partial_accepted: bool,
+    pub detail: String,
+}
+
+impl From<cloudthinker_api::types::LoupeSetupReadinessView> for LoupeSetupObservation {
+    fn from(value: cloudthinker_api::types::LoupeSetupReadinessView) -> Self {
+        use cloudthinker_api::types::LoupeSetupReadinessViewState as State;
+        Self {
+            state: match value.state {
+                State::NotChecked => LoupeSetupState::NotChecked,
+                State::Partial => LoupeSetupState::Partial,
+                State::Full => LoupeSetupState::Full,
+            },
+            provider: value.provider.to_string(),
+            repository: value.repository,
+            target_id: value.target_id,
+            connection_id: value.connection_id,
+            checked_at: value.checked_at,
+            generation: value.generation,
+            check_pending: value.check_pending,
+            has_saved_observations: value.has_saved_observations,
+            enabled: value.enabled,
+            partial_accepted: value.partial_accepted,
+            detail: value.detail,
+        }
+    }
+}
+
+impl From<cloudthinker_api::types::LoupeReadinessResponse> for LoupeReadiness {
+    fn from(value: cloudthinker_api::types::LoupeReadinessResponse) -> Self {
+        Self {
+            state: value.state.into(),
+            target_id: value.target_id,
+            repository: value.repository,
+            detail: value.detail,
+            observed: value.observed.map(Into::into),
+            checks: value
+                .checks
+                .into_iter()
+                .map(|check| LoupeReadinessCheck {
+                    name: check.name.into(),
+                    passed: check.passed,
+                    required: check.required,
+                    detail: check.detail,
+                })
+                .collect(),
+        }
+    }
+}
 
 /// Terminal + non-terminal review states, serialized with the API's wire
 /// values.
@@ -171,6 +350,61 @@ fn to_api_provider(provider: MrProvider) -> cloudthinker_api::types::CodeReviewP
 }
 
 impl CtClient {
+    pub async fn start_loupe_setup_conversation(
+        &self,
+        worker: uuid::Uuid,
+    ) -> CtResult<LoupeSetupConversation> {
+        let request = cloudthinker_api::types::LoupeSetupConversationRequest {
+            target_id: worker,
+            restart: false,
+        };
+        let response = self
+            .authed(async |client: cloudthinker_api::Client| {
+                client
+                    .code_review_start_loupe_setup_conversation(None, None, &request)
+                    .await
+            })
+            .await?;
+        Ok(LoupeSetupConversation {
+            conversation_id: response.conversation_id,
+            needs_initial_message: response.needs_initial_message,
+            web_url: response.web_url,
+        })
+    }
+
+    pub async fn check_loupe_readiness(
+        &self,
+        worker: Option<uuid::Uuid>,
+        scope: Option<&LoupeSetupScope<'_>>,
+    ) -> CtResult<LoupeReadiness> {
+        let provider = scope
+            .map(|scope| cloudthinker_api::types::CodeReviewProvider::try_from(scope.provider))
+            .transpose()
+            .map_err(|error| CtError::Usage(format!("invalid Review provider: {error}")))?;
+        let repository = scope
+            .map(|scope| cloudthinker_api::types::Repository::try_from(scope.repository))
+            .transpose()
+            .map_err(|error| CtError::Usage(format!("invalid repository: {error}")))?;
+        if scope.is_some_and(|scope| Some(scope.worker) != worker) {
+            return Err(CtError::Usage(
+                "the scope must use the selected Worker".into(),
+            ));
+        }
+        let response = self
+            .authed(async |client: cloudthinker_api::Client| {
+                client
+                    .code_review_check_loupe_target(
+                        scope.map(|scope| &scope.connection),
+                        provider,
+                        repository.as_ref(),
+                        worker.as_ref(),
+                    )
+                    .await
+            })
+            .await?;
+        Ok(response.into())
+    }
+
     /// Resolve MR coordinates (parsed client-side from a pasted URL) to their
     /// tracked review detail. Unknown coordinates surface as
     /// `CtError::Api { status: 404, .. }`.

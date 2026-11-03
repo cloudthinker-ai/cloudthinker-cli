@@ -66,12 +66,15 @@ _CHAT_PATHS = frozenset(
     {
         "/api/v1/cli/runs",
         "/api/v1/cli/runs/{run_id}",
+        "/api/v1/cli/conversations/{conversation_id}/trace",
     }
 )
 
 _REVIEW_PATHS = frozenset(
     {
         "/api/v1/code-review/merge-requests/lookup",
+        "/api/v1/code-review/setup/loupe-conversation",
+        "/api/v1/code-review/setup/loupe-target/check",
     }
 )
 
@@ -85,6 +88,13 @@ _RESOLVE_PATHS = frozenset(
 _OPTIMIZE_PATHS = frozenset(
     {
         "/api/v1/recommendations/",
+    }
+)
+
+_POLICY_PATHS = frozenset(
+    {
+        "/api/v1/policy/export",
+        "/api/v1/policy/import",
     }
 )
 
@@ -124,7 +134,15 @@ _CONNECTIONS_PATHS = frozenset(
         "/api/v1/builtin-connection/{builtin_id}/test-status",
         "/api/v1/builtin-connection/{builtin_id}/retry",
         "/api/v1/mcp-connection",
+        "/api/v1/mcp-connection/{mcp_conn_id}",
         "/api/v1/mcp-connection/{mcp_conn_id}/test-status",
+    }
+)
+
+_AGENTS_PATHS = frozenset(
+    {
+        "/api/v1/agents/",
+        "/api/v1/agents/custom/{agent_id}",
     }
 )
 
@@ -150,8 +168,10 @@ ALLOWED_PATHS = (
     | _REVIEW_PATHS
     | _RESOLVE_PATHS
     | _OPTIMIZE_PATHS
+    | _POLICY_PATHS
     | _CYBER_PATHS
     | _CONNECTIONS_PATHS
+    | _AGENTS_PATHS
 )
 
 _HTTP_METHODS = frozenset({"get", "put", "post", "delete", "patch", "options", "head"})
@@ -159,15 +179,32 @@ _GET_ONLY_PATHS = frozenset(
     {
         "/api/v1/appsec/apps/{app_id}/context",
         "/api/v1/builtin-connection",
-        "/api/v1/builtin-connection/{builtin_id}",
         "/api/v1/builtin-connection/{builtin_id}/test-status",
         "/api/v1/mcp-connection",
         "/api/v1/mcp-connection/{mcp_conn_id}/test-status",
         "/api/v1/incidents/",
         "/api/v1/incidents/{incident_id}",
         "/api/v1/recommendations/",
+        "/api/v1/agents/",
+        "/api/v1/agents/custom/{agent_id}",
+        "/api/v1/policy/export",
+        "/api/v1/workspaces/",
     }
 )
+_POST_ONLY_PATHS = frozenset(
+    {
+        "/api/v1/code-review/setup/loupe-conversation",
+        "/api/v1/policy/import",
+    }
+)
+_DELETE_ONLY_PATHS = frozenset({"/api/v1/mcp-connection/{mcp_conn_id}"})
+_GET_DELETE_PATHS = frozenset({"/api/v1/builtin-connection/{builtin_id}"})
+_ONLY_METHODS = {
+    **dict.fromkeys(_GET_ONLY_PATHS, frozenset({"get"})),
+    **dict.fromkeys(_POST_ONLY_PATHS, frozenset({"post"})),
+    **dict.fromkeys(_DELETE_ONLY_PATHS, frozenset({"delete"})),
+    **dict.fromkeys(_GET_DELETE_PATHS, frozenset({"get", "delete"})),
+}
 
 _BUILTIN_CONNECTION_UNREAD = frozenset(
     {
@@ -189,6 +226,23 @@ _BUILTIN_CONNECTION_UNREAD = frozenset(
     }
 )
 
+_AGENT_UNREAD = frozenset(
+    {
+        "role",
+        "instructions",
+        "soul",
+        "config",
+        "avatar_svg_url",
+        "is_manager",
+        "is_available",
+        "unavailable_reason",
+        "is_status_locked",
+        "is_custom",
+        "created_at",
+        "updated_at",
+    }
+)
+
 _UNREAD_PROPERTIES = {
     "IncidentPublic": frozenset({"declaration_actor_kind"}),
     "BuiltinConnectionsPublic": frozenset({"categories"}),
@@ -197,12 +251,47 @@ _UNREAD_PROPERTIES = {
     "MCPConnectionPublic": frozenset({"config", "tools"}),
     "ConnectionMCPConfigPublic": frozenset({"headers"}),
     "ConnectionTestStatus": frozenset({"classification"}),
+    "AgentPublic": _AGENT_UNREAD,
+    "CustomAgentPublic": _AGENT_UNREAD,
+    "WorkspaceWithRolePublic": frozenset(
+        {
+            "approval_level",
+            "approval_mode",
+            "auto_mode_enabled",
+            "brand_chart_colors",
+            "brand_company_name",
+            "brand_logo_storage_key",
+            "brand_primary_color",
+            "cloud_connection_prefixes",
+            "created_at",
+            "description",
+            "is_deleted",
+            "is_interrupt_approver",
+            "member_count",
+            "notification_additional_emails",
+            "organization_id",
+            "owner_id",
+            "policy_enforcement_enabled",
+            "policy_templates_enabled",
+            "policy_tool_enabled",
+            "pulse_auto_subscribe",
+            "updated_at",
+            "workers_enabled",
+        }
+    ),
 }
 
 _UNTYPED_ERROR_SCHEMAS = frozenset({"ConnectionErrorResponse"})
 
 _OPEN_ENUM_SCHEMAS = frozenset(
-    {"ConnectionStatus", "ConnectionTestPhase", "AuthType", "MCPTransportType"}
+    {
+        "ConnectionStatus",
+        "ConnectionTestPhase",
+        "ConnectionDisconnectPhase",
+        "AuthType",
+        "MCPTransportType",
+        "WorkspaceRole",
+    }
 )
 
 
@@ -296,11 +385,12 @@ def prune(spec: dict) -> dict:
     kept_paths: dict[str, dict] = {}
     for path in ALLOWED_PATHS:
         item = dict(spec["paths"][path])
-        if path in _GET_ONLY_PATHS:
+        only = _ONLY_METHODS.get(path)
+        if only is not None:
             item = {
                 method: operation
                 for method, operation in item.items()
-                if method.lower() == "get"
+                if method.lower() in only
             }
         for method in list(item):
             if method.lower() in _HTTP_METHODS:

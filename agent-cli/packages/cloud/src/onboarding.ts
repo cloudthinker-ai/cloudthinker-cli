@@ -11,3 +11,14 @@ export function bundledTourPath(packageDir: string = getPackageDir()): string {
 	if (existsSync(bundled)) return bundled;
 	return fileURLToPath(new URL("../../agent/.agents/skills/tour/SKILL.md", import.meta.url));
 }
+
+export function bundledReviewSetupPath(
+	packageDir: string = getPackageDir(),
+	moduleUrl: string = import.meta.url,
+): string {
+	const bundled = join(packageDir, ".agents", "skills", "review-setup", "SKILL.md");
+	if (existsSync(bundled)) return bundled;
+	const mirrored = fileURLToPath(new URL("../../agent/.agents/skills/review-setup/SKILL.md", moduleUrl));
+	if (existsSync(mirrored)) return mirrored;
+	return fileURLToPath(new URL("../../../../executor/app/skills/public/review-setup/SKILL.md", moduleUrl));
+}

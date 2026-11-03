@@ -3,7 +3,7 @@ import { CloudThinkerApiError } from "./client.ts";
 export const RETRY_DELAYS_MS: readonly number[] = [5_000, 10_000, 30_000, 60_000];
 export const RETRY_COMMAND = "/cloud retry";
 
-export type CloudFailureKind = "signed-out" | "denied" | "offline" | "server" | "rejected";
+export type CloudFailureKind = "signed-out" | "denied" | "out-of-credits" | "offline" | "server" | "rejected";
 
 export interface CloudFailure {
 	kind: CloudFailureKind;
@@ -23,6 +23,9 @@ export function classifyCloudError(error: unknown): CloudFailure {
 	const status = error instanceof CloudThinkerApiError ? error.status : undefined;
 	if (status === 401) {
 		return { kind: "signed-out", label: "signed out", cause: "You are signed out of CloudThinker", action: `run \`cloudthinker login\` in a terminal, then ${RETRY_COMMAND}`, detail, retry: false };
+	}
+	if (status === 402) {
+		return { kind: "out-of-credits", label: "out of credits", cause: "This workspace has no credits left", action: `buy credits or upgrade in CloudThinker, then ${RETRY_COMMAND}`, detail, retry: false };
 	}
 	if (status === 403) {
 		return { kind: "denied", label: "access denied", cause: "CloudThinker denied access to this workspace", action: `check this workspace with \`cloudthinker whoami\`, then ${RETRY_COMMAND}`, detail, retry: false };

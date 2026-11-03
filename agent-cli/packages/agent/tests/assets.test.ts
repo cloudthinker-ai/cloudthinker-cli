@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cpSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +24,11 @@ test("CA-AD-6 real pi assets validate, and a missing theme or unexpected entry f
 			});
 		}
 		cpSync(new URL("../.agents/skills/", import.meta.url), join(root, ".agents/skills"), { recursive: true });
+		const reviewSetup = join(root, ".agents/skills/review-setup/SKILL.md");
+		if (!existsSync(reviewSetup)) {
+			mkdirSync(dirname(reviewSetup), { recursive: true });
+			cpSync(new URL("../../../../executor/app/skills/public/review-setup/SKILL.md", import.meta.url), reviewSetup);
+		}
 		mkdirSync(join(root, "export-html"));
 		for (const file of ["template.html", "template.css", "template.js", "vendor"]) {
 			cpSync(join(piRoot, "dist/core/export-html", file), join(root, "export-html", file), { recursive: true });
@@ -33,6 +38,10 @@ test("CA-AD-6 real pi assets validate, and a missing theme or unexpected entry f
 		writeFileSync(join(root, "NOTICE"), notice);
 		writeFileSync(join(root, "package.json"), JSON.stringify({ piVersion: "1.0.0", piConfig: { name: "cloudthinker" } }));
 		validateAssets(root, piRoot);
+		const reviewSetupContent = readFileSync(reviewSetup);
+		rmSync(reviewSetup);
+		assert.throws(() => validateAssets(root, piRoot), /Missing bundle asset: .agents\/skills\/review-setup\/SKILL.md/);
+		writeFileSync(reviewSetup, reviewSetupContent);
 		const tourPath = join(root, ".agents/skills/tour/SKILL.md");
 		rmSync(tourPath);
 		assert.throws(() => validateAssets(root, piRoot), /Missing bundle asset: .agents\/skills\/tour\/SKILL.md/);

@@ -1,6 +1,7 @@
 //! Thin command adapters: parse args → client call → rendered output.
 
 pub mod agent;
+pub mod agents;
 pub mod auth;
 #[cfg(unix)]
 pub mod bg_shim;
@@ -13,9 +14,11 @@ pub mod cyber_config;
 pub mod cyber_discovery;
 pub mod cyber_doctor;
 pub mod cyber_memory;
+pub mod doctor;
 pub mod incident;
 pub mod login;
 pub mod logout;
+pub mod policy;
 pub mod recommendations;
 pub mod remote;
 pub mod review;
@@ -25,6 +28,7 @@ pub mod worker;
 #[cfg(unix)]
 pub mod worker_doctor;
 pub mod worker_service;
+pub mod workspace;
 
 use cloudthinker_client::{CtClient, CtError, TOKEN_ENV_VAR, resolve_store};
 

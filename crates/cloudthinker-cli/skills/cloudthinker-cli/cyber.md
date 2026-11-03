@@ -102,8 +102,9 @@ Upload paths relative to the local evidence directory:
 
 - `surface/<asset-type>.ndjson`: each entry has `asset_type` and `locator`.
 - `findings/candidates/open/<slug>.md`: an unverified lead; not a published finding.
-- `findings/open/<slug>.md`: independently verified findings. Other outcomes
-  use `resolved/`, `needs-verification/`, or `dismissed/`.
+- `findings/open/<slug>.md`: confirmed findings. Fixed findings use `resolved/`;
+  other outcomes use `needs-verification/` or `dismissed/`. This release keeps
+  these folder names; readers also accept `confirmed/` and `fixed/`.
 - `findings/evidence/<path>`: supporting proof, observations, and attachments.
 - `INDEX.md`: summary, tested scope, findings, and limitations.
 

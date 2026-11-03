@@ -13,6 +13,23 @@ use crate::engine::watch::{Poll, WatchConfig, watch};
 
 use super::build_client;
 
+pub async fn run_trace(
+    base_url: &str,
+    workspace: Option<&str>,
+    conversation_id: Uuid,
+    limit: u64,
+    json: bool,
+) -> ExitCode {
+    let client = match build_client(base_url, workspace) {
+        Ok(client) => client,
+        Err(error) => return exit::report(&error),
+    };
+    match client.conversation_trace(conversation_id, limit).await {
+        Ok(trace) => exit::finish_output(output::emit_trace(&trace, json)),
+        Err(error) => exit::report(&error),
+    }
+}
+
 pub struct PromptOptions<'a> {
     pub base_url: &'a str,
     pub workspace: Option<&'a str>,

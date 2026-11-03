@@ -33,9 +33,79 @@ cloudthinker chat -p 'Review this repository' --agent '<custom-agent-uuid-or-ali
 
 Use recent runs to find an explicitly identified task, not to assume the newest row is the user's conversation. Ask for clarification if several match. `--continue` accepts a run ID or conversation ID for a HEADLESS or CHAT conversation in the selected workspace. Other feature-owned conversation types cannot be continued here.
 
-`--agent` selects one authorized custom agent by UUID or alias for the turn. It is independent from model selection; an unavailable or deleted custom agent is rejected by the server.
+Discover the selected workspace's agents before choosing a custom agent:
+
+```bash
+cloudthinker agents ls --json
+cloudthinker agents show '<uuid-or-alias>' --json
+```
+
+These commands require live authentication and permission to view agents. They start no run or model call.
+List returns an array; show returns one object with `id`, `alias`, `name`, `agent_type`, `is_active`,
+`description`, `description_truncated`, and `chat_selection`. Instructions, souls, configuration, avatars, and tool payloads are excluded.
+Descriptions contain at most 2048 Unicode scalar values. Names and aliases over 255 Unicode scalar values fail the read.
+The unpaged roster admits at most 1000 rows and rejects incomplete data. It never silently truncates alias resolution.
+An empty JSON list is `[]`. Order is ASCII-case-insensitive alias, original alias, then UUID.
+Aliases match exactly, ignoring ASCII case; ambiguous aliases exit 2 with candidate UUIDs. Select by UUID in that case.
+Missing, deleted, and foreign-workspace UUIDs return 404 and exit 1. Authentication or permission failures exit 3 without public fallback.
+
+`chat_selection=eligible` means an active custom agent qualifies for explicit selection.
+`inactive` custom agents cannot be selected. `default` identifies the primary default agent; use chat without `--agent` for it.
+Other built-in specialists are excluded from the public roster. Never infer that a built-in can be explicitly selected.
+`--agent` selects one authorized custom agent by UUID or alias for the turn. It is independent from model selection.
+Chat still checks its own permission, billing, connection, and runtime requirements; discovery is a metadata snapshot.
+An unavailable or deleted custom agent is rejected by the server.
 
 Only one turn runs in a conversation at a time. Wait for its active run to finish before continuing. A `stream_already_active` failure means another producer still owns the conversation; follow that work before retrying.
+
+## Inspect persisted evidence
+
+```bash
+cloudthinker chat trace '<conversation-id>'
+cloudthinker chat trace '<conversation-id>' --limit 20 --json
+```
+
+Use the conversation UUID, rather than the run UUID. This reads existing evidence without starting or continuing work.
+The selected identity needs permission to view conversation history in that workspace. Another creator does not make a conversation private.
+CHAT, HEADLESS and other message-backed conversation types use the same history authority as the app.
+Mirrored Agent CLI sessions return an explicit unsupported error; open their session in the browser instead.
+
+The snapshot includes user text, assistant text and known default-agent aliases. Unknown/internal roles and synthetic system events are excluded.
+User text comes from message content. Agent text uses ordered text components, falling back to message content when absent.
+Tool metadata includes name, identifiers, position, runtime, completion and approval. Arguments, outputs, reasoning, thinking and attachments are excluded.
+Visible text and string metadata pass through Guardrails redaction. Human output also removes terminal and bidi controls.
+`finish_reason=error` records a message failure. Tool completion does not establish success; incomplete tools do not prove a live run.
+
+The default and maximum window is 100 source messages; `--limit` accepts 1 through 100.
+The newest source window is presented in ascending `(created_at, id)` order; tools use `(position, id)`.
+At most 200 tool cards and 4096 Unicode scalar values per text field are returned.
+The compact HTTP response is bounded to 262144 UTF-8 bytes, including metadata. CLI JSON is pretty-printed and can occupy more bytes.
+Byte eviction removes oldest returned messages and recomputes summary values. Always inspect truncation before treating evidence as complete.
+Excluded-only windows report a source-message exclusion count. They differ from conversations with no persisted messages.
+
+The API separately admits the full persisted source: at most 2000 logical rows and 2 MiB, including excluded/deleted payloads.
+Checkpoint reads have an independent source budget. Source overflow fails with exit 1; reducing `--limit` may not help. Use the browser.
+History dependency failure also exits 1. It never becomes a successful empty trace or a forced legacy transcript.
+
+`--json` emits one object. All fields below are present; unknown nullable values remain `null`:
+
+| Object | Fields and types |
+| --- | --- |
+| Root | `conversation_id`, `workspace_id`: UUID; `captured_at`: UTC RFC3339; `snapshot`: `persisted_best_effort`; `messages`: Message[]; `summary`: Summary; `truncation`: Truncation |
+| Message | `id`: UUID; `role`, `text`: string; `created_at`: UTC RFC3339; `text_truncated`: bool; `finish_reason`: string/null; `usage`: Usage; `tools`: Tool[]; `tools_omitted`: integer |
+| Tool | `id`: UUID; `tool_call_id`: string/null; `position`: integer; `name`: string; `runtime_seconds`: number/null; `completed`: bool; `approval_status`: string/null |
+| Usage | `records`, `token_records`: integer; `tokens`: integer/null; `credits`: number/null |
+| Summary | `scope`: `returned_messages`; `messages`, `tool_calls`, `failed_messages`, `messages_without_usage`, `messages_with_unknown_tokens`: integer; `tokens`: integer/null; `credits`: number/null |
+| Truncation | `truncated`, `has_older_messages`: bool; `messages_filtered`, `messages_omitted_for_bytes`, `tools_omitted`, `text_fields_truncated`, `message_limit`, `tool_limit`, `text_char_limit`, `response_byte_limit`: integer |
+
+Usage sums recorded charges for returned live messages only, including legacy charges with proven message ownership.
+Multiple charge rows are summed once each. `token_records` counts rows with known token values; `records` counts all charge rows.
+Unknown usage remains null; recorded zero remains zero. Summary values are known subtotals, with counters for missing or partial token data.
+Charges without a returned message are outside this window; these figures do not promise a whole-conversation bill.
+The snapshot can change during a live run. Re-read the same conversation; use `chat status` to follow run completion.
+An inspected message failure does not fail the read command: successful trace reads exit 0.
+Missing, deleted and foreign-workspace conversations share a 404 and exit 1. Invalid arguments and unsupported mirrors exit 2.
+Authentication or permission errors keep exit 3. Trace reads never request a browser approval or open a login themselves.
 
 ## Outcomes
 

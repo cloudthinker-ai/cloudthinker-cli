@@ -20,8 +20,8 @@ MONO_ROOT="$(git -C "$CLI_DIR" rev-parse --show-toplevel)"
 MONO_SHA="$(git -C "$CLI_DIR" rev-parse HEAD)"
 
 python3 "$CLI_DIR/scripts/changelog.py" pending
-if [ -n "$(git -C "$CLI_DIR" status --porcelain -- . ../agent-cli)" ]; then
-  echo "error: commit CLI and agent changes before release-sync" >&2
+if [ -n "$(git -C "$CLI_DIR" status --porcelain -- . ../agent-cli ../executor/app/skills/public/review-setup)" ]; then
+  echo "error: commit CLI, agent, and review-setup Skill changes before release-sync" >&2
   exit 1
 fi
 
@@ -65,6 +65,11 @@ echo ">> export the committed cli/ and agent-cli/ trees at $MONO_SHA"
 mkdir "$work/src"
 git -C "$MONO_ROOT" archive --format=tar "$MONO_SHA" -- cli agent-cli \
   ':(exclude,glob)**/AGENTS.md' ':(exclude,glob)**/CLAUDE.md' | tar -x -C "$work/src"
+review_setup="executor/app/skills/public/review-setup/SKILL.md"
+staged_skill="$work/src/agent-cli/packages/agent/.agents/skills/review-setup/SKILL.md"
+mkdir -p "$(dirname "$staged_skill")"
+git -C "$MONO_ROOT" show "$MONO_SHA:$review_setup" > "$staged_skill"
+git -C "$MONO_ROOT" show "$MONO_SHA:$review_setup" | cmp -s - "$staged_skill"
 
 echo ">> mirror cli/ -> clone (protect the clone's .git)"
 rsync -a --delete --exclude='.git/' "$work/src/cli"/ "$work/repo"/

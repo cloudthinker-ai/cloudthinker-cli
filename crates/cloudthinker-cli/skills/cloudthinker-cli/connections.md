@@ -1,4 +1,4 @@
-# Check and repair workspace Connections
+# Check, repair, and remove workspace Connections
 
 Use this module when the user asks which Connections a workspace has, whether one works, why its test failed, or how to add one. Establish the intended identity with the auth module first, and pass the same global `--url` and `--workspace` on every call.
 
@@ -40,3 +40,13 @@ cloudthinker connections connect-url <prefix> --wait --json
 ```
 
 The command prints the web page that adds that Connection type in the selected workspace, and opens it on a desktop. Give the URL to the user: they enter credentials in the browser. Never ask for, accept, or pass a credential through the CLI or chat. `--wait` returns once a new Connection of that type appears and its first test ends, with `connection` and `test` in the JSON. An unknown prefix exits 2.
+
+## Disconnect
+
+```bash
+cloudthinker connections disconnect <id> --yes --json
+```
+
+Disconnect deletes a built-in or MCP Connection and its saved credentials from the workspace; agents can no longer use it. Run it only when the user asked to remove that exact Connection, and pass its id. On a terminal it asks first and names the Connection; without a terminal it exits 2 unless you pass `--yes`, and it sends nothing. Pass `--yes` only after the user confirmed the id. A declined question exits 1 and changes nothing.
+
+The server accepts the request and finishes the disconnect in the background: exit 0 means it started, with `status` `disconnecting` and `disconnect_phase` in the JSON. The Connection leaves `connections list` when it is done. Exit 3 means only a workspace admin can disconnect it. Exit 1 with the server's reason means it cannot be disconnected now, for example while a Review setup still uses it.

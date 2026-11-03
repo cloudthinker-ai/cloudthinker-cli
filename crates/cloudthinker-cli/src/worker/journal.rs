@@ -4,6 +4,7 @@ use std::path::Path;
 
 use cap_std::fs::{Dir, MetadataExt, OpenOptions, OpenOptionsExt, PermissionsExt};
 use cloudthinker_client::auth::worker_store::{private_directory, read_private, write_private};
+use cloudthinker_client::worker_api::OperationIssuance;
 use cloudthinker_client::{CtError, CtResult, worker_types as api};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -30,6 +31,28 @@ pub struct OperationRecord {
     pub effect: api::OperationEffect,
     pub state: JournalState,
     pub result_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    worker_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    nonce: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lease_token: Option<String>,
+}
+
+impl OperationRecord {
+    pub fn issuance(&self) -> Option<OperationIssuance<'_>> {
+        Some(OperationIssuance {
+            worker: self.worker_id?,
+            assignment: self.assignment_id,
+            operation: self.operation_id,
+            session: self.session_id,
+            fence: self.fence,
+            sequence: self.sequence,
+            request_digest: &self.digest,
+            nonce: self.nonce.as_deref()?,
+            lease_token: self.lease_token.as_deref()?,
+        })
+    }
 }
 
 pub struct Delivery {
@@ -40,10 +63,13 @@ pub struct Delivery {
     fence: i64,
     digest: String,
     effect: api::OperationEffect,
+    worker_id: Uuid,
+    nonce: String,
+    lease_token: String,
 }
 
 impl Delivery {
-    pub fn of(envelope: &api::OperationEnvelope) -> Self {
+    pub fn of(envelope: &api::OperationEnvelope, worker: Uuid) -> Self {
         Self {
             operation_id: envelope.operation_id,
             assignment_id: envelope.assignment_id,
@@ -52,6 +78,9 @@ impl Delivery {
             fence: envelope.fence_token,
             digest: envelope.request_digest.clone(),
             effect: envelope.effect,
+            worker_id: worker,
+            nonce: envelope.nonce.clone(),
+            lease_token: envelope.lease_token.clone(),
         }
     }
 }
@@ -74,7 +103,12 @@ pub struct ReceiptJournal {
 #[derive(Clone)]
 pub struct Journal(std::sync::Arc<std::sync::Mutex<ReceiptJournal>>);
 
-pub fn remove_abandoned(state: &Path, now: std::time::SystemTime, max_age: std::time::Duration) {
+pub fn remove_abandoned(
+    state: &Path,
+    now: std::time::SystemTime,
+    max_age: std::time::Duration,
+    saved_result_max_age: std::time::Duration,
+) {
     let Ok(entries) = std::fs::read_dir(state) else {
         return;
     };
@@ -95,11 +129,16 @@ pub fn remove_abandoned(state: &Path, now: std::time::SystemTime, max_age: std::
         let modified = std::fs::symlink_metadata(path.join("journal.jsonl"))
             .and_then(|journal| journal.modified())
             .or_else(|_| metadata.modified());
-        let abandoned = modified
+        let Some(age) = modified
             .ok()
             .and_then(|modified| now.duration_since(modified).ok())
-            .is_some_and(|age| age >= max_age);
-        if abandoned && let Err(error) = std::fs::remove_dir_all(&path) {
+        else {
+            continue;
+        };
+        if age >= max_age
+            && (age >= saved_result_max_age || !holds_saved_result(&path))
+            && let Err(error) = std::fs::remove_dir_all(&path)
+        {
             super::telemetry::emit(
                 super::telemetry::Level::Warn,
                 "journal_cleanup_failed",
@@ -108,6 +147,64 @@ pub fn remove_abandoned(state: &Path, now: std::time::SystemTime, max_age: std::
             );
         }
     }
+}
+
+pub fn with_saved_results(state: &Path) -> Vec<std::path::PathBuf> {
+    let Ok(entries) = std::fs::read_dir(state) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| Uuid::parse_str(name).is_ok())
+        })
+        .map(|entry| entry.path())
+        .filter(|path| holds_saved_result(path))
+        .collect()
+}
+
+fn holds_saved_result(path: &Path) -> bool {
+    let Ok(dir) = private_directory(path) else {
+        return false;
+    };
+    let mut options = OpenOptions::new();
+    options
+        .read(true)
+        .custom_flags(rustix::fs::OFlags::NOFOLLOW.bits().cast_signed());
+    let Ok(file) = dir.open_with("journal.jsonl", &options) else {
+        return false;
+    };
+    let mut reader = BufReader::new(file);
+    let mut records = BTreeMap::new();
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        let Ok(count) = (&mut reader).take(16385).read_until(b'\n', &mut line) else {
+            return false;
+        };
+        if count == 0 {
+            break;
+        }
+        if count > 16384 {
+            return false;
+        }
+        if line.last() != Some(&b'\n') {
+            break;
+        }
+        match serde_json::from_slice::<Record>(&line) {
+            Ok(Record::Operation(operation)) => {
+                records.insert(operation.operation_id, operation);
+            }
+            Ok(Record::Cursor { .. }) => {}
+            Err(_) => return false,
+        }
+    }
+    records
+        .values()
+        .any(|record| record.state == JournalState::Terminal && record.issuance().is_some())
 }
 
 impl Journal {
@@ -282,6 +379,9 @@ impl ReceiptJournal {
                     fence: delivery.fence,
                     state: JournalState::Received,
                     result_digest: None,
+                    worker_id: Some(delivery.worker_id),
+                    nonce: Some(delivery.nonce),
+                    lease_token: Some(delivery.lease_token),
                     ..record.clone()
                 };
                 self.append(&Record::Operation(&redelivered))?;
@@ -306,6 +406,9 @@ impl ReceiptJournal {
             effect: delivery.effect,
             state: JournalState::Received,
             result_digest: None,
+            worker_id: Some(delivery.worker_id),
+            nonce: Some(delivery.nonce),
+            lease_token: Some(delivery.lease_token),
         };
         self.append(&Record::Operation(&record))?;
         self.records.insert(delivery.operation_id, record);
@@ -467,6 +570,8 @@ fn journal_error() -> CtError {
 mod tests {
     use super::*;
 
+    const WORKER: Uuid = Uuid::from_u128(7);
+
     #[test]
     fn an_abandoned_receipt_journal_is_removed_after_a_week() {
         let state = tempfile::tempdir().unwrap();
@@ -488,7 +593,7 @@ mod tests {
                 .unwrap();
         }
 
-        remove_abandoned(state.path(), now, week);
+        remove_abandoned(state.path(), now, week, week * 13);
 
         assert!(!old.exists());
         assert!(fresh.exists());
@@ -506,7 +611,7 @@ mod tests {
         let env = envelope();
         let mut journal = ReceiptJournal::open(&path).unwrap();
         assert!(path.join("journal.jsonl").is_file());
-        journal.received(Delivery::of(&env)).unwrap();
+        journal.received(Delivery::of(&env, WORKER)).unwrap();
         journal.started(env.operation_id).unwrap();
         drop(journal);
         let recovered = ReceiptJournal::open(&path).unwrap();
@@ -519,19 +624,21 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let mut journal = ReceiptJournal::open(&root.path().join("journal")).unwrap();
         let uncertain = envelope();
-        journal.received(Delivery::of(&uncertain)).unwrap();
+        journal.received(Delivery::of(&uncertain, WORKER)).unwrap();
         journal.started(uncertain.operation_id).unwrap();
         for sequence in 2..1800 {
             let mut next = envelope();
             next.operation_sequence = sequence;
-            journal.received(Delivery::of(&next)).unwrap();
+            journal.received(Delivery::of(&next, WORKER)).unwrap();
             journal.acknowledge(next.operation_id).unwrap();
             journal.advance_cursor(sequence as u64).unwrap();
         }
         drop(journal);
         let mut journal = ReceiptJournal::open(&root.path().join("journal")).unwrap();
         assert_eq!(journal.cursor(), 1799);
-        assert!(journal.received(Delivery::of(&uncertain)).unwrap() == JournalState::Started);
+        assert!(
+            journal.received(Delivery::of(&uncertain, WORKER)).unwrap() == JournalState::Started
+        );
         assert_eq!(journal.records().len(), 1);
         assert!(
             std::fs::metadata(root.path().join("journal/journal.jsonl"))
@@ -546,16 +653,15 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let env = envelope();
         let mut journal = ReceiptJournal::open(&root.path().join("journal")).unwrap();
-        journal.received(Delivery::of(&env)).unwrap();
+        journal.received(Delivery::of(&env, WORKER)).unwrap();
         journal.advance_cursor(1).unwrap();
         journal.started(env.operation_id).unwrap();
         drop(journal);
         let mut journal = ReceiptJournal::open(&root.path().join("journal")).unwrap();
-        assert!(journal.received(Delivery::of(&env)).unwrap() == JournalState::Started);
+        assert!(journal.received(Delivery::of(&env, WORKER)).unwrap() == JournalState::Started);
         assert_eq!(journal.cursor(), 1);
         assert!(journal.started(env.operation_id).is_err());
         let text = std::fs::read_to_string(root.path().join("journal/journal.jsonl")).unwrap();
-        assert!(!text.contains("private-"));
         assert!(!text.contains("script"));
     }
 
@@ -567,7 +673,7 @@ mod tests {
         let mut journal = ReceiptJournal::open(&path).unwrap();
         let snapshot = || std::fs::read(path.join("journal.jsonl")).unwrap();
         let mut stages = vec![(snapshot(), None, 0)];
-        journal.received(Delivery::of(&env)).unwrap();
+        journal.received(Delivery::of(&env, WORKER)).unwrap();
         stages.push((snapshot(), Some(JournalState::Received), 0));
         journal.advance_cursor(1).unwrap();
         stages.push((snapshot(), Some(JournalState::Received), 1));
@@ -614,7 +720,7 @@ mod tests {
                         assert_eq!(records[0].digest, env.request_digest);
                         assert_eq!(records[0].effect, env.effect);
                         assert!(records[0].state == *state);
-                        assert!(recovered.received(Delivery::of(&env)).unwrap() == *state);
+                        assert!(recovered.received(Delivery::of(&env, WORKER)).unwrap() == *state);
                         if *state == JournalState::Terminal {
                             assert_eq!(
                                 records[0].result_digest,
@@ -652,7 +758,7 @@ mod tests {
         let path = root.path().join("journal");
         let env = envelope();
         let mut journal = ReceiptJournal::open(&path).unwrap();
-        journal.received(Delivery::of(&env)).unwrap();
+        journal.received(Delivery::of(&env, WORKER)).unwrap();
         journal.started(env.operation_id).unwrap();
         drop(journal);
         let file = path.join("journal.jsonl");
@@ -676,7 +782,7 @@ mod tests {
         let path = root.path().join("journal");
         let env = envelope();
         let mut journal = ReceiptJournal::open(&path).unwrap();
-        journal.received(Delivery::of(&env)).unwrap();
+        journal.received(Delivery::of(&env, WORKER)).unwrap();
         journal.started(env.operation_id).unwrap();
         let result: api::WorkerOperationResult = serde_json::from_value(
             serde_json::json!({"state": "succeeded", "status_code": 200, "content_base64": "e30="}),
@@ -708,19 +814,23 @@ mod tests {
         let mut journal = ReceiptJournal::open(&root.path().join("journal")).unwrap();
         let mut idempotent = envelope();
         idempotent.effect = api::OperationEffect::IdempotentMutation;
-        journal.received(Delivery::of(&idempotent)).unwrap();
+        journal.received(Delivery::of(&idempotent, WORKER)).unwrap();
         journal.started(idempotent.operation_id).unwrap();
         let mut replay = idempotent;
         replay.fence_token = 2;
-        assert!(journal.received(Delivery::of(&replay)).unwrap() == JournalState::Received);
+        assert!(journal.received(Delivery::of(&replay, WORKER)).unwrap() == JournalState::Received);
         assert_eq!(journal.records()[0].fence, 2);
 
         let ordinary = envelope();
-        journal.received(Delivery::of(&ordinary)).unwrap();
+        journal.received(Delivery::of(&ordinary, WORKER)).unwrap();
         journal.started(ordinary.operation_id).unwrap();
         let mut ordinary_replay = ordinary;
         ordinary_replay.fence_token = 2;
-        assert!(journal.received(Delivery::of(&ordinary_replay)).is_err());
+        assert!(
+            journal
+                .received(Delivery::of(&ordinary_replay, WORKER))
+                .is_err()
+        );
     }
 
     #[test]
@@ -740,14 +850,18 @@ mod tests {
         write_env.effect = api::OperationEffect::Mutation;
         write_env.request_digest = "f".repeat(64);
         let mut journal = ReceiptJournal::open(&path).unwrap();
-        journal.received(Delivery::of(&read_env)).unwrap();
+        journal.received(Delivery::of(&read_env, WORKER)).unwrap();
         journal.started(read_env.operation_id).unwrap();
         journal.advance_cursor(1).unwrap();
         let mut redelivery = read_env;
         redelivery.fence_token = 2;
-        assert!(journal.received(Delivery::of(&redelivery)).unwrap() == JournalState::Received);
-        assert!(journal.received(Delivery::of(&redelivery)).unwrap() == JournalState::Received);
-        journal.received(Delivery::of(&write_env)).unwrap();
+        assert!(
+            journal.received(Delivery::of(&redelivery, WORKER)).unwrap() == JournalState::Received
+        );
+        assert!(
+            journal.received(Delivery::of(&redelivery, WORKER)).unwrap() == JournalState::Received
+        );
+        journal.received(Delivery::of(&write_env, WORKER)).unwrap();
         journal.started(write_env.operation_id).unwrap();
         journal.acknowledge(write_env.operation_id).unwrap();
         let op = |id: &str, sequence: u8, fence: u8, digest: &str, effect: &str, state: &str| {
@@ -757,7 +871,9 @@ mod tests {
                     "\"assignment_id\":\"b2222222-2222-4222-8222-222222222222\",",
                     "\"session_id\":\"c3333333-3333-4333-8333-333333333333\",",
                     "\"sequence\":{},\"fence\":{},\"digest\":\"{}\",\"effect\":\"{}\",",
-                    "\"state\":\"{}\",\"result_digest\":null}}\n"
+                    "\"state\":\"{}\",\"result_digest\":null,",
+                    "\"worker_id\":\"00000000-0000-0000-0000-000000000007\",",
+                    "\"nonce\":\"private-nonce\",\"lease_token\":\"private-lease\"}}\n"
                 ),
                 id,
                 sequence,
@@ -797,7 +913,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let env = envelope();
         let mut journal = ReceiptJournal::open(&root.path().join("journal")).unwrap();
-        journal.received(Delivery::of(&env)).unwrap();
+        journal.received(Delivery::of(&env, WORKER)).unwrap();
         journal.started(env.operation_id).unwrap();
         let result: api::WorkerOperationResult = serde_json::from_value(
             serde_json::json!({"state": "succeeded", "status_code": 200, "content_base64": "e30="}),
@@ -821,6 +937,6 @@ mod tests {
         )
         .unwrap();
         assert!(journal.result(env.operation_id).is_err());
-        assert!(journal.received(Delivery::of(&env)).unwrap() == JournalState::Terminal);
+        assert!(journal.received(Delivery::of(&env, WORKER)).unwrap() == JournalState::Terminal);
     }
 }

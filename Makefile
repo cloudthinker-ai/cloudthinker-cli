@@ -36,6 +36,8 @@ gen:
 		--name cloudthinker-api --version 0.1.0 --license-name Apache-2.0
 	@echo ">> inject relaxed-lint header into generated lib.rs"
 	python3 $(CLI_DIR)/scripts/inject_lint_header.py $(API_CRATE)/src/lib.rs
+	@echo ">> append client hooks (cyber vocabulary query parameter)"
+	python3 $(CLI_DIR)/scripts/inject_client_hooks.py $(API_CRATE)/src/lib.rs
 	@echo ">> gen complete: $(SNAPSHOT) + $(API_CRATE)"
 
 check: fmt clippy discovery-runtime-check test

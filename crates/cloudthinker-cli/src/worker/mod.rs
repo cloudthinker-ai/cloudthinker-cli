@@ -1,6 +1,8 @@
 pub mod artifacts;
 pub mod background;
 pub mod config;
+pub mod container;
+pub mod egress_proxy;
 pub mod executor;
 pub mod files;
 pub mod journal;

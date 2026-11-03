@@ -1,3 +1,9 @@
+## [0.11.0]
+
+- Make the Review setup Skill available to the local agent.
+- Show the CloudThinker server's message when the model gateway refuses a call, for example when the workspace has no credits left, instead of the raw HTTP status and JSON body.
+- Running out of credits now says so and points to buying credits, instead of showing a generic error.
+
 ## [0.9.0]
 
 - A cloud write that waits for your approval now sends a desktop notification, so you can switch away while the agent works; set `CLOUDTHINKER_NOTIFY=0` to turn it off.

@@ -36,6 +36,23 @@ export function apiKeySpec(
 	return pinned && isUuid(pinned) ? `!${command} --workspace ${pinned}` : `!${command}`;
 }
 
+const GATEWAY_ERROR = /^(\d{3}) (\{[\s\S]*\})\s*$/;
+
+export function gatewayErrorMessage(raw: string | undefined): string | undefined {
+	const match = raw ? GATEWAY_ERROR.exec(raw.trim()) : null;
+	if (!match) return undefined;
+	let body: unknown;
+	try {
+		body = JSON.parse(match[2]!);
+	} catch {
+		return undefined;
+	}
+	if (!body || typeof body !== "object") return undefined;
+	const record = body as { error?: { message?: unknown }; detail?: unknown };
+	const text = typeof record.error?.message === "string" ? record.error.message : record.detail;
+	return typeof text === "string" && text.trim() ? text.trim() : undefined;
+}
+
 export const NO_PRICE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } as const;
 
 export function priced(models: GatewayModel[]): ProviderModelConfig[] {

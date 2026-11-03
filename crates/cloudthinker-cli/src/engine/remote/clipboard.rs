@@ -111,8 +111,8 @@ async fn output(program: &str, args: &[&str]) -> Option<Vec<u8>> {
 }
 
 #[cfg_attr(
-    target_os = "macos",
-    allow(dead_code, reason = "only the Linux clipboard tools list types")
+    all(target_os = "macos", not(test)),
+    expect(dead_code, reason = "only the Linux clipboard tools list types")
 )]
 fn lists_png(types: &[u8]) -> bool {
     String::from_utf8_lossy(types)

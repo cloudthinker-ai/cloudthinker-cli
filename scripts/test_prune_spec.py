@@ -61,10 +61,11 @@ class PruneSpecTests(unittest.TestCase):
         self.assertEqual(set(schemas), {"IncidentPublic"})
         self.assertEqual(schemas["IncidentPublic"]["required"], ["id"])
 
-    def test_connection_paths_stay_read_only_and_drop_credential_fields(self):
+    def test_connection_paths_keep_only_cli_methods_and_drop_credential_fields(self):
         detail = "/api/v1/builtin-connection/{builtin_id}"
         retry = "/api/v1/builtin-connection/{builtin_id}/retry"
         mcp_list = "/api/v1/mcp-connection"
+        mcp_detail = "/api/v1/mcp-connection/{mcp_conn_id}"
         conflict = {
             "409": {
                 "content": {
@@ -96,6 +97,10 @@ class PruneSpecTests(unittest.TestCase):
                 "get": {"responses": ok("MCPConnectionPublic")},
                 "post": {"responses": {"201": {"description": "created"}}},
             },
+            mcp_detail: {
+                "patch": {"responses": {"200": {"description": "updated"}}},
+                "delete": {"responses": {"202": {"description": "disconnecting"}}},
+            },
         }
         spec = {
             "paths": {path: operations.get(path, {}) for path in ALLOWED_PATHS},
@@ -125,8 +130,9 @@ class PruneSpecTests(unittest.TestCase):
 
         result = prune(spec)
 
-        self.assertEqual(set(result["paths"][detail]), {"get"})
+        self.assertEqual(set(result["paths"][detail]), {"get", "delete"})
         self.assertEqual(set(result["paths"][mcp_list]), {"get"})
+        self.assertEqual(set(result["paths"][mcp_detail]), {"delete"})
         self.assertEqual(set(result["paths"][retry]), {"post"})
         self.assertEqual(set(result["paths"][retry]["post"]["responses"]), {"200"})
         schemas = result["components"]["schemas"]

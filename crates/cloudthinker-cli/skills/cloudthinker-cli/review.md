@@ -1,5 +1,27 @@
 # Review local changes or inspect a tracked review
 
+## Prepare a Worker for Loupe
+
+```bash
+cloudthinker review setup --worker '<worker-name-or-id>'
+cloudthinker review doctor --worker '<worker-id>'
+cloudthinker review doctor --worker '<worker-id>' --connection '<connection-id>' \
+  --provider gitlab --repository 'group/project' --json
+```
+
+`setup` starts or resumes a cloud conversation bound to the selected shared Worker.
+Open the printed web link to follow the agent and answer questions. When only one
+shared Worker is available, `setup` can select it without `--worker`. The agent
+investigates the checkout and asks before installing tools.
+
+`doctor` checks Worker prerequisites in the current workspace. Without a repository
+scope, it does not verify app startup, sign-in, or a browser journey. Supply all four
+scope flags to include saved setup observations for that exact repository and Worker.
+Those observations describe the machine and checkout used for the earlier check;
+doctor does not rerun the journey. Report the observed state, activation, and any
+missing evidence. Exit 0 requires passing prerequisites and a current, enabled full
+observation; other states exit 1.
+
 ## Review the current worktree locally
 
 ```bash

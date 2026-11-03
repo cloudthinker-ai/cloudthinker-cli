@@ -1,4 +1,4 @@
-use cloudthinker_client::{ConnectionDetail, ConnectionTest, ConnectionView};
+use cloudthinker_client::{ConnectionDetail, ConnectionDisconnect, ConnectionTest, ConnectionView};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -89,6 +89,38 @@ pub fn emit_connection_test(
         )?;
     }
     Ok(())
+}
+
+pub fn emit_connection_disconnect(
+    disconnect: &ConnectionDisconnect,
+    json: bool,
+) -> Result<(), String> {
+    if json {
+        return emit_json(disconnect);
+    }
+    let mut out = std::io::stdout().lock();
+    for line in disconnect_lines(disconnect) {
+        write_line(&mut out, &line)?;
+    }
+    Ok(())
+}
+
+fn disconnect_lines(disconnect: &ConnectionDisconnect) -> Vec<String> {
+    let connection = &disconnect.connection;
+    let mut lines = vec![
+        format!("connection: {}", connection.id),
+        format!("name:       {}", terminal_text(&connection.name)),
+        format!("type:       {}", connection.kind.label()),
+        format!("status:     {}", terminal_text(connection.status.label())),
+        format!(
+            "disconnect: {}",
+            terminal_text(disconnect.disconnect_phase.label())
+        ),
+    ];
+    if let Some(error) = disconnect.disconnect_error.as_deref() {
+        lines.push(format!("error:      {}", terminal_text(error)));
+    }
+    lines
 }
 
 pub fn emit_connect_link(link: &ConnectLink, json: bool) -> Result<(), String> {

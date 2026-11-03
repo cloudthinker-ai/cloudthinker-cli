@@ -348,7 +348,10 @@ impl CyberRun {
             started_at: api.started_at,
             finished_at: api.finished_at,
             findings_discovered: api.findings_discovered,
-            findings_resolved: api.findings_resolved,
+            findings_resolved: api
+                .findings_fixed
+                .or(api.findings_resolved)
+                .unwrap_or_default(),
             findings_critical: api.findings_critical,
             findings_confirmed: api.findings_confirmed,
             findings_confirmed_critical: api.findings_confirmed_critical,
@@ -1323,5 +1326,49 @@ impl CtClient {
                 error: Some(err.to_string()),
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn run_with_counts(counts: serde_json::Value) -> CyberRun {
+        let mut body = json!({
+            "id": "11111111-1111-4111-8111-111111111111",
+            "app_id": "22222222-2222-4222-8222-222222222222",
+            "frameworks": ["owasp_api"],
+            "mode": "white",
+            "intensity": "full",
+            "run_scope": {"include": [], "exclude": []},
+            "scan_mode": "full",
+            "selection": {"option_id": "default", "thinking_effort": null},
+            "result": "success",
+            "auth_status": "not_required",
+            "counts": {},
+            "surface_delta": {},
+            "started_at": "2026-09-27T00:00:00Z",
+            "finished_at": null,
+            "created_at": "2026-09-27T00:00:00Z"
+        });
+        body.as_object_mut()
+            .unwrap()
+            .extend(counts.as_object().unwrap().clone());
+        CyberRun::from_api(serde_json::from_value(body).unwrap())
+    }
+
+    #[test]
+    fn run_fixed_count_reads_the_new_field_and_falls_back_to_the_old_one() {
+        assert_eq!(
+            run_with_counts(json!({"findings_fixed": 3})).findings_resolved,
+            3
+        );
+        assert_eq!(
+            run_with_counts(json!({"findings_resolved": 2})).findings_resolved,
+            2
+        );
+        assert_eq!(run_with_counts(json!({})).findings_resolved, 0);
     }
 }

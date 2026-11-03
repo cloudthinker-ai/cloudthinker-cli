@@ -20,7 +20,7 @@ reason for the new verdict.
 Keep an existing finding's filename, `display_id`, and human status metadata.
 
 Keep the redacted request, observed result, control, and source references with
-the candidate evidence. Put confirmed findings under `findings/open/`; use
+the candidate evidence. Put confirmed findings under `findings/open/` (still the folder this release); use
 `needs-verification/` or `dismissed/` for other outcomes as appropriate.
 
 Published findings use this frontmatter:

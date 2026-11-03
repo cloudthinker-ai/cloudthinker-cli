@@ -10,6 +10,7 @@ use uuid::Uuid;
 use super::worker::DoctorArgs;
 use super::worker_service;
 use crate::engine::{exit::ExitCode, output};
+use crate::worker::container::{self, Detection, Runtime};
 use crate::worker::sandbox::{self, SandboxContext, Support};
 use crate::worker::worktree::WORKTREES_DIR;
 
@@ -118,6 +119,7 @@ async fn collect(base_url: &str, args: &DoctorArgs) -> Vec<Check> {
     checks.push(sandbox_check(
         sandbox_support(base_url, args.workdir()).await,
     ));
+    checks.push(container_check(Runtime::detect_async().await).await);
     checks
 }
 
@@ -536,6 +538,66 @@ fn sandbox_check(support: Support) -> Check {
             "Serve a project folder, not your home folder, from Linux 6.2 or newer with Landlock enabled (`landlock` in /sys/kernel/security/lsm). macOS and Windows cannot run Loupe.",
         ),
     }
+}
+
+async fn container_check(detection: Detection) -> Check {
+    let runtime = match detection {
+        Detection::Ready(runtime) => runtime,
+        Detection::Unavailable(reason) => {
+            return Check::new(
+                "container",
+                Status::Warn,
+                format!("Container isolation: unavailable, {reason}."),
+            )
+            .with_fix(
+                "Install Docker and start it, then restart the worker. Only Workers set to container isolation need it.",
+            );
+        }
+    };
+    let mut missing = Vec::new();
+    for image in [
+        container::default_proxy_image(),
+        container::default_sandbox_image(),
+    ] {
+        let present = tokio::process::Command::new(&runtime.program)
+            .args(container::image_present_argv(&image))
+            .env_clear()
+            .envs(container::client_env())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .is_ok_and(|status| status.success());
+        if !present {
+            missing.push(image);
+        }
+    }
+    let version = if runtime.version.is_empty() {
+        container::RUNTIME.to_owned()
+    } else {
+        runtime.version.clone()
+    };
+    if missing.is_empty() {
+        return Check::pass(
+            "container",
+            format!("Container isolation: {version}, daemon reachable, images present."),
+        );
+    }
+    let pulls = missing
+        .iter()
+        .map(|image| format!("`{} pull {image}`", container::RUNTIME))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Check::new(
+        "container",
+        Status::Warn,
+        format!(
+            "Container isolation: {version}, daemon reachable; the first contained run downloads {}.",
+            missing.join(", ")
+        ),
+    )
+    .with_fix(format!("To download them now, run {pulls}."))
 }
 
 fn render(report: &Report) -> Vec<String> {

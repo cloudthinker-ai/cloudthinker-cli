@@ -12,6 +12,7 @@ use crate::engine::output::WorkerActivity;
 use super::{
     background::{self, ShimImage},
     config::WorkdirIdentity,
+    container::{self, Containers},
     files,
     sandbox::{self, SandboxContext, SandboxPlan},
     shell,
@@ -29,6 +30,7 @@ pub struct WorkdirExecutor {
     bundles: SkillBundleStore,
     shim: Arc<ShimImage>,
     sandbox: SandboxContext,
+    pub containers: Containers,
     pub worktrees: Worktrees,
     running: AtomicUsize,
 }
@@ -69,9 +71,15 @@ impl WorkdirExecutor {
             bundles,
             shim: Arc::new(shim),
             sandbox,
+            containers: Containers::disabled(),
             worktrees,
             running: AtomicUsize::new(0),
         }
+    }
+
+    pub fn with_containers(mut self, containers: Containers) -> Self {
+        self.containers = containers;
+        self
     }
 
     pub fn add_secret(&self, secret: String) {
@@ -91,10 +99,19 @@ impl WorkdirExecutor {
         cancel: CancellationToken,
         worker: uuid::Uuid,
         client: &WorkerClient,
-        placement: (Option<&Workspace>, bool),
+        placement: (
+            Option<&Workspace>,
+            bool,
+            Option<&api::WorkerIsolationPolicy>,
+        ),
     ) -> CtResult<api::WorkerOperationResult> {
-        let (workspace, sandboxed) = placement;
-        if sandboxed && !self.sandbox.support.is_ready() {
+        let (workspace, sandboxed, isolation) = placement;
+        let isolation = isolation
+            .filter(|policy| matches!(policy.mode, api::WorkerIsolationPolicyMode::Container));
+        if isolation.is_some() && !self.containers.is_ready() {
+            return failure_with(container::UNAVAILABLE_CODE, container::UNAVAILABLE_MESSAGE);
+        }
+        if isolation.is_none() && sandboxed && !self.sandbox.support.is_ready() {
             return failure_with(sandbox::UNAVAILABLE_CODE, sandbox::UNAVAILABLE_MESSAGE);
         }
         let _running = Running::enter(&self.running);
@@ -127,7 +144,38 @@ impl WorkdirExecutor {
             api::Payload::BackgroundOperation(_) => true,
             _ => false,
         };
-        let plan = (sandboxed && runs_commands).then(|| {
+        let target = match (isolation, &envelope.payload) {
+            (Some(policy), api::Payload::ScriptRun(_)) => Some(policy),
+            (Some(policy), api::Payload::BackgroundOperation(op))
+                if op.action == api::BackgroundAction::Start =>
+            {
+                Some(policy)
+            }
+            _ => None,
+        };
+        let target = match target {
+            None => None,
+            Some(policy) => match self
+                .containers
+                .ensure(
+                    envelope.assignment_id,
+                    policy,
+                    &identity.path,
+                    &self.identity.path,
+                    self.bundles.root(),
+                )
+                .await
+            {
+                Ok(target) => Some(target),
+                Err(_) => {
+                    return failure_with(
+                        container::UNAVAILABLE_CODE,
+                        container::UNAVAILABLE_MESSAGE,
+                    );
+                }
+            },
+        };
+        let plan = (isolation.is_none() && sandboxed && runs_commands).then(|| {
             self.sandbox.plan(
                 &identity.path,
                 &self.identity.path,
@@ -141,7 +189,7 @@ impl WorkdirExecutor {
             return failure(code);
         }
         let output = self
-            .dispatch(envelope, cancel, worker, client, &identity, plan)
+            .dispatch(envelope, cancel, worker, client, &identity, (plan, target))
             .await?;
         let code = match &output {
             Err(code) => Some((*code).to_owned()),
@@ -250,8 +298,9 @@ impl WorkdirExecutor {
         worker: uuid::Uuid,
         client: &WorkerClient,
         identity: &Arc<WorkdirIdentity>,
-        plan: Option<SandboxPlan>,
+        confinement: (Option<SandboxPlan>, Option<container::Target>),
     ) -> CtResult<Dispatched> {
+        let (plan, target) = confinement;
         Ok(match &envelope.payload {
             api::Payload::SkillBundleChunk(chunk) => match SkillBundleChunk::from_api(chunk) {
                 Err(error) => Err(error),
@@ -268,22 +317,38 @@ impl WorkdirExecutor {
                     .await
                     .map(|v| (v, None))
             }
-            api::Payload::ScriptRun(script) => shell::execute(
-                &identity.root,
-                script,
-                &self.environment,
-                plan.as_ref(),
-                envelope.deadline_at,
-                cancel,
-            )
-            .await
+            api::Payload::ScriptRun(script) => match &target {
+                Some(target) => {
+                    shell::execute_in_container(
+                        &identity.root,
+                        &identity.path,
+                        script,
+                        &self.environment,
+                        target,
+                        envelope.deadline_at,
+                        cancel,
+                    )
+                    .await
+                }
+                None => {
+                    shell::execute(
+                        &identity.root,
+                        script,
+                        &self.environment,
+                        plan.as_ref(),
+                        envelope.deadline_at,
+                        cancel,
+                    )
+                    .await
+                }
+            }
             .map(|value| (value, None)),
             api::Payload::BackgroundOperation(op) => background::execute(
                 identity.clone(),
                 self.shim.clone(),
                 op.clone(),
                 self.environment.clone(),
-                plan,
+                (plan, target),
                 envelope.deadline_at,
                 cancel,
             )
@@ -334,6 +399,7 @@ pub fn payload_kind(payload: &api::Payload) -> &'static str {
         api::Payload::ConvertOfficePdf(_) => "convert_office_pdf",
         api::Payload::RepositoryOperation(_) => "repository",
         api::Payload::BackgroundOperation(_) => "background",
+        api::Payload::RunStorageOperation(_) => "run_storage",
     }
 }
 
@@ -495,7 +561,7 @@ mod tests {
                     cancel,
                     uuid::Uuid::new_v4(),
                     &self.client,
-                    (None, false),
+                    (None, false, None),
                 )
                 .await
         }
@@ -560,7 +626,7 @@ mod tests {
                 CancellationToken::new(),
                 uuid::Uuid::new_v4(),
                 &fixture.client,
-                (None, true),
+                (None, true, None),
             )
             .await
             .unwrap();
@@ -573,6 +639,33 @@ mod tests {
                 .unwrap()
                 .contains("Landlock enabled")
         );
+        assert!(!fixture.executor.identity.path.join("escaped").exists());
+    }
+
+    #[tokio::test]
+    async fn a_container_lease_on_a_worker_without_a_runtime_fails_closed() {
+        let fixture = fixture().await;
+        let policy = api::WorkerIsolationPolicy {
+            mode: api::WorkerIsolationPolicyMode::Container,
+            image: None,
+            egress_allowlist: Vec::new(),
+        };
+        let result = fixture
+            .executor
+            .execute(
+                &Arc::new(envelope(
+                    json!({"kind":"script","script":"printf escaped > escaped"}),
+                )),
+                CancellationToken::new(),
+                uuid::Uuid::new_v4(),
+                &fixture.client,
+                (None, false, Some(&policy)),
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.state, api::WorkerOperationResultState::Failed);
+        let body = decode(&result);
+        assert_eq!(body["error"]["code"], container::UNAVAILABLE_CODE);
         assert!(!fixture.executor.identity.path.join("escaped").exists());
     }
 

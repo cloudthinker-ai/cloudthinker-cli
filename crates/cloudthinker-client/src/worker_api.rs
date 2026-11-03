@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use std::num::NonZeroU64;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use std::sync::{PoisonError, RwLock};
+use std::sync::{Mutex, PoisonError, RwLock};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
@@ -20,10 +21,15 @@ const STATUS_PATH: &str = "/api/v1/executor-workers/credential";
 const MAX_REPLY_BYTES: usize = 64 * 1024;
 const UNAUTHORIZED_CODE: &str = "EXECUTOR_WORKER_UNAUTHORIZED";
 const UNAUTHORIZED_FALLBACK: &str = "This Worker's credential expired or was revoked. Enroll it again with the command from the Workers page.";
+const LEASE_REFUSED: &str = "EXECUTOR_WORKER_UNAUTHORIZED: this run's lease is no longer valid";
 const OUTDATED_CODE: &str = "EXECUTOR_WORKER_OUTDATED";
 const OUTPOSTS_DISABLED_CODE: &str = "EXECUTOR_OUTPOSTS_DISABLED";
 const OUTPOSTS_DISABLED_FALLBACK: &str = "Workers are turned off.";
 const QUOTA_EXCEEDED_CODE: &str = "EXECUTOR_QUOTA_EXCEEDED";
+pub const ISOLATION_UNAVAILABLE_CODE: &str = "EXECUTOR_ISOLATION_UNAVAILABLE";
+const LEASE_WORKER_HEADER: &str = "x-executor-worker";
+const LEASE_TOKEN_HEADER: &str = "x-executor-lease";
+const LEASE_FENCE_HEADER: &str = "x-executor-fence";
 const OUTDATED_FALLBACK: &str =
     "Your CLI is out of date. Run `cloudthinker update`, then run a new command.";
 
@@ -64,12 +70,41 @@ pub struct WorkerCredentialStatus {
     pub rotate_after: DateTime<Utc>,
 }
 
+pub struct OperationIssuance<'a> {
+    pub worker: Uuid,
+    pub assignment: Uuid,
+    pub operation: Uuid,
+    pub session: Uuid,
+    pub fence: i64,
+    pub sequence: i64,
+    pub request_digest: &'a str,
+    pub nonce: &'a str,
+    pub lease_token: &'a str,
+}
+
+impl<'a> OperationIssuance<'a> {
+    pub fn of(worker: Uuid, envelope: &'a api::OperationEnvelope) -> Self {
+        Self {
+            worker,
+            assignment: envelope.assignment_id,
+            operation: envelope.operation_id,
+            session: envelope.session_id,
+            fence: envelope.fence_token,
+            sequence: envelope.operation_sequence,
+            request_digest: &envelope.request_digest,
+            nonce: &envelope.nonce,
+            lease_token: &envelope.lease_token,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct WorkerClient {
     base_url: String,
     cli_version: String,
     wire: Arc<RwLock<Wire>>,
     observed: Arc<Observed>,
+    leased: Arc<Mutex<HashMap<(Uuid, i64), cloudthinker_api::Client>>>,
 }
 
 impl WorkerClient {
@@ -80,7 +115,55 @@ impl WorkerClient {
             cli_version: cli_version.to_owned(),
             wire: Arc::new(RwLock::new(client(base_url, headers)?)),
             observed: Arc::new(Observed::default()),
+            leased: Arc::new(Mutex::new(HashMap::new())),
         })
+    }
+
+    fn leased_api(
+        &self,
+        worker: Uuid,
+        assignment: Uuid,
+        fence: i64,
+        lease_token: &str,
+    ) -> CtResult<cloudthinker_api::Client> {
+        let mut leased = self.leased.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(api) = leased.get(&(assignment, fence)) {
+            return Ok(api.clone());
+        }
+        let headers = lease_headers(&self.cli_version, worker, fence, lease_token)?;
+        let api = client(&self.base_url, headers)?.api;
+        leased.retain(|(id, _), _| *id != assignment);
+        leased.insert((assignment, fence), api.clone());
+        Ok(api)
+    }
+
+    fn lease_api(&self, lease: &api::AssignmentLease) -> CtResult<cloudthinker_api::Client> {
+        self.leased_api(
+            lease.worker_id,
+            lease.assignment_id,
+            lease.fence_token,
+            &lease.lease_token,
+        )
+    }
+
+    fn envelope_api(
+        &self,
+        worker: Uuid,
+        envelope: &api::OperationEnvelope,
+    ) -> CtResult<cloudthinker_api::Client> {
+        self.leased_api(
+            worker,
+            envelope.assignment_id,
+            envelope.fence_token,
+            &envelope.lease_token,
+        )
+    }
+
+    fn forget_lease(&self, assignment: Uuid) {
+        self.leased
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .retain(|(id, _), _| *id != assignment);
     }
 
     fn wire(&self) -> Wire {
@@ -169,6 +252,24 @@ impl WorkerClient {
         response(&self.observed, result).await
     }
 
+    async fn lease_call<T>(
+        &self,
+        result: Result<cloudthinker_api::ResponseValue<T>, cloudthinker_api::Error<()>>,
+    ) -> CtResult<T> {
+        match result {
+            Err(cloudthinker_api::Error::UnexpectedResponse(reply))
+                if reply.status() == reqwest::StatusCode::UNAUTHORIZED =>
+            {
+                observe(&self.observed, reply.headers());
+                Err(CtError::Api {
+                    status: 401,
+                    detail: Some(LEASE_REFUSED.into()),
+                })
+            }
+            result => self.call(result).await,
+        }
+    }
+
     pub async fn register(
         &self,
         request: &api::RegisterWorkerRequest,
@@ -251,8 +352,8 @@ impl WorkerClient {
             lease_token: lease.lease_token.clone(),
             state,
         };
-        self.call(
-            self.api()
+        self.lease_call(
+            self.lease_api(lease)?
                 .executor_targets_heartbeat_assignment(&lease.assignment_id, &body)
                 .await,
         )
@@ -266,8 +367,8 @@ impl WorkerClient {
         after: u64,
         batch_size: u64,
     ) -> CtResult<Vec<api::OperationEnvelope>> {
-        self.call(
-            self.api()
+        self.lease_call(
+            self.lease_api(lease)?
                 .executor_targets_assignment_operations(
                     &lease.assignment_id,
                     Some(after),
@@ -296,8 +397,9 @@ impl WorkerClient {
         assignment: Uuid,
         request: &api::IssueArtifactGrantRequest,
     ) -> CtResult<api::ArtifactGrantPublic> {
-        self.call(
-            self.api()
+        let fence = i64::try_from(request.fence_token.get()).map_err(|_| invalid_envelope())?;
+        self.lease_call(
+            self.leased_api(request.worker_id, assignment, fence, &request.lease_token)?
                 .executor_targets_issue_artifact_grant(&assignment, request)
                 .await,
         )
@@ -310,8 +412,9 @@ impl WorkerClient {
         grant: Uuid,
         request: &api::UploadWorkerArtifactRequest,
     ) -> CtResult<api::WorkerArtifactPublic> {
-        self.call(
-            self.api()
+        let fence = i64::try_from(request.fence_token.get()).map_err(|_| invalid_envelope())?;
+        self.lease_call(
+            self.leased_api(request.worker_id, assignment, fence, &request.lease_token)?
                 .executor_targets_upload_worker_artifact(&assignment, &grant, request)
                 .await,
         )
@@ -330,8 +433,8 @@ impl WorkerClient {
                 .parse()
                 .map_err(|_| invalid_envelope())?,
         };
-        self.call(
-            self.api()
+        self.lease_call(
+            self.envelope_api(worker, envelope)?
                 .executor_targets_start_operation(
                     &envelope.assignment_id,
                     &envelope.operation_id,
@@ -348,24 +451,30 @@ impl WorkerClient {
         envelope: &api::OperationEnvelope,
         result: api::WorkerOperationResult,
     ) -> CtResult<api::OperationReceiptPublic> {
-        let body = api::CompleteWorkerOperationRequest {
-            worker_id: worker,
-            fence_token: positive(envelope.fence_token)?,
-            lease_token: envelope.lease_token.clone(),
-            nonce: envelope.nonce.clone(),
-            operation_sequence: positive(envelope.operation_sequence)?,
-            request_digest: envelope
-                .request_digest
-                .parse()
-                .map_err(|_| invalid_envelope())?,
-            session_id: envelope.session_id,
-            result,
-        };
-        self.call(
-            self.api()
+        let body = completion(&OperationIssuance::of(worker, envelope), result)?;
+        self.lease_call(
+            self.envelope_api(worker, envelope)?
                 .executor_targets_complete_operation(
                     &envelope.assignment_id,
                     &envelope.operation_id,
+                    &body,
+                )
+                .await,
+        )
+        .await
+    }
+
+    pub async fn complete_with_credential(
+        &self,
+        issuance: &OperationIssuance<'_>,
+        result: api::WorkerOperationResult,
+    ) -> CtResult<api::OperationReceiptPublic> {
+        let body = completion(issuance, result)?;
+        self.call(
+            self.api()
+                .executor_targets_complete_operation(
+                    &issuance.assignment,
+                    &issuance.operation,
                     &body,
                 )
                 .await,
@@ -393,13 +502,35 @@ impl WorkerClient {
             fence_token: positive(lease.fence_token)?,
             lease_token: lease.lease_token.clone(),
         };
-        self.call(
-            self.api()
-                .executor_targets_release_assignment(&lease.assignment_id, &body)
-                .await,
-        )
-        .await
+        let released = self
+            .lease_call(
+                self.lease_api(lease)?
+                    .executor_targets_release_assignment(&lease.assignment_id, &body)
+                    .await,
+            )
+            .await;
+        self.forget_lease(lease.assignment_id);
+        released
     }
+}
+
+fn completion(
+    issuance: &OperationIssuance<'_>,
+    result: api::WorkerOperationResult,
+) -> CtResult<api::CompleteWorkerOperationRequest> {
+    Ok(api::CompleteWorkerOperationRequest {
+        worker_id: issuance.worker,
+        fence_token: positive(issuance.fence)?,
+        lease_token: issuance.lease_token.to_owned(),
+        nonce: issuance.nonce.to_owned(),
+        operation_sequence: positive(issuance.sequence)?,
+        request_digest: issuance
+            .request_digest
+            .parse()
+            .map_err(|_| invalid_envelope())?,
+        session_id: issuance.session,
+        result,
+    })
 }
 
 fn version_headers(cli_version: &str) -> CtResult<HeaderMap> {
@@ -408,6 +539,27 @@ fn version_headers(cli_version: &str) -> CtResult<HeaderMap> {
         CLI_VERSION_HEADER,
         reqwest::header::HeaderValue::from_str(cli_version)
             .map_err(|_| CtError::Usage("invalid CLI version".into()))?,
+    );
+    Ok(headers)
+}
+
+fn lease_headers(
+    cli_version: &str,
+    worker: Uuid,
+    fence: i64,
+    lease_token: &str,
+) -> CtResult<HeaderMap> {
+    let mut headers = version_headers(cli_version)?;
+    headers.insert(
+        LEASE_WORKER_HEADER,
+        HeaderValue::from_str(&worker.to_string()).map_err(|_| invalid_envelope())?,
+    );
+    let mut token = HeaderValue::from_str(lease_token).map_err(|_| invalid_envelope())?;
+    token.set_sensitive(true);
+    headers.insert(LEASE_TOKEN_HEADER, token);
+    headers.insert(
+        LEASE_FENCE_HEADER,
+        HeaderValue::from_str(&positive(fence)?.to_string()).map_err(|_| invalid_envelope())?,
     );
     Ok(headers)
 }
@@ -662,6 +814,25 @@ pub fn outposts_disabled_message(error: &CtError) -> Option<&str> {
         } => detail
             .strip_prefix(OUTPOSTS_DISABLED_CODE)?
             .strip_prefix(": "),
+        _ => None,
+    }
+}
+
+pub fn lease_refused(error: &CtError) -> bool {
+    matches!(error, CtError::Api { status: 401, .. })
+}
+
+pub fn isolation_unavailable_message(error: &CtError) -> Option<&str> {
+    match error {
+        CtError::Api {
+            status: 409,
+            detail: Some(detail),
+        } => {
+            let message = detail
+                .strip_prefix(ISOLATION_UNAVAILABLE_CODE)?
+                .strip_prefix(": ")?;
+            Some(message.split(" (request ").next().unwrap_or(message))
+        }
         _ => None,
     }
 }
@@ -1045,6 +1216,80 @@ mod tests {
     async fn a_body_that_is_not_the_protocol_is_a_protocol_error() {
         let error = register_error(200, r#"{"worker_id":"not-a-uuid"}"#).await;
         assert!(matches!(error, CtError::Protocol(_)), "got {error:?}");
+    }
+
+    fn lease(assignment: Uuid) -> api::AssignmentLease {
+        serde_json::from_value(serde_json::json!({
+            "assignment_id": assignment,
+            "fence_token": 4,
+            "lease_expires_at": Utc::now(),
+            "lease_token": "lease-secret",
+            "session_id": Uuid::from_u128(8),
+            "state": "active",
+            "target_id": Uuid::from_u128(9),
+            "worker_id": Uuid::from_u128(10),
+        }))
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_leased_call_sends_the_lease_headers_and_no_bearer() {
+        let server = MockServer::start().await;
+        let assignment = Uuid::from_u128(7);
+        let lease = lease(assignment);
+        Mock::given(method("POST"))
+            .and(path(format!(
+                "/api/v1/executor-workers/assignments/{assignment}/release"
+            )))
+            .and(header(
+                "X-Executor-Worker",
+                lease.worker_id.to_string().as_str(),
+            ))
+            .and(header("X-Executor-Lease", "lease-secret"))
+            .and(header("X-Executor-Fence", "4"))
+            .and(header("X-CloudThinker-CLI-Version", "0.8.0"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        worker(&server.uri())
+            .release(&lease)
+            .await
+            .expect("released with lease headers");
+
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(!requests[0].headers.contains_key("authorization"));
+    }
+
+    #[tokio::test]
+    async fn a_worker_call_keeps_the_bearer_and_sends_no_lease_headers() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/executor-workers/register"))
+            .and(header("Authorization", "Bearer worker-token"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let _ = worker(&server.uri()).register(&registration()).await;
+
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(requests.len(), 1);
+        assert!(!requests[0].headers.contains_key("x-executor-lease"));
+    }
+
+    #[tokio::test]
+    async fn a_worker_without_container_isolation_gets_the_server_message() {
+        let message = "This Worker requires container isolation. Install Docker, then start the worker again.";
+        let error = register_error(
+            409,
+            &format!(
+                r#"{{"error":{{"code":"EXECUTOR_ISOLATION_UNAVAILABLE","message":"{message}"}},"request_id":"req-6"}}"#
+            ),
+        )
+        .await;
+        assert_eq!(isolation_unavailable_message(&error), Some(message));
     }
 
     #[tokio::test]

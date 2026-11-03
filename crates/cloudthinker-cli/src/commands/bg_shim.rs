@@ -1,5 +1,6 @@
 use std::io::Write;
 use std::os::unix::process::ExitStatusExt;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -10,7 +11,7 @@ use cloudthinker_client::auth::worker_store::write_private;
 use cloudthinker_client::{CtError, CtResult};
 use rustix::fs::FlockOperation;
 use rustix::process::{Signal, fchdir, getpgrp, getpid, kill_process_group, setsid};
-use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
 use tokio::signal::unix::{Signal as SignalStream, SignalKind, signal};
 use tokio::task::JoinHandle;
@@ -20,7 +21,7 @@ use crate::worker::background::{
     CANCEL_GRACE, COMMAND_FILE, EXIT_FILE, LOCK_FILE, MANIFEST_FILE, STDERR_FILE, STDOUT_FILE,
     STREAM_CAP_BYTES, TRUNCATED_FILE, TaskManifest,
 };
-use crate::worker::sandbox;
+use crate::worker::{container, sandbox};
 
 const DRAIN_IDLE: Duration = Duration::from_millis(500);
 const DRAIN_CEILING: Duration = CANCEL_GRACE;
@@ -43,10 +44,17 @@ pub async fn run(args: BgShimArgs) -> CtResult<()> {
     write_manifest(&dir, args.timeout_secs)?;
     fchdir(std::io::stdin()).map_err(|_| shim_error("working directory unreachable"))?;
     let recorder = Arc::new(Recorder::new());
-    let mut child = match spawn_child(&args) {
+    let group = ContainerGroup::of(&args);
+    let mut child = match spawn_child(&args, group.as_ref()) {
         Ok(child) => child,
         Err(_) => return write_exit(&dir, SPAWN_FAILED_EXIT),
     };
+    if let Some(mut stdin) = child.stdin.take() {
+        let script = std::fs::read(args.task_dir.join(COMMAND_FILE)).unwrap_or_default();
+        tokio::spawn(async move {
+            let _ = stdin.write_all(&script).await;
+        });
+    }
     let stdout = child.stdout.take().map(|reader| {
         tokio::spawn(copy(
             reader,
@@ -66,6 +74,7 @@ pub async fn run(args: BgShimArgs) -> CtResult<()> {
         &mut child,
         Duration::from_secs(args.timeout_secs),
         &mut term,
+        group.as_ref(),
     )
     .await
     {
@@ -80,6 +89,9 @@ pub async fn run(args: BgShimArgs) -> CtResult<()> {
             Ok(())
         }
         Outcome::Unresponsive => {
+            if let Some(group) = &group {
+                group.signal("KILL").await;
+            }
             recorder.recording.store(false, Ordering::SeqCst);
             let written = write_exit(&dir, KILLED_EXIT);
             let _ = kill_process_group(getpgrp(), Signal::KILL);
@@ -134,7 +146,45 @@ fn write_manifest(dir: &Dir, timeout_secs: u64) -> CtResult<()> {
     )
 }
 
-fn spawn_child(args: &BgShimArgs) -> std::io::Result<Child> {
+struct ContainerGroup {
+    program: PathBuf,
+    session: String,
+    cwd: PathBuf,
+    keys: Vec<String>,
+    pgid_file: String,
+}
+
+impl ContainerGroup {
+    fn of(args: &BgShimArgs) -> Option<Self> {
+        let task = args.task_dir.file_name()?.to_string_lossy().into_owned();
+        Some(Self {
+            program: args.container_runtime.clone()?,
+            session: args.container.clone()?,
+            cwd: args.container_cwd.clone()?,
+            keys: args.container_env.clone(),
+            pgid_file: container::pgid_file(&format!("bg-{task}")),
+        })
+    }
+
+    async fn signal(&self, signal: &str) {
+        container::signal_group(&self.program, &self.session, &self.pgid_file, signal).await;
+    }
+}
+
+fn spawn_child(args: &BgShimArgs, group: Option<&ContainerGroup>) -> std::io::Result<Child> {
+    if let Some(group) = group {
+        return Command::new(&group.program)
+            .args(container::shell_argv(
+                &group.session,
+                &group.cwd,
+                &group.keys,
+                &group.pgid_file,
+            ))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn();
+    }
     let script = args.task_dir.join(COMMAND_FILE);
     let mut command = if args.sandbox {
         let mut command = Command::new(sandbox::executable());
@@ -165,13 +215,19 @@ async fn wait_with_timeout(
     child: &mut Child,
     timeout: Duration,
     term: &mut SignalStream,
+    group: Option<&ContainerGroup>,
 ) -> Outcome {
     tokio::select! {
         status = child.wait() => return Outcome::Exited(exit_code(status)),
         _ = term.recv() => {}
         _ = tokio::time::sleep(timeout) => {}
     }
-    let _ = kill_process_group(getpgrp(), Signal::TERM);
+    match group {
+        Some(group) => group.signal("TERM").await,
+        None => {
+            let _ = kill_process_group(getpgrp(), Signal::TERM);
+        }
+    }
     tokio::select! {
         status = child.wait() => Outcome::Exited(exit_code(status)),
         _ = tokio::time::sleep(CANCEL_GRACE) => Outcome::Unresponsive,

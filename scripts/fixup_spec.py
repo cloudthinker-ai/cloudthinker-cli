@@ -26,6 +26,14 @@ blockers (arch plan §Codegen spike) plus one determinism fix:
 7. Remove generic ApiErrorResponse defaults and ranges. Progenitor discards the
    HTTP status when a typed error body fails to decode, so undeclared generic
    errors must stay UnexpectedResponse during detail-only response migration.
+8. Add the old Cyber status words to the status enums. During the status
+   vocabulary expand step an older backend still answers with them, so the CLI
+   must parse both spellings until the contract step removes them.
+9. Make each renamed count optional and add its old name beside it, so the CLI
+   reads the new count and falls back to the old one from an older backend.
+10. Drop `nullable` from an optional header parameter. Progenitor already
+   wraps it in `Option`, and a nullable one becomes `Option<Option<T>>`, which
+   its header code cannot render.
 """
 
 from __future__ import annotations
@@ -38,6 +46,14 @@ from prune_spec import prune_unused_schemas
 SPEC_TITLE = "Cloud Thinker"
 DEVICE_TOKEN_PATH = "/api/v1/login/cli/device/token"
 API_ERROR_REF = "#/components/schemas/ApiErrorResponse"
+LEGACY_STATUS_VALUES = {
+    "FindingStatus": ("open", "resolved"),
+    "RunChangeKind": ("resolved",),
+    "RunChangeGroup": ("resolved",),
+}
+LEGACY_COUNT_FIELDS = {
+    "RunPublic": {"findings_fixed": ("findings_resolved", "Findings Resolved")},
+}
 
 
 def _fix_nullable(node: object) -> object:
@@ -193,6 +209,37 @@ def _title_constrained_properties(spec: dict) -> None:
                 field["title"] = f"{name}_{key}"
 
 
+def _drop_nullable_optional_headers(spec: dict) -> None:
+    for operations in spec.get("paths", {}).values():
+        for operation in operations.values():
+            if not isinstance(operation, dict):
+                continue
+            for parameter in operation.get("parameters", []):
+                if parameter.get("in") == "header" and not parameter.get("required"):
+                    parameter.get("schema", {}).pop("nullable", None)
+
+
+def _accept_legacy_status_values(spec: dict) -> None:
+    schemas = spec.get("components", {}).get("schemas", {})
+    for name, legacy in LEGACY_STATUS_VALUES.items():
+        values = schemas.get(name, {}).get("enum")
+        if values is not None:
+            values.extend(value for value in legacy if value not in values)
+
+
+def _accept_legacy_count_fields(spec: dict) -> None:
+    schemas = spec.get("components", {}).get("schemas", {})
+    for name, renames in LEGACY_COUNT_FIELDS.items():
+        properties = schemas.get(name, {}).get("properties")
+        if properties is None:
+            continue
+        for field, (old, title) in renames.items():
+            if field not in properties:
+                continue
+            properties[field].pop("default", None)
+            properties.setdefault(old, {"title": title, "type": properties[field]["type"]})
+
+
 def fixup(spec: dict) -> dict:
     spec = _fix_nullable(spec)
     _fix_exclusive_bounds(spec)
@@ -202,6 +249,9 @@ def fixup(spec: dict) -> dict:
     _normalize_error_responses(spec)
     _require_discriminator_tags(spec)
     _title_constrained_properties(spec)
+    _drop_nullable_optional_headers(spec)
+    _accept_legacy_status_values(spec)
+    _accept_legacy_count_fields(spec)
     prune_unused_schemas(spec)
     return spec
 

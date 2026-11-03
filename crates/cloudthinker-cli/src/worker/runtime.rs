@@ -7,10 +7,13 @@ use std::time::{Duration, Instant, SystemTime};
 use chrono::Utc;
 use cloudthinker_client::{
     CtError, CtResult,
-    worker_api::{WorkerClient, outposts_disabled_message},
+    worker_api::{
+        OperationIssuance, WorkerClient, isolation_unavailable_message, lease_refused,
+        outposts_disabled_message,
+    },
     worker_types as api,
 };
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
@@ -18,7 +21,7 @@ use uuid::Uuid;
 
 use super::background;
 use super::executor::WorkdirExecutor;
-use super::journal::{self, Delivery, Journal, JournalState};
+use super::journal::{self, Delivery, Journal, JournalState, OperationRecord};
 use super::telemetry::{self, Fields, Level, WorkerState};
 use super::worktree::{self, Workspace};
 use crate::engine::output::{self, CheckResult};
@@ -33,6 +36,9 @@ const RECONNECT_MAX_DELAY: Duration = Duration::from_secs(60);
 const OUTPOSTS_DISABLED_POLL: Duration = Duration::from_secs(60);
 const RECONNECT_STABLE_AFTER: Duration = Duration::from_secs(300);
 const ABANDONED_JOURNAL_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+const OPERATION_UNAVAILABLE_CODE: &str = "EXECUTOR_OPERATION_UNAVAILABLE";
+const SAVED_RESULT_RETRY_EVERY: Duration = Duration::from_secs(60);
+const SAVED_RESULT_JOURNAL_AGE: Duration = Duration::from_secs(90 * 24 * 60 * 60);
 
 #[derive(Clone, Default)]
 pub struct Signals {
@@ -146,6 +152,7 @@ where
 
 fn is_fatal(error: &CtError) -> bool {
     match error {
+        error if lease_refused(error) => false,
         CtError::Api { status, .. } => (400..500).contains(status) && *status != 409,
         error => stops_worker(error),
     }
@@ -171,7 +178,6 @@ async fn session(
     rotation: Option<&RotationHook>,
 ) -> CtResult<()> {
     let shutdown = signals.drain.clone();
-    maintain(executor).await;
     let snapshot = repository_snapshot(executor).await;
     let registration = &api::RegisterWorkerRequest {
         repository: snapshot.clone(),
@@ -185,7 +191,14 @@ async fn session(
             move || {
                 let client = client.clone();
                 let registration = registration.clone();
-                async move { client.register(&registration).await }
+                async move {
+                    client.register(&registration).await.map_err(|error| {
+                        match isolation_unavailable_message(&error) {
+                            Some(message) => CtError::Usage(message.to_owned()),
+                            None => error,
+                        }
+                    })
+                }
             }
         }),
     )
@@ -205,6 +218,16 @@ async fn session(
         );
     }
     validate_registration_target(expected_target_id, worker.target_id)?;
+    let Some(mut deferred) = until_drained(
+        &shutdown,
+        deliver_saved_results(client, executor, worker.worker_id),
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+    let mut redeliver_at = Instant::now() + SAVED_RESULT_RETRY_EVERY;
+    maintain(executor).await;
     let mut check_session = None;
     let mut check_run = None;
     if !flags.verified.load(std::sync::atomic::Ordering::SeqCst) {
@@ -361,6 +384,14 @@ async fn session(
                     }
                 }
             }
+            _=tokio::time::sleep(redeliver_at.saturating_duration_since(Instant::now())), if deferred && tasks.is_empty()=>{
+                deferred=match until_drained(&shutdown, deliver_saved_results(client, executor, worker.worker_id)).await {
+                    Ok(Some(deferred))=>deferred,
+                    Ok(None)=>break Ok(()),
+                    Err(error)=>break Err(error),
+                };
+                redeliver_at=Instant::now()+SAVED_RESULT_RETRY_EVERY;
+            }
             result=&mut heartbeat=>break if shutdown.is_cancelled() {Ok(())} else {result.unwrap_or_else(|_|Err(CtError::Protocol("worker heartbeat task stopped".into())))},
         }
     } }.await;
@@ -420,12 +451,100 @@ async fn repository_snapshot(executor: &Arc<WorkdirExecutor>) -> Option<api::Rep
     })
 }
 
+async fn deliver_saved_results(
+    client: &WorkerClient,
+    executor: &Arc<WorkdirExecutor>,
+    worker: Uuid,
+) -> CtResult<bool> {
+    let state = executor.identity.state.clone();
+    let journals = tokio::task::spawn_blocking(move || journal::with_saved_results(&state))
+        .await
+        .unwrap_or_default();
+    let deadline = Instant::now() + WORKER_TRANSPORT_RETRY_TIMEOUT;
+    let mut deferred = false;
+    for path in journals {
+        let journal = match Journal::open(path.clone()).await {
+            Ok(journal) => journal,
+            Err(error) => {
+                telemetry::emit(
+                    Level::Warn,
+                    "saved_result_journal_skipped",
+                    Fields {
+                        assignment_id: path
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .and_then(|name| Uuid::parse_str(name).ok()),
+                        ..Fields::default()
+                    },
+                    &format!(
+                        "Skipped the receipt journal {} ({error}). Fix or remove it to send its saved result.",
+                        path.join("journal.jsonl").display()
+                    ),
+                );
+                continue;
+            }
+        };
+        for record in journal.apply(|j| Ok(j.records())).await? {
+            if record.state != JournalState::Terminal || record.issuance().is_none() {
+                continue;
+            }
+            if Instant::now() >= deadline {
+                telemetry::emit(
+                    Level::Warn,
+                    "saved_result_deferred",
+                    Fields::default(),
+                    "CloudThinker did not take every saved result in time; the Worker sends the rest a minute later while it has no run.",
+                );
+                return Ok(true);
+            }
+            let (assignment, operation) = (record.assignment_id, record.operation_id);
+            match recover(client, &journal, worker, record, deadline).await {
+                Ok(Recovery::Done) => {}
+                Ok(Recovery::Gone(error)) => {
+                    telemetry::emit(
+                        Level::Warn,
+                        "saved_result_dropped",
+                        Fields {
+                            assignment_id: Some(assignment),
+                            ..Fields::default()
+                        },
+                        &format!(
+                            "CloudThinker no longer accepts a saved result ({error}); the Worker removed it."
+                        ),
+                    );
+                    journal.apply(move |j| j.acknowledge(operation)).await?;
+                }
+                Err(error) if !stops_worker(&error) => {
+                    deferred = true;
+                    telemetry::emit(
+                        Level::Warn,
+                        "saved_result_failed",
+                        Fields {
+                            assignment_id: Some(assignment),
+                            ..Fields::default()
+                        },
+                        &format!("Could not send a saved result to CloudThinker ({error})."),
+                    );
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+    Ok(deferred)
+}
+
 async fn maintain(executor: &Arc<WorkdirExecutor>) {
+    executor.containers.reap_idle().await;
     let executor = executor.clone();
     let _ = tokio::task::spawn_blocking(move || {
         let now = SystemTime::now();
         background::gc(&executor.identity, now);
-        journal::remove_abandoned(&executor.identity.state, now, ABANDONED_JOURNAL_AGE);
+        journal::remove_abandoned(
+            &executor.identity.state,
+            now,
+            ABANDONED_JOURNAL_AGE,
+            SAVED_RESULT_JOURNAL_AGE,
+        );
         worktree::prune(&executor.identity.state, now, worktree::MAX_IDLE);
     })
     .await;
@@ -491,7 +610,10 @@ async fn serve(
     else {
         return Ok(());
     };
+    let isolation = Arc::new(std::sync::RwLock::new(lease.isolation.clone()));
     let renew_client = client.clone();
+    let renew_executor = executor.clone();
+    let renew_isolation = isolation.clone();
     let initial_lease = lease.clone();
     let renew_cancel = cancel.clone();
     let heartbeat = AbortOnDropHandle::new(tokio::spawn(async move {
@@ -516,7 +638,13 @@ async fn serve(
                         })=>result,
                     };
                     match result {
-                        Ok(lease) => renew_lease = lease,
+                        Ok(lease) => {
+                            if let Some(policy) = &lease.isolation {
+                                renew_executor.containers.refresh_allowlist(lease.assignment_id, policy).await;
+                            }
+                            *renew_isolation.write().unwrap_or_else(std::sync::PoisonError::into_inner) = lease.isolation.clone();
+                            renew_lease = lease;
+                        }
                         Err(_) => {renew_cancel.cancel();return;}
                     }
                 }
@@ -561,20 +689,21 @@ async fn serve(
                 for envelope in batch {
                     validate(&lease,&envelope)?;
                     if active.contains(&envelope.operation_id) {continue;}
-                    let delivery = Delivery::of(&envelope);
+                    let delivery = Delivery::of(&envelope, lease.worker_id);
                     let state=journal.apply(move |j| j.received(delivery)).await?;
                     after=after.max(envelope.operation_sequence as u64);
                     if state==JournalState::Acknowledged {continue;}
                     last_operation=std::time::Instant::now();
                     active.insert(envelope.operation_id);
                     let client=client.clone();let executor=executor.clone();let journal=journal.clone();let cancel=cancel.child_token();let operation_drain=drain.clone();let permits=permits.clone();let workspace=workspace.clone();
+                    let policy=isolation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
                     operations.spawn(async move {
                         let permit = tokio::select! {
                             _=cancel.cancelled()=>return (envelope.operation_id,Err(CtError::Protocol("assignment cancelled before dispatch".into()))),
                             permit=permits.acquire_owned()=>permit,
                         };
-                        let _permit=match permit {Ok(permit)=>permit,Err(_)=>return (envelope.operation_id,Err(CtError::Protocol("worker operation capacity unavailable".into())))};
-                        (envelope.operation_id,execute(client,executor,journal,envelope,(lease.worker_id,workspace.as_ref(),sandboxed),(cancel,operation_drain),state).await)});
+                        let permit=match permit {Ok(permit)=>permit,Err(_)=>return (envelope.operation_id,Err(CtError::Protocol("worker operation capacity unavailable".into())))};
+                        (envelope.operation_id,execute(client,executor,journal,envelope,(lease.worker_id,workspace.as_ref(),sandboxed,policy.as_ref()),(cancel,operation_drain),(state,permit)).await)});
                 }
                 journal.apply(move |j| j.advance_cursor(j.cursor().max(after))).await?;
             }
@@ -596,6 +725,7 @@ async fn serve(
     }
     cancel.cancel();
     heartbeat.abort();
+    executor.containers.forget_assignment(lease.assignment_id);
     let release = client.release(&lease).await;
     settle(
         outcome,
@@ -659,35 +789,126 @@ async fn reconcile(
         if record.state == JournalState::Acknowledged {
             continue;
         }
-        let receipt_client = client.clone();
-        let worker_id = lease.worker_id;
-        let assignment_id = record.assignment_id;
-        let operation_id = record.operation_id;
-        let receipt = tokio::select! {
+        tokio::select! {
             _=drain.cancelled()=>return client.release(lease).await.map(|()| false),
-            result=retry_transport_until(lease_retry_deadline(lease), move || {
-                let client = receipt_client.clone();
-                async move { client.receipt(worker_id, assignment_id, operation_id).await }
-            })=>result?,
-        };
-        if receipt.request_digest != record.digest || receipt.session_id != record.session_id {
-            return Err(CtError::Protocol(
-                "worker recovery identity mismatch".into(),
-            ));
-        }
-        if matches!(
-            receipt.state,
-            api::OperationReceiptState::Succeeded
-                | api::OperationReceiptState::Failed
-                | api::OperationReceiptState::Cancelled
-                | api::OperationReceiptState::Unknown
-        ) {
-            journal
-                .apply(move |j| j.acknowledge(record.operation_id))
-                .await?;
+            result=recover(client, journal, lease.worker_id, record, lease_retry_deadline(lease))=>if let Recovery::Gone(error)=result? {return Err(error);},
         }
     }
     Ok(true)
+}
+
+enum Recovery {
+    Done,
+    Gone(CtError),
+}
+
+async fn recover(
+    client: &WorkerClient,
+    journal: &Journal,
+    worker: Uuid,
+    record: OperationRecord,
+    deadline: Instant,
+) -> CtResult<Recovery> {
+    let (assignment, operation) = (record.assignment_id, record.operation_id);
+    let receipt = match retry_transport_until(deadline, move || {
+        client.receipt(worker, assignment, operation)
+    })
+    .await
+    {
+        Err(error) if receipt_gone(&error) => return Ok(Recovery::Gone(error)),
+        receipt => receipt?,
+    };
+    if receipt.request_digest != record.digest || receipt.session_id != record.session_id {
+        return Ok(Recovery::Gone(CtError::Protocol(
+            "worker recovery identity mismatch".into(),
+        )));
+    }
+    if record.state == JournalState::Terminal
+        && awaits_result(&receipt)
+        && let Some(issuance) = record.issuance()
+    {
+        return match resend(client, journal, &issuance, deadline).await {
+            Err(error) if refused(&error) => {
+                telemetry::emit(
+                    Level::Warn,
+                    "saved_result_refused",
+                    Fields {
+                        assignment_id: Some(assignment),
+                        ..Fields::default()
+                    },
+                    &format!("CloudThinker did not accept a saved result ({error})."),
+                );
+                if receipt.state == api::OperationReceiptState::Unknown {
+                    journal.apply(move |j| j.acknowledge(operation)).await?;
+                }
+                Ok(Recovery::Done)
+            }
+            result => result.map(|()| Recovery::Done),
+        };
+    }
+    if matches!(
+        receipt.state,
+        api::OperationReceiptState::Succeeded
+            | api::OperationReceiptState::Failed
+            | api::OperationReceiptState::Cancelled
+            | api::OperationReceiptState::Unknown
+    ) {
+        journal.apply(move |j| j.acknowledge(operation)).await?;
+    }
+    Ok(Recovery::Done)
+}
+
+fn awaits_result(receipt: &api::OperationReceiptPublic) -> bool {
+    match receipt.state {
+        api::OperationReceiptState::Delivered | api::OperationReceiptState::Running => true,
+        api::OperationReceiptState::Unknown => {
+            receipt.result.is_none() && receipt.resolution.is_none()
+        }
+        api::OperationReceiptState::Prepared
+        | api::OperationReceiptState::Succeeded
+        | api::OperationReceiptState::Failed
+        | api::OperationReceiptState::Cancelled => false,
+    }
+}
+
+async fn resend(
+    client: &WorkerClient,
+    journal: &Journal,
+    issuance: &OperationIssuance<'_>,
+    deadline: Instant,
+) -> CtResult<()> {
+    let operation = issuance.operation;
+    let result = journal.apply(move |j| j.result(operation)).await?;
+    let receipt = retry_transport_until(deadline, move || {
+        client.complete_with_credential(issuance, result.clone())
+    })
+    .await?;
+    if receipt.operation_id != operation || receipt.request_digest != issuance.request_digest {
+        return Err(CtError::Protocol("receipt identity mismatch".into()));
+    }
+    telemetry::emit(
+        Level::Debug,
+        "saved_result_delivered",
+        Fields {
+            assignment_id: Some(issuance.assignment),
+            operation_id: Some(operation),
+            ..Fields::default()
+        },
+        &format!(
+            "Sent a saved result for assignment {}.",
+            issuance.assignment
+        ),
+    );
+    journal.apply(move |j| j.acknowledge(operation)).await
+}
+
+fn receipt_gone(error: &CtError) -> bool {
+    matches!(error, CtError::Api { detail: Some(detail), .. } if detail.starts_with(OPERATION_UNAVAILABLE_CODE))
+}
+
+fn refused(error: &CtError) -> bool {
+    matches!(error, CtError::Api { status, .. } if (400..500).contains(status))
+        && outposts_disabled_message(error).is_none()
 }
 
 async fn execute(
@@ -695,12 +916,18 @@ async fn execute(
     executor: Arc<WorkdirExecutor>,
     journal: Journal,
     envelope: api::OperationEnvelope,
-    placement: (Uuid, Option<&Workspace>, bool),
+    placement: (
+        Uuid,
+        Option<&Workspace>,
+        bool,
+        Option<&api::WorkerIsolationPolicy>,
+    ),
     tokens: (CancellationToken, CancellationToken),
-    state: JournalState,
+    admission: (JournalState, OwnedSemaphorePermit),
 ) -> CtResult<()> {
-    let (worker, workspace, sandboxed) = placement;
+    let (worker, workspace, sandboxed, isolation) = placement;
     let (cancel, drain) = tokens;
+    let (state, permit) = admission;
     let envelope = Arc::new(envelope);
     let operation_id = envelope.operation_id;
     let result = if state == JournalState::Terminal {
@@ -731,7 +958,13 @@ async fn execute(
             super::executor::cancelled()?
         } else {
             executor
-                .execute(&envelope, cancel, worker, &client, (workspace, sandboxed))
+                .execute(
+                    &envelope,
+                    cancel,
+                    worker,
+                    &client,
+                    (workspace, sandboxed, isolation),
+                )
                 .await?
         };
         let durable_result = result.clone();
@@ -740,17 +973,30 @@ async fn execute(
             .await?;
         result
     };
-    let receipt = retry_transport({
-        let client = client.clone();
-        let envelope = envelope.clone();
-        move || {
-            let client = client.clone();
-            let envelope = envelope.clone();
-            let result = result.clone();
-            async move { client.complete(worker, &envelope, result).await }
+    drop(permit);
+    let issuance = OperationIssuance::of(worker, &envelope);
+    let lease_lost = std::sync::atomic::AtomicBool::new(false);
+    let deliver = {
+        let (client, envelope, issuance, result, lease_lost) =
+            (&client, &*envelope, &issuance, &result, &lease_lost);
+        move || async move {
+            if !lease_lost.load(std::sync::atomic::Ordering::Relaxed) {
+                match client.complete(worker, envelope, result.clone()).await {
+                    Err(error) if lease_refused(&error) => {
+                        lease_lost.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    receipt => return receipt,
+                }
+            }
+            client
+                .complete_with_credential(issuance, result.clone())
+                .await
         }
-    })
-    .await?;
+    };
+    let receipt = tokio::select! {
+        _=async { drain.cancelled().await; tokio::time::sleep(WORKER_TRANSPORT_RETRY_TIMEOUT).await; }=>return Ok(()),
+        receipt=retry_transport_until(delivery_deadline(&envelope), deliver)=>receipt?,
+    };
     if receipt.operation_id != envelope.operation_id
         || receipt.request_digest != envelope.request_digest
     {
@@ -761,6 +1007,15 @@ async fn execute(
         drain.cancel();
     }
     Ok(())
+}
+
+fn delivery_deadline(envelope: &api::OperationEnvelope) -> Instant {
+    let remaining = envelope
+        .deadline_at
+        .signed_duration_since(Utc::now())
+        .to_std()
+        .unwrap_or_default();
+    Instant::now() + remaining.max(WORKER_TRANSPORT_RETRY_TIMEOUT)
 }
 
 fn workspace_of(lease: &api::AssignmentLease) -> Option<Workspace> {
@@ -803,7 +1058,7 @@ where
 {
     retry_within(
         fetch,
-        &worker_retry_config(),
+        &worker_retry_config(WORKER_HEARTBEAT_RETRY_TIMEOUT),
         WORKER_HEARTBEAT_RETRY_TIMEOUT,
         "worker heartbeat retry deadline exceeded",
     )
@@ -826,14 +1081,14 @@ fn renewal_wait(lease: &api::AssignmentLease) -> Duration {
 
 async fn retry_transport_until<T, F, Fut>(deadline: Instant, fetch: F) -> CtResult<T>
 where
-    F: Fn() -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = CtResult<T>> + Send + 'static,
-    T: Send + 'static,
+    F: Fn() -> Fut + Send + Sync,
+    Fut: Future<Output = CtResult<T>> + Send,
+    T: Send,
 {
     let remaining = deadline.saturating_duration_since(Instant::now());
     retry_within(
         fetch,
-        &worker_retry_config(),
+        &worker_retry_config(remaining),
         remaining,
         "worker lease retry deadline exceeded",
     )
@@ -848,17 +1103,17 @@ where
 {
     retry_within(
         fetch,
-        &worker_retry_config(),
+        &worker_retry_config(WORKER_TRANSPORT_RETRY_TIMEOUT),
         WORKER_TRANSPORT_RETRY_TIMEOUT,
         "worker transport retry deadline exceeded",
     )
     .await
 }
 
-fn worker_retry_config() -> WatchConfig {
+fn worker_retry_config(timeout: Duration) -> WatchConfig {
     WatchConfig {
         max_transport_errors: u32::MAX,
-        ..WatchConfig::for_run(WORKER_TRANSPORT_RETRY_TIMEOUT)
+        ..WatchConfig::for_run(timeout)
     }
 }
 
@@ -1080,6 +1335,7 @@ mod tests {
             filesystem_id: None,
             workspace_mode: None,
             sandbox: None,
+            isolation: None,
         };
         let body = serde_json::to_string(&lease).unwrap();
         let attempts = Arc::new(AtomicUsize::new(0));
@@ -1311,6 +1567,7 @@ mod tests {
             filesystem_id: None,
             workspace_mode: None,
             sandbox: None,
+            isolation: None,
         };
         let deadline = lease_retry_deadline(&lease);
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -1341,6 +1598,7 @@ mod tests {
             filesystem_id: None,
             workspace_mode: None,
             sandbox: None,
+            isolation: None,
         };
 
         assert!(renewal_wait(&lease) < Duration::from_secs(2));

@@ -97,6 +97,14 @@ PI_REPOSITORY="$(node -p "
 ")"
 PI_AUTHOR="$(node -p "require('$PI_ROOT/package.json').author")"
 SOURCE_REVISION="$PKG_DIR/../../.source-revision"
+REVIEW_SETUP="$PKG_DIR/../../../executor/app/skills/public/review-setup/SKILL.md"
+if [ ! -f "$REVIEW_SETUP" ]; then
+  REVIEW_SETUP="$PKG_DIR/.agents/skills/review-setup/SKILL.md"
+fi
+if [ ! -s "$REVIEW_SETUP" ]; then
+  echo "error: review-setup Skill source is missing or empty" >&2
+  exit 1
+fi
 if [ -f "$SOURCE_REVISION" ]; then
   BUILD_ID="$(<"$SOURCE_REVISION")"
   if ! [[ "$BUILD_ID" =~ ^[0-9a-f]{40}$ ]]; then
@@ -106,7 +114,7 @@ if [ -f "$SOURCE_REVISION" ]; then
 else
   BUILD_ID="$(git -C "$PKG_DIR" rev-parse HEAD)"
 fi
-if [ -n "$(git -C "$PKG_DIR" status --porcelain -- . ../pi)" ]; then
+if [ -n "$(git -C "$PKG_DIR" status --porcelain -- . ../pi "$REVIEW_SETUP")" ]; then
   BUILD_ID="$BUILD_ID-dirty"
 fi
 
@@ -149,6 +157,9 @@ for triple in $TRIPLES; do
   cp "$PKG_DIR/CHANGELOG.md" "$dir/"
   mkdir -p "$dir/.agents/skills"
   cp -r "$PKG_DIR/.agents/skills/tour" "$dir/.agents/skills/"
+  mkdir -p "$dir/.agents/skills/review-setup"
+  cp "$REVIEW_SETUP" "$dir/.agents/skills/review-setup/SKILL.md"
+  cmp -s "$REVIEW_SETUP" "$dir/.agents/skills/review-setup/SKILL.md"
 
   cat > "$dir/package.json" <<JSON
 {

@@ -26,7 +26,7 @@ use clap::parser::ValueSource;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use cloudthinker_client::{
     CyberFindingStatus, CyberIntensity, CyberSeverity, CyberTriageState, FindingFilter,
-    IncidentStatus, RecommendationStatus,
+    IncidentStatus, PolicyImportMode, PolicyImportOptions, RecommendationStatus,
 };
 use uuid::Uuid;
 
@@ -208,8 +208,14 @@ enum Command {
     Incident(IncidentArgs),
     /// List cost and efficiency recommendations with their monthly savings.
     Recommendations(RecommendationsArgs),
-    /// List your workspace's Connections, check their tests, retry one, or open the page to add one.
+    /// List your workspace's Connections, check their tests, retry or disconnect one, or open the page to add one.
     Connections(ConnectionsArgs),
+    #[command(about = "Discover workspace agents and custom agents available for chat selection.")]
+    Agents(AgentsArgs),
+    #[command(about = "List the workspaces you can access in your current login's organization.")]
+    Workspace(WorkspaceArgs),
+    #[command(about = "Export your workspace Policy, preview an import, or explicitly apply it.")]
+    Policy(PolicyArgs),
     /// Log in. Over SSH or without a display, it shows a short code instead of a browser.
     Login(LoginArgs),
     /// Log out and clear stored credentials.
@@ -218,6 +224,17 @@ enum Command {
     Whoami {
         /// Print JSON on stdout instead of text.
         #[arg(long)]
+        json: bool,
+    },
+    #[command(
+        about = "Diagnose CLI credentials, live identity, API access, and Connection status",
+        long_about = "Read the selected credential source, live user and workspace IDs, API reachability, and up to 20 recorded Connection test snapshots. No provider test, retry, repair, browser, login, or model is started.\n\nStored credentials may refresh through the normal guarded authentication flow. Doctor does not inspect or migrate legacy keyring logins. If compatible file credentials are absent, run cloudthinker whoami to inspect or migrate an older login before signing in again. Workspace selection never changes the active login.\n\nRequests use a 3-second timeout, credential locks wait up to 1 second, and Connection reads share a 15-second budget with concurrency 4. Network work is budgeted to finish within 70 seconds; local filesystem stalls are outside this bound. A recorded success can come from persisted Connection status and is not a fresh provider test. Release freshness and server version compatibility are not checked.\n\nStatuses: healthy, warn, error, skipped, unknown. Pending tests and no installed Connections warn without failing. Unknown phases or omitted snapshots fail with exit 1. Exits retain the CLI contract: 0 success/warnings, 1 failed/incomplete checks or transport errors, 2 invalid selection/request, 3 authentication/permission, 4 an explicit diagnostic deadline, 130 interrupted Connection reads."
+    )]
+    Doctor {
+        #[arg(
+            long,
+            help = "Print one diagnostic JSON object on stdout, including failed checks and the exit code"
+        )]
         json: bool,
     },
     /// List or switch the workspace logins saved on this machine.
@@ -320,7 +337,7 @@ struct ChatArgs {
     #[arg(
         long = "agent",
         value_name = "UUID_OR_ALIAS",
-        help = "Use an authorized custom agent UUID or alias for this turn."
+        help = "Use an authorized custom agent UUID or alias from `cloudthinker agents ls` for this turn."
     )]
     agent: Option<String>,
 
@@ -339,6 +356,21 @@ struct ChatArgs {
 
 #[derive(Debug, Subcommand)]
 enum ChatSub {
+    #[command(
+        about = "Inspect persisted conversation messages, tool metadata, failures and usage.",
+        long_about = "Inspect a bounded persisted snapshot of a conversation you can view in the selected workspace. Tool arguments, output and thinking are excluded. Mirrored Agent CLI sessions are unsupported. Completion does not establish tool success; missing usage stays unknown."
+    )]
+    Trace {
+        #[arg(help = "Conversation UUID, rather than a run UUID.")]
+        conversation_id: Uuid,
+        #[arg(long, default_value_t = cloudthinker_client::TRACE_MAX_MESSAGES, value_parser = clap::value_parser!(u64).range(1..=cloudthinker_client::TRACE_MAX_MESSAGES), help = "Maximum recent source messages to inspect; the full source must fit the read budget.")]
+        limit: u64,
+        #[arg(
+            long,
+            help = "Print one JSON snapshot with explicit truncation metadata."
+        )]
+        json: bool,
+    },
     /// Show the status (and answer, if finished) of a run.
     Status {
         /// The run id returned by a previous `chat -p`.
@@ -370,7 +402,7 @@ enum ChatSub {
 #[derive(Debug, Args)]
 #[command(
     args_conflicts_with_subcommands = true,
-    after_help = "Examples:\n  cloudthinker review\n  cloudthinker review --base origin/develop\n  cloudthinker review --json --timeout 300\n  cloudthinker review --base origin/main --fail-on high\n  cloudthinker review status <MR_URL> --json"
+    after_help = "Examples:\n  cloudthinker review\n  cloudthinker review --base origin/develop\n  cloudthinker review setup\n  cloudthinker review doctor\n  cloudthinker review --json --timeout 300\n  cloudthinker review --base origin/main --fail-on high\n  cloudthinker review status <MR_URL> --json"
 )]
 struct ReviewArgs {
     #[command(subcommand)]
@@ -832,6 +864,31 @@ enum CyberFindingSub {
 
 #[derive(Debug, Subcommand)]
 enum ReviewSub {
+    /// Start or resume Loupe setup on a shared Worker.
+    Setup {
+        #[arg(
+            long,
+            help = "Shared Worker name or ID; optional when only one is available."
+        )]
+        worker: Option<String>,
+    },
+    /// Check Worker prerequisites and optional repository setup observations.
+    Doctor {
+        /// Print JSON on stdout instead of text.
+        #[arg(long)]
+        json: bool,
+        #[arg(
+            long,
+            help = "Shared Worker ID; defaults to the saved workspace Worker."
+        )]
+        worker: Option<Uuid>,
+        #[arg(long, requires_all = ["worker", "provider", "repository"], help = "Review Connection ID for the repository.")]
+        connection: Option<Uuid>,
+        #[arg(long, requires_all = ["worker", "connection", "repository"], help = "Code host: gitlab, github, bitbucket, azure_devops or aws_codecommit.")]
+        provider: Option<String>,
+        #[arg(long, requires_all = ["worker", "connection", "provider"], help = "Exact repository path configured in Review.")]
+        repository: Option<String>,
+    },
     /// One-shot summary of a review's current status.
     Status {
         /// The GitLab/GitHub merge-request URL.
@@ -930,11 +987,108 @@ enum RecommendationsSub {
 
 #[derive(Debug, Args)]
 #[command(
-    after_help = "Examples:\n  cloudthinker connections list\n  cloudthinker connections status aws --wait\n  cloudthinker connections retry <CONNECTION_ID> --wait --json\n  cloudthinker connections connect-url github --wait\n\nA TARGET is a connection id, alias, or prefix from `connections list`.\n\nExit codes: 0 ok; 1 the test failed or no connection matches; 2 the target matches several connections or the prefix is unknown; 3 you lack access; 4 timeout; 130 Ctrl-C."
+    after_help = "Examples:\n  cloudthinker policy export --output policy.yaml\n  cloudthinker policy import policy.yaml\n  cloudthinker policy import policy.yaml --apply --json\n\nImport previews by default. Only --apply writes changes.\n--prune and --activate are explicit and can also be previewed.\nExport writes YAML only; --output requires a new path.\n\nExit codes: 0 success; 1 output, transport, or apply failure; 2 invalid input or document; 3 missing login or permission."
+)]
+struct PolicyArgs {
+    #[command(subcommand)]
+    command: PolicySub,
+}
+
+#[derive(Debug, Subcommand)]
+enum PolicySub {
+    #[command(about = "Print the workspace Policy as YAML, or save it to a new file.")]
+    Export {
+        #[arg(
+            long,
+            value_name = "PATH",
+            help = "Write a private YAML file; the path must not exist."
+        )]
+        output: Option<PathBuf>,
+    },
+    #[command(about = "Preview a Policy file import; write changes only with --apply.")]
+    Import {
+        #[arg(
+            value_name = "PATH",
+            help = "The UTF-8 Policy YAML or JSON file to import."
+        )]
+        path: PathBuf,
+        #[arg(
+            long,
+            help = "Apply the import; without this flag, only show the plan."
+        )]
+        apply: bool,
+        #[arg(
+            long,
+            help = "Dismiss absent slugged Rules and clear omitted overrides in origin_levels."
+        )]
+        prune: bool,
+        #[arg(
+            long,
+            help = "Activate imported Allow Rules when applying; preview activation otherwise."
+        )]
+        activate: bool,
+        #[arg(long, help = "Print one JSON report on stdout instead of text.")]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Args)]
+#[command(
+    after_help = "Examples:\n  cloudthinker connections list\n  cloudthinker connections status aws --wait\n  cloudthinker connections retry <CONNECTION_ID> --wait --json\n  cloudthinker connections connect-url github --wait\n  cloudthinker connections disconnect <CONNECTION_ID> --yes\n\nA TARGET is a connection id, alias, or prefix from `connections list`.\n\nExit codes: 0 ok; 1 the test or disconnect failed, you declined, or no connection matches; 2 the target matches several connections, the prefix is unknown, or disconnect needs --yes without a terminal; 3 you lack access; 4 timeout; 130 Ctrl-C."
 )]
 struct ConnectionsArgs {
     #[command(subcommand)]
     command: ConnectionsSub,
+}
+
+#[derive(Debug, Args)]
+#[command(
+    after_help = "Examples:\n  cloudthinker agents ls\n  cloudthinker agents show <UUID_OR_ALIAS> --json\n\nOnly active custom agents are eligible for explicit chat --agent selection.\nThe default agent is used when --agent is omitted. Chat checks its own access and runtime requirements.\n\nAliases match exactly, ignoring ASCII case. If an alias matches several agents, use a UUID.\nExit codes: 0 read succeeded; 1 no match or read failed; 2 invalid or ambiguous reference; 3 authentication or permission denied."
+)]
+struct AgentsArgs {
+    #[command(subcommand)]
+    command: AgentsSub,
+}
+
+#[derive(Debug, Subcommand)]
+enum AgentsSub {
+    #[command(
+        about = "List agents in the selected workspace and their chat-selection eligibility."
+    )]
+    Ls {
+        #[arg(long, help = "Print JSON on stdout instead of text.")]
+        json: bool,
+    },
+    #[command(about = "Show one agent's identity, description, and chat-selection eligibility.")]
+    Show {
+        #[arg(
+            value_name = "UUID_OR_ALIAS",
+            help = "An agent UUID or exact alias from `cloudthinker agents ls`."
+        )]
+        reference: String,
+        #[arg(long, help = "Print JSON on stdout instead of text.")]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Args)]
+#[command(
+    after_help = "Examples:\n  cloudthinker workspace ls\n  cloudthinker workspace ls --json\n\nThe list is read live from CloudThinker and covers only the organization of your current login. It is a point-in-time snapshot: a workspace created or deleted while the list is read can be missed. Run it again to confirm. To reach a workspace in another organization, run cloudthinker login and choose it in the browser.\n\nThe selected workspace is the one your command runs in: --workspace, else the active saved login. SAVED LOGIN shows whether this machine has a login for a workspace; use --workspace <ID> or cloudthinker auth switch <ID> with one. While CLOUDTHINKER_TOKEN is set, commands use that token and reject --workspace. Listing never changes the active login.\n\nExit codes: 0 read succeeded; 1 read failed; 2 invalid selection or request; 3 authentication or permission denied."
+)]
+struct WorkspaceArgs {
+    #[command(subcommand)]
+    command: WorkspaceSub,
+}
+
+#[derive(Debug, Subcommand)]
+enum WorkspaceSub {
+    #[command(
+        about = "List the workspaces you can access, with your role, and mark the selected one."
+    )]
+    Ls {
+        #[arg(long, help = "Print a JSON array on stdout instead of text.")]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -978,6 +1132,17 @@ enum ConnectionsSub {
         /// Stop waiting after this many seconds (the test keeps running).
         #[arg(long, default_value_t = CONNECTION_TEST_TIMEOUT_SECS)]
         timeout: u64,
+        /// Print JSON on stdout instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Remove a connection and its saved credentials from the workspace (workspace admins); asks first unless `--yes`.
+    Disconnect {
+        /// A connection id, alias, or prefix from `connections list`.
+        target: String,
+        /// Disconnect without asking; required when no terminal can answer the question.
+        #[arg(long, short = 'y')]
+        yes: bool,
         /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
@@ -1040,6 +1205,9 @@ fn shows_update_notice(command: &Command) -> bool {
             | Command::Incident(_)
             | Command::Recommendations(_)
             | Command::Connections(_)
+            | Command::Agents(_)
+            | Command::Workspace(_)
+            | Command::Policy(_)
             | Command::Login(_)
             | Command::Logout(_)
             | Command::Whoami { .. }
@@ -1076,7 +1244,18 @@ async fn dispatch(cli: Cli, url_from_flag: bool) -> ExitCode {
                 .unwrap_or_default(),
         }),
     };
-    if workspace.is_some() && commands::env_token_is_set() {
+    let review_setup = matches!(
+        &command,
+        Command::Review(ReviewArgs {
+            command: Some(ReviewSub::Setup { .. }),
+            ..
+        })
+    );
+    if workspace.is_some()
+        && commands::env_token_is_set()
+        && !review_setup
+        && !matches!(&command, Command::Doctor { .. })
+    {
         engine::output::eprintln_error("--workspace cannot be used with CLOUDTHINKER_TOKEN");
         return ExitCode::Usage;
     }
@@ -1123,6 +1302,9 @@ async fn run_command(
         Command::Whoami { json } => {
             commands::whoami::run(base_url, workspace.as_deref(), json).await
         }
+        Command::Doctor { json } => {
+            commands::doctor::run(base_url, workspace.as_deref(), json).await
+        }
         Command::Auth(args) => match args.command {
             AuthSub::Token => commands::auth::run_token(base_url, workspace.as_deref()).await,
             AuthSub::Status { json } => commands::auth::run_status(base_url, json),
@@ -1131,6 +1313,20 @@ async fn run_command(
             } => commands::auth::run_switch(base_url, &selection),
         },
         Command::Chat(args) => match args.command {
+            Some(ChatSub::Trace {
+                conversation_id,
+                limit,
+                json,
+            }) => {
+                commands::chat::run_trace(
+                    base_url,
+                    workspace.as_deref(),
+                    conversation_id,
+                    limit,
+                    json,
+                )
+                .await
+            }
             Some(ChatSub::Status {
                 run_id,
                 json,
@@ -1216,6 +1412,44 @@ async fn run_command(
                 .await
             }
         },
+        Command::Agents(args) => match args.command {
+            AgentsSub::Ls { json } => {
+                commands::agents::run_list(base_url, workspace.as_deref(), json).await
+            }
+            AgentsSub::Show { reference, json } => {
+                commands::agents::run_show(base_url, workspace.as_deref(), &reference, json).await
+            }
+        },
+        Command::Workspace(args) => match args.command {
+            WorkspaceSub::Ls { json } => {
+                commands::workspace::run_list(base_url, workspace.as_deref(), json).await
+            }
+        },
+        Command::Policy(args) => match args.command {
+            PolicySub::Export { output } => {
+                commands::policy::run_export(base_url, workspace.as_deref(), output.as_deref())
+                    .await
+            }
+            PolicySub::Import {
+                path,
+                apply,
+                prune,
+                activate,
+                json,
+            } => {
+                let options = PolicyImportOptions {
+                    mode: if apply {
+                        PolicyImportMode::Apply
+                    } else {
+                        PolicyImportMode::Plan
+                    },
+                    prune,
+                    activate,
+                };
+                commands::policy::run_import(base_url, workspace.as_deref(), &path, options, json)
+                    .await
+            }
+        },
         Command::Connections(args) => {
             let workspace = workspace.as_deref();
             let wait = |enabled, timeout_secs| commands::connections::Wait {
@@ -1259,6 +1493,10 @@ async fn run_command(
                     )
                     .await
                 }
+                ConnectionsSub::Disconnect { target, yes, json } => {
+                    commands::connections::run_disconnect(base_url, workspace, &target, yes, json)
+                        .await
+                }
                 ConnectionsSub::ConnectUrl {
                     prefix,
                     wait: enabled,
@@ -1301,6 +1539,27 @@ async fn run_command(
                     json: args.json,
                     timeout_secs: args.timeout,
                     fail_on: args.fail_on,
+                })
+                .await
+            }
+            Some(ReviewSub::Setup { worker }) => {
+                commands::review::run_setup(base_url, workspace.as_deref(), worker.as_deref()).await
+            }
+            Some(ReviewSub::Doctor {
+                json,
+                worker,
+                connection,
+                provider,
+                repository,
+            }) => {
+                commands::review::run_doctor(commands::review::DoctorOptions {
+                    base_url,
+                    workspace: workspace.as_deref(),
+                    json,
+                    worker,
+                    connection,
+                    provider: provider.as_deref(),
+                    repository: repository.as_deref(),
                 })
                 .await
             }

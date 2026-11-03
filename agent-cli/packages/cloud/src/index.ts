@@ -16,7 +16,9 @@ import { appendPromptBlock, buildPromptBlock } from "./prompt.ts";
 import {
 	MODELS_UNAVAILABLE_STATUS,
 	NO_MODES_REASON,
+	PROVIDER_ID,
 	applyConversationHeader,
+	gatewayErrorMessage,
 	modelsUnavailableMessage,
 	pinProviderWorkspace,
 	registerProvider,
@@ -27,7 +29,7 @@ import { linkLazily, refreshConnections, refreshIdentity, restoreModels, startLo
 import { discoverSkillPaths, hasSkillIndex, refreshSkills } from "./skills.ts";
 import { statusLineFooter } from "./status-line.ts";
 import { markStartup } from "./timing.ts";
-import { TOUR_OFFER, bundledTourPath } from "./onboarding.ts";
+import { TOUR_OFFER, bundledReviewSetupPath, bundledTourPath } from "./onboarding.ts";
 import { registerCommandTools } from "./tools/command-tools.ts";
 import { registerAsk } from "./tools/ct-ask.ts";
 import { registerSandboxRead } from "./tools/ct-sandbox-read.ts";
@@ -210,7 +212,7 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 	});
 
 	pi.on("resources_discover", async () => ({
-		skillPaths: localReview ? [] : [bundledTourPath(), ...await discoverSkillPaths(workspaceId())],
+		skillPaths: localReview ? [] : [bundledTourPath(), bundledReviewSetupPath(), ...await discoverSkillPaths(workspaceId())],
 	}));
 
 	pi.on("tool_result", (event) => {
@@ -220,6 +222,14 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 		return { content: [...event.content, { type: "text" as const, text: MISSING_LOCAL_FILE_HINT }] };
 	});
 	if (localReview) registerLocalReviewBoundary(pi);
+
+	pi.on("message_end", (event) => {
+		const message = event.message;
+		if (message.role !== "assistant" || message.provider !== PROVIDER_ID || message.stopReason !== "error") return;
+		const readable = gatewayErrorMessage(message.errorMessage);
+		if (!readable) return;
+		return { message: { ...message, errorMessage: readable } };
+	});
 
 	pi.on("before_provider_headers", (event, ctx) => {
 		runtime.bind(ctx);

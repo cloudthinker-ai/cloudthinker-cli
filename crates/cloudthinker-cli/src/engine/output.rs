@@ -21,12 +21,23 @@ use owo_colors::{AnsiColors, OwoColorize};
 use serde::Serialize;
 use uuid::Uuid;
 
+mod agents;
 mod connections;
+mod doctor;
+pub use doctor::emit_doctor;
+mod policy;
+mod trace;
+pub use trace::emit_trace;
 mod worker_console;
+mod workspaces;
+pub use workspaces::emit_workspaces;
 
+pub use agents::{emit_agent, emit_agents};
 pub use connections::{
-    ConnectLink, emit_connect_link, emit_connection, emit_connection_test, emit_connections,
+    ConnectLink, emit_connect_link, emit_connection, emit_connection_disconnect,
+    emit_connection_test, emit_connections,
 };
+pub use policy::{emit_policy_export, emit_policy_import};
 
 pub use worker_console::{
     CheckResult, ConsoleEvent, ConsoleStyle, WorkerActivity, WorkerConsole, WorkerHeader, short_id,
@@ -346,6 +357,18 @@ fn format_whoami(identity: &CliIdentity) -> String {
         terminal_text(&identity.workspace_name),
         identity.workspace_id
     )
+}
+
+pub fn shell_word(value: &str) -> String {
+    let plain = !value.is_empty()
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "_@%+=:,./-".contains(character));
+    if plain {
+        value.to_string()
+    } else {
+        format!("'{}'", value.replace('\'', r"'\''"))
+    }
 }
 
 /// Strip terminal control and Unicode bidi-control characters from server text.
@@ -1521,6 +1544,11 @@ mod tests {
             cli_version: None,
             cli_version_status: None,
             workers_disabled: None,
+            isolation: None,
+            container_image: None,
+            egress_allowlist: Vec::new(),
+            ip_allowlist: Vec::new(),
+            isolation_supported: false,
         }
     }
 

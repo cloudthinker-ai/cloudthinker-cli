@@ -16,6 +16,7 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use fs2::FileExt as _;
@@ -260,6 +261,7 @@ pub struct FileStore {
     origin: String,
     selector: WorkspaceSelector,
     recovered: Mutex<Option<PathBuf>>,
+    lock_timeout: Option<Duration>,
 }
 
 impl FileStore {
@@ -277,6 +279,7 @@ impl FileStore {
             origin: origin.into(),
             selector,
             recovered: Mutex::new(None),
+            lock_timeout: None,
         }
     }
 
@@ -289,15 +292,27 @@ impl FileStore {
     /// releases before 0.5.3 into the file and deletes the keyring entry, so a
     /// read-only command keeps the login it had before the upgrade.
     pub fn open_default(origin: impl Into<String>, selector: WorkspaceSelector) -> CtResult<Self> {
+        let store = Self::open_default_unmigrated(origin.into(), selector)?;
+        store.absorb_keyring_logins()?;
+        Ok(store)
+    }
+
+    pub(crate) fn open_default_unmigrated(
+        origin: String,
+        selector: WorkspaceSelector,
+    ) -> CtResult<Self> {
         let base = dirs::config_dir()
             .ok_or_else(|| CtError::Store("no config dir for this platform".into()))?;
-        let store = Self::with_selector(
+        Ok(Self::with_selector(
             base.join("cloudthinker").join("credentials.json"),
             origin,
             selector,
-        );
-        store.absorb_keyring_logins()?;
-        Ok(store)
+        ))
+    }
+
+    pub(crate) fn with_lock_timeout(mut self, timeout: Duration) -> Self {
+        self.lock_timeout = Some(timeout);
+        self
     }
 
     fn absorb_keyring_logins(&self) -> CtResult<()> {
@@ -401,8 +416,27 @@ impl FileStore {
             create_private_dir_all(parent)?;
         }
         let lock = open_lock_file(&lock_path)?;
-        lock.lock_exclusive()
-            .map_err(|e| CtError::Store(format!("credentials lock acquire: {e}")))?;
+        if let Some(timeout) = self.lock_timeout {
+            let deadline = Instant::now() + timeout;
+            loop {
+                match lock.try_lock_exclusive() {
+                    Ok(()) => break,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        let remaining = deadline.saturating_duration_since(Instant::now());
+                        if remaining.is_zero() {
+                            return Err(CtError::Timeout("credential store is busy".into()));
+                        }
+                        std::thread::sleep(remaining.min(Duration::from_millis(20)));
+                    }
+                    Err(error) => {
+                        return Err(CtError::Store(format!("credentials lock acquire: {error}")));
+                    }
+                }
+            }
+        } else {
+            lock.lock_exclusive()
+                .map_err(|e| CtError::Store(format!("credentials lock acquire: {e}")))?;
+        }
         Ok(StoreLock::file(lock))
     }
 

@@ -166,8 +166,34 @@ pub async fn execute(
     )
 }
 
+pub async fn execute_in_container(
+    dir: &Dir,
+    root: &std::path::Path,
+    script: &api::ScriptRun,
+    environment: &BTreeMap<String, String>,
+    target: &super::container::Target,
+    deadline: DateTime<Utc>,
+    cancel: CancellationToken,
+) -> Result<Value, &'static str> {
+    if script.credential_ref.is_some() {
+        return Err("EXECUTOR_CREDENTIAL_NOT_LOCAL");
+    }
+    let working = relative(script.working_directory.as_deref().unwrap_or("."))?;
+    dir.open_dir(working).map_err(|_| "TRUSTED_ROOT_REJECTED")?;
+    super::container::run_script(
+        target,
+        &root.join(working),
+        &script.script,
+        environment,
+        deadline,
+        script.timeout,
+        cancel,
+    )
+    .await
+}
+
 #[derive(Clone, Default)]
-struct TailBuffer(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+pub(super) struct TailBuffer(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
 
 impl TailBuffer {
     fn push(&self, bytes: &[u8]) {
@@ -181,7 +207,7 @@ impl TailBuffer {
         }
     }
 
-    fn text(&self) -> String {
+    pub(super) fn text(&self) -> String {
         let Ok(tail) = self.0.lock() else {
             return String::new();
         };
@@ -190,7 +216,7 @@ impl TailBuffer {
     }
 }
 
-async fn tail(
+pub(super) async fn tail(
     mut reader: impl AsyncRead + Unpin,
     buffer: TailBuffer,
 ) -> Result<(), std::io::Error> {

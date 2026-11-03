@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import { loadSkills, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -12,10 +13,37 @@ import { CONVERSATION_HEADER, TURN_HEADER } from "../src/provider.ts";
 import type { CloudThinkerClient } from "../src/client.ts";
 import { CLOUD_TOOLS } from "../src/tools/names.ts";
 import cloudthinker, { LINKING_STATUS } from "../src/index.ts";
+import { bundledReviewSetupPath } from "../src/onboarding.ts";
 import { startFakeServer } from "./helpers.ts";
 
 const CONVERSATION = "11111111-1111-4111-8111-111111111111";
 const WORKSPACE = "22222222-2222-4222-8222-222222222222";
+
+test("review setup discovers the packaged, mirror, and monorepo Skill", () => {
+	const root = mkdtempSync(join(tmpdir(), "ct-review-setup-skill-"));
+	const packageDir = join(root, "package");
+	const mirrorRoot = join(root, "mirror");
+	const moduleUrl = pathToFileURL(join(mirrorRoot, "agent-cli/packages/cloud/src/onboarding.ts")).href;
+	const bundled = join(packageDir, ".agents/skills/review-setup/SKILL.md");
+	const mirrored = join(mirrorRoot, "agent-cli/packages/agent/.agents/skills/review-setup/SKILL.md");
+	const canonical = join(mirrorRoot, "executor/app/skills/public/review-setup/SKILL.md");
+	try {
+		for (const path of [bundled, mirrored, canonical]) {
+			mkdirSync(join(path, ".."), { recursive: true });
+			writeFileSync(path, "---\nname: review-setup\ndescription: Prepare Review.\n---\n");
+		}
+		for (const expected of [bundled, mirrored, canonical]) {
+			const selected = bundledReviewSetupPath(packageDir, moduleUrl);
+			assert.equal(selected, expected);
+			const loaded = loadSkills({ cwd: root, agentDir: root, includeDefaults: false, skillPaths: [selected] });
+			assert.equal(loaded.skills.filter((skill) => skill.name === "review-setup").length, 1);
+			assert.equal(loaded.diagnostics.length, 0);
+			rmSync(expected);
+		}
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
 
 type Handler = (event: unknown, ctx: ExtensionContext) => unknown;
 
@@ -440,6 +468,7 @@ test("CA-CLOUD-10: cloud off by default starts nothing remote, and /cloud on ini
 		const discovered = await handlers.get("resources_discover")?.({}, ctx) as { skillPaths: string[] };
 		const loaded = loadSkills({ cwd: root, agentDir: root, includeDefaults: false, skillPaths: discovered.skillPaths });
 		assert.equal(loaded.skills.filter((skill) => skill.name === "tour").length, 1);
+		assert.equal(loaded.skills.filter((skill) => skill.name === "review-setup").length, 1);
 		assert.equal(loaded.diagnostics.length, 0);
 
 		await commands.get("cloud")!.handler("on", ctx);

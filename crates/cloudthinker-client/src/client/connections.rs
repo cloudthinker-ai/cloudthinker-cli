@@ -118,6 +118,50 @@ impl From<api::ConnectionTestPhase> for ConnectionTestPhase {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionDisconnectPhase {
+    Queued,
+    RevokingTokens,
+    DetachingProvider,
+    CleaningUp,
+    Deleting,
+    Succeeded,
+    Failed,
+    #[serde(untagged)]
+    Other(String),
+}
+
+impl ConnectionDisconnectPhase {
+    pub fn label(&self) -> &str {
+        match self {
+            Self::Queued => "queued",
+            Self::RevokingTokens => "revoking tokens",
+            Self::DetachingProvider => "detaching provider",
+            Self::CleaningUp => "cleaning up",
+            Self::Deleting => "deleting",
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+            Self::Other(raw) => raw,
+        }
+    }
+}
+
+impl From<api::ConnectionDisconnectPhase> for ConnectionDisconnectPhase {
+    fn from(phase: api::ConnectionDisconnectPhase) -> Self {
+        match phase.0.as_str() {
+            "queued" => Self::Queued,
+            "revoking_tokens" => Self::RevokingTokens,
+            "detaching_provider" => Self::DetachingProvider,
+            "cleaning_up" => Self::CleaningUp,
+            "deleting" => Self::Deleting,
+            "succeeded" => Self::Succeeded,
+            "failed" => Self::Failed,
+            _ => Self::Other(phase.0),
+        }
+    }
+}
+
 fn auth_label(auth: api::AuthType) -> String {
     match auth.0.as_str() {
         "STATIC" => "static".to_string(),
@@ -239,6 +283,24 @@ impl ConnectionTest {
             started_at: status.started_at,
             elapsed_ms: status.elapsed_ms,
             last_error: status.last_error.and_then(non_empty),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ConnectionDisconnect {
+    #[serde(flatten)]
+    pub connection: ConnectionView,
+    pub disconnect_phase: ConnectionDisconnectPhase,
+    pub disconnect_error: Option<String>,
+}
+
+impl ConnectionDisconnect {
+    fn from_api(connection: ConnectionView, status: api::ConnectionDisconnectStatus) -> Self {
+        Self {
+            connection,
+            disconnect_phase: status.phase.into(),
+            disconnect_error: status.last_error.and_then(non_empty),
         }
     }
 }
@@ -434,6 +496,38 @@ impl CtClient {
         ))
     }
 
+    pub async fn disconnect_connection(
+        &self,
+        id: Uuid,
+        kind: ConnectionKind,
+    ) -> CtResult<ConnectionDisconnect> {
+        match kind {
+            ConnectionKind::Builtin => {
+                let accepted = self
+                    .authed(async |c: cloudthinker_api::Client| {
+                        c.builtin_connection_delete_builtin_connection(&id, None)
+                            .await
+                    })
+                    .await?;
+                Ok(ConnectionDisconnect::from_api(
+                    builtin_view!(accepted.connection),
+                    accepted.disconnect_status,
+                ))
+            }
+            ConnectionKind::Mcp => {
+                let accepted = self
+                    .authed(async |c: cloudthinker_api::Client| {
+                        c.mcp_connection_delete_mcp_connection(&id, None).await
+                    })
+                    .await?;
+                Ok(ConnectionDisconnect::from_api(
+                    ConnectionView::from_mcp(accepted.connection),
+                    accepted.disconnect_status,
+                ))
+            }
+        }
+    }
+
     pub fn connect_url(&self, prefix: &str, workspace_id: Uuid) -> CtResult<String> {
         validate_connect_prefix(prefix)?;
         let mut url = url::Url::parse(self.base_url())
@@ -444,5 +538,133 @@ impl CtClient {
             .append_pair("install", prefix)
             .append_pair("wsId", &workspace_id.to_string());
         Ok(url.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::*;
+    use crate::test_support::{MockTokenStore, stored};
+
+    fn client(server: &MockServer) -> CtClient {
+        CtClient::new(
+            server.uri(),
+            Arc::new(MockTokenStore::new(Some(stored("access", "refresh")))),
+        )
+        .unwrap()
+    }
+
+    fn disconnecting(phase: &str, last_error: Option<&str>) -> serde_json::Value {
+        serde_json::json!({"phase": phase, "started_at": null, "elapsed_ms": null, "last_error": last_error})
+    }
+
+    #[tokio::test]
+    async fn builtin_disconnect_returns_the_disconnecting_row_without_credentials() {
+        let server = MockServer::start().await;
+        let id = Uuid::from_u128(1);
+        let body = serde_json::json!({
+            "connection": {
+                "id": id,
+                "name": "AWS prod",
+                "prefix": "aws",
+                "alias": "aws-prod",
+                "aliases": [],
+                "builtin_connection_type": "cloud",
+                "env": [{"key": "AWS_SECRET_ACCESS_KEY", "value": "****wxyz", "type": "string"}],
+                "tools": [],
+                "is_connected": true,
+                "is_sandbox_supported": true,
+                "connection_env_type": "production",
+                "status": "disconnecting",
+                "status_message": "Disconnect queued",
+                "auth_type": "STATIC",
+                "can_retry": true,
+                "updated_at": "2026-10-30T00:00:00Z"
+            },
+            "disconnect_status": disconnecting("queued", Some(" "))
+        });
+        Mock::given(method("DELETE"))
+            .and(path(format!("/api/v1/builtin-connection/{id}")))
+            .respond_with(ResponseTemplate::new(202).set_body_json(body))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let accepted = client(&server)
+            .disconnect_connection(id, ConnectionKind::Builtin)
+            .await
+            .unwrap();
+
+        assert_eq!(accepted.connection.id, id);
+        assert_eq!(accepted.connection.kind, ConnectionKind::Builtin);
+        assert_eq!(accepted.connection.alias.as_deref(), Some("aws-prod"));
+        assert_eq!(accepted.connection.status, ConnectionStatus::Disconnecting);
+        assert_eq!(accepted.disconnect_phase, ConnectionDisconnectPhase::Queued);
+        assert_eq!(accepted.disconnect_error, None);
+        let json = serde_json::to_string(&accepted).unwrap();
+        assert!(json.contains(r#""disconnect_phase":"queued""#), "{json}");
+        assert!(!json.contains("AWS_SECRET_ACCESS_KEY"), "{json}");
+    }
+
+    #[tokio::test]
+    async fn mcp_disconnect_keeps_unknown_phases_and_maps_denials() {
+        let server = MockServer::start().await;
+        let id = Uuid::from_u128(2);
+        let denied = Uuid::from_u128(3);
+        let body = serde_json::json!({
+            "connection": {
+                "id": id,
+                "name": "Docs MCP",
+                "prefix": "docs",
+                "mcp_transport_type": "streamable_http",
+                "config": {"url": "https://mcp.example.com/mcp", "timeout": 30.0, "sse_read_timeout": 300.0},
+                "tools": [],
+                "status": "disconnecting",
+                "status_message": "Disconnect queued",
+                "description": null
+            },
+            "disconnect_status": disconnecting("draining", None)
+        });
+        Mock::given(method("DELETE"))
+            .and(path(format!("/api/v1/mcp-connection/{id}")))
+            .respond_with(ResponseTemplate::new(202).set_body_json(body))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path(format!("/api/v1/mcp-connection/{denied}")))
+            .respond_with(
+                ResponseTemplate::new(403)
+                    .set_body_json(serde_json::json!({"detail": "Permission denied"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = client(&server);
+
+        let accepted = client
+            .disconnect_connection(id, ConnectionKind::Mcp)
+            .await
+            .unwrap();
+        let error = client
+            .disconnect_connection(denied, ConnectionKind::Mcp)
+            .await
+            .unwrap_err();
+
+        assert_eq!(accepted.connection.kind, ConnectionKind::Mcp);
+        assert_eq!(
+            accepted.disconnect_phase,
+            ConnectionDisconnectPhase::Other("draining".into())
+        );
+        assert_eq!(accepted.disconnect_phase.label(), "draining");
+        assert!(
+            matches!(error, CtError::Api { status: 403, ref detail } if detail.as_deref().is_some_and(|detail| detail.starts_with("Permission denied"))),
+            "{error:?}"
+        );
     }
 }

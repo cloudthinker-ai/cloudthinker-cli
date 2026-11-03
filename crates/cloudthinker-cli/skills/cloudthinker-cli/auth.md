@@ -39,7 +39,30 @@ cloudthinker auth switch '<workspace-id-or-name>'
 
 `auth status` lists the stored workspace logins for the host and marks the active one without a network call or a token. `auth switch` changes the active login; prefer `--workspace` for a single command.
 
+## Accessible workspaces
+
+```bash
+cloudthinker workspace ls
+cloudthinker workspace ls --json
+```
+
+`workspace ls` reads, live, every workspace the login can access in its organization. It marks the selected workspace (`selected`), the account's role, and whether this machine holds a saved login (`saved_login`, `null` when unknown). It covers only the current login's organization; a workspace in another organization, or one without a saved login, needs the user to run `cloudthinker login` and choose it in the browser. It never changes the active login. Use the listed ID with `--workspace` only when `saved_login` is true and `CLOUDTHINKER_TOKEN` is unset; the token takes precedence and rejects `--workspace`.
+
+The list is a point-in-time snapshot read page by page. A workspace created or deleted during the read can be missing, and the command still succeeds. Run it again before concluding that a workspace is absent.
+
 ## Recovery
+
+Use `cloudthinker doctor` for a read-only diagnosis of credential selection, live
+identity, workspace, API reachability, and recorded Connection tests. Use
+`doctor --json` only for a program that consumes the report. It never starts
+login, repairs, or Connection tests; normal stored-token refresh can still save
+rotated credentials. Keep the intended `--url` and `--workspace` on this call.
+
+Missing compatible file credentials leave legacy keyring logins uninspected.
+Follow doctor's host-aware `whoami` command before requesting a new login.
+Skipped or unknown Connection evidence is not a healthy result. Pending tests
+and an authenticated empty inventory are warnings. Snapshot success does not
+prove a fresh provider request, and no release compatibility check is implied.
 
 Exit 3 means authentication is unavailable or rejected. Check the intended identity and login before retrying. Do not loop on rejected credentials. Use `cloudthinker login --help` for supported options. Run the login command that the error names: it carries `--url` for a non-default host.
 

@@ -526,6 +526,44 @@
         "title": "AgentCliWriteStatus",
         "type": "string"
       },
+      "AgentPublic": {
+        "description": "Same JSONB projection rule as ``AgentPublicConfig``: expose typed soul, never raw JSONB.",
+        "properties": {
+          "agent_type": {
+            "$ref": "#/components/schemas/AgentType"
+          },
+          "alias": {
+            "title": "Alias",
+            "type": "string"
+          },
+          "goal": {
+            "title": "Goal",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "alias",
+          "title",
+          "goal",
+          "is_active"
+        ],
+        "title": "AgentPublic",
+        "type": "object"
+      },
       "AgentRunStatus": {
         "description": "Lifecycle state of a background agent run.\n\nValues are deliberately identical to TaskScheduleStatus (app/models/tasks.py)\nso AgentExecutionResult.status needs zero remapping when origins migrate onto\nAgentRun (plan decision, plans/product-cli-mr-c-agentrun.md).",
         "enum": [
@@ -538,6 +576,36 @@
         ],
         "title": "AgentRunStatus",
         "type": "string"
+      },
+      "AgentType": {
+        "description": "Discriminator for agent types.",
+        "enum": [
+          "default",
+          "custom"
+        ],
+        "title": "AgentType",
+        "type": "string"
+      },
+      "AgentsPublic": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AgentPublic"
+            },
+            "title": "Data",
+            "type": "array"
+          }
+        },
+        "required": [
+          "data",
+          "count"
+        ],
+        "title": "AgentsPublic",
+        "type": "object"
       },
       "AnnounceTargetConnection": {
         "additionalProperties": false,
@@ -1059,17 +1127,6 @@
         "title": "ApplyFixDisabledReason",
         "type": "string"
       },
-      "ApprovalMode": {
-        "enum": [
-          "manual",
-          "auto_rules_ask",
-          "auto_rules_refuse",
-          "auto_ai_ask",
-          "auto_ai_refuse"
-        ],
-        "title": "ApprovalMode",
-        "type": "string"
-      },
       "ArtifactGrantPublic": {
         "additionalProperties": false,
         "properties": {
@@ -1113,6 +1170,10 @@
             "nullable": true,
             "title": "Filesystem Id",
             "type": "string"
+          },
+          "isolation": {
+            "$ref": "#/components/schemas/WorkerIsolationPolicy",
+            "nullable": true
           },
           "lease_expires_at": {
             "format": "date-time",
@@ -1291,7 +1352,9 @@
             "type": "integer"
           },
           "policy_lease": {
-            "additionalProperties": true,
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
             "nullable": true,
             "title": "Policy Lease",
             "type": "object"
@@ -1453,6 +1516,23 @@
           "updated_at"
         ],
         "title": "BuiltinConnectionDetail",
+        "type": "object"
+      },
+      "BuiltinConnectionDisconnectResponse": {
+        "description": "202 response shape for `DELETE /builtin-connection/{id}`.\n\nReturned immediately after flipping the row to status=DISCONNECTING and\nenqueueing the Celery disconnect job. Frontend polls\n`GET /disconnect-status` until terminal (or until the row 404s, meaning\nthe delete completed).",
+        "properties": {
+          "connection": {
+            "$ref": "#/components/schemas/BuiltinConnectionPublic"
+          },
+          "disconnect_status": {
+            "$ref": "#/components/schemas/ConnectionDisconnectStatus"
+          }
+        },
+        "required": [
+          "connection",
+          "disconnect_status"
+        ],
+        "title": "BuiltinConnectionDisconnectResponse",
         "type": "object"
       },
       "BuiltinConnectionInstallResponse": {
@@ -2635,6 +2715,39 @@
         "title": "CompleteWorkerOperationRequest",
         "type": "object"
       },
+      "ConnectionDisconnectPhase": {
+        "title": "ConnectionDisconnectPhase",
+        "type": "string"
+      },
+      "ConnectionDisconnectStatus": {
+        "description": "Phase report for an in-flight or recently-finished disconnect job.\n\nConnection id IS the job id. Backed by Redis (key `conn:disconnect:{id}`)\nwith 1h TTL. A 404 on the status endpoint after the connection row is\ndeleted = terminal `succeeded` from the FE's perspective.",
+        "properties": {
+          "elapsed_ms": {
+            "nullable": true,
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "last_error": {
+            "nullable": true,
+            "title": "Last Error",
+            "type": "string"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/ConnectionDisconnectPhase"
+          },
+          "started_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase"
+        ],
+        "title": "ConnectionDisconnectStatus",
+        "type": "object"
+      },
       "ConnectionLocation": {
         "description": "A saved non-secret field that names where the Connection points.",
         "properties": {
@@ -2808,6 +2921,308 @@
         ],
         "title": "ConventionRuleCategory",
         "type": "string"
+      },
+      "ConversationTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationTraceMessage"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "snapshot": {
+            "enum": [
+              "persisted_best_effort"
+            ],
+            "title": "ConversationTrace_snapshot",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ConversationTraceSummary"
+          },
+          "truncation": {
+            "$ref": "#/components/schemas/ConversationTraceTruncation"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "workspace_id",
+          "captured_at",
+          "snapshot",
+          "messages",
+          "summary",
+          "truncation"
+        ],
+        "title": "ConversationTrace",
+        "type": "object"
+      },
+      "ConversationTraceMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "finish_reason": {
+            "nullable": true,
+            "title": "Finish Reason",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "text_truncated": {
+            "title": "Text Truncated",
+            "type": "boolean"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/ConversationTraceTool"
+            },
+            "title": "Tools",
+            "type": "array"
+          },
+          "tools_omitted": {
+            "title": "Tools Omitted",
+            "type": "integer"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/ConversationTraceUsage"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "created_at",
+          "text",
+          "text_truncated",
+          "finish_reason",
+          "usage",
+          "tools",
+          "tools_omitted"
+        ],
+        "title": "ConversationTraceMessage",
+        "type": "object"
+      },
+      "ConversationTraceSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "credits": {
+            "nullable": true,
+            "title": "Credits",
+            "type": "number"
+          },
+          "failed_messages": {
+            "title": "Failed Messages",
+            "type": "integer"
+          },
+          "messages": {
+            "title": "Messages",
+            "type": "integer"
+          },
+          "messages_with_unknown_tokens": {
+            "title": "Messages With Unknown Tokens",
+            "type": "integer"
+          },
+          "messages_without_usage": {
+            "title": "Messages Without Usage",
+            "type": "integer"
+          },
+          "scope": {
+            "enum": [
+              "returned_messages"
+            ],
+            "title": "ConversationTraceSummary_scope",
+            "type": "string"
+          },
+          "tokens": {
+            "nullable": true,
+            "title": "Tokens",
+            "type": "integer"
+          },
+          "tool_calls": {
+            "title": "Tool Calls",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scope",
+          "messages",
+          "tool_calls",
+          "failed_messages",
+          "tokens",
+          "credits",
+          "messages_without_usage",
+          "messages_with_unknown_tokens"
+        ],
+        "title": "ConversationTraceSummary",
+        "type": "object"
+      },
+      "ConversationTraceTool": {
+        "additionalProperties": false,
+        "properties": {
+          "approval_status": {
+            "nullable": true,
+            "title": "Approval Status",
+            "type": "string"
+          },
+          "completed": {
+            "title": "Completed",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "runtime_seconds": {
+            "nullable": true,
+            "title": "Runtime Seconds",
+            "type": "number"
+          },
+          "tool_call_id": {
+            "nullable": true,
+            "title": "Tool Call Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tool_call_id",
+          "position",
+          "name",
+          "runtime_seconds",
+          "completed",
+          "approval_status"
+        ],
+        "title": "ConversationTraceTool",
+        "type": "object"
+      },
+      "ConversationTraceTruncation": {
+        "additionalProperties": false,
+        "properties": {
+          "has_older_messages": {
+            "title": "Has Older Messages",
+            "type": "boolean"
+          },
+          "message_limit": {
+            "title": "Message Limit",
+            "type": "integer"
+          },
+          "messages_filtered": {
+            "title": "Messages Filtered",
+            "type": "integer"
+          },
+          "messages_omitted_for_bytes": {
+            "title": "Messages Omitted For Bytes",
+            "type": "integer"
+          },
+          "response_byte_limit": {
+            "title": "Response Byte Limit",
+            "type": "integer"
+          },
+          "text_char_limit": {
+            "title": "Text Char Limit",
+            "type": "integer"
+          },
+          "text_fields_truncated": {
+            "title": "Text Fields Truncated",
+            "type": "integer"
+          },
+          "tool_limit": {
+            "title": "Tool Limit",
+            "type": "integer"
+          },
+          "tools_omitted": {
+            "title": "Tools Omitted",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "truncated",
+          "has_older_messages",
+          "messages_filtered",
+          "messages_omitted_for_bytes",
+          "tools_omitted",
+          "text_fields_truncated",
+          "message_limit",
+          "tool_limit",
+          "text_char_limit",
+          "response_byte_limit"
+        ],
+        "title": "ConversationTraceTruncation",
+        "type": "object"
+      },
+      "ConversationTraceUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "credits": {
+            "nullable": true,
+            "title": "Credits",
+            "type": "number"
+          },
+          "records": {
+            "title": "Records",
+            "type": "integer"
+          },
+          "token_records": {
+            "title": "Token Records",
+            "type": "integer"
+          },
+          "tokens": {
+            "nullable": true,
+            "title": "Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "records",
+          "token_records",
+          "tokens",
+          "credits"
+        ],
+        "title": "ConversationTraceUsage",
+        "type": "object"
       },
       "ConvertOfficePdf": {
         "additionalProperties": false,
@@ -3042,6 +3457,45 @@
           "name"
         ],
         "title": "CreateOutpostRequest",
+        "type": "object"
+      },
+      "CustomAgentPublic": {
+        "description": "Response shape for a custom agent.\n\n``soul`` and ``config`` are typed projections of the underlying JSONB\ncolumns, mirroring ``AgentPublic`` (see ``rule-no-dict-dto.md``):\nexpose only what the client needs, never raw JSONB. Pydantic validates\nwhen reading via ``from_attributes=True`` and silently ignores extra\nkeys (default ``extra='ignore'``), so legacy rows pass through cleanly.",
+        "properties": {
+          "agent_type": {
+            "$ref": "#/components/schemas/AgentType"
+          },
+          "alias": {
+            "title": "Alias",
+            "type": "string"
+          },
+          "goal": {
+            "title": "Goal",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "alias",
+          "title",
+          "goal",
+          "agent_type",
+          "is_active"
+        ],
+        "title": "CustomAgentPublic",
         "type": "object"
       },
       "CyberDiscoveryTargetPublic": {
@@ -3428,7 +3882,8 @@
           "mcp",
           "background_shell",
           "worktree",
-          "sandbox"
+          "sandbox",
+          "container_isolation"
         ],
         "title": "ExecutorCapability",
         "type": "string"
@@ -3470,6 +3925,19 @@
             "$ref": "#/components/schemas/CliVersionStatus",
             "nullable": true
           },
+          "container_image": {
+            "nullable": true,
+            "title": "Container Image",
+            "type": "string"
+          },
+          "egress_allowlist": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Egress Allowlist",
+            "type": "array"
+          },
           "git": {
             "default": false,
             "title": "Git",
@@ -3479,6 +3947,22 @@
             "nullable": true,
             "title": "Head Branch",
             "type": "string"
+          },
+          "ip_allowlist": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Ip Allowlist",
+            "type": "array"
+          },
+          "isolation": {
+            "$ref": "#/components/schemas/IsolationMode"
+          },
+          "isolation_supported": {
+            "default": false,
+            "title": "Isolation Supported",
+            "type": "boolean"
           },
           "kind": {
             "$ref": "#/components/schemas/ExecutorChoiceKind"
@@ -3909,6 +4393,11 @@
             "title": "Raw",
             "type": "boolean"
           },
+          "read_only": {
+            "nullable": true,
+            "title": "Read Only",
+            "type": "boolean"
+          },
           "replace_all": {
             "nullable": true,
             "title": "Replace All",
@@ -3933,6 +4422,7 @@
             "enum": [
               "workspace_memory",
               "conversation_tmp",
+              "conversation_uploads",
               "review_rules",
               "conversation_research"
             ],
@@ -4115,7 +4605,7 @@
         "type": "object"
       },
       "FindingPublic": {
-        "description": "Response shape for a single Finding \u2014 only client-rendered fields.\n\nNEVER includes: signature (internal dedup key), raw finding_metadata (the\nFE reads the derived owasp/cwe/cve fields instead), or any raw internal\ncolumn not rendered by the FE.\n\nTwo orthogonal axes, both rendered by the FE's triage rail:\n- status \u2014 agent-owned, the 4-state model\n  (open/needs_verification/resolved/dismissed).\n- triage_state \u2014 human-owned work tracking on an OPEN or NEEDS_VERIFICATION\n  finding.\n\n`manually_resolved` splits the one status the two axes share. A RESOLVED\nfinding is either a scan's PoC-replay proof or a human's own verdict, and\nonly the second one a human may undo \u2014 so the FE cannot decide whether to\noffer Reopen without it. It is a derived bool, not the raw\n`manually_resolved_by` UUID, because the FE renders the choice, not the\nactor.",
+        "description": "Response shape for a single Finding \u2014 only client-rendered fields.\n\nNEVER includes: signature (internal dedup key), raw finding_metadata (the\nFE reads the derived owasp/cwe/cve fields instead), or any raw internal\ncolumn not rendered by the FE.\n\nTwo orthogonal axes, both rendered by the FE's triage rail:\n- status \u2014 agent-owned, the 4-state model\n  (confirmed/needs_verification/fixed/dismissed).\n- triage_state \u2014 human-owned work tracking on an OPEN or NEEDS_VERIFICATION\n  finding.\n\n`manually_resolved` splits the one status the two axes share. A RESOLVED\nfinding is either a scan's PoC-replay proof or a human's own verdict, and\nonly the second one a human may undo \u2014 so the FE cannot decide whether to\noffer Reopen without it. It is a derived bool, not the raw\n`manually_resolved_by` UUID, because the FE renders the choice, not the\nactor.",
         "properties": {
           "affected_surfaces": {
             "default": [],
@@ -4271,12 +4761,14 @@
         "type": "string"
       },
       "FindingStatus": {
-        "description": "Agent-owned finding lifecycle status \u2014 a 4-state model.\n\nMirrored 1:1 from the finding's folder in app-memory/ at sync()\n(open/ \u2192 open, resolved/ \u2192 resolved, dismissed/ \u2192 dismissed,\nneeds-verification/ \u2192 needs_verification). A finding in open/ is a\nreproduced, proven vulnerability \u2014 there is no verified/regressed/stale\nnuance. NEEDS_VERIFICATION is a lead the agent could not confirm\n(it needs a second tenant's session, an admin console with no signup, or an\nunreachable state), so instead of silently dropping it he parks it here for\na human to reconfirm. It is NOT proven (never counted as an open finding)\nand NOT closed (never counted as resolved/dismissed).",
+        "description": "Agent-owned finding lifecycle status \u2014 a 4-state model.\n\nMirrored 1:1 from the finding's folder in app-memory/ at sync()\n(open/ or confirmed/ \u2192 confirmed, resolved/ or fixed/ \u2192 fixed, dismissed/ \u2192\ndismissed, needs-verification/ \u2192 needs_verification). A confirmed finding is a\nreproduced, proven vulnerability \u2014 there is no verified/regressed/stale\nnuance. NEEDS_VERIFICATION is a lead the agent could not confirm\n(it needs a second tenant's session, an admin console with no signup, or an\nunreachable state), so instead of silently dropping it he parks it here for\na human to reconfirm. It is NOT proven (never counted as a confirmed finding)\nand NOT closed (never counted as fixed/dismissed).",
         "enum": [
-          "open",
-          "resolved",
+          "confirmed",
+          "fixed",
           "dismissed",
-          "needs_verification"
+          "needs_verification",
+          "open",
+          "resolved"
         ],
         "title": "FindingStatus",
         "type": "string"
@@ -4333,6 +4825,12 @@
       "FlushOutput": {
         "additionalProperties": false,
         "properties": {
+          "expected_sandbox_id": {
+            "minLength": 1,
+            "nullable": true,
+            "title": "FlushOutput_expected_sandbox_id",
+            "type": "string"
+          },
           "kind": {
             "enum": [
               "flush_output"
@@ -4529,6 +5027,183 @@
         "title": "HeartbeatAssignmentRequest",
         "type": "object"
       },
+      "ImportChange": {
+        "enum": [
+          "create",
+          "change",
+          "remove",
+          "unchanged"
+        ],
+        "title": "ImportChange",
+        "type": "string"
+      },
+      "ImportCountsPublic": {
+        "properties": {
+          "activated": {
+            "title": "Activated",
+            "type": "integer"
+          },
+          "changed": {
+            "title": "Changed",
+            "type": "integer"
+          },
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "invalid": {
+            "title": "Invalid",
+            "type": "integer"
+          },
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created",
+          "changed",
+          "removed",
+          "unchanged",
+          "activated",
+          "invalid"
+        ],
+        "title": "ImportCountsPublic",
+        "type": "object"
+      },
+      "ImportIssuePublic": {
+        "properties": {
+          "allowed_values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Values",
+            "type": "array"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "column": {
+            "nullable": true,
+            "title": "Column",
+            "type": "integer"
+          },
+          "line": {
+            "nullable": true,
+            "title": "Line",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "slug": {
+            "nullable": true,
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "path",
+          "line",
+          "slug",
+          "column",
+          "allowed_values"
+        ],
+        "title": "ImportIssuePublic",
+        "type": "object"
+      },
+      "ImportMode": {
+        "enum": [
+          "plan",
+          "apply"
+        ],
+        "title": "ImportMode",
+        "type": "string"
+      },
+      "ImportRulePublic": {
+        "properties": {
+          "becomes": {
+            "$ref": "#/components/schemas/RuleStatus"
+          },
+          "change": {
+            "$ref": "#/components/schemas/ImportChange"
+          },
+          "effect": {
+            "$ref": "#/components/schemas/RuleEffect"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "change",
+          "effect",
+          "sentence",
+          "becomes",
+          "fields"
+        ],
+        "title": "ImportRulePublic",
+        "type": "object"
+      },
+      "ImportSectionPublic": {
+        "properties": {
+          "after": {
+            "nullable": true,
+            "title": "After",
+            "type": "string"
+          },
+          "before": {
+            "nullable": true,
+            "title": "Before",
+            "type": "string"
+          },
+          "change": {
+            "$ref": "#/components/schemas/ImportChange"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "section": {
+            "title": "Section",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section",
+          "key",
+          "change",
+          "before",
+          "after"
+        ],
+        "title": "ImportSectionPublic",
+        "type": "object"
+      },
       "IncidentListPublic": {
         "description": "Paginated list of incidents.",
         "properties": {
@@ -4541,6 +5216,18 @@
           },
           "meta": {
             "$ref": "#/components/schemas/PaginationMeta"
+          },
+          "next_cursor": {
+            "description": "Pass back as `cursor` for the next page. Set only for keyset sorts (queue_priority, severity_open_first, created_at, updated_at) when more rows follow.",
+            "nullable": true,
+            "title": "Next Cursor",
+            "type": "string"
+          },
+          "next_is_closed": {
+            "description": "True when the next row is Resolved or Dismissed, so a client showing those collapsed can stop paging.",
+            "nullable": true,
+            "title": "Next Is Closed",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4548,6 +5235,55 @@
           "meta"
         ],
         "title": "IncidentListPublic",
+        "type": "object"
+      },
+      "IncidentPlacePublic": {
+        "description": "Where the incident lives in chat. Read-only.",
+        "properties": {
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "channel_name": {
+            "nullable": true,
+            "title": "Channel Name",
+            "type": "string"
+          },
+          "channel_url": {
+            "nullable": true,
+            "title": "Channel Url",
+            "type": "string"
+          },
+          "closed_reason": {
+            "nullable": true,
+            "title": "Closed Reason",
+            "type": "string"
+          },
+          "last_post_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Last Post At",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/PlaceRole"
+          },
+          "thread_url": {
+            "nullable": true,
+            "title": "Thread Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "channel_id",
+          "role"
+        ],
+        "title": "IncidentPlacePublic",
         "type": "object"
       },
       "IncidentPublic": {
@@ -4663,6 +5399,10 @@
             "title": "Parent Incident Id",
             "type": "string"
           },
+          "place": {
+            "$ref": "#/components/schemas/IncidentPlacePublic",
+            "nullable": true
+          },
           "platform_type": {
             "nullable": true,
             "title": "Platform Type",
@@ -4685,6 +5425,20 @@
           "severity": {
             "$ref": "#/components/schemas/Severity"
           },
+          "severity_group": {
+            "description": "The stored severity as a level, or `unknown` when it is not one. Set by the incident list; the Severity view groups by it.",
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low",
+              "info",
+              "unknown"
+            ],
+            "nullable": true,
+            "title": "IncidentPublic_severity_group",
+            "type": "string"
+          },
           "source": {
             "$ref": "#/components/schemas/IncidentSource"
           },
@@ -4705,11 +5459,6 @@
           },
           "triage_assessment": {
             "$ref": "#/components/schemas/TriageAssessment"
-          },
-          "triage_next_action": {
-            "nullable": true,
-            "title": "Triage Next Action",
-            "type": "string"
           },
           "triage_reason": {
             "nullable": true,
@@ -4774,6 +5523,7 @@
           "investigating",
           "verdict_ready",
           "human_input_required",
+          "on_hold",
           "investigation_failed",
           "investigation_cancelled",
           "result_ready",
@@ -4856,6 +5606,14 @@
         "title": "InvestigationPhase",
         "type": "string"
       },
+      "IsolationMode": {
+        "enum": [
+          "host",
+          "container"
+        ],
+        "title": "IsolationMode",
+        "type": "string"
+      },
       "IssueArtifactGrantRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4928,16 +5686,7 @@
         "title": "ItemRunChange",
         "type": "object"
       },
-      "LegacyApprovalLevel": {
-        "enum": [
-          "approve_each",
-          "approve_exceptions",
-          "pre_approved_only",
-          "auto"
-        ],
-        "title": "LegacyApprovalLevel",
-        "type": "string"
-      },
+      "JsonValue": {},
       "LoadConnectionSkillRequest": {
         "properties": {
           "connection_prefix": {
@@ -5258,6 +6007,297 @@
           "input_schema"
         ],
         "title": "LocalToolAnnouncement",
+        "type": "object"
+      },
+      "LoupeReadinessCheck": {
+        "properties": {
+          "detail": {
+            "description": "Runtimes the app needs, or the missing ones when app_runtime fails",
+            "nullable": true,
+            "title": "Detail",
+            "type": "string"
+          },
+          "fix_command": {
+            "description": "A command to copy and run in the checkout folder when this check fails",
+            "nullable": true,
+            "title": "Fix Command",
+            "type": "string"
+          },
+          "name": {
+            "$ref": "#/components/schemas/LoupeReadinessCheckName"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "passed",
+          "required"
+        ],
+        "title": "LoupeReadinessCheck",
+        "type": "object"
+      },
+      "LoupeReadinessCheckName": {
+        "enum": [
+          "checkout",
+          "node",
+          "bun",
+          "playwright",
+          "chromium",
+          "sign_in",
+          "dev_env",
+          "app_runtime",
+          "sandbox"
+        ],
+        "title": "LoupeReadinessCheckName",
+        "type": "string"
+      },
+      "LoupeReadinessResponse": {
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/LoupeReadinessCheck"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "detail": {
+            "description": "Why Loupe cannot use the Worker, when unavailable",
+            "nullable": true,
+            "title": "Detail",
+            "type": "string"
+          },
+          "observed": {
+            "$ref": "#/components/schemas/LoupeSetupReadinessView",
+            "nullable": true
+          },
+          "repository": {
+            "description": "Repository path of the Worker's checkout",
+            "nullable": true,
+            "title": "Repository",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/LoupeReadinessState"
+          },
+          "target_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "LoupeReadinessResponse",
+        "type": "object"
+      },
+      "LoupeReadinessState": {
+        "enum": [
+          "off",
+          "ready",
+          "needs_setup",
+          "busy",
+          "offline",
+          "no_answer",
+          "unavailable"
+        ],
+        "title": "LoupeReadinessState",
+        "type": "string"
+      },
+      "LoupeSetupConversationRequest": {
+        "properties": {
+          "restart": {
+            "default": false,
+            "title": "Restart",
+            "type": "boolean"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id"
+        ],
+        "title": "LoupeSetupConversationRequest",
+        "type": "object"
+      },
+      "LoupeSetupConversationView": {
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "needs_initial_message": {
+            "title": "Needs Initial Message",
+            "type": "boolean"
+          },
+          "web_url": {
+            "title": "Web Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "needs_initial_message",
+          "web_url"
+        ],
+        "title": "LoupeSetupConversationView",
+        "type": "object"
+      },
+      "LoupeSetupReadinessView": {
+        "properties": {
+          "base_checked": {
+            "default": false,
+            "title": "Base Checked",
+            "type": "boolean"
+          },
+          "base_screenshot_url": {
+            "nullable": true,
+            "title": "Base Screenshot Url",
+            "type": "string"
+          },
+          "check_pending": {
+            "default": false,
+            "title": "Check Pending",
+            "type": "boolean"
+          },
+          "checked_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Checked At",
+            "type": "string"
+          },
+          "checked_route": {
+            "nullable": true,
+            "title": "Checked Route",
+            "type": "string"
+          },
+          "connection_id": {
+            "format": "uuid",
+            "title": "Connection Id",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "generation": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Generation",
+            "type": "string"
+          },
+          "has_saved_observations": {
+            "default": false,
+            "title": "Has Saved Observations",
+            "type": "boolean"
+          },
+          "partial_accepted": {
+            "default": false,
+            "title": "Partial Accepted",
+            "type": "boolean"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/CodeReviewProvider"
+          },
+          "replaces_target_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Replaces Target Id",
+            "type": "string"
+          },
+          "replaces_worker_name": {
+            "nullable": true,
+            "title": "Replaces Worker Name",
+            "type": "string"
+          },
+          "repository": {
+            "title": "Repository",
+            "type": "string"
+          },
+          "screenshot_url": {
+            "nullable": true,
+            "title": "Screenshot Url",
+            "type": "string"
+          },
+          "signed_in_checked": {
+            "default": false,
+            "title": "Signed In Checked",
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "not_checked",
+              "partial",
+              "full"
+            ],
+            "title": "LoupeSetupReadinessView_state",
+            "type": "string"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "turned_off": {
+            "default": false,
+            "title": "Turned Off",
+            "type": "boolean"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "repository",
+          "connection_id",
+          "target_id",
+          "state",
+          "detail"
+        ],
+        "title": "LoupeSetupReadinessView",
+        "type": "object"
+      },
+      "MCPConnectionDisconnectResponse": {
+        "properties": {
+          "connection": {
+            "$ref": "#/components/schemas/MCPConnectionPublic"
+          },
+          "disconnect_status": {
+            "$ref": "#/components/schemas/ConnectionDisconnectStatus"
+          }
+        },
+        "required": [
+          "connection",
+          "disconnect_status"
+        ],
+        "title": "MCPConnectionDisconnectResponse",
         "type": "object"
       },
       "MCPConnectionPublic": {
@@ -5590,6 +6630,7 @@
                 "files_list": "#/components/schemas/FilesList",
                 "flush_output": "#/components/schemas/FlushOutput",
                 "repository": "#/components/schemas/RepositoryOperation",
+                "run_storage": "#/components/schemas/RunStorageOperation",
                 "script": "#/components/schemas/ScriptRun",
                 "skill_bundle_chunk": "#/components/schemas/SkillBundleChunk"
               },
@@ -5598,6 +6639,9 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/SkillBundleChunk"
+              },
+              {
+                "$ref": "#/components/schemas/RunStorageOperation"
               },
               {
                 "$ref": "#/components/schemas/ScriptRun"
@@ -6024,6 +7068,15 @@
         "title": "PillarId",
         "type": "string"
       },
+      "PlaceRole": {
+        "enum": [
+          "origin",
+          "channel",
+          "broadcast"
+        ],
+        "title": "PlaceRole",
+        "type": "string"
+      },
       "PlanCheckPublic": {
         "description": "One in-scope row and the check a host executes for it.",
         "properties": {
@@ -6066,6 +7119,75 @@
           "note"
         ],
         "title": "PlanCheckPublic",
+        "type": "object"
+      },
+      "PolicyImportBody": {
+        "properties": {
+          "activate": {
+            "default": false,
+            "title": "Activate",
+            "type": "boolean"
+          },
+          "content": {
+            "maxLength": 1000000,
+            "title": "PolicyImportBody_content",
+            "type": "string"
+          },
+          "prune": {
+            "default": false,
+            "title": "Prune",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "PolicyImportBody",
+        "type": "object"
+      },
+      "PolicyImportPublic": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/ImportCountsPublic"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ImportIssuePublic"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ImportMode"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/components/schemas/ImportRulePublic"
+            },
+            "title": "Rules",
+            "type": "array"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ImportSectionPublic"
+            },
+            "title": "Sections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "mode",
+          "applied",
+          "counts",
+          "rules",
+          "sections",
+          "errors"
+        ],
+        "title": "PolicyImportPublic",
         "type": "object"
       },
       "QuickWinClass": {
@@ -6488,6 +7610,11 @@
             "title": "Dir Patterns",
             "type": "array"
           },
+          "expected_sandbox_id": {
+            "nullable": true,
+            "title": "Expected Sandbox Id",
+            "type": "string"
+          },
           "file_patterns": {
             "items": {
               "type": "string"
@@ -6723,6 +7850,26 @@
         "title": "RevokeTokenRequest",
         "type": "object"
       },
+      "RuleEffect": {
+        "enum": [
+          "allow",
+          "require_approval",
+          "deny"
+        ],
+        "title": "RuleEffect",
+        "type": "string"
+      },
+      "RuleStatus": {
+        "enum": [
+          "proposed",
+          "active",
+          "dismissed",
+          "withdrawn",
+          "replaced"
+        ],
+        "title": "RuleStatus",
+        "type": "string"
+      },
       "RunBindRequest": {
         "description": "Bind the calling agent CLI session's conversation onto a local run.",
         "properties": {
@@ -6760,9 +7907,9 @@
             "title": "Dismissed",
             "type": "integer"
           },
-          "resolved": {
+          "fixed": {
             "default": 0,
-            "title": "Resolved",
+            "title": "Fixed",
             "type": "integer"
           }
         },
@@ -6772,22 +7919,24 @@
       "RunChangeGroup": {
         "enum": [
           "added",
-          "resolved",
+          "fixed",
           "dismissed",
-          "changed"
+          "changed",
+          "resolved"
         ],
         "title": "RunChangeGroup",
         "type": "string"
       },
       "RunChangeKind": {
-        "description": "What a run did to an item, recorded once at the sync transition point.\n\nFindings use added|modified|resolved|dismissed|reopened|needs_verification;\nsurface uses added|modified. One superset enum serves both streams (the FE\nrenders only the kinds each stream can emit). RESOLVED (fixed) and DISMISSED\n(false-positive) are kept distinct \u2014 folding dismissed into resolved would\nreport a false-positive dismissal as a real fix in the run badge and stats.\nNEEDS_VERIFICATION is its OWN kind \u2014 never ADDED (which reads as a confirmed\nfinding in the \"N discovered\" count) and never MODIFIED (which would hide the\nunconfirmed lead) \u2014 so a lead Oliver parked for human reconfirm surfaces\ntruthfully. Surface items only ever appear (added) or change\nprovenance/properties (modified) \u2014 there is no stale/removed transition,\nbecause a black-box probe can never prove an endpoint is gone (freshness\nlives in `last_seen_run`).",
+        "description": "What a run did to an item, recorded once at the sync transition point.\n\nFindings use added|modified|fixed|dismissed|reopened|needs_verification;\nsurface uses added|modified. One superset enum serves both streams (the FE\nrenders only the kinds each stream can emit). FIXED and DISMISSED\n(false-positive) are kept distinct \u2014 folding dismissed into fixed would\nreport a false-positive dismissal as a real fix in the run badge and stats.\nNEEDS_VERIFICATION is its OWN kind \u2014 never ADDED (which reads as a confirmed\nfinding in the \"N discovered\" count) and never MODIFIED (which would hide the\nunconfirmed lead) \u2014 so a lead Oliver parked for human reconfirm surfaces\ntruthfully. Surface items only ever appear (added) or change\nprovenance/properties (modified) \u2014 there is no stale/removed transition,\nbecause a black-box probe can never prove an endpoint is gone (freshness\nlives in `last_seen_run`).",
         "enum": [
           "added",
           "modified",
-          "resolved",
+          "fixed",
           "dismissed",
           "reopened",
-          "needs_verification"
+          "needs_verification",
+          "resolved"
         ],
         "title": "RunChangeKind",
         "type": "string"
@@ -7007,8 +8156,11 @@
             "title": "Findings Discovered",
             "type": "integer"
           },
+          "findings_fixed": {
+            "title": "Findings Fixed",
+            "type": "integer"
+          },
           "findings_resolved": {
-            "default": 0,
             "title": "Findings Resolved",
             "type": "integer"
           },
@@ -7122,6 +8274,66 @@
         ],
         "title": "RunResult",
         "type": "string"
+      },
+      "RunStorageAction": {
+        "enum": [
+          "allocate",
+          "release",
+          "reconcile",
+          "check"
+        ],
+        "title": "RunStorageAction",
+        "type": "string"
+      },
+      "RunStorageOperation": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/RunStorageAction"
+          },
+          "allocation_token": {
+            "format": "uuid",
+            "title": "Allocation Token",
+            "type": "string"
+          },
+          "attempt_id": {
+            "format": "uuid",
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "expected_sandbox_id": {
+            "minLength": 1,
+            "nullable": true,
+            "title": "RunStorageOperation_expected_sandbox_id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "run_storage"
+            ],
+            "title": "RunStorageOperation_kind",
+            "type": "string"
+          },
+          "outputs_confirmed": {
+            "default": false,
+            "title": "Outputs Confirmed",
+            "type": "boolean"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "run_id",
+          "attempt_id",
+          "allocation_token",
+          "kind"
+        ],
+        "title": "RunStorageOperation",
+        "type": "object"
       },
       "SavedSelection": {
         "additionalProperties": false,
@@ -7261,7 +8473,9 @@
             "type": "boolean"
           },
           "policy_lease": {
-            "additionalProperties": true,
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
             "nullable": true,
             "title": "Policy Lease",
             "type": "object"
@@ -7279,6 +8493,11 @@
             "nullable": true,
             "title": "Task Id",
             "type": "string"
+          },
+          "terminate_on_timeout": {
+            "nullable": true,
+            "title": "Terminate On Timeout",
+            "type": "boolean"
           },
           "timeout": {
             "nullable": true,
@@ -7427,6 +8646,51 @@
         ],
         "title": "ShardPublic",
         "type": "object"
+      },
+      "SignupAttribution": {
+        "properties": {
+          "is_company_email": {
+            "title": "Is Company Email",
+            "type": "boolean"
+          },
+          "lead_event_id": {
+            "description": "Shared by the browser email_submitted event and the server event.",
+            "title": "Lead Event Id",
+            "type": "string"
+          },
+          "method": {
+            "$ref": "#/components/schemas/SignupMethod"
+          },
+          "sha256_email_address": {
+            "description": "SHA-256 of the normalized email, for ad-platform matching.",
+            "title": "Sha256 Email Address",
+            "type": "string"
+          },
+          "signup_event_id": {
+            "description": "Shared by the browser sign_up event and the server event.",
+            "title": "Signup Event Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "method",
+          "is_company_email",
+          "sha256_email_address",
+          "signup_event_id",
+          "lead_event_id"
+        ],
+        "title": "SignupAttribution",
+        "type": "object"
+      },
+      "SignupMethod": {
+        "enum": [
+          "email",
+          "google",
+          "github",
+          "sso"
+        ],
+        "title": "SignupMethod",
+        "type": "string"
       },
       "SimpleMessage": {
         "description": "Simple message response schema.",
@@ -8033,6 +9297,10 @@
             "title": "Refresh Token",
             "type": "string"
           },
+          "signup": {
+            "$ref": "#/components/schemas/SignupAttribution",
+            "nullable": true
+          },
           "slack_oauth": {
             "default": false,
             "title": "Slack Oauth",
@@ -8083,7 +9351,7 @@
         "type": "string"
       },
       "TriageState": {
-        "description": "Human work-tracking on an open finding \u2014 NOT a finding status.\n\nAnswers \"is a person working this?\", which `FindingStatus` cannot: a finding\nis equally OPEN whether nobody has looked at it or an engineer has been\nfixing it all week. The two axes compose into the UI's triage rail\n(open+NONE = \"needs triage\", open+IN_PROGRESS, open+AWAITING_RETEST,\nresolved = \"verified fixed\"). A human reconfirming a NEEDS_VERIFICATION\nlead reuses AWAITING_RETEST \u2014 it flags the finding for the next scan, no new\nTriageState value is minted for it.\n\nOwnership is strictly split: the agent owns `status` (mirrored from the\napp-memory folder at sync()), a human owns this. A human value can never sit\nin `status` \u2014 sync() rewrites that column from the tree every run and would\ndestroy it. AWAITING_RETEST is a LABEL, not a trigger: it flags the finding\nfor the next scan, it does not launch one.\n\nCleared to NONE by sync() when the agent resolves the finding \u2014 the question\nthis was tracking is settled.",
+        "description": "Human work-tracking on an open finding \u2014 NOT a finding status.\n\nAnswers \"is a person working this?\", which `FindingStatus` cannot: a finding\nis equally CONFIRMED whether nobody has looked at it or an engineer has been\nfixing it all week. The two axes compose into the UI's triage rail\n(open+NONE = \"needs triage\", open+IN_PROGRESS, open+AWAITING_RETEST,\nresolved = \"verified fixed\"). A human reconfirming a NEEDS_VERIFICATION\nlead reuses AWAITING_RETEST \u2014 it flags the finding for the next scan, no new\nTriageState value is minted for it.\n\nOwnership is strictly split: the agent owns `status` (mirrored from the\napp-memory folder at sync()), a human owns this. A human value can never sit\nin `status` \u2014 sync() rewrites that column from the tree every run and would\ndestroy it. AWAITING_RETEST is a LABEL, not a trigger: it flags the finding\nfor the next scan, it does not launch one.\n\nCleared to NONE by sync() when the agent resolves the finding \u2014 the question\nthis was tracking is settled.",
         "enum": [
           "none",
           "in_progress",
@@ -8310,6 +9578,36 @@
         "title": "WorkerHeartbeatRequest",
         "type": "object"
       },
+      "WorkerIsolationPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "egress_allowlist": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Egress Allowlist",
+            "type": "array"
+          },
+          "image": {
+            "nullable": true,
+            "title": "Image",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "host",
+              "container"
+            ],
+            "title": "WorkerIsolationPolicy_mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "WorkerIsolationPolicy",
+        "type": "object"
+      },
       "WorkerOperationResult": {
         "additionalProperties": false,
         "properties": {
@@ -8435,29 +9733,6 @@
         "title": "WorkersDisabledLevel",
         "type": "string"
       },
-      "WorkspaceCreate": {
-        "properties": {
-          "description": {
-            "nullable": true,
-            "title": "Description",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "organization_name": {
-            "nullable": true,
-            "title": "Organization Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "WorkspaceCreate",
-        "type": "object"
-      },
       "WorkspaceMode": {
         "additionalProperties": false,
         "properties": {
@@ -8479,221 +9754,16 @@
         "title": "WorkspaceMode",
         "type": "object"
       },
-      "WorkspacePublic": {
-        "properties": {
-          "approval_level": {
-            "$ref": "#/components/schemas/LegacyApprovalLevel",
-            "deprecated": true,
-            "description": "Deprecated: the old level name, kept for released CLIs. Read approval_mode.",
-            "nullable": true
-          },
-          "approval_mode": {
-            "$ref": "#/components/schemas/ApprovalMode",
-            "nullable": true,
-            "readOnly": true
-          },
-          "auto_mode_enabled": {
-            "default": true,
-            "title": "Auto Mode Enabled",
-            "type": "boolean"
-          },
-          "brand_chart_colors": {
-            "items": {
-              "type": "string"
-            },
-            "nullable": true,
-            "title": "Brand Chart Colors",
-            "type": "array"
-          },
-          "brand_company_name": {
-            "nullable": true,
-            "title": "Brand Company Name",
-            "type": "string"
-          },
-          "brand_logo_storage_key": {
-            "nullable": true,
-            "title": "Brand Logo Storage Key",
-            "type": "string"
-          },
-          "brand_primary_color": {
-            "nullable": true,
-            "title": "Brand Primary Color",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "description": {
-            "maxLength": 1000,
-            "nullable": true,
-            "title": "WorkspacePublic_description",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "is_default": {
-            "title": "Is Default",
-            "type": "boolean"
-          },
-          "is_deleted": {
-            "default": false,
-            "title": "Is Deleted",
-            "type": "boolean"
-          },
-          "member_count": {
-            "default": 0,
-            "title": "Member Count",
-            "type": "integer"
-          },
-          "name": {
-            "maxLength": 255,
-            "minLength": 1,
-            "title": "WorkspacePublic_name",
-            "type": "string"
-          },
-          "notification_additional_emails": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Notification Additional Emails",
-            "type": "array"
-          },
-          "organization_id": {
-            "format": "uuid",
-            "nullable": true,
-            "title": "Organization Id",
-            "type": "string"
-          },
-          "organization_name": {
-            "nullable": true,
-            "title": "Organization Name",
-            "type": "string"
-          },
-          "owner_id": {
-            "format": "uuid",
-            "nullable": true,
-            "title": "Owner Id",
-            "type": "string"
-          },
-          "policy_enforcement_enabled": {
-            "nullable": true,
-            "title": "Policy Enforcement Enabled",
-            "type": "boolean"
-          },
-          "policy_templates_enabled": {
-            "nullable": true,
-            "title": "Policy Templates Enabled",
-            "type": "boolean"
-          },
-          "policy_tool_enabled": {
-            "nullable": true,
-            "title": "Policy Tool Enabled",
-            "type": "boolean"
-          },
-          "pulse_auto_subscribe": {
-            "default": false,
-            "title": "Pulse Auto Subscribe",
-            "type": "boolean"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          },
-          "workers_enabled": {
-            "default": true,
-            "title": "Workers Enabled",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "name",
-          "id",
-          "is_default",
-          "approval_mode"
-        ],
-        "title": "WorkspacePublic",
-        "type": "object"
-      },
       "WorkspaceRole": {
         "description": "Workspace-level roles for RBAC.\n\nRole hierarchy (highest to lowest):\n- ADMIN: Full control within workspace\n- DEVELOPER: Can use chat, view resources, manage recommendations\n- VIEWER: Read-only access\n- SYSTEM: The workspace's own non-login actor for background work; never assignable\n\nNote: OWNER is deprecated. Use organization-level roles instead:\n- ORG_OWNER/ORG_ADMIN inherit to ADMIN in all workspaces\n- ORG_DEVELOPER inherits to DEVELOPER in all workspaces\n- ORG_VIEWER inherits to VIEWER in all workspaces",
-        "enum": [
-          "OWNER",
-          "ADMIN",
-          "DEVELOPER",
-          "VIEWER",
-          "SYSTEM"
-        ],
         "title": "WorkspaceRole",
         "type": "string"
       },
       "WorkspaceWithRolePublic": {
         "description": "WorkspacePublic with the current user's role in the workspace.",
         "properties": {
-          "approval_level": {
-            "$ref": "#/components/schemas/LegacyApprovalLevel",
-            "deprecated": true,
-            "description": "Deprecated: the old level name, kept for released CLIs. Read approval_mode.",
-            "nullable": true
-          },
-          "approval_mode": {
-            "$ref": "#/components/schemas/ApprovalMode",
-            "nullable": true,
-            "readOnly": true
-          },
-          "auto_mode_enabled": {
-            "default": true,
-            "title": "Auto Mode Enabled",
-            "type": "boolean"
-          },
-          "brand_chart_colors": {
-            "items": {
-              "type": "string"
-            },
-            "nullable": true,
-            "title": "Brand Chart Colors",
-            "type": "array"
-          },
-          "brand_company_name": {
-            "nullable": true,
-            "title": "Brand Company Name",
-            "type": "string"
-          },
-          "brand_logo_storage_key": {
-            "nullable": true,
-            "title": "Brand Logo Storage Key",
-            "type": "string"
-          },
-          "brand_primary_color": {
-            "nullable": true,
-            "title": "Brand Primary Color",
-            "type": "string"
-          },
-          "cloud_connection_prefixes": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Cloud Connection Prefixes",
-            "type": "array"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
           "current_user_role": {
             "$ref": "#/components/schemas/WorkspaceRole"
-          },
-          "description": {
-            "maxLength": 1000,
-            "nullable": true,
-            "title": "WorkspaceWithRolePublic_description",
-            "type": "string"
           },
           "id": {
             "format": "uuid",
@@ -8703,21 +9773,6 @@
           "is_default": {
             "title": "Is Default",
             "type": "boolean"
-          },
-          "is_deleted": {
-            "default": false,
-            "title": "Is Deleted",
-            "type": "boolean"
-          },
-          "is_interrupt_approver": {
-            "nullable": true,
-            "title": "Is Interrupt Approver",
-            "type": "boolean"
-          },
-          "member_count": {
-            "default": 0,
-            "title": "Member Count",
-            "type": "integer"
           },
           "name": {
             "maxLength": 255,
@@ -8725,67 +9780,17 @@
             "title": "WorkspaceWithRolePublic_name",
             "type": "string"
           },
-          "notification_additional_emails": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Notification Additional Emails",
-            "type": "array"
-          },
-          "organization_id": {
-            "format": "uuid",
-            "nullable": true,
-            "title": "Organization Id",
-            "type": "string"
-          },
           "organization_name": {
             "nullable": true,
             "title": "Organization Name",
             "type": "string"
-          },
-          "owner_id": {
-            "format": "uuid",
-            "nullable": true,
-            "title": "Owner Id",
-            "type": "string"
-          },
-          "policy_enforcement_enabled": {
-            "nullable": true,
-            "title": "Policy Enforcement Enabled",
-            "type": "boolean"
-          },
-          "policy_templates_enabled": {
-            "nullable": true,
-            "title": "Policy Templates Enabled",
-            "type": "boolean"
-          },
-          "policy_tool_enabled": {
-            "nullable": true,
-            "title": "Policy Tool Enabled",
-            "type": "boolean"
-          },
-          "pulse_auto_subscribe": {
-            "default": false,
-            "title": "Pulse Auto Subscribe",
-            "type": "boolean"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          },
-          "workers_enabled": {
-            "default": true,
-            "title": "Workers Enabled",
-            "type": "boolean"
           }
         },
         "required": [
           "name",
           "id",
           "is_default",
-          "current_user_role",
-          "approval_mode"
+          "current_user_role"
         ],
         "title": "WorkspaceWithRolePublic",
         "type": "object"
@@ -9414,6 +10419,83 @@
         ]
       }
     },
+    "/api/v1/agents/": {
+      "get": {
+        "description": "Retrieve Agents for the current workspace.\nReturns default agents when unauthenticated.",
+        "operationId": "agents-read_agents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "agent_type",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AgentType",
+              "nullable": true,
+              "title": "Agent Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentsPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Agents",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/api/v1/agents/custom/{agent_id}": {
+      "get": {
+        "description": "Retrieve a single custom agent by ID.",
+        "operationId": "custom-agents-get_custom_agent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomAgentPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Custom Agent",
+        "tags": [
+          "custom-agents"
+        ]
+      }
+    },
     "/api/v1/appsec/apps/": {
       "get": {
         "operationId": "appsec-list_apps",
@@ -9757,7 +10839,7 @@
     },
     "/api/v1/appsec/apps/{app_id}/findings": {
       "get": {
-        "description": "One filtered page of an App's findings.\n\n`status` is repeatable (`?status=open&status=needs_verification`). The table\nsends one value; the triage board's `In progress` and `Awaiting retest`\ncolumns send two, because a human may work a parked lead on the triage axis\nwhile its agent-owned `status` stays `needs_verification`.",
+        "description": "One filtered page of an App's findings.\n\n`status` is repeatable (`?status=confirmed&status=needs_verification`). The table\nsends one value; the triage board's `In progress` and `Awaiting retest`\ncolumns send two, because a human may work a parked lead on the triage axis\nwhile its agent-owned `status` stays `needs_verification`.",
         "operationId": "appsec-list_findings",
         "parameters": [
           {
@@ -11001,6 +12083,47 @@
       }
     },
     "/api/v1/builtin-connection/{builtin_id}": {
+      "delete": {
+        "description": "Schedule disconnect of a builtin connection.\n\nReturns 202 immediately after flipping the row to `status=DISCONNECTING`\nand enqueueing the Celery disconnect job. Frontend polls\n`GET /builtin-connection/{id}/disconnect-status` until the row 404s\n(terminal succeeded) or the phase reaches `failed`.",
+        "operationId": "builtin-connection-delete_builtin_connection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "builtin_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Builtin Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuiltinConnectionDisconnectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete Builtin Connection",
+        "tags": [
+          "builtin-connection"
+        ]
+      },
       "get": {
         "description": "Get a single builtin connection with SSH host-key fingerprints for the detail view.",
         "operationId": "builtin-connection-get_builtin_connection",
@@ -11126,6 +12249,62 @@
         "summary": "Get Connection Test Status",
         "tags": [
           "builtin-connection"
+        ]
+      }
+    },
+    "/api/v1/cli/conversations/{conversation_id}/trace": {
+      "get": {
+        "operationId": "cli_get_conversation_trace",
+        "parameters": [
+          {
+            "description": "Persisted conversation UUID",
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "description": "Persisted conversation UUID",
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationTrace"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Trace",
+        "tags": [
+          "cli"
         ]
       }
     },
@@ -11355,6 +12534,124 @@
           }
         },
         "summary": "Lookup Code Review Merge Request",
+        "tags": [
+          "code-review"
+        ]
+      }
+    },
+    "/api/v1/code-review/setup/loupe-conversation": {
+      "post": {
+        "operationId": "code-review-start_loupe_setup_conversation",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-timezone",
+            "required": false,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoupeSetupConversationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoupeSetupConversationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Start, resume, or restart your Loupe setup run",
+        "tags": [
+          "code-review"
+        ]
+      }
+    },
+    "/api/v1/code-review/setup/loupe-target/check": {
+      "post": {
+        "operationId": "code-review-check_loupe_target",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "nullable": true,
+              "title": "Target Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "connection_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "nullable": true,
+              "title": "Connection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/CodeReviewProvider",
+              "nullable": true,
+              "title": "Provider"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repository",
+            "required": false,
+            "schema": {
+              "maxLength": 500,
+              "minLength": 1,
+              "nullable": true,
+              "title": "Repository",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoupeReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Check Loupe prerequisites on a shared Worker",
         "tags": [
           "code-review"
         ]
@@ -12239,6 +13536,18 @@
             }
           },
           {
+            "description": "Also match incidents whose severity is not a known level.",
+            "in": "query",
+            "name": "severity_unknown",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Also match incidents whose severity is not a known level.",
+              "title": "Severity Unknown",
+              "type": "boolean"
+            }
+          },
+          {
             "description": "Search in title/description",
             "in": "query",
             "name": "search",
@@ -12301,14 +13610,27 @@
             }
           },
           {
-            "description": "Sort field. 'queue_priority' orders by investigation queue bucket first (AI handling, Needs decision, Not started, Resolved, Dismissed) and by recency inside each bucket, so no bucket is starved by paging.",
+            "description": "Sort field. 'queue_priority' orders by investigation queue bucket first (AI handling, Needs decision, Not started, Resolved, Dismissed) and by recency inside each bucket, so no bucket is starved by paging. 'severity_open_first' orders open incidents Critical to Info, then unknown severity, then Resolved and Dismissed, newest first in each.",
             "in": "query",
             "name": "sort_by",
             "required": false,
             "schema": {
               "default": "created_at",
-              "description": "Sort field. 'queue_priority' orders by investigation queue bucket first (AI handling, Needs decision, Not started, Resolved, Dismissed) and by recency inside each bucket, so no bucket is starved by paging.",
+              "description": "Sort field. 'queue_priority' orders by investigation queue bucket first (AI handling, Needs decision, Not started, Resolved, Dismissed) and by recency inside each bucket, so no bucket is starved by paging. 'severity_open_first' orders open incidents Critical to Info, then unknown severity, then Resolved and Dismissed, newest first in each.",
               "title": "Sort By",
+              "type": "string"
+            }
+          },
+          {
+            "description": "`next_cursor` from the previous page. Keyset sorts only; replaces `page`.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "description": "`next_cursor` from the previous page. Keyset sorts only; replaces `page`.",
+              "maxLength": 1000,
+              "nullable": true,
+              "title": "Cursor",
               "type": "string"
             }
           },
@@ -12638,6 +13960,49 @@
         ]
       }
     },
+    "/api/v1/mcp-connection/{mcp_conn_id}": {
+      "delete": {
+        "description": "Schedule disconnect of an MCP connection.\n\nReturns 202 immediately after flipping the row to ``status=DISCONNECTING``\nand enqueueing the Celery disconnect job. Frontend polls\n``GET /mcp-connection/{id}/disconnect-status`` until the row 404s\n(terminal succeeded) or the phase reaches ``failed``.",
+        "operationId": "mcp-connection-delete_mcp_connection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mcp_conn_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Mcp Conn Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MCPConnectionDisconnectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Delete Mcp Connection",
+        "tags": [
+          "mcp-connection"
+        ]
+      }
+    },
     "/api/v1/mcp-connection/{mcp_conn_id}/test-status": {
       "get": {
         "description": "Return the current phase of an MCP connection's async test job.\n\nReads from Redis (``conn:test:{id}`` key, 1h TTL); falls back to deriving\nphase from the row's persisted status when Redis is empty. See\n``_resolve_phase_status`` for the workspace-scoping and cache-warming\ncontract.",
@@ -12678,6 +14043,88 @@
         "summary": "Get Mcp Connection Test Status",
         "tags": [
           "mcp-connection"
+        ]
+      }
+    },
+    "/api/v1/policy/export": {
+      "get": {
+        "operationId": "policy-export_policy",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/yaml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Export Policy",
+        "tags": [
+          "policy"
+        ]
+      }
+    },
+    "/api/v1/policy/import": {
+      "post": {
+        "operationId": "policy-import_policy",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ImportMode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyImportBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyImportPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Import Policy",
+        "tags": [
+          "policy"
         ]
       }
     },
@@ -12977,36 +14424,6 @@
           }
         },
         "summary": "Get Workspaces",
-        "tags": [
-          "workspaces"
-        ]
-      },
-      "post": {
-        "description": "Create new workspace. Requires WORKSPACE_CREATE permission.\nUsers with workspace quota can create workspaces if they have owner-level permissions.\nWorkspace is created in the current organization context from token.",
-        "operationId": "workspaces-create_workspace",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WorkspaceCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkspacePublic"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Create Workspace",
         "tags": [
           "workspaces"
         ]

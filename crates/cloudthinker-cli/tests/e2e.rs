@@ -19,6 +19,8 @@ use chrono as _;
 use flate2 as _;
 use fs2 as _;
 use globset as _;
+#[cfg(unix)]
+use httparse as _;
 use regex as _;
 #[cfg(unix)]
 use rustix as _;
@@ -48,6 +50,7 @@ use supports_color as _;
 use tokio as _;
 #[cfg(unix)]
 use unicode_width as _;
+use wiremock as _;
 
 use std::collections::VecDeque;
 
@@ -521,6 +524,297 @@ fn cli(base_url: &str) -> Command {
     cmd
 }
 
+fn trace_body() -> serde_json::Value {
+    serde_json::json!({
+        "conversation_id": CONV_ID,
+        "workspace_id": RUN_ID,
+        "captured_at": "2026-10-28T00:00:00Z",
+        "snapshot": "persisted_best_effort",
+        "messages": [{
+            "id": RUN_ID, "role": "anna", "created_at": "2026-10-28T00:00:00Z",
+            "text": "你好 🦀\nPersisted result", "text_truncated": false,
+            "finish_reason": "error",
+            "usage": {"records": 0, "token_records": 0, "tokens": null, "credits": null},
+            "tools": [{
+                "id": CONV_ID, "tool_call_id": null, "position": 1, "name": "bash",
+                "runtime_seconds": null, "completed": true, "approval_status": null
+            }],
+            "tools_omitted": 0
+        }],
+        "summary": {
+            "scope": "returned_messages", "messages": 1, "tool_calls": 1, "failed_messages": 1,
+            "tokens": null, "credits": null, "messages_without_usage": 1,
+            "messages_with_unknown_tokens": 1
+        },
+        "truncation": {
+            "truncated": false, "has_older_messages": false, "messages_filtered": 0,
+            "messages_omitted_for_bytes": 0, "tools_omitted": 0, "text_fields_truncated": 0,
+            "message_limit": 100, "tool_limit": 200, "text_char_limit": 4096,
+            "response_byte_limit": 262144
+        }
+    })
+}
+
+#[test]
+fn ca_cli_trace_01_10_11_15_json_preserves_nulls_and_recorded_failure_exits_zero() {
+    let body = trace_body();
+    let api = RecordingApi::start(vec![("200 OK", body.to_string())]);
+    let output = cli(&api.base_url)
+        .args(["chat", "trace", CONV_ID, "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value, body);
+    assert!(
+        value["messages"][0]["usage"]
+            .get("tokens")
+            .unwrap()
+            .is_null()
+    );
+    assert!(
+        value["messages"][0]["tools"][0]
+            .get("tool_call_id")
+            .unwrap()
+            .is_null()
+    );
+    let requests = api.requests();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].starts_with(&format!(
+        "GET /api/v1/cli/conversations/{CONV_ID}/trace?limit=100 "
+    )));
+    assert!(
+        requests[0]
+            .to_ascii_lowercase()
+            .contains("authorization: bearer test-access-token")
+    );
+}
+
+#[test]
+fn ca_cli_trace_01_09_11_human_output_is_safe_and_names_window_facts() {
+    let mut body = trace_body();
+    body["messages"][0]["text"] = "你好 🦀\ntext\u{1b}[31m\u{202e}".into();
+    body["messages"][0]["tools"][0]["name"] = "ba\u{1b}[31msh".into();
+    body["truncation"]["truncated"] = true.into();
+    body["truncation"]["has_older_messages"] = true.into();
+    body["truncation"]["messages_filtered"] = 2.into();
+    body["truncation"]["message_limit"] = 1.into();
+    let api = RecordingApi::start(vec![("200 OK", body.to_string())]);
+    let output = cli(&api.base_url)
+        .args(["chat", "trace", CONV_ID, "--limit", "1"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("你好 🦀\ntext"));
+    assert!(text.contains("2026-10-28T07:00:00+07:00"));
+    assert!(text.contains("2 source messages excluded"));
+    assert!(text.contains("completed=true"));
+    assert!(text.contains("finish=error"));
+    assert!(text.contains("unknown tokens"));
+    assert!(!text.contains('\u{1b}') && !text.contains('\u{202e}'));
+    assert!(api.requests()[0].contains("?limit=1 "));
+}
+
+#[test]
+fn ca_cli_trace_02_empty_and_filtered_windows_are_distinct_in_both_formats() {
+    for filtered in [0, 3] {
+        let mut body = trace_body();
+        body["messages"] = serde_json::json!([]);
+        body["summary"]["messages"] = 0.into();
+        body["summary"]["tool_calls"] = 0.into();
+        body["summary"]["failed_messages"] = 0.into();
+        body["summary"]["messages_without_usage"] = 0.into();
+        body["summary"]["messages_with_unknown_tokens"] = 0.into();
+        body["truncation"]["messages_filtered"] = filtered.into();
+        let api = RecordingApi::start(vec![
+            ("200 OK", body.to_string()),
+            ("200 OK", body.to_string()),
+        ]);
+        let text = cli(&api.base_url)
+            .args(["chat", "trace", CONV_ID])
+            .output()
+            .unwrap();
+        assert_eq!(text.status.code(), Some(0));
+        assert!(
+            String::from_utf8(text.stdout)
+                .unwrap()
+                .contains(&format!("{filtered} source messages excluded"))
+        );
+        let json = cli(&api.base_url)
+            .args(["chat", "trace", CONV_ID, "--json"])
+            .output()
+            .unwrap();
+        assert_eq!(json.status.code(), Some(0));
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&json.stdout).unwrap(),
+            body
+        );
+    }
+}
+
+#[test]
+fn ca_cli_trace_03_invalid_arguments_fail_without_http() {
+    let api = RecordingApi::start(vec![]);
+    for args in [
+        vec!["chat", "trace", "invalid"],
+        vec!["chat", "trace", CONV_ID, "--limit", "0"],
+        vec!["chat", "trace", CONV_ID, "--limit", "101"],
+        vec!["chat", "-p", "prompt", "trace", CONV_ID],
+    ] {
+        let output = cli(&api.base_url).args(args).output().unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+    }
+    assert!(api.requests().is_empty());
+}
+
+#[test]
+fn ca_cli_trace_04_05_06_13_14_api_errors_keep_existing_exit_contract() {
+    for (status, code, exit) in [
+        ("404 Not Found", "CONVERSATION_TRACE_NOT_FOUND", 1),
+        ("403 Forbidden", "FORBIDDEN", 3),
+        ("401 Unauthorized", "UNAUTHORIZED", 3),
+        (
+            "422 Unprocessable Entity",
+            "CONVERSATION_TRACE_UNSUPPORTED",
+            2,
+        ),
+        (
+            "413 Content Too Large",
+            "CONVERSATION_TRACE_SOURCE_LIMIT",
+            1,
+        ),
+        (
+            "503 Service Unavailable",
+            "CONVERSATION_TRACE_UNAVAILABLE",
+            1,
+        ),
+    ] {
+        let api = RecordingApi::start(vec![(
+            status,
+            serde_json::json!({"error": {"code": code, "message": "trace unavailable"}})
+                .to_string(),
+        )]);
+        let output = cli(&api.base_url)
+            .args(["chat", "trace", CONV_ID, "--json"])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(exit));
+        assert!(output.stdout.is_empty());
+        assert!(!output.stderr.is_empty());
+        assert_eq!(api.requests().len(), 1);
+    }
+}
+
+#[test]
+fn review_setup_makes_a_relative_conversation_link_actionable() {
+    let relative = format!("/chat?conversationId={CONV_ID}");
+    let api = RecordingApi::start(vec![(
+        "200 OK",
+        serde_json::json!({
+            "conversation_id": CONV_ID,
+            "needs_initial_message": false,
+            "web_url": relative,
+        })
+        .to_string(),
+    )]);
+    let output = cli(&api.base_url)
+        .args(["review", "setup", "--worker", RUN_ID])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        (output.status.success() && stdout.contains("http") && stdout.contains(CONV_ID))
+            || (!output.status.success() && stderr.to_lowercase().contains("frontend")),
+        "setup must provide an absolute link or explain how to configure one: {stdout} {stderr}"
+    );
+    let requests = api.requests();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].starts_with("POST /api/v1/code-review/setup/loupe-conversation "));
+}
+
+#[test]
+fn review_setup_never_submits_the_first_message() {
+    let conversation = serde_json::json!({
+        "conversation_id": CONV_ID,
+        "needs_initial_message": true,
+        "web_url": format!("https://app.example.com/chat?conversationId={CONV_ID}"),
+    })
+    .to_string();
+    let api = RecordingApi::start(vec![("200 OK", conversation)]);
+    let output = cli(&api.base_url)
+        .args(["review", "setup", "--worker", RUN_ID])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(output.status.success());
+    assert!(stdout.contains(
+        "Continue setup and answer any questions: https://app.example.com/chat?conversationId="
+    ));
+    let requests = api.requests();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].starts_with("POST /api/v1/code-review/setup/loupe-conversation "));
+}
+
+#[test]
+fn review_setup_accepts_a_matching_explicit_workspace_with_an_environment_token() {
+    let conversation = serde_json::json!({
+        "conversation_id": CONV_ID,
+        "needs_initial_message": false,
+        "web_url": format!("https://app.example.com/chat?conversationId={CONV_ID}"),
+    })
+    .to_string();
+    let api = RecordingApi::start(vec![
+        ("200 OK", WHOAMI_BODY.into()),
+        ("200 OK", conversation),
+    ]);
+    let output = cli(&api.base_url)
+        .args([
+            "--workspace",
+            RUN_ID,
+            "review",
+            "setup",
+            "--worker",
+            CONV_ID,
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8(output.stdout).unwrap().contains(CONV_ID));
+    let requests = api.requests();
+    assert_eq!(requests.len(), 2);
+    assert!(requests[0].starts_with("GET /api/v1/cli/whoami "));
+    assert!(requests[1].starts_with("POST /api/v1/code-review/setup/loupe-conversation "));
+}
+
+#[test]
+fn review_setup_rejects_a_workspace_mismatch_before_creating_a_conversation() {
+    let api = RecordingApi::start(vec![("200 OK", WHOAMI_BODY.into())]);
+    let output = cli(&api.base_url)
+        .args([
+            "--workspace",
+            CONV_ID,
+            "review",
+            "setup",
+            "--worker",
+            RUN_ID,
+        ])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .to_lowercase()
+            .contains("workspace")
+    );
+    let requests = api.requests();
+    assert_eq!(requests.len(), 1);
+    assert!(requests[0].starts_with("GET /api/v1/cli/whoami "));
+}
+
 #[test]
 fn cyber_probe_ingest_reports_missing_reason_before_authentication() {
     let config_home = tempfile::tempdir().unwrap();
@@ -722,6 +1016,80 @@ fn stored_login_cli(base_url: &str, home: &std::path::Path) -> Command {
 const DEV_WORKSPACE: &str = "33333333-3333-4333-8333-333333333333";
 const PROD_WORKSPACE: &str = "44444444-4444-4444-8444-444444444444";
 const FAR_FUTURE: &str = "2099-01-01T00:00:00Z";
+
+#[test]
+fn workspace_ls_with_an_unreadable_store_warns_and_still_lists() {
+    let home = tempfile::tempdir().unwrap();
+    let path = credentials_path(home.path());
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "{not json").unwrap();
+    let workspaces = serde_json::json!({"data": [{
+        "id": "11111111-1111-4111-8111-111111111111",
+        "name": "Production",
+        "current_user_role": "ADMIN",
+        "organization_name": "Acme",
+        "is_default": true
+    }], "count": 1})
+    .to_string();
+    let empty = serde_json::json!({"data": [], "count": 0}).to_string();
+    let api = RoutedApi::start(vec![
+        (
+            "GET /api/v1/cli/whoami".into(),
+            "200 OK",
+            WHOAMI_BODY.into(),
+        ),
+        (
+            "GET /api/v1/workspaces/".into(),
+            "200 OK",
+            workspaces.clone(),
+        ),
+        ("GET /api/v1/workspaces/".into(), "200 OK", empty.clone()),
+        ("GET /api/v1/workspaces/".into(), "200 OK", workspaces),
+        ("GET /api/v1/workspaces/".into(), "200 OK", empty),
+    ]);
+    let run = |args: &[&str]| {
+        cli(&api.base_url)
+            .env("HOME", home.path())
+            .env("XDG_CONFIG_HOME", home.path())
+            .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent")
+            .timeout(Duration::from_secs(60))
+            .args(args)
+            .output()
+            .unwrap()
+    };
+
+    let json = run(&["workspace", "ls", "--json"]);
+    assert_eq!(json.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&json.stderr);
+    assert!(
+        stderr.contains("could not read the workspace logins saved on this machine"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("CLOUDTHINKER_TOKEN is set"), "{stderr}");
+    let listed: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(
+        listed,
+        serde_json::json!([{
+            "id": "11111111-1111-4111-8111-111111111111",
+            "name": "Production",
+            "role": "admin",
+            "organization_name": "Acme",
+            "is_default": true,
+            "selected": true,
+            "saved_login": null
+        }])
+    );
+
+    let text = run(&["workspace", "ls"]);
+    assert_eq!(text.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&text.stdout);
+    assert!(
+        stdout.contains("\tProduction\tadmin\tunknown\n"),
+        "{stdout}"
+    );
+    assert!(!stdout.contains("--workspace"), "{stdout}");
+    assert_eq!(api.count("GET /api/v1/workspaces/"), 4);
+}
 
 #[test]
 fn auth_status_lists_the_stored_logins_and_switch_moves_the_active_one() {
@@ -3388,6 +3756,7 @@ mod remote {
             let id = uuid::Uuid::new_v4().simple().to_string();
             let dir = PathBuf::from(format!("/tmp/ctr-{}", &id[..10]));
             std::fs::create_dir_all(dir.join("bin")).unwrap();
+            let dir = std::fs::canonicalize(dir).unwrap();
             std::os::unix::fs::symlink(
                 assert_cmd::cargo::cargo_bin("cloudthinker"),
                 dir.join("bin").join("cloudthinker"),
@@ -3411,7 +3780,7 @@ mod remote {
                  echo \"cwd=$(pwd)\"\n\
                  echo \"args=$*\"\n\
                  while true; do\n\
-                   if IFS= read -r -t 0.2 line; then\n\
+                   if IFS= read -r -t 1 line; then\n\
                      case \"$line\" in quit) exit 7;; *) echo \"echo:$line\";; esac\n\
                    fi\n\
                  done\n",
@@ -4718,7 +5087,14 @@ fn ca_cli_37_connections_skill_and_help() {
             .unwrap()
             .contains("connections")
     );
-    for sub in ["list", "show", "status", "retry", "connect-url"] {
+    for sub in [
+        "list",
+        "show",
+        "status",
+        "retry",
+        "disconnect",
+        "connect-url",
+    ] {
         let output = Command::cargo_bin("cloudthinker")
             .unwrap()
             .args(["connections", sub, "--help"])
@@ -5034,4 +5410,168 @@ fn ca_cli_40_unknown_server_values_render_raw() {
         stdout.contains("test:       verify]0;owneding\n"),
         "{stdout:?}"
     );
+}
+
+fn disconnect_accepted(mut connection: serde_json::Value) -> String {
+    connection["status"] = "disconnecting".into();
+    connection["status_message"] = "Disconnect queued".into();
+    serde_json::json!({
+        "connection": connection,
+        "disconnect_status": {"phase": "queued", "started_at": null, "elapsed_ms": null, "last_error": null}
+    })
+    .to_string()
+}
+
+// CA-CLI-41: `disconnect --yes` deletes a built-in or MCP connection once, and without --yes off a terminal it refuses before any request.
+#[test]
+fn ca_cli_41_disconnect_needs_yes_off_a_terminal() {
+    let builtin_delete = format!("DELETE /api/v1/builtin-connection/{AWS_ID}");
+    let mcp_delete = format!("DELETE /api/v1/mcp-connection/{MCP_ID}");
+    let api = routed(
+        standard_workspace(),
+        vec![
+            (
+                builtin_delete.clone(),
+                "202 Accepted",
+                disconnect_accepted(builtin_row(AWS_ID, "aws", Some("aws-prod"), true)),
+            ),
+            (
+                mcp_delete.clone(),
+                "202 Accepted",
+                disconnect_accepted(mcp_row("connected", "")),
+            ),
+        ],
+    );
+
+    let (code, stdout, stderr) = run_connections(&api, &["disconnect", "aws-prod"]);
+    assert_eq!(code, Some(2), "{stderr}");
+    assert!(stdout.is_empty());
+    assert!(
+        stderr.contains(&format!(
+            "cloudthinker --url {} connections disconnect aws-prod --yes",
+            api.base_url
+        )),
+        "{stderr}"
+    );
+    let output = connections_cli(&api.base_url)
+        .env_remove("CLOUDTHINKER_TOKEN")
+        .args([
+            "--workspace",
+            "Team Ops",
+            "connections",
+            "disconnect",
+            "aws prod",
+        ])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(2), "{stderr}");
+    assert!(
+        stderr.contains(&format!(
+            "cloudthinker --url {} --workspace 'Team Ops' connections disconnect 'aws prod' --yes",
+            api.base_url
+        )),
+        "{stderr}"
+    );
+    assert!(api.requests.lock().unwrap().is_empty());
+
+    let (code, stdout, stderr) = run_connections(&api, &["disconnect", "aws-prod", "--yes"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(
+        stdout,
+        format!(
+            "connection: {AWS_ID}\nname:       aws account\ntype:       builtin\nstatus:     disconnecting\ndisconnect: queued\n"
+        )
+    );
+    assert!(stderr.contains("finishes it in the background"), "{stderr}");
+    assert_eq!(api.count(&builtin_delete), 1);
+
+    let (code, stdout, stderr) = run_connections(&api, &["disconnect", "docs", "-y", "--json"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    let body: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(body["id"], MCP_ID);
+    assert_eq!(body["kind"], "mcp");
+    assert_eq!(body["status"], "disconnecting");
+    assert_eq!(body["disconnect_phase"], "queued");
+    assert!(!stdout.contains("Authorization"), "{stdout}");
+    assert!(!stdout.contains("tools"), "{stdout}");
+    assert_eq!(api.count(&mcp_delete), 1);
+    assert_eq!(api.methods("DELETE"), 2);
+}
+
+// CA-CLI-42: a disconnect the server forbids exits 3, one it blocks exits 1 with its reason, and a vanished target says no connection matches.
+#[test]
+fn ca_cli_42_disconnect_reports_server_refusals() {
+    let api = routed(
+        workspace_routes(
+            &[
+                builtin_row(AWS_ID, "aws", Some("aws-prod"), true),
+                builtin_row(GITHUB_ID, "github", None, true),
+                builtin_row(AWS_SECOND_ID, "gitlab", None, true),
+            ],
+            &[],
+        ),
+        vec![
+            (
+                format!("DELETE /api/v1/builtin-connection/{AWS_ID}"),
+                "403 Forbidden",
+                r#"{"detail":"Missing permission: connectors:edit"}"#.into(),
+            ),
+            (
+                format!("DELETE /api/v1/builtin-connection/{GITHUB_ID}"),
+                "409 Conflict",
+                r#"{"error":{"code":"CR_SETUP_ACTIVE","message":"Cannot disconnect: this connection has an active Review setup. Remove the Review setup first.","retryable":false},"request_id":"r1","detail":{"message":"Cannot disconnect: this connection has an active Review setup. Remove the Review setup first.","code":"CR_SETUP_ACTIVE"}}"#.into(),
+            ),
+            (
+                format!("DELETE /api/v1/builtin-connection/{AWS_SECOND_ID}"),
+                "404 Not Found",
+                r#"{"detail":"Connection not found"}"#.into(),
+            ),
+        ],
+    );
+
+    let (code, stdout, stderr) = run_connections(&api, &["disconnect", "aws-prod", "--yes"]);
+    assert_eq!(code, Some(3), "{stderr}");
+    assert!(stdout.is_empty());
+    assert!(
+        stderr.contains("Missing permission: connectors:edit"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("ask a workspace admin"), "{stderr}");
+
+    let (code, _, stderr) = run_connections(&api, &["disconnect", "github", "--yes"]);
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(stderr.contains("Remove the Review setup first"), "{stderr}");
+
+    let (code, _, stderr) = run_connections(&api, &["disconnect", AWS_SECOND_ID, "--yes"]);
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(stderr.contains("no connection matches"), "{stderr}");
+}
+
+// CA-CLI-43: `disconnect --yes` on an ambiguous prefix (exit 2) or a catalog-only prefix (exit 1) sends no DELETE.
+#[test]
+fn ca_cli_43_disconnect_without_one_match_sends_no_delete() {
+    let api = RoutedApi::start(workspace_routes(
+        &[
+            builtin_row(AWS_ID, "aws", Some("aws-prod"), true),
+            builtin_row(AWS_SECOND_ID, "aws", Some("aws-dev"), true),
+            builtin_row(TEMPLATE_ID, "github", None, false),
+        ],
+        &[],
+    ));
+
+    let (code, stdout, stderr) = run_connections(&api, &["disconnect", "aws", "--yes"]);
+    assert_eq!(code, Some(2), "{stderr}");
+    assert!(stdout.is_empty());
+    assert!(
+        stderr.contains(AWS_ID) && stderr.contains(AWS_SECOND_ID),
+        "{stderr}"
+    );
+
+    let (code, stdout, stderr) = run_connections(&api, &["disconnect", "github", "--yes"]);
+    assert_eq!(code, Some(1), "{stderr}");
+    assert!(stdout.is_empty());
+    assert!(stderr.contains("no connection matches"), "{stderr}");
+
+    assert_eq!(api.methods("DELETE"), 0);
 }

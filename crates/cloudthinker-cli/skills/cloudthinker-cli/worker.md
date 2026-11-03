@@ -16,7 +16,20 @@ creating a conversation. Existing conversations keep their original target.
 The worker connects outward over HTTPS and opens no inbound port. Startup checks
 file access, shell execution, cancellation, and artifact upload before the outpost
 becomes available. File tools stay inside the selected directory. Shell commands
-run under your OS account with `/bin/bash` and are not sandboxed.
+run under your OS account with `/bin/bash` and are not sandboxed, unless the
+outpost requires container isolation.
+
+An admin can require container isolation for an outpost. The worker then runs
+each shell and background command in a session container; file tools still act on
+the served folder, which the container mounts at the same path. The container has
+no capabilities, a read-only root, and no DNS. Its only way out is an egress proxy
+that allows the hosts on the outpost allowlist; an empty allowlist blocks all
+outbound access. A blocked request answers 403 with a line that starts
+`Blocked by the Worker egress policy:`; tell the user which host to ask an admin
+to add, and do not retry through another route. The worker needs Docker.
+Without it, `worker start`
+exits with code 2, and a command fails with `EXECUTOR_ISOLATION_UNAVAILABLE`; it
+never runs on the host instead.
 
 CloudThinker records each shell command, background task start or stop, and file
 write in the Audit Trail under the `Command` filter. The record keeps a redacted
@@ -183,8 +196,8 @@ the first start and after any outage. It checks the CLI version, the HTTPS path
 to the server (it names `HTTPS_PROXY` and a custom CA bundle when set), clock skew
 (warning over 10 seconds, failure over 30, because leases last 60 seconds), the
 stored credential, the served folder and its saved identity, the state directory
-modes (`0700` and `0600`), the service unit and Linux lingering, and the `git`
-version. Each
+modes (`0700` and `0600`), the service unit and Linux lingering, the `git`
+version, and the container runtime and images for container isolation. Each
 problem prints one fix, and the exit code is 1 when any check fails.
 
 Concurrency limits assignments. Each assignment admits four operations and the

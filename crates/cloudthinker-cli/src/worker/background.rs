@@ -18,6 +18,7 @@ use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use super::config::WorkdirIdentity;
+use super::container;
 use super::files::relative;
 use super::sandbox::SandboxPlan;
 
@@ -76,6 +77,13 @@ pub struct ShimImage {
 struct Spawn<'a> {
     environment: &'a BTreeMap<String, String>,
     sandbox: Option<&'a SandboxPlan>,
+    container: Option<ContainerSpawn<'a>>,
+}
+
+struct ContainerSpawn<'a> {
+    target: &'a container::Target,
+    cwd: PathBuf,
+    keys: Vec<String>,
 }
 
 pub enum Launch {
@@ -198,7 +206,7 @@ pub(crate) async fn execute(
     shim: Arc<ShimImage>,
     op: api::BackgroundOperation,
     environment: BTreeMap<String, String>,
-    sandbox: Option<SandboxPlan>,
+    confinement: (Option<SandboxPlan>, Option<container::Target>),
     deadline: DateTime<Utc>,
     cancel: CancellationToken,
 ) -> Result<Value, &'static str> {
@@ -208,7 +216,16 @@ pub(crate) async fn execute(
     validate_task_id(&op.task_id)?;
     match op.action {
         api::BackgroundAction::Start => {
-            start(identity, shim, op, environment, sandbox, deadline, cancel).await
+            start(
+                identity,
+                shim,
+                op,
+                environment,
+                confinement,
+                deadline,
+                cancel,
+            )
+            .await
         }
         api::BackgroundAction::Tail => {
             let wait = tail_wait(op.wait_seconds, deadline);
@@ -265,10 +282,11 @@ async fn start(
     shim: Arc<ShimImage>,
     op: api::BackgroundOperation,
     environment: BTreeMap<String, String>,
-    sandbox: Option<SandboxPlan>,
+    confinement: (Option<SandboxPlan>, Option<container::Target>),
     deadline: DateTime<Utc>,
     cancel: CancellationToken,
 ) -> Result<Value, &'static str> {
+    let (sandbox, target) = confinement;
     let cmd = op.cmd.ok_or("EXECUTOR_BACKGROUND_START_FAILED")?;
     let timeout_secs = op
         .timeout
@@ -276,6 +294,7 @@ async fn start(
         .filter(|t| *t > 0)
         .unwrap_or(DEFAULT_TIMEOUT_SECS);
     let working_directory = op.working_directory.unwrap_or_else(|| ".".into());
+    let container_cwd = identity.path.join(relative(&working_directory)?);
     let task_id = op.task_id;
     let prepared = {
         let identity = identity.clone();
@@ -287,9 +306,26 @@ async fn start(
     let Some((task, cwd)) = prepared? else {
         return Ok(json!({"started": false}));
     };
-    let spawn = Spawn {
-        environment: sandbox.as_ref().map_or(&environment, |plan| &plan.env),
-        sandbox: sandbox.as_ref(),
+    let forwarded = container::forwarded_env(&environment);
+    let container_environment: BTreeMap<String, String> = container::client_env()
+        .into_iter()
+        .chain(forwarded.clone())
+        .collect();
+    let spawn = match &target {
+        Some(target) => Spawn {
+            environment: &container_environment,
+            sandbox: None,
+            container: Some(ContainerSpawn {
+                target,
+                cwd: container_cwd,
+                keys: forwarded.into_keys().collect(),
+            }),
+        },
+        None => Spawn {
+            environment: sandbox.as_ref().map_or(&environment, |plan| &plan.env),
+            sandbox: sandbox.as_ref(),
+            container: None,
+        },
     };
     let outcome = launch(&task, cwd, &shim, spawn, timeout_secs, deadline, cancel).await;
     if outcome.is_err() {
@@ -353,6 +389,18 @@ async fn launch(
         .arg(timeout_secs.to_string());
     if let Some(plan) = spawn.sandbox {
         command.arg("--sandbox").args(plan.arguments());
+    }
+    if let Some(launch) = &spawn.container {
+        command
+            .arg("--container")
+            .arg(&launch.target.session)
+            .arg("--container-runtime")
+            .arg(&launch.target.program)
+            .arg("--container-cwd")
+            .arg(&launch.cwd);
+        for key in &launch.keys {
+            command.arg("--container-env").arg(key);
+        }
     }
     let mut child = command
         .stdin(Stdio::from(cwd))
@@ -802,7 +850,7 @@ mod tests {
                 self.shim.clone(),
                 op,
                 BTreeMap::new(),
-                None,
+                (None, None),
                 deadline,
                 cancel,
             )
