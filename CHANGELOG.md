@@ -1,3 +1,7 @@
+## [0.11.1]
+
+- The resume line printed when the agent exits now reads `cloudthinker agent --session <id>`, a command that works. It used to print `cloudthinker --session <id>`, which the CLI rejected.
+
 ## [0.11.0]
 
 - Cyber finding statuses are now called confirmed and fixed. Their folders stay `findings/open/` and `findings/resolved/` in this release; CloudThinker also reads `findings/confirmed/` and `findings/fixed/`.

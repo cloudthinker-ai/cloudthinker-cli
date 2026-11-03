@@ -57,6 +57,19 @@ index e52c9d779b..3298542c3b 100644
  }
  function resolveSpawnContext(command, cwd, spawnHook, exposeSessionEnvironment, ctx) {
      const env = { ...getShellEnv() };
+diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
+index 3a9ad25173..6e0e99aa81 100644
+--- a/dist/modes/interactive/interactive-mode.js
++++ b/dist/modes/interactive/interactive-mode.js
+@@ -174,7 +174,7 @@ export function formatResumeCommand(sessionManager) {
+     const sessionFile = sessionManager.getSessionFile();
+     if (!sessionFile || !fs.existsSync(sessionFile))
+         return undefined;
+-    const args = [APP_NAME];
++    const args = [APP_NAME, "agent"];
+     if (!sessionManager.usesDefaultSessionDir()) {
+         args.push("--session-dir", quoteIfNeeded(sessionManager.getSessionDir()));
+     }
 diff --git a/dist/modes/print-mode.js b/dist/modes/print-mode.js
 index beea0e8287..dd1dc125d7 100644
 --- a/dist/modes/print-mode.js
