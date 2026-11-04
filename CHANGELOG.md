@@ -1,3 +1,14 @@
+## [0.11.2]
+
+- `cloudthinker doctor` prints one aligned row per check with a ✓, !, ✗, ? or - mark. It names the signed-in account and workspace instead of their IDs, folds healthy Connections into one count, and lists only the Connections that need attention, by name, with a single fix. The report ends with one verdict line.
+- `doctor` now shows where the server address came from (`--url`, `CLOUDTHINKER_URL`, the default saved by `login --url`, or the built-in default). It warns when `CLOUDTHINKER_URL` points away from your saved default, which used to make doctor check a different server than the one you signed in to. `doctor --json` adds `origin_source` and each Connection's `connection_name`. Its `summary` strings are shorter, and the account row now names the signed-in email instead of the user ID; `user_id` and `workspace_id` stay in their own fields.
+- `login --url` warns when `CLOUDTHINKER_URL` is set to another server, because that variable overrides the new default in the same shell.
+- On a Worker, the agent's file read now starts at the first line. It used to skip line 1, so a one-line file read back empty and a paged read started one line late.
+- `worker start --register` now accepts a registration reference that starts with `-`. About 1 in 64 references did, and the setup command then failed with an argument error.
+- On rootless Docker, a Worker set to container isolation can now write the served folder and read its egress allowlist. It used to run the container as a user that rootless Docker maps to a different account, so commands failed with `Permission denied`.
+- On container isolation, files and folders that a command creates in the served folder are no longer writable by every user on the machine. Commands now run with umask 022, like a normal login shell; `docker exec` used to start them with umask 000.
+- On a Worker that sandboxes commands (Loupe), a tool that your PATH reaches through a symlink now runs. A `pnpm`, `go` or `aws` linked into `~/.local/bin` from another folder used to fail with "permission denied" or "command not found", because the sandbox could read the link but not the folder it points to.
+
 ## [0.11.1]
 
 - The resume line printed when the agent exits now reads `cloudthinker agent --session <id>`, a command that works. It used to print `cloudthinker --session <id>`, which the CLI rejected.

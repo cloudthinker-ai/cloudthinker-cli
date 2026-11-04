@@ -313,7 +313,7 @@ fn command_noun(activity: WorkerActivity) -> &'static str {
     }
 }
 
-fn plural(count: usize, singular: &str, plural: &str) -> String {
+pub(super) fn plural(count: usize, singular: &str, plural: &str) -> String {
     if count == 1 {
         format!("{count} {singular}")
     } else {

@@ -62,6 +62,8 @@ impl CliConfig {
     }
 }
 
+pub const URL_ENV_VAR: &str = "CLOUDTHINKER_URL";
+
 pub fn effective_default_url() -> String {
     resolve_base_url(None, &CliConfig::load_default(), DEFAULT_BASE_URL)
 }

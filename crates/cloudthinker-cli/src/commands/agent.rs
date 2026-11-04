@@ -8,6 +8,7 @@ use std::process::Stdio;
 use crate::commands::{WORKSPACE_ENV_VAR, build_client, env_token_is_set};
 use crate::engine::exit::{self, ExitCode};
 use crate::engine::{login_guide, output};
+use cloudthinker_client::URL_ENV_VAR;
 use cloudthinker_client::{
     CliIdentity, CtError, DEFAULT_RELEASE_BASE_URL, agent_bin_root, any_agent_installed,
     host_target_triple, install_agent, installed_agent_binary,
@@ -18,9 +19,6 @@ const AGENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Dev override: exec this path instead of an installed release.
 const AGENT_BIN_ENV_VAR: &str = "CLOUDTHINKER_AGENT_BIN";
-
-/// Handed to the child so its `cloudthinker auth token` resolves the same host.
-const URL_ENV_VAR: &str = "CLOUDTHINKER_URL";
 
 const BIN_ENV_VAR: &str = "CLOUDTHINKER_BIN";
 

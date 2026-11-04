@@ -179,7 +179,7 @@ pub struct StartArgs {
     concurrency: u16,
 
     /// One-time registration reference from the install command.
-    #[arg(long)]
+    #[arg(long, allow_hyphen_values = true)]
     register: Option<String>,
 
     /// Short display name for the served folder. Defaults to `<folder> · <hostname>`.

@@ -39,7 +39,9 @@ pub use auth::store::{
     CredentialProvenance, CredentialSource, EnvTokenStore, FileStore, StoredToken, StoredWorkspace,
     TOKEN_ENV_VAR, TokenStore, WorkspaceSelector,
 };
-pub use cli_config::{CliConfig, cli_config_path, effective_default_url, resolve_base_url};
+pub use cli_config::{
+    CliConfig, URL_ENV_VAR, cli_config_path, effective_default_url, resolve_base_url,
+};
 pub use client::{
     AgentChatSelection, AgentKind, AgentMatch, AgentView, Agents, CliIdentity, ConnectionDetail,
     ConnectionDisconnect, ConnectionDisconnectPhase, ConnectionKind, ConnectionLocation,
@@ -55,11 +57,14 @@ pub use client::{
     LoupeSetupScope, LoupeSetupState, Observation, Partition, PlanCheck, ProbeOutcome,
     RecommendationStatus, RecommendationView, ReviewFinding, ReviewSeverityCounts, ReviewStatus,
     ReviewVerdict, ReviewView, RunListItem, RunStatus, RunView, SettleResult, Shard, SubmittedRun,
-    Surface, WorkPlan, WorkspaceView, Workspaces, explicit_url, login_command, origin_of,
-    persistent_store, resolve_store, valid_setup_web_url, validate_connect_prefix,
+    Surface, WorkPlan, WorkspaceView, Workspaces, display_origin, explicit_url, login_command,
+    origin_of, other_origin, persistent_store, resolve_store, valid_setup_web_url,
+    validate_connect_prefix,
 };
 pub use client::{ConversationTrace, TRACE_MAX_MESSAGES};
-pub use client::{DoctorCause, DoctorCheck, DoctorCoverage, DoctorReport, DoctorStatus, diagnose};
+pub use client::{
+    DoctorCause, DoctorCheck, DoctorCoverage, DoctorReport, DoctorStatus, OriginSource, diagnose,
+};
 pub use client::{
     POLICY_DOCUMENT_MAX_BYTES, PolicyImportCounts, PolicyImportIssue, PolicyImportMode,
     PolicyImportOptions, PolicyImportReport, PolicyImportRule, PolicyImportSection,

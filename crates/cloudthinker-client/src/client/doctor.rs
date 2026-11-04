@@ -11,9 +11,10 @@ use crate::auth::store::{
     CredentialProvenance, CredentialSource, EnvTokenStore, FileStore, StoredToken, TokenStore,
     WorkspaceSelector,
 };
+use crate::cli_config::URL_ENV_VAR;
 use crate::error::{CtError, CtResult};
 use crate::worker_api::{ProbeFailure, probe_origin};
-use crate::{login_command, origin_of};
+use crate::{display_origin, login_command, origin_of, other_origin};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 const LOCK_TIMEOUT: Duration = Duration::from_secs(1);
@@ -48,6 +49,15 @@ impl DoctorStatus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub enum OriginSource {
+    Flag,
+    Environment,
+    Saved,
+    BuiltIn,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DoctorCause {
     Usage,
     Auth,
@@ -64,6 +74,7 @@ pub struct DoctorCheck {
     pub action: Option<String>,
     pub cause: Option<DoctorCause>,
     pub connection_id: Option<Uuid>,
+    pub connection_name: Option<String>,
     pub kind: Option<ConnectionKind>,
     pub connection_status: Option<&'static str>,
     pub test_phase: Option<&'static str>,
@@ -79,6 +90,7 @@ impl DoctorCheck {
             action: None,
             cause: None,
             connection_id: None,
+            connection_name: None,
             kind: None,
             connection_status: None,
             test_phase: None,
@@ -96,8 +108,9 @@ impl DoctorCheck {
         self
     }
 
-    fn connection(mut self, id: Uuid, kind: ConnectionKind) -> Self {
+    fn connection(mut self, id: Uuid, kind: ConnectionKind, name: &str) -> Self {
         self.connection_id = Some(id);
+        self.connection_name = Some(name.to_string());
         self.kind = Some(kind);
         self
     }
@@ -114,6 +127,7 @@ pub struct DoctorCoverage {
 pub struct DoctorReport {
     pub cli_version: String,
     pub origin: Option<String>,
+    pub origin_source: OriginSource,
     pub overall: DoctorStatus,
     pub user_id: Option<Uuid>,
     pub workspace_id: Option<Uuid>,
@@ -133,7 +147,7 @@ impl DoctorReport {
         self.checks.push(DoctorCheck::new(
             "release",
             DoctorStatus::Skipped,
-            "Release freshness and server version compatibility were not checked.",
+            "Not checked",
         ));
         self.overall = observed_status(&self.checks);
         self
@@ -173,28 +187,36 @@ impl TokenStore for SnapshotStore {
     }
 }
 
-pub async fn diagnose(base_url: &str, workspace: Option<&str>, cli_version: &str) -> DoctorReport {
+pub async fn diagnose(
+    base_url: &str,
+    origin_source: OriginSource,
+    saved_url: Option<&str>,
+    workspace: Option<&str>,
+    cli_version: &str,
+) -> DoctorReport {
     let deadline = Instant::now() + COMMAND_BUDGET;
     let mut report = DoctorReport {
         cli_version: cli_version.to_string(),
         origin: None,
+        origin_source,
         overall: DoctorStatus::Unknown,
         user_id: None,
         workspace_id: None,
         checks: vec![DoctorCheck::new(
             "cli",
             DoctorStatus::Healthy,
-            format!("Installed CLI version {cli_version}."),
+            format!("Version {cli_version}"),
         )],
         connections: DoctorCoverage::default(),
     };
-    collect(&mut report, base_url, workspace, deadline).await;
+    collect(&mut report, base_url, saved_url, workspace, deadline).await;
     report.finish()
 }
 
 async fn collect(
     report: &mut DoctorReport,
     base_url: &str,
+    saved_url: Option<&str>,
     workspace: Option<&str>,
     deadline: Instant,
 ) {
@@ -204,17 +226,34 @@ async fn collect(
             report.checks.push(error_check("configuration", &error));
             report.skip(
                 &["credentials", "api", "identity", "workspace", "connections"],
-                "Configuration must be resolved first.",
+                "Needs a valid server address",
             );
             return;
         }
     };
     report.origin = Some(origin.clone());
-    report.checks.push(DoctorCheck::new(
-        "configuration",
-        DoctorStatus::Healthy,
-        "Using the configured CloudThinker origin; private URL components are omitted.",
-    ));
+    let overridden = saved_url
+        .filter(|_| report.origin_source == OriginSource::Environment)
+        .and_then(|saved| other_origin(saved, &origin));
+    report.checks.push(match overridden {
+        Some(saved) => DoctorCheck::new(
+            "configuration",
+            DoctorStatus::Warn,
+            format!(
+                "{} from {URL_ENV_VAR}, not your saved default {}",
+                display_origin(&origin),
+                display_origin(&saved)
+            ),
+        )
+        .action(format!(
+            "Unset {URL_ENV_VAR} to use the saved default, or pass --url to pick one."
+        )),
+        None => DoctorCheck::new(
+            "configuration",
+            DoctorStatus::Healthy,
+            display_origin(&origin),
+        ),
+    });
 
     let prepared = prepare(base_url, &origin, workspace);
     if let Err(error) = &prepared {
@@ -222,7 +261,7 @@ async fn collect(
             DoctorCheck::new(
                 "credentials",
                 DoctorStatus::Unknown,
-                "No compatible file credential was selected. Legacy keyring credentials were not inspected.",
+                "No saved login for this server",
             )
             .action(legacy_recovery(&origin, workspace))
             .cause(DoctorCause::Auth)
@@ -230,7 +269,7 @@ async fn collect(
             DoctorCheck::new(
                 "credentials",
                 DoctorStatus::Error,
-                "The credential file is unreadable or uses an older format. Legacy keyring credentials were not inspected.",
+                "Saved login is unreadable or uses an older format",
             )
             .action(legacy_recovery(&origin, workspace))
             .cause(DoctorCause::Auth)
@@ -242,18 +281,14 @@ async fn collect(
         if usage {
             report.skip(
                 &["api", "identity", "workspace", "connections"],
-                "Credential selection must be resolved first.",
+                "Needs a valid login selection",
             );
             return;
         }
     } else if let Ok(prepared) = &prepared {
         let source = match prepared.source {
-            CredentialSource::Stored => {
-                "Compatible file credential selected; server acceptance is checked below."
-            }
-            CredentialSource::Environment => {
-                "Environment credential selected; its value is hidden and refresh is disabled."
-            }
+            CredentialSource::Stored => "Saved login found",
+            CredentialSource::Environment => "Using CLOUDTHINKER_TOKEN; refresh is disabled",
         };
         report.checks.push(DoctorCheck::new(
             "credentials",
@@ -267,10 +302,7 @@ async fn collect(
     let prepared = match prepared {
         Ok(prepared) => prepared,
         Err(_) => {
-            report.skip(
-                &["identity", "workspace", "connections"],
-                "No compatible selected credential was available for live checks.",
-            );
+            report.skip(&["identity", "workspace", "connections"], "Needs a login");
             return;
         }
     };
@@ -284,10 +316,7 @@ async fn collect(
             .action("Run doctor again when local operations are responsive.")
             .cause(DoctorCause::Deadline),
         );
-        report.skip(
-            &["workspace", "connections"],
-            "Live identity was not established.",
-        );
+        report.skip(&["workspace", "connections"], "Needs a working login");
         return;
     }
     let identity = match prepared.client.whoami().await {
@@ -303,10 +332,7 @@ async fn collect(
                 ));
             }
             report.checks.push(check);
-            report.skip(
-                &["workspace", "connections"],
-                "Live identity was not established.",
-            );
+            report.skip(&["workspace", "connections"], "Needs a working login");
             return;
         }
     };
@@ -314,8 +340,7 @@ async fn collect(
         report.checks[api_index].status = DoctorStatus::Warn;
         report.checks[api_index].cause = None;
         report.checks[api_index].summary =
-            "The public health probe was inconclusive; the authenticated API answered successfully."
-                .into();
+            "Health probe inconclusive, but signed-in requests work".into();
         report.checks[api_index].action = None;
     }
     report.user_id = Some(identity.user_id);
@@ -323,7 +348,7 @@ async fn collect(
     report.checks.push(DoctorCheck::new(
         "identity",
         DoctorStatus::Healthy,
-        format!("Live user {} authenticated successfully.", identity.user_id),
+        format!("Signed in as {}", identity.user_email),
     ));
     if prepared
         .workspace_id
@@ -338,13 +363,13 @@ async fn collect(
             .action("Inspect the selected login with `cloudthinker auth status` and `cloudthinker whoami`.")
             .cause(DoctorCause::Failure),
         );
-        report.skip(&["connections"], "Workspace identity did not match.");
+        report.skip(&["connections"], "Needs the matching workspace");
         return;
     }
     report.checks.push(DoctorCheck::new(
         "workspace",
         DoctorStatus::Healthy,
-        format!("Live workspace {} verified.", identity.workspace_id),
+        identity.workspace_name.clone(),
     ));
     let snapshot = match snapshot_client(&prepared, identity.workspace_id) {
         Ok(snapshot) => snapshot,
@@ -427,16 +452,12 @@ async fn public_probe(base_url: &str) -> DoctorCheck {
     let failure = match tokio::time::timeout(PROBE_TIMEOUT, probe_origin(base_url)).await {
         Ok(Ok(probe)) => {
             let mut check = if (200..300).contains(&probe.status) {
-                DoctorCheck::new(
-                    "api",
-                    DoctorStatus::Healthy,
-                    "The public health endpoint answered; dependency health is not established by this probe.",
-                )
+                DoctorCheck::new("api", DoctorStatus::Healthy, "Reachable")
             } else {
                 DoctorCheck::new(
                     "api",
                     DoctorStatus::Unknown,
-                    "The public health endpoint did not return a success status.",
+                    "Health endpoint did not return success",
                 )
                 .action("Check the configured origin and deployment's public health route.")
                 .cause(DoctorCause::Failure)
@@ -580,7 +601,7 @@ async fn collect_connections_local(
             DoctorCheck::new(
                 "connections",
                 DoctorStatus::Warn,
-                "No installed Connections were returned for the authenticated workspace; no tests were run.",
+                "None installed in this workspace",
             )
             .action("Add a Connection in the app when your task needs one."),
         );
@@ -590,7 +611,7 @@ async fn collect_connections_local(
     installed.truncate(CONNECTION_LIMIT);
     let selected: Vec<_> = installed
         .into_iter()
-        .map(|row| (row.id, row.kind, row.status))
+        .map(|row| (row.id, row.kind, row.status, row.name))
         .collect();
     let mut remaining = selected.iter();
     let mut tasks = JoinSet::new();
@@ -617,14 +638,15 @@ async fn collect_connections_local(
             },
         };
         match joined {
-            Some(Ok((id, kind, status, result))) => {
+            Some(Ok((id, kind, name, status, result))) => {
                 let check = match result {
                     Ok(test) => {
                         report.connections.checked += 1;
-                        classify_connection(&status, &test).connection(id, kind)
+                        classify_connection(&status, &test).connection(id, kind, &name)
                     }
                     Err(error) => {
-                        let mut check = error_check("connection", &error).connection(id, kind);
+                        let mut check =
+                            error_check("connection", &error).connection(id, kind, &name);
                         check.status = DoctorStatus::Unknown;
                         check
                     }
@@ -648,14 +670,14 @@ async fn collect_connections_local(
     }
     tasks.abort_all();
     while tasks.join_next().await.is_some() {}
-    for (id, kind, _) in &selected {
+    for (id, kind, _, name) in &selected {
         if !report
             .checks
             .iter()
             .any(|check| check.connection_id == Some(*id) && check.kind == Some(*kind))
         {
             report.checks.push(
-                stopped_check(stopped.unwrap_or(DoctorCause::Failure)).connection(*id, *kind),
+                stopped_check(stopped.unwrap_or(DoctorCause::Failure)).connection(*id, *kind, name),
             );
         }
     }
@@ -664,6 +686,10 @@ async fn collect_connections_local(
     let omitted = total - report.connections.checked;
     report.connections.omitted = Some(omitted);
     let observed = observed_status(&report.checks[connection_start..]);
+    let healthy = report.checks[connection_start..]
+        .iter()
+        .filter(|check| check.status == DoctorStatus::Healthy)
+        .count();
     let mut summary = DoctorCheck::new(
         "connections",
         if omitted == 0 || observed == DoctorStatus::Error {
@@ -671,15 +697,16 @@ async fn collect_connections_local(
         } else {
             DoctorStatus::Unknown
         },
-        format!(
-            "Read {} of {total} current test snapshots; {omitted} remain unobserved. No tests were started.",
-            report.connections.checked
-        ),
+        if omitted == 0 {
+            format!("{healthy} of {total} connected and passing")
+        } else {
+            format!("{healthy} of {total} connected and passing; {omitted} not read")
+        },
     );
     if omitted > 0 {
         summary = summary
             .cause(stopped.unwrap_or(DoctorCause::Failure))
-            .action("Run doctor again, or inspect individual Connection IDs in the app.");
+            .action("Run doctor again, or open the unread Connections in the app.");
     }
     report.checks.push(summary);
 }
@@ -687,6 +714,7 @@ async fn collect_connections_local(
 type ConnectionTask = (
     Uuid,
     ConnectionKind,
+    String,
     ConnectionStatus,
     CtResult<ConnectionTest>,
 );
@@ -694,25 +722,27 @@ type ConnectionTask = (
 fn start_connection(
     tasks: &mut JoinSet<ConnectionTask>,
     client: Arc<CtClient>,
-    row: &(Uuid, ConnectionKind, ConnectionStatus),
+    row: &(Uuid, ConnectionKind, ConnectionStatus, String),
 ) {
-    let (id, kind, status) = row;
-    let (id, kind, status) = (*id, *kind, status.clone());
-    tasks.spawn_local(async move { (id, kind, status, client.connection_test(id, kind).await) });
+    let (id, kind, status, name) = row;
+    let (id, kind, status, name) = (*id, *kind, status.clone(), name.clone());
+    tasks.spawn_local(async move {
+        (
+            id,
+            kind,
+            name,
+            status,
+            client.connection_test(id, kind).await,
+        )
+    });
 }
 
 fn stopped_check(cause: DoctorCause) -> DoctorCheck {
     let summary = match cause {
-        DoctorCause::Deadline => {
-            "Connection reads reached their time budget; remaining evidence is unknown."
-        }
-        DoctorCause::Interrupted => {
-            "Connection reads were interrupted; remaining evidence is unknown."
-        }
-        DoctorCause::Auth => {
-            "Connection reads stopped after access was lost; remaining evidence is unknown."
-        }
-        _ => "Connection reads could not finish; remaining evidence is unknown.",
+        DoctorCause::Deadline => "Not read: the time budget ran out",
+        DoctorCause::Interrupted => "Not read: interrupted",
+        DoctorCause::Auth => "Not read: access was lost",
+        _ => "Not read: the check could not finish",
     };
     DoctorCheck::new("connection", DoctorStatus::Unknown, summary)
         .action("Run doctor again after resolving the reported cause.")
@@ -728,43 +758,33 @@ fn classify_connection(status: &ConnectionStatus, test: &ConnectionTest) -> Doct
             _,
         ) => (
             DoctorStatus::Error,
-            "The recorded Connection test failed, timed out, or was cancelled.",
+            "Last test failed, timed out, or was cancelled",
             Some(DoctorCause::Failure),
         ),
         (_, ConnectionStatus::Other(_) | ConnectionStatus::Unknown)
         | (ConnectionTestPhase::Other(_), _) => (
             DoctorStatus::Unknown,
-            "The server returned an unknown Connection status or test phase.",
+            "Unknown status or test phase from the server",
             Some(DoctorCause::Failure),
         ),
         (_, ConnectionStatus::Error) => (
             DoctorStatus::Error,
-            "The Connection currently reports an error.",
+            "Reports an error",
             Some(DoctorCause::Failure),
         ),
-        (_, ConnectionStatus::Disconnecting) => (
-            DoctorStatus::Warn,
-            "The Connection is disconnecting; availability is not established.",
-            None,
-        ),
+        (_, ConnectionStatus::Disconnecting) => (DoctorStatus::Warn, "Disconnecting", None),
         (
             ConnectionTestPhase::Queued
             | ConnectionTestPhase::StartingSandbox
             | ConnectionTestPhase::RunningScript,
             _,
-        ) => (
-            DoctorStatus::Warn,
-            "The recorded Connection test is pending; it was not polled or restarted.",
-            None,
-        ),
-        (ConnectionTestPhase::Succeeded, ConnectionStatus::Connected) => (
-            DoctorStatus::Healthy,
-            "The recorded test succeeded and the Connection reports connected; no fresh provider test was run.",
-            None,
-        ),
+        ) => (DoctorStatus::Warn, "Last test still pending", None),
+        (ConnectionTestPhase::Succeeded, ConnectionStatus::Connected) => {
+            (DoctorStatus::Healthy, "Connected; last test passed", None)
+        }
         _ => (
             DoctorStatus::Unknown,
-            "The Connection lifecycle and recorded test disagree; current availability is unknown.",
+            "Status and last test disagree",
             Some(DoctorCause::Failure),
         ),
     };
@@ -788,9 +808,7 @@ fn classify_connection(status: &ConnectionStatus, test: &ConnectionTest) -> Doct
         ConnectionTestPhase::Other(_) => "unknown",
     });
     if state != DoctorStatus::Healthy {
-        check.action = Some(
-            "Inspect this Connection ID in the app; doctor does not retry or repair it.".into(),
-        );
+        check.action = Some("Open the Connection in the app and run its test again.".into());
     }
     check
 }

@@ -1,13 +1,25 @@
-use cloudthinker_client::{CtError, DoctorCause, DoctorReport, diagnose};
+use cloudthinker_client::{CliConfig, CtError, DoctorCause, DoctorReport, OriginSource, diagnose};
 
 use crate::engine::exit::{self, ExitCode};
 use crate::engine::output;
 
-pub async fn run(base_url: &str, workspace: Option<&str>, json: bool) -> ExitCode {
-    output::progress(
-        "Checking CLI credentials, live identity, API access, and recorded Connection status...",
-    );
-    let report = diagnose(base_url, workspace, env!("CARGO_PKG_VERSION")).await;
+pub async fn run(
+    base_url: &str,
+    origin_source: OriginSource,
+    workspace: Option<&str>,
+    json: bool,
+) -> ExitCode {
+    let config = CliConfig::load_default();
+    let step = (!json).then(|| output::step("Checking your CloudThinker setup..."));
+    let report = diagnose(
+        base_url,
+        origin_source,
+        config.saved_url(),
+        workspace,
+        env!("CARGO_PKG_VERSION"),
+    )
+    .await;
+    drop(step);
     let code = diagnostic_exit(&report);
     match output::emit_doctor(report, code, json) {
         Ok(()) => code,

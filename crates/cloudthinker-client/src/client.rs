@@ -50,7 +50,9 @@ pub use cyber::{
 };
 #[cfg(test)]
 use cyber::{observation_batches, validate_observation_ids};
-pub use doctor::{DoctorCause, DoctorCheck, DoctorCoverage, DoctorReport, DoctorStatus, diagnose};
+pub use doctor::{
+    DoctorCause, DoctorCheck, DoctorCoverage, DoctorReport, DoctorStatus, OriginSource, diagnose,
+};
 pub use incidents::{IncidentStatus, IncidentView};
 pub use memory::{CyberMemoryContextSource, CyberMemoryFile, CyberMemorySnapshot};
 pub use policy::{
@@ -867,6 +869,23 @@ pub fn origin_of(base_url: &str) -> CtResult<String> {
         .port_or_known_default()
         .ok_or_else(|| CtError::Usage("--url has no resolvable port".into()))?;
     Ok(format!("{scheme}://{host}:{port}"))
+}
+
+pub fn display_origin(origin: &str) -> &str {
+    origin
+        .strip_suffix(":443")
+        .filter(|_| origin.starts_with("https://"))
+        .or_else(|| {
+            origin
+                .strip_suffix(":80")
+                .filter(|_| origin.starts_with("http://"))
+        })
+        .unwrap_or(origin)
+}
+
+pub fn other_origin(url: &str, reference: &str) -> Option<String> {
+    let origin = origin_of(url).ok()?;
+    (origin != origin_of(reference).ok()?).then_some(origin)
 }
 
 fn normalize_base_url(raw: &str) -> CtResult<String> {

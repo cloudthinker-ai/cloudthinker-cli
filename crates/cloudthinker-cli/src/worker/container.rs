@@ -37,7 +37,7 @@ const DETECT_TIMEOUT: Duration = Duration::from_secs(10);
 const SIGNAL_TIMEOUT: Duration = Duration::from_secs(10);
 const PROXY_SETTLE: Duration = Duration::from_millis(300);
 const SHELL_WRAPPER: &str =
-    r#"printf '%s' "$$" > "$1" && script=$(cat) && exec bash -c "$script" </dev/null"#;
+    r#"umask 022 && printf '%s' "$$" > "$1" && script=$(cat) && exec bash -c "$script" </dev/null"#;
 const KILL_WRAPPER: &str = r#"pgid=$(cat "$2" 2>/dev/null) && kill -s "$1" -- "-$pgid""#;
 const PROCESS_COUNT: &str = "n=0; for p in /proc/[0-9]*; do n=$((n+1)); done; echo \"$n\"";
 const HOST_ONLY_ENV: [&str; 5] = ["PATH", "HOME", "USER", "TMPDIR", "SHELL"];
@@ -59,6 +59,7 @@ const CLIENT_ENV: [&str; 11] = [
 pub struct Runtime {
     pub program: PathBuf,
     pub version: String,
+    pub rootless: bool,
 }
 
 pub enum Detection {
@@ -74,6 +75,8 @@ impl Runtime {
         match probe(&program, &["version", "--format", "{{.Server.Version}}"]) {
             Some(server) => Detection::Ready(Runtime {
                 version: format!("{RUNTIME} {}", server.trim()),
+                rootless: probe(&program, &["info", "--format", "{{json .SecurityOptions}}"])
+                    .is_some_and(|options| options.contains("name=rootless")),
                 program,
             }),
             None => Detection::Unavailable(format!("{RUNTIME} cannot reach its daemon")),
@@ -125,6 +128,17 @@ fn find_on_path(name: &str) -> Option<PathBuf> {
             std::fs::metadata(candidate)
                 .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
         })
+}
+
+fn container_user(rootless: bool) -> String {
+    if rootless {
+        return "0:0".into();
+    }
+    format!(
+        "{}:{}",
+        rustix::process::getuid().as_raw(),
+        rustix::process::getgid().as_raw()
+    )
 }
 
 pub fn client_env() -> BTreeMap<String, String> {
@@ -435,11 +449,7 @@ pub struct Containers {
 
 impl Containers {
     pub fn new(runtime: Option<Runtime>, installation: Uuid, workdir: Uuid, state: &Path) -> Self {
-        let user = format!(
-            "{}:{}",
-            rustix::process::getuid().as_raw(),
-            rustix::process::getgid().as_raw()
-        );
+        let user = container_user(runtime.as_ref().is_some_and(|runtime| runtime.rootless));
         Self {
             runtime,
             label: label(installation, workdir),

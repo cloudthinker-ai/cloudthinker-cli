@@ -24,6 +24,7 @@ use std::path::PathBuf;
 
 use clap::parser::ValueSource;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
+use cloudthinker_client::OriginSource;
 use cloudthinker_client::{
     CyberFindingStatus, CyberIntensity, CyberSeverity, CyberTriageState, FindingFilter,
     IncidentStatus, PolicyImportMode, PolicyImportOptions, RecommendationStatus,
@@ -178,7 +179,7 @@ struct Cli {
     skill: Option<skill::Module>,
 
     /// CloudThinker address, for example https://app.cloudthinker.io. Defaults to the address of your last `login --url`, else https://app.cloudthinker.io.
-    #[arg(long, env = "CLOUDTHINKER_URL", global = true, value_name = "URL")]
+    #[arg(long, env = cloudthinker_client::URL_ENV_VAR, global = true, value_name = "URL")]
     url: Option<String>,
 
     /// Use stored credentials for this workspace ID or exact name.
@@ -228,7 +229,7 @@ enum Command {
     },
     #[command(
         about = "Diagnose CLI credentials, live identity, API access, and Connection status",
-        long_about = "Read the selected credential source, live user and workspace IDs, API reachability, and up to 20 recorded Connection test snapshots. No provider test, retry, repair, browser, login, or model is started.\n\nStored credentials may refresh through the normal guarded authentication flow. Doctor does not inspect or migrate legacy keyring logins. If compatible file credentials are absent, run cloudthinker whoami to inspect or migrate an older login before signing in again. Workspace selection never changes the active login.\n\nRequests use a 3-second timeout, credential locks wait up to 1 second, and Connection reads share a 15-second budget with concurrency 4. Network work is budgeted to finish within 70 seconds; local filesystem stalls are outside this bound. A recorded success can come from persisted Connection status and is not a fresh provider test. Release freshness and server version compatibility are not checked.\n\nStatuses: healthy, warn, error, skipped, unknown. Pending tests and no installed Connections warn without failing. Unknown phases or omitted snapshots fail with exit 1. Exits retain the CLI contract: 0 success/warnings, 1 failed/incomplete checks or transport errors, 2 invalid selection/request, 3 authentication/permission, 4 an explicit diagnostic deadline, 130 interrupted Connection reads."
+        long_about = "Read the server address and its source, the selected credential source, the signed-in account and workspace, API reachability, and up to 20 recorded Connection test snapshots. No provider test, retry, repair, browser, login, or model is started.\n\nStored credentials may refresh through the normal guarded authentication flow. Doctor does not inspect or migrate legacy keyring logins. If compatible file credentials are absent, run cloudthinker whoami to inspect or migrate an older login before signing in again. Workspace selection never changes the active login.\n\nRequests use a 3-second timeout, credential locks wait up to 1 second, and Connection reads share a 15-second budget with concurrency 4. Network work is budgeted to finish within 70 seconds; local filesystem stalls are outside this bound. A recorded success can come from persisted Connection status and is not a fresh provider test. Release freshness and server version compatibility are not checked. A CLOUDTHINKER_URL that differs from the default saved by login --url warns.\n\nStatuses: healthy, warn, error, skipped, unknown. Pending tests and no installed Connections warn without failing. Unknown phases or omitted snapshots fail with exit 1. Exits retain the CLI contract: 0 success/warnings, 1 failed/incomplete checks or transport errors, 2 invalid selection/request, 3 authentication/permission, 4 an explicit diagnostic deadline, 130 interrupted Connection reads."
     )]
     Doctor {
         #[arg(
@@ -1177,16 +1178,26 @@ struct UpdateArgs {
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
     let matches = Cli::command().get_matches();
-    let url_from_flag = url_from_flag(&matches);
+    let origin_source = origin_source(&matches);
     let cli = match Cli::from_arg_matches(&matches) {
         Ok(cli) => cli,
         Err(error) => error.exit(),
     };
-    dispatch(cli, url_from_flag).await.process()
+    dispatch(cli, origin_source).await.process()
 }
 
-fn url_from_flag(matches: &clap::ArgMatches) -> bool {
-    matches.value_source("url") == Some(ValueSource::CommandLine)
+fn origin_source(matches: &clap::ArgMatches) -> OriginSource {
+    match matches.value_source("url") {
+        Some(ValueSource::CommandLine) => OriginSource::Flag,
+        Some(ValueSource::EnvVariable) => OriginSource::Environment,
+        _ if cloudthinker_client::CliConfig::load_default()
+            .saved_url()
+            .is_some() =>
+        {
+            OriginSource::Saved
+        }
+        _ => OriginSource::BuiltIn,
+    }
 }
 
 fn resolve_base_url(explicit: Option<String>) -> String {
@@ -1214,7 +1225,7 @@ fn shows_update_notice(command: &Command) -> bool {
     ) || matches!(command, Command::Auth(args) if !matches!(args.command, AuthSub::Token))
 }
 
-async fn dispatch(cli: Cli, url_from_flag: bool) -> ExitCode {
+async fn dispatch(cli: Cli, origin_source: OriginSource) -> ExitCode {
     if let Some(module) = cli.skill {
         if cli.command.is_some() {
             engine::output::eprintln_error("--skill cannot be combined with a command");
@@ -1270,7 +1281,7 @@ async fn dispatch(cli: Cli, url_from_flag: bool) -> ExitCode {
     } else {
         None
     };
-    let code = run_command(command, &base_url, workspace, url_from_flag).await;
+    let code = run_command(command, &base_url, workspace, origin_source).await;
     if let Some(notice) = notice {
         notice.finish().await;
     }
@@ -1281,7 +1292,7 @@ async fn run_command(
     command: Command,
     base_url: &str,
     workspace: Option<String>,
-    url_from_flag: bool,
+    origin_source: OriginSource,
 ) -> ExitCode {
     match command {
         Command::Login(args) => {
@@ -1290,7 +1301,7 @@ async fn run_command(
                 commands::login::LoginOptions {
                     no_browser: args.no_browser,
                     device_auth: args.device_auth,
-                    remember_url: url_from_flag,
+                    remember_url: origin_source == OriginSource::Flag,
                 },
             )
             .await
@@ -1303,7 +1314,7 @@ async fn run_command(
             commands::whoami::run(base_url, workspace.as_deref(), json).await
         }
         Command::Doctor { json } => {
-            commands::doctor::run(base_url, workspace.as_deref(), json).await
+            commands::doctor::run(base_url, origin_source, workspace.as_deref(), json).await
         }
         Command::Auth(args) => match args.command {
             AuthSub::Token => commands::auth::run_token(base_url, workspace.as_deref()).await,
@@ -2051,12 +2062,12 @@ mod tests {
             let matches = Cli::command()
                 .try_get_matches_from(args)
                 .expect("valid login args");
-            assert!(url_from_flag(&matches), "{args:?}");
+            assert_eq!(origin_source(&matches), OriginSource::Flag, "{args:?}");
         }
         let matches = Cli::command()
             .try_get_matches_from(["cloudthinker", "login"])
             .expect("valid login args");
-        assert!(!url_from_flag(&matches));
+        assert_ne!(origin_source(&matches), OriginSource::Flag);
     }
 
     #[test]

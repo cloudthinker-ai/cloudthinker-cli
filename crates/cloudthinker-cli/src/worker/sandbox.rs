@@ -151,6 +151,7 @@ pub struct PlanInputs<'a> {
     pub process_env: &'a BTreeMap<String, String>,
     pub injected_env: &'a BTreeMap<String, String>,
     pub resolve: fn(&Path) -> Option<PathBuf>,
+    pub link_targets: fn(&Path) -> Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -230,6 +231,22 @@ pub fn plan(inputs: &PlanInputs<'_>) -> SandboxPlan {
                 && !read.contains(&real)
             {
                 read.push(real);
+            }
+        }
+        if entry.starts_with(home) && admit(entry).is_some() {
+            for target in (inputs.link_targets)(entry) {
+                let Some(folder) = target.parent() else {
+                    continue;
+                };
+                let root = match folder.file_name() {
+                    Some(name) if name == "bin" => folder.parent().unwrap_or(folder),
+                    _ => folder,
+                };
+                if let Some(real) = admit(root)
+                    && !read.iter().any(|known| real.starts_with(known))
+                {
+                    read.push(real);
+                }
             }
         }
     }
@@ -404,6 +421,7 @@ impl SandboxContext {
             process_env: &self.process_env,
             injected_env,
             resolve: |path| std::fs::canonicalize(path).ok(),
+            link_targets: symlink_targets,
         })
     }
 }
@@ -463,6 +481,17 @@ fn resolve_git_roots(folder: &Path) -> Vec<PathBuf> {
         .into_iter()
         .chain(common)
         .chain(alternates)
+        .collect()
+}
+
+fn symlink_targets(folder: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_symlink()))
+        .filter_map(|entry| std::fs::canonicalize(entry.path()).ok())
         .collect()
 }
 
@@ -726,6 +755,7 @@ mod tests {
             process_env: &process,
             injected_env: &injected,
             resolve: |_| None,
+            link_targets: |_| Vec::new(),
         });
         for expected in [
             "/home/dev/.nvm/versions/node/v20/bin",
@@ -837,6 +867,7 @@ mod tests {
             process_env: &process,
             injected_env: &BTreeMap::new(),
             resolve: nfs,
+            link_targets: |_| Vec::new(),
         });
         for expected in [
             "/nfs/home/dev/bin",
@@ -916,6 +947,7 @@ mod tests {
                 process_env: &process,
                 injected_env: &BTreeMap::new(),
                 resolve: |_| None,
+                link_targets: |_| Vec::new(),
             });
             assert!(
                 !plan.read.contains(&browsers.to_path_buf()),
@@ -1012,6 +1044,7 @@ mod tests {
             process_env: &process,
             injected_env: &BTreeMap::new(),
             resolve: |_| None,
+            link_targets: |_| Vec::new(),
         });
         let read = |path: &str| plan.read.contains(&PathBuf::from(path));
         assert!(read("/home/dev/src/main/.git/worktrees/feature"));
@@ -1062,6 +1095,7 @@ mod tests {
             process_env: &process,
             injected_env: &BTreeMap::new(),
             resolve: |_| None,
+            link_targets: |_| Vec::new(),
         });
         assert_eq!(
             plan.env.get("HTTPS_PROXY").map(String::as_str),
@@ -1139,6 +1173,7 @@ mod tests {
                 process_env: &process,
                 injected_env: &BTreeMap::new(),
                 resolve: |_| None,
+                link_targets: |_| Vec::new(),
             });
             let dir = Dir::open_ambient_dir(&self.served, cap_std::ambient_authority()).unwrap();
             plan.prepare_home(&dir).unwrap();

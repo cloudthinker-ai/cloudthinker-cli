@@ -266,7 +266,7 @@ fn read_op(dir: &Dir, path: &str, r: &api::FileRequest) -> Result<Value, &'stati
         }));
     }
     let text = String::from_utf8(bytes).map_err(|_| "FILE_BINARY")?;
-    let offset = number(r.offset.as_ref(), 0).max(0) as usize;
+    let skip = (number(r.offset.as_ref(), 1).max(1) - 1) as usize;
     let limit = number(r.limit.as_ref(), 2000).max(1) as usize;
     let total_lines = text.lines().count();
     let body = if r.raw.unwrap_or(false) {
@@ -274,7 +274,7 @@ fn read_op(dir: &Dir, path: &str, r: &api::FileRequest) -> Result<Value, &'stati
     } else {
         text.lines()
             .enumerate()
-            .skip(offset)
+            .skip(skip)
             .take(limit)
             .map(|(i, line)| format!("{}\t{line}", i + 1))
             .collect::<Vec<_>>()
@@ -1004,7 +1004,7 @@ mod tests {
             result
         };
         assert_eq!(
-            read_with(json!({"file_path":"notes/text.txt","offset":1,"limit":1})).unwrap(),
+            read_with(json!({"file_path":"notes/text.txt","offset":2,"limit":1})).unwrap(),
             json!({"status":"success","file_path":"notes/text.txt","content":"2\tsecond","total_lines":3})
         );
         assert_eq!(

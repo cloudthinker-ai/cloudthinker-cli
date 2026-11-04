@@ -8,6 +8,7 @@ use cloudthinker_client::{
     CliConfig, CtClient, Loopback, PkceChallenge, StoredToken, TokenStore, cli_config_path,
     consent_url, persistent_store, wait_for_device_token,
 };
+use cloudthinker_client::{URL_ENV_VAR, display_origin, origin_of, other_origin};
 
 use crate::engine::exit::{self, ExitCode};
 use crate::engine::login_menu::{self, Method};
@@ -278,17 +279,37 @@ fn remember_url(base_url: &str) {
         }
     };
     let mut config = CliConfig::load(&path);
-    match config.remember_url(base_url, crate::DEFAULT_BASE_URL) {
-        Ok(false) => {}
+    let remembered = match config.remember_url(base_url, crate::DEFAULT_BASE_URL) {
+        Ok(false) => true,
         Ok(true) => match config.save(&path) {
-            Ok(()) => output::progress(&remembered_line(config.saved_url())),
-            Err(err) => output::warn(&format!(
-                "could not remember {base_url} as the default: {err}"
-            )),
+            Ok(()) => {
+                output::progress(&remembered_line(config.saved_url()));
+                true
+            }
+            Err(err) => {
+                output::warn(&format!(
+                    "could not remember {base_url} as the default: {err}"
+                ));
+                false
+            }
         },
-        Err(err) => output::warn(&format!(
-            "could not remember {base_url} as the default: {err}"
-        )),
+        Err(err) => {
+            output::warn(&format!(
+                "could not remember {base_url} as the default: {err}"
+            ));
+            false
+        }
+    };
+    let shadow = std::env::var(URL_ENV_VAR)
+        .ok()
+        .filter(|value| remembered && !value.is_empty())
+        .and_then(|value| other_origin(&value, base_url));
+    if let (Some(shadow), Ok(origin)) = (shadow, origin_of(base_url)) {
+        output::warn(&format!(
+            "{URL_ENV_VAR} is set to {} in this shell and overrides this default. Unset it to use {}.",
+            display_origin(&shadow),
+            display_origin(&origin)
+        ));
     }
 }
 

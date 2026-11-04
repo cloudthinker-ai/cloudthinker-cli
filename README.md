@@ -97,10 +97,13 @@ cloudthinker doctor --json
 cloudthinker --url https://dev.cloudthinker.io --workspace '<workspace-id>' doctor
 ```
 
-Doctor reports the installed CLI version, selected credential source, public API
-reachability, live user and workspace IDs, and recorded Connection test status.
-It prints an overall verdict and one action for each problem. JSON mode writes
-one object on stdout, including failed checks and `exit_code`.
+Doctor reports the installed CLI version, the server and where its address came
+from, the selected credential source, public API reachability, the signed-in
+account and workspace, and recorded Connection test status. It prints one row
+per check, lists only the Connections that need attention, and ends with an
+overall verdict and one action for each problem. It warns when
+`CLOUDTHINKER_URL` points away from the default that `login --url` saved. JSON
+mode writes one object on stdout, including failed checks and `exit_code`.
 
 Doctor reads status only. It starts no provider test, retry, repair, browser,
 login, agent, or model. A stored login may refresh through the normal guarded
@@ -122,10 +125,11 @@ Each check has one of these statuses:
 | `skipped` | A prerequisite was unavailable, or an optional check was not attempted |
 | `unknown` | Available evidence cannot establish the result |
 
-The JSON object contains `cli_version`, `origin`, `overall`, `user_id`,
+The JSON object contains `cli_version`, `origin`, `origin_source` (`flag`,
+`environment`, `saved`, or `built_in`), `overall`, `user_id`,
 `workspace_id`, `checks`, `connections`, and `exit_code`. Each check includes its
-`id`, `status`, `summary`, optional `action` and `cause`, optional `connection_id`
-and `kind`, optional `connection_status` and `test_phase`, and optional
+`id`, `status`, `summary`, optional `action` and `cause`, optional `connection_id`,
+`connection_name`, and `kind`, optional `connection_status` and `test_phase`, and optional
 `http_status`. New server status or phase values project to `unknown`, without
 echoing their raw contents. Unavailable values are JSON `null`.
 The Connection counters report `installed`, `checked` snapshots, and `omitted`
