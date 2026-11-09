@@ -61,6 +61,14 @@ pub use client::{
     origin_of, other_origin, persistent_store, resolve_store, valid_setup_web_url,
     validate_connect_prefix,
 };
+pub use client::{
+    CONVERSATION_SEARCH_DEFAULT_LIMIT, CONVERSATION_SEARCH_FUZZY_DEFAULT_SCORE,
+    CONVERSATION_SEARCH_FUZZY_MAX_SCORE, CONVERSATION_SEARCH_FUZZY_MIN_SCORE,
+    CONVERSATION_SEARCH_MAX_LIMIT, CONVERSATION_SEARCH_MAX_QUERY_CHARS, ConversationSearch,
+    ConversationSearchCoverage, ConversationSearchEvidence, ConversationSearchHit,
+    ConversationSearchMatchMode, ConversationSearchQuery, ConversationSearchScope,
+    ConversationSearchStatus, ConversationSearchTimeField,
+};
 pub use client::{ConversationTrace, TRACE_MAX_MESSAGES};
 pub use client::{
     DoctorCause, DoctorCheck, DoctorCoverage, DoctorReport, DoctorStatus, OriginSource, diagnose,

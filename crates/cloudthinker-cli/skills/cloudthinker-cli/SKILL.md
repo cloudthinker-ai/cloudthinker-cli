@@ -29,7 +29,7 @@ Read every module whose signal matches the task:
 - `cloudthinker --skill auth` ([auth.md](auth.md)): login, identity, host selection, listing accessible workspaces, workspace selection, authentication errors.
 - `cloudthinker --skill cloud` ([cloud.md](cloud.md)): use Connections and MCP directly from your own agent, load guides and schemas, execute in cloud and follow approval.
 - `cloudthinker --skill connections` ([connections.md](connections.md)): list workspace Connections, check or wait for a connection test, retry or disconnect one, or give the user the page that adds one.
-- `cloudthinker --skill chat` ([chat.md](chat.md)): discover workspace agents, send a turn, recover or continue a conversation, inspect persisted trace evidence, handle waits and approval.
+- `cloudthinker --skill chat` ([chat.md](chat.md)): discover workspace agents, send a turn, search prior conversations, recover or continue a conversation, inspect persisted trace evidence, handle waits and approval.
 - `cloudthinker --skill policy` ([policy.md](policy.md)): export workspace Policy, preview a file import, and apply explicitly authorized changes.
 - `cloudthinker --skill review` ([review.md](review.md)): inspect the status or findings of a tracked merge request or pull request.
 - `cloudthinker --skill cyber` ([cyber.md](cyber.md)): the agent's internal procedure for running a Cyber pentest on this machine.

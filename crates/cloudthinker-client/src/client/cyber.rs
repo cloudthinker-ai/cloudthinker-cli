@@ -815,8 +815,6 @@ impl CtClient {
         run_scope: Option<cloudthinker_api::types::ScopeSpec>,
     ) -> CtResult<CyberRun> {
         let body = cloudthinker_api::types::RunLaunchRequest {
-            advisor_enabled: None,
-            credit_limit: None,
             execution_host: Some(cloudthinker_api::types::RunExecutionHost::Local),
             intensity: intensity.map(CyberIntensity::into_api),
             jev_enabled: None,

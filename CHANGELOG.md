@@ -1,13 +1,26 @@
+## [0.12.1]
+
+- Internal: agent install and tool install share one size-capped download path. Timeouts, size limits and error messages are unchanged.
+- Also ships the 0.12.0 notes, which were never published as a release.
+
+## [0.12.0]
+
+- Keep the CLI compatible with Doomsday apps and runs. The generated API accepts the new mode, and the bundled Cyber discovery runtime matches the backend manifest contract.
+- Local Cyber run launch requests now match the current backend schema.
+- Keep the CLI compatible with Fortress Runs. The generated API accepts the persisted mode value, and the bundled Cyber discovery runtime matches the backend manifest contract.
+- Use Environments in help and setup guidance while retaining worker commands and outpost flags for compatibility.
+- Search prior conversations in the selected workspace with `cloudthinker chat search "<text>"`. The query is literal text by default; `--regex` reads it as a regular expression, and `--fuzzy` finds near matches such as typos above a `--min-score` cutoff (default 85 of 100). Matching ignores case and reads only titles, message text, tool names, tool inputs, tool outputs and attachment names. Each match shows the title, the full conversation UUID, a redacted excerpt and a web link. Narrow it with `--since`, `--until`, `--time-field` and repeatable `--type`, cap it with `--limit` (1 to 50, default 10), and print one JSON result with `--json`. Every result says whether the search was complete, stopped at the limit, or partial. A partial search prints a `--cursor` to continue when one is available, and a partial search with no matches exits 1, because it does not prove absence. The command starts no agent run or model call, and it does not search thinking, hidden prompts or attachment contents.
+
 ## [0.11.2]
 
-- `cloudthinker doctor` prints one aligned row per check with a ✓, !, ✗, ? or - mark. It names the signed-in account and workspace instead of their IDs, folds healthy Connections into one count, and lists only the Connections that need attention, by name, with a single fix. The report ends with one verdict line.
-- `doctor` now shows where the server address came from (`--url`, `CLOUDTHINKER_URL`, the default saved by `login --url`, or the built-in default). It warns when `CLOUDTHINKER_URL` points away from your saved default, which used to make doctor check a different server than the one you signed in to. `doctor --json` adds `origin_source` and each Connection's `connection_name`. Its `summary` strings are shorter, and the account row now names the signed-in email instead of the user ID; `user_id` and `workspace_id` stay in their own fields.
-- `login --url` warns when `CLOUDTHINKER_URL` is set to another server, because that variable overrides the new default in the same shell.
 - On a Worker, the agent's file read now starts at the first line. It used to skip line 1, so a one-line file read back empty and a paged read started one line late.
 - `worker start --register` now accepts a registration reference that starts with `-`. About 1 in 64 references did, and the setup command then failed with an argument error.
 - On rootless Docker, a Worker set to container isolation can now write the served folder and read its egress allowlist. It used to run the container as a user that rootless Docker maps to a different account, so commands failed with `Permission denied`.
 - On container isolation, files and folders that a command creates in the served folder are no longer writable by every user on the machine. Commands now run with umask 022, like a normal login shell; `docker exec` used to start them with umask 000.
 - On a Worker that sandboxes commands (Loupe), a tool that your PATH reaches through a symlink now runs. A `pnpm`, `go` or `aws` linked into `~/.local/bin` from another folder used to fail with "permission denied" or "command not found", because the sandbox could read the link but not the folder it points to.
+- `cloudthinker doctor` prints one aligned row per check with a ✓, !, ✗, ? or - mark. It names the signed-in account and workspace instead of their IDs, folds healthy Connections into one count, and lists only the Connections that need attention, by name, with a single fix. The report ends with one verdict line.
+- `doctor` now shows where the server address came from (`--url`, `CLOUDTHINKER_URL`, the default saved by `login --url`, or the built-in default). It warns when `CLOUDTHINKER_URL` points away from your saved default, which used to make doctor check a different server than the one you signed in to. `doctor --json` adds `origin_source` and each Connection's `connection_name`. Its `summary` strings are shorter, and the account row now names the signed-in email instead of the user ID; `user_id` and `workspace_id` stay in their own fields.
+- `login --url` warns when `CLOUDTHINKER_URL` is set to another server, because that variable overrides the new default in the same shell.
 
 ## [0.11.1]
 

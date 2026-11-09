@@ -1,6 +1,6 @@
-# Worker outposts
+# Environments
 
-An outpost lets a CloudThinker conversation work in a directory on your machine.
+An environment lets a CloudThinker conversation work in a directory on your machine.
 Install the CloudThinker CLI on Linux or macOS and select the intended host and
 workspace with `cloudthinker whoami`.
 
@@ -9,21 +9,21 @@ cloudthinker worker outpost create my-project
 cloudthinker worker start --outpost my-project --workdir "$PWD" --concurrency 4
 ```
 
-Creation makes a personal outpost. Add `--shared` to make it available to your
-workspace; that requires workspace settings permission. Select the outpost when
+Creation makes a personal environment. Add `--shared` to make it available to your
+workspace; that requires workspace settings permission. Select the environment when
 creating a conversation. Existing conversations keep their original target.
 
 The worker connects outward over HTTPS and opens no inbound port. Startup checks
-file access, shell execution, cancellation, and artifact upload before the outpost
+file access, shell execution, cancellation, and artifact upload before the environment
 becomes available. File tools stay inside the selected directory. Shell commands
 run under your OS account with `/bin/bash` and are not sandboxed, unless the
 outpost requires container isolation.
 
-An admin can require container isolation for an outpost. The worker then runs
+An admin can require container isolation for an environment. The worker then runs
 each shell and background command in a session container; file tools still act on
 the served folder, which the container mounts at the same path. The container has
 no capabilities, a read-only root, and no DNS. Its only way out is an egress proxy
-that allows the hosts on the outpost allowlist; an empty allowlist blocks all
+that allows the hosts on the environment allowlist; an empty allowlist blocks all
 outbound access. A blocked request answers 403 with a line that starts
 `Blocked by the Worker egress policy:`; tell the user which host to ask an admin
 to add, and do not retry through another route. The worker needs Docker.
@@ -39,7 +39,7 @@ Use `cloudthinker worker status --outpost my-project --json` for availability
 and the worker CLI version. It adds `Update available` when the server
 recommends a newer CLI, or `Outdated` when the CLI is below the server minimum.
 Run `cloudthinker update` to fix both. Use
-`cloudthinker worker outpost ls --json` to list authorized outposts, and
+`cloudthinker worker outpost ls --json` to list authorized environments, and
 `cloudthinker worker outpost archive my-project` after active assignments finish.
 
 The CLI stores the scoped worker credential in a private `0600` file. Worker
@@ -55,15 +55,15 @@ running never expires. About every 25 days the server asks the worker to rotate;
 a worker that read its credential from the private store gets a new one, saves it,
 and keeps serving with no action from you. A credential from
 `CLOUDTHINKER_WORKER_TOKEN` is renewed by use but never replaced, so replace it
-yourself from the Workers page. If a worker prints "This Worker's credential
+yourself from the environments page. If a worker prints "This Worker's credential
 expired or was revoked" and exits with code 3, enroll it again with the command
-from the Workers page. The systemd unit does not restart on exit code 3. A
+from the environments page. The systemd unit does not restart on exit code 3. A
 LaunchAgent cannot skip that restart, so unload it and enroll again.
 
-Pass `--label` to `worker start` to name the served folder. The Workers page
+Pass `--label` to `worker start` to name the served folder. The Environments page
 shows the label for each worker.
 
-To keep an outpost available after its terminal closes, add `--background` to
+To keep an environment available after its terminal closes, add `--background` to
 the `worker start` command you ran in the terminal. It installs and starts the
 per-user service below for the same outpost, folder, concurrency, and label,
 then prints the commands for status, logs, and stop. On Linux it also turns on
@@ -116,7 +116,7 @@ sudo cloudthinker worker service start --system --user alice --outpost <outpost-
 
 `--system` writes a systemd system unit with `User=` on Linux or a LaunchDaemon
 with `UserName` on macOS. The credential stays in that account's `0600` store.
-Pass the outpost id, not its name. Install the CLI in a path the account can run,
+Pass the environment id, not its name. Install the CLI in a path the account can run,
 such as `/usr/local/bin`.
 
 A conversation can use its own git worktree. Start the conversation with **New
@@ -169,9 +169,9 @@ assignments another worker claimed first.
 An admin can turn Workers off for the whole instance or for one workspace. The
 server then answers `EXECUTOR_OUTPOSTS_DISABLED` (HTTP 403) to a worker. A
 worker does not exit: it prints one line, checks every 60 seconds, and prints one
-line when Workers are on again. Work already running reaches its deadline. In a
+line when Self-hosted environments are on again. Work already running reaches its deadline. In a
 conversation bound to a Worker, new operations fail with the same code, and the
-agent must tell the user that Workers are off. It must not retry or move the work
+agent must tell the user that Self-hosted environments are off. It must not retry or move the work
 to CloudThinker Cloud. An older CLI exits on this code, so run
 `cloudthinker update`.
 
@@ -217,3 +217,7 @@ up to 64 installed or staging digests. At capacity, the worker frees the least
 recently used bundle that was not installed or reused for 25 hours, longer than any
 command or background task can run. When no bundle is that old, new downloads fail
 with `BUNDLE_CACHE_FULL`; installed bundles remain usable.
+
+## Naming
+
+An environment is the named execution destination. A connected machine runs a worker process. Existing `cloudthinker worker`, `worker outpost` and `--outpost` commands keep their spelling for compatibility. Manage destinations in Environments and select one through Run in.

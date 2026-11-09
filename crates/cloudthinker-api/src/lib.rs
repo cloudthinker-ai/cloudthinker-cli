@@ -1586,8 +1586,7 @@ pub mod types {
     ///
     ///Values are deliberately identical to TaskScheduleStatus
     /// (app/models/tasks.py) so AgentExecutionResult.status needs zero
-    /// remapping when origins migrate onto AgentRun (plan decision,
-    /// plans/product-cli-mr-c-agentrun.md).
+    /// remapping when origins migrate onto AgentRun.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -1597,8 +1596,7 @@ pub mod types {
     ///  "description": "Lifecycle state of a background agent run.\n\nValues
     /// are deliberately identical to TaskScheduleStatus
     /// (app/models/tasks.py)\nso AgentExecutionResult.status needs zero
-    /// remapping when origins migrate onto\nAgentRun (plan decision,
-    /// plans/product-cli-mr-c-agentrun.md).",
+    /// remapping when origins migrate onto\nAgentRun.",
     ///  "type": "string",
     ///  "enum": [
     ///    "pending",
@@ -5380,6 +5378,1342 @@ pub mod types {
         pub worker_id: ::uuid::Uuid,
     }
 
+    ///`CliConversationSearchCoverage`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchCoverage",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "cursor_expires_at",
+    ///    "hint",
+    ///    "next_cursor",
+    ///    "reasons",
+    ///    "scanned_sources",
+    ///    "status"
+    ///  ],
+    ///  "properties": {
+    ///    "cursor_expires_at": {
+    ///      "title": "Cursor Expires At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "hint": {
+    ///      "title": "Hint",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "next_cursor": {
+    ///      "title": "Next Cursor",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "reasons": {
+    ///      "title": "Reasons",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "scanned_sources": {
+    ///      "title": "Scanned Sources",
+    ///      "type": "integer"
+    ///    },
+    ///    "status": {
+    ///      "title": "CliConversationSearchCoverage_status",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "complete",
+    ///        "limit_reached",
+    ///        "partial"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct CliConversationSearchCoverage {
+        pub cursor_expires_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub hint: ::std::option::Option<::std::string::String>,
+        pub next_cursor: ::std::option::Option<::std::string::String>,
+        pub reasons: ::std::vec::Vec<::std::string::String>,
+        pub scanned_sources: i64,
+        pub status: CliConversationSearchCoverageStatus,
+    }
+
+    ///`CliConversationSearchCoverageStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchCoverage_status",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "complete",
+    ///    "limit_reached",
+    ///    "partial"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum CliConversationSearchCoverageStatus {
+        #[serde(rename = "complete")]
+        Complete,
+        #[serde(rename = "limit_reached")]
+        LimitReached,
+        #[serde(rename = "partial")]
+        Partial,
+    }
+
+    impl ::std::fmt::Display for CliConversationSearchCoverageStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Complete => f.write_str("complete"),
+                Self::LimitReached => f.write_str("limit_reached"),
+                Self::Partial => f.write_str("partial"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for CliConversationSearchCoverageStatus {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "complete" => Ok(Self::Complete),
+                "limit_reached" => Ok(Self::LimitReached),
+                "partial" => Ok(Self::Partial),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliConversationSearchCoverageStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliConversationSearchCoverageStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliConversationSearchCoverageStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`CliConversationSearchEvidence`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchEvidence",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "field",
+    ///    "line",
+    ///    "match_end",
+    ///    "match_start",
+    ///    "record_type",
+    ///    "snippet",
+    ///    "snippet_truncated"
+    ///  ],
+    ///  "properties": {
+    ///    "at": {
+    ///      "title": "At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "field": {
+    ///      "title": "CliConversationSearchEvidence_field",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "title",
+    ///        "text",
+    ///        "name",
+    ///        "input",
+    ///        "output"
+    ///      ]
+    ///    },
+    ///    "line": {
+    ///      "title": "Line",
+    ///      "type": "integer",
+    ///      "minimum": 1.0
+    ///    },
+    ///    "match_end": {
+    ///      "title": "Match End",
+    ///      "description": "End of the match, exclusive, in the same decoded
+    /// value. Equals match_start for a zero-width regex match.",
+    ///      "type": "integer",
+    ///      "minimum": 0.0
+    ///    },
+    ///    "match_start": {
+    ///      "title": "Match Start",
+    ///      "description": "Start of the match, in characters, inside the
+    /// decoded text value that matched.",
+    ///      "type": "integer",
+    ///      "minimum": 0.0
+    ///    },
+    ///    "record_id": {
+    ///      "title": "Record Id",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "record_type": {
+    ///      "title": "CliConversationSearchEvidence_record_type",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "conversation",
+    ///        "message",
+    ///        "tool",
+    ///        "attachment"
+    ///      ]
+    ///    },
+    ///    "role": {
+    ///      "title": "Role",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "score": {
+    ///      "title": "Score",
+    ///      "description": "Fuzzy only: similarity score from 0 to 100 for this
+    /// match.",
+    ///      "type": [
+    ///        "number",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "snippet": {
+    ///      "title": "Snippet",
+    ///      "type": "string"
+    ///    },
+    ///    "snippet_truncated": {
+    ///      "title": "Snippet Truncated",
+    ///      "type": "boolean"
+    ///    },
+    ///    "tool_name": {
+    ///      "title": "Tool Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct CliConversationSearchEvidence {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub at: ::std::option::Option<::std::string::String>,
+        pub field: CliConversationSearchEvidenceField,
+        pub line: ::std::num::NonZeroU64,
+        ///End of the match, exclusive, in the same decoded value. Equals
+        /// match_start for a zero-width regex match.
+        pub match_end: u64,
+        ///Start of the match, in characters, inside the decoded text value
+        /// that matched.
+        pub match_start: u64,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub record_id: ::std::option::Option<::std::string::String>,
+        pub record_type: CliConversationSearchEvidenceRecordType,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub role: ::std::option::Option<::std::string::String>,
+        ///Fuzzy only: similarity score from 0 to 100 for this match.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub score: ::std::option::Option<f64>,
+        pub snippet: ::std::string::String,
+        pub snippet_truncated: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub tool_name: ::std::option::Option<::std::string::String>,
+    }
+
+    ///`CliConversationSearchEvidenceField`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchEvidence_field",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "title",
+    ///    "text",
+    ///    "name",
+    ///    "input",
+    ///    "output"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum CliConversationSearchEvidenceField {
+        #[serde(rename = "title")]
+        Title,
+        #[serde(rename = "text")]
+        Text,
+        #[serde(rename = "name")]
+        Name,
+        #[serde(rename = "input")]
+        Input,
+        #[serde(rename = "output")]
+        Output,
+    }
+
+    impl ::std::fmt::Display for CliConversationSearchEvidenceField {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Title => f.write_str("title"),
+                Self::Text => f.write_str("text"),
+                Self::Name => f.write_str("name"),
+                Self::Input => f.write_str("input"),
+                Self::Output => f.write_str("output"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for CliConversationSearchEvidenceField {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "title" => Ok(Self::Title),
+                "text" => Ok(Self::Text),
+                "name" => Ok(Self::Name),
+                "input" => Ok(Self::Input),
+                "output" => Ok(Self::Output),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliConversationSearchEvidenceField {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliConversationSearchEvidenceField {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliConversationSearchEvidenceField {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`CliConversationSearchEvidenceRecordType`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchEvidence_record_type",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "conversation",
+    ///    "message",
+    ///    "tool",
+    ///    "attachment"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum CliConversationSearchEvidenceRecordType {
+        #[serde(rename = "conversation")]
+        Conversation,
+        #[serde(rename = "message")]
+        Message,
+        #[serde(rename = "tool")]
+        Tool,
+        #[serde(rename = "attachment")]
+        Attachment,
+    }
+
+    impl ::std::fmt::Display for CliConversationSearchEvidenceRecordType {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Conversation => f.write_str("conversation"),
+                Self::Message => f.write_str("message"),
+                Self::Tool => f.write_str("tool"),
+                Self::Attachment => f.write_str("attachment"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for CliConversationSearchEvidenceRecordType {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "conversation" => Ok(Self::Conversation),
+                "message" => Ok(Self::Message),
+                "tool" => Ok(Self::Tool),
+                "attachment" => Ok(Self::Attachment),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliConversationSearchEvidenceRecordType {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliConversationSearchEvidenceRecordType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliConversationSearchEvidenceRecordType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`CliConversationSearchHit`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchHit",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "conversation_id",
+    ///    "conversation_type",
+    ///    "created_at",
+    ///    "evidence",
+    ///    "reference",
+    ///    "title",
+    ///    "updated_at"
+    ///  ],
+    ///  "properties": {
+    ///    "conversation_id": {
+    ///      "title": "Conversation Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    },
+    ///    "conversation_type": {
+    ///      "title": "Conversation Type",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "created_at": {
+    ///      "title": "Created At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "evidence": {
+    ///      "$ref": "#/components/schemas/CliConversationSearchEvidence"
+    ///    },
+    ///    "reference": {
+    ///      "title": "Reference",
+    ///      "type": "string"
+    ///    },
+    ///    "title": {
+    ///      "title": "Title",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "updated_at": {
+    ///      "title": "Updated At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct CliConversationSearchHit {
+        pub conversation_id: ::uuid::Uuid,
+        pub conversation_type: ::std::option::Option<::std::string::String>,
+        pub created_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub evidence: CliConversationSearchEvidence,
+        pub reference: ::std::string::String,
+        pub title: ::std::option::Option<::std::string::String>,
+        pub updated_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+    }
+
+    ///`CliConversationSearchRequest`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchRequest",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "query"
+    ///  ],
+    ///  "properties": {
+    ///    "conversation_types": {
+    ///      "title": "Conversation Types",
+    ///      "description": "Only search these conversation types, for example
+    /// chat or rca.",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      },
+    ///      "maxItems": 8
+    ///    },
+    ///    "cursor": {
+    ///      "title": "CliConversationSearchRequest_cursor",
+    ///      "description": "Continuation token from a previous partial page
+    /// with the same query and filters.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "pattern": "^cs_[0-9a-f]{32}_[0-9]{1,3}$"
+    ///    },
+    ///    "limit": {
+    ///      "title": "Limit",
+    ///      "description": "Maximum matching conversations to return on this
+    /// page.",
+    ///      "default": 10,
+    ///      "type": "integer",
+    ///      "maximum": 50.0,
+    ///      "minimum": 1.0
+    ///    },
+    ///    "match_mode": {
+    ///      "$ref": "#/components/schemas/CliSearchMatchMode"
+    ///    },
+    ///    "min_score": {
+    ///      "title": "Min Score",
+    ///      "description": "Fuzzy only: lowest similarity score from 0 to 100
+    /// that counts as a match. Defaults to 85.",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ],
+    ///      "maximum": 100.0,
+    ///      "minimum": 60.0
+    ///    },
+    ///    "query": {
+    ///      "title": "CliConversationSearchRequest_query",
+    ///      "description": "Text to find in conversation titles, message text,
+    /// tool names, tool inputs, tool outputs and attachment names. Matching
+    /// ignores case. match_mode decides how the text is read; shell syntax
+    /// never applies.",
+    ///      "type": "string",
+    ///      "maxLength": 200,
+    ///      "minLength": 1
+    ///    },
+    ///    "since": {
+    ///      "title": "CliConversationSearchRequest_since",
+    ///      "description": "Inclusive lower bound: YYYY-MM-DD in the instance
+    /// search timezone, or a datetime with Z or an offset.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "pattern": "^[0-9][0-9TZ:.+-]{9,34}$"
+    ///    },
+    ///    "time_field": {
+    ///      "title": "CliConversationSearchRequest_time_field",
+    ///      "description": "Timestamp that since and until compare.",
+    ///      "default": "updated",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "created",
+    ///        "updated"
+    ///      ]
+    ///    },
+    ///    "until": {
+    ///      "title": "CliConversationSearchRequest_until",
+    ///      "description": "Exclusive upper bound in the same formats as
+    /// since.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "pattern": "^[0-9][0-9TZ:.+-]{9,34}$"
+    ///    }
+    ///  },
+    ///  "additionalProperties": false
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    #[serde(deny_unknown_fields)]
+    pub struct CliConversationSearchRequest {
+        ///Only search these conversation types, for example chat or rca.
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub conversation_types: ::std::vec::Vec<::std::string::String>,
+        ///Continuation token from a previous partial page with the same query
+        /// and filters.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub cursor: ::std::option::Option<CliConversationSearchRequestCursor>,
+        ///Maximum matching conversations to return on this page.
+        #[serde(default = "defaults::default_nzu64::<::std::num::NonZeroU64, 10>")]
+        pub limit: ::std::num::NonZeroU64,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub match_mode: ::std::option::Option<CliSearchMatchMode>,
+        ///Fuzzy only: lowest similarity score from 0 to 100 that counts as a
+        /// match. Defaults to 85.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub min_score: ::std::option::Option<i64>,
+        ///Text to find in conversation titles, message text, tool names, tool
+        /// inputs, tool outputs and attachment names. Matching ignores case.
+        /// match_mode decides how the text is read; shell syntax never applies.
+        pub query: CliConversationSearchRequestQuery,
+        ///Inclusive lower bound: YYYY-MM-DD in the instance search timezone,
+        /// or a datetime with Z or an offset.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub since: ::std::option::Option<CliConversationSearchRequestSince>,
+        ///Timestamp that since and until compare.
+        #[serde(default = "defaults::cli_conversation_search_request_time_field")]
+        pub time_field: CliConversationSearchRequestTimeField,
+        ///Exclusive upper bound in the same formats as since.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub until: ::std::option::Option<CliConversationSearchRequestUntil>,
+    }
+
+    ///Continuation token from a previous partial page with the same query and
+    /// filters.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchRequest_cursor",
+    ///  "description": "Continuation token from a previous partial page with
+    /// the same query and filters.",
+    ///  "type": "string",
+    ///  "pattern": "^cs_[0-9a-f]{32}_[0-9]{1,3}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct CliConversationSearchRequestCursor(::std::string::String);
+    impl ::std::ops::Deref for CliConversationSearchRequestCursor {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<CliConversationSearchRequestCursor> for ::std::string::String {
+        fn from(value: CliConversationSearchRequestCursor) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for CliConversationSearchRequestCursor {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^cs_[0-9a-f]{32}_[0-9]{1,3}$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^cs_[0-9a-f]{32}_[0-9]{1,3}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliConversationSearchRequestCursor {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliConversationSearchRequestCursor {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliConversationSearchRequestCursor {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for CliConversationSearchRequestCursor {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///Text to find in conversation titles, message text, tool names, tool
+    /// inputs, tool outputs and attachment names. Matching ignores case.
+    /// match_mode decides how the text is read; shell syntax never applies.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchRequest_query",
+    ///  "description": "Text to find in conversation titles, message text, tool
+    /// names, tool inputs, tool outputs and attachment names. Matching ignores
+    /// case. match_mode decides how the text is read; shell syntax never
+    /// applies.",
+    ///  "type": "string",
+    ///  "maxLength": 200,
+    ///  "minLength": 1
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct CliConversationSearchRequestQuery(::std::string::String);
+    impl ::std::ops::Deref for CliConversationSearchRequestQuery {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<CliConversationSearchRequestQuery> for ::std::string::String {
+        fn from(value: CliConversationSearchRequestQuery) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for CliConversationSearchRequestQuery {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 200usize {
+                return Err("longer than 200 characters".into());
+            }
+            if value.chars().count() < 1usize {
+                return Err("shorter than 1 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliConversationSearchRequestQuery {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliConversationSearchRequestQuery {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliConversationSearchRequestQuery {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for CliConversationSearchRequestQuery {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///Inclusive lower bound: YYYY-MM-DD in the instance search timezone, or a
+    /// datetime with Z or an offset.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchRequest_since",
+    ///  "description": "Inclusive lower bound: YYYY-MM-DD in the instance
+    /// search timezone, or a datetime with Z or an offset.",
+    ///  "type": "string",
+    ///  "pattern": "^[0-9][0-9TZ:.+-]{9,34}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct CliConversationSearchRequestSince(::std::string::String);
+    impl ::std::ops::Deref for CliConversationSearchRequestSince {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<CliConversationSearchRequestSince> for ::std::string::String {
+        fn from(value: CliConversationSearchRequestSince) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for CliConversationSearchRequestSince {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[0-9][0-9TZ:.+-]{9,34}$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[0-9][0-9TZ:.+-]{9,34}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliConversationSearchRequestSince {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliConversationSearchRequestSince {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliConversationSearchRequestSince {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for CliConversationSearchRequestSince {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///Timestamp that since and until compare.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchRequest_time_field",
+    ///  "description": "Timestamp that since and until compare.",
+    ///  "default": "updated",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "created",
+    ///    "updated"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum CliConversationSearchRequestTimeField {
+        #[serde(rename = "created")]
+        Created,
+        #[serde(rename = "updated")]
+        Updated,
+    }
+
+    impl ::std::fmt::Display for CliConversationSearchRequestTimeField {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Created => f.write_str("created"),
+                Self::Updated => f.write_str("updated"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for CliConversationSearchRequestTimeField {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "created" => Ok(Self::Created),
+                "updated" => Ok(Self::Updated),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliConversationSearchRequestTimeField {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliConversationSearchRequestTimeField {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliConversationSearchRequestTimeField {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::default::Default for CliConversationSearchRequestTimeField {
+        fn default() -> Self {
+            CliConversationSearchRequestTimeField::Updated
+        }
+    }
+
+    ///Exclusive upper bound in the same formats as since.
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchRequest_until",
+    ///  "description": "Exclusive upper bound in the same formats as since.",
+    ///  "type": "string",
+    ///  "pattern": "^[0-9][0-9TZ:.+-]{9,34}$"
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct CliConversationSearchRequestUntil(::std::string::String);
+    impl ::std::ops::Deref for CliConversationSearchRequestUntil {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<CliConversationSearchRequestUntil> for ::std::string::String {
+        fn from(value: CliConversationSearchRequestUntil) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for CliConversationSearchRequestUntil {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            static PATTERN: ::std::sync::LazyLock<::regress::Regex> =
+                ::std::sync::LazyLock::new(|| {
+                    ::regress::Regex::new("^[0-9][0-9TZ:.+-]{9,34}$").unwrap()
+                });
+            if PATTERN.find(value).is_none() {
+                return Err("doesn't match pattern \"^[0-9][0-9TZ:.+-]{9,34}$\"".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliConversationSearchRequestUntil {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliConversationSearchRequestUntil {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliConversationSearchRequestUntil {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for CliConversationSearchRequestUntil {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
+    ///`CliConversationSearchResult`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchResult",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "coverage",
+    ///    "hits",
+    ///    "limit",
+    ///    "match_mode",
+    ///    "min_score",
+    ///    "query",
+    ///    "scope",
+    ///    "warnings",
+    ///    "workspace_id"
+    ///  ],
+    ///  "properties": {
+    ///    "coverage": {
+    ///      "$ref": "#/components/schemas/CliConversationSearchCoverage"
+    ///    },
+    ///    "hits": {
+    ///      "title": "Hits",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/CliConversationSearchHit"
+    ///      }
+    ///    },
+    ///    "limit": {
+    ///      "title": "Limit",
+    ///      "type": "integer"
+    ///    },
+    ///    "match_mode": {
+    ///      "$ref": "#/components/schemas/CliSearchMatchMode"
+    ///    },
+    ///    "min_score": {
+    ///      "title": "Min Score",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "query": {
+    ///      "title": "Query",
+    ///      "type": "string"
+    ///    },
+    ///    "scope": {
+    ///      "$ref": "#/components/schemas/CliConversationSearchScope"
+    ///    },
+    ///    "warnings": {
+    ///      "title": "Warnings",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "workspace_id": {
+    ///      "title": "Workspace Id",
+    ///      "type": "string",
+    ///      "format": "uuid"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct CliConversationSearchResult {
+        pub coverage: CliConversationSearchCoverage,
+        pub hits: ::std::vec::Vec<CliConversationSearchHit>,
+        pub limit: i64,
+        pub match_mode: CliSearchMatchMode,
+        pub min_score: ::std::option::Option<i64>,
+        pub query: ::std::string::String,
+        pub scope: CliConversationSearchScope,
+        pub warnings: ::std::vec::Vec<::std::string::String>,
+        pub workspace_id: ::uuid::Uuid,
+    }
+
+    ///`CliConversationSearchScope`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchScope",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "as_of",
+    ///    "conversation_types",
+    ///    "since",
+    ///    "time_field",
+    ///    "timezone",
+    ///    "until"
+    ///  ],
+    ///  "properties": {
+    ///    "as_of": {
+    ///      "title": "As Of",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "conversation_types": {
+    ///      "title": "Conversation Types",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "since": {
+    ///      "title": "Since",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "time_field": {
+    ///      "title": "CliConversationSearchScope_time_field",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "created",
+    ///        "updated"
+    ///      ]
+    ///    },
+    ///    "timezone": {
+    ///      "title": "Timezone",
+    ///      "type": "string"
+    ///    },
+    ///    "until": {
+    ///      "title": "Until",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct CliConversationSearchScope {
+        pub as_of: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub conversation_types: ::std::vec::Vec<::std::string::String>,
+        pub since: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        pub time_field: CliConversationSearchScopeTimeField,
+        pub timezone: ::std::string::String,
+        pub until: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+    }
+
+    ///`CliConversationSearchScopeTimeField`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliConversationSearchScope_time_field",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "created",
+    ///    "updated"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum CliConversationSearchScopeTimeField {
+        #[serde(rename = "created")]
+        Created,
+        #[serde(rename = "updated")]
+        Updated,
+    }
+
+    impl ::std::fmt::Display for CliConversationSearchScopeTimeField {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Created => f.write_str("created"),
+                Self::Updated => f.write_str("updated"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for CliConversationSearchScopeTimeField {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "created" => Ok(Self::Created),
+                "updated" => Ok(Self::Updated),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliConversationSearchScopeTimeField {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliConversationSearchScopeTimeField {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliConversationSearchScopeTimeField {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///Short user code plus the private device credential used for polling.
     ///
     /// <details><summary>JSON schema</summary>
@@ -5660,6 +6994,90 @@ pub mod types {
                 .map_err(|e: self::error::ConversionError| {
                     <D::Error as ::serde::de::Error>::custom(e.to_string())
                 })
+        }
+    }
+
+    ///`CliSearchMatchMode`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "CliSearchMatchMode",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "literal",
+    ///    "regex",
+    ///    "fuzzy"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum CliSearchMatchMode {
+        #[serde(rename = "literal")]
+        Literal,
+        #[serde(rename = "regex")]
+        Regex,
+        #[serde(rename = "fuzzy")]
+        Fuzzy,
+    }
+
+    impl ::std::fmt::Display for CliSearchMatchMode {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Literal => f.write_str("literal"),
+                Self::Regex => f.write_str("regex"),
+                Self::Fuzzy => f.write_str("fuzzy"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for CliSearchMatchMode {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "literal" => Ok(Self::Literal),
+                "regex" => Ok(Self::Regex),
+                "fuzzy" => Ok(Self::Fuzzy),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for CliSearchMatchMode {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for CliSearchMatchMode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for CliSearchMatchMode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
 
@@ -12773,6 +14191,7 @@ pub mod types {
     ///        "workspace_memory",
     ///        "conversation_tmp",
     ///        "conversation_uploads",
+    ///        "conversation_files",
     ///        "review_rules",
     ///        "conversation_research"
     ///      ]
@@ -13206,6 +14625,7 @@ pub mod types {
     ///    "workspace_memory",
     ///    "conversation_tmp",
     ///    "conversation_uploads",
+    ///    "conversation_files",
     ///    "review_rules",
     ///    "conversation_research"
     ///  ]
@@ -13231,6 +14651,8 @@ pub mod types {
         ConversationTmp,
         #[serde(rename = "conversation_uploads")]
         ConversationUploads,
+        #[serde(rename = "conversation_files")]
+        ConversationFiles,
         #[serde(rename = "review_rules")]
         ReviewRules,
         #[serde(rename = "conversation_research")]
@@ -13243,6 +14665,7 @@ pub mod types {
                 Self::WorkspaceMemory => f.write_str("workspace_memory"),
                 Self::ConversationTmp => f.write_str("conversation_tmp"),
                 Self::ConversationUploads => f.write_str("conversation_uploads"),
+                Self::ConversationFiles => f.write_str("conversation_files"),
                 Self::ReviewRules => f.write_str("review_rules"),
                 Self::ConversationResearch => f.write_str("conversation_research"),
             }
@@ -13256,6 +14679,7 @@ pub mod types {
                 "workspace_memory" => Ok(Self::WorkspaceMemory),
                 "conversation_tmp" => Ok(Self::ConversationTmp),
                 "conversation_uploads" => Ok(Self::ConversationUploads),
+                "conversation_files" => Ok(Self::ConversationFiles),
                 "review_rules" => Ok(Self::ReviewRules),
                 "conversation_research" => Ok(Self::ConversationResearch),
                 _ => Err("invalid value".into()),
@@ -15652,6 +17076,13 @@ pub mod types {
     ///      ],
     ///      "format": "uuid"
     ///    },
+    ///    "correlated_alert_count": {
+    ///      "title": "Correlated Alert Count",
+    ///      "description": "Alerts merged into this incident, re-fires
+    /// included",
+    ///      "default": 1,
+    ///      "type": "integer"
+    ///    },
     ///    "created_at": {
     ///      "title": "Created At",
     ///      "type": "string",
@@ -15690,6 +17121,14 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "first_alert_at": {
+    ///      "title": "First Alert At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
     ///    "id": {
     ///      "title": "Id",
     ///      "type": "string",
@@ -15724,6 +17163,16 @@ pub mod types {
     ///    "is_deleted": {
     ///      "title": "Is Deleted",
     ///      "type": "boolean"
+    ///    },
+    ///    "last_alert_at": {
+    ///      "title": "Last Alert At",
+    ///      "description": "When the newest alert arrived; a re-fire moves it,
+    /// not `updated_at`",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
     ///    },
     ///    "last_webhook_at": {
     ///      "title": "Last Webhook At",
@@ -15861,6 +17310,9 @@ pub mod types {
         pub closed_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub conversation_id: ::std::option::Option<::uuid::Uuid>,
+        ///Alerts merged into this incident, re-fires included
+        #[serde(default = "defaults::default_u64::<i64, 1>")]
+        pub correlated_alert_count: i64,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub declaration_mode: ::std::option::Option<DeclarationMode>,
@@ -15873,6 +17325,8 @@ pub mod types {
         ///Detailed description
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub description: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub first_alert_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub id: ::uuid::Uuid,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub incident_connection_id: ::std::option::Option<::uuid::Uuid>,
@@ -15885,6 +17339,9 @@ pub mod types {
         #[serde(default)]
         pub is_child: bool,
         pub is_deleted: bool,
+        ///When the newest alert arrived; a re-fire moves it, not `updated_at`
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub last_alert_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub last_webhook_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub metadata: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
@@ -16705,7 +18162,8 @@ pub mod types {
     ///    "safe",
     ///    "aggressive",
     ///    "full",
-    ///    "ultra"
+    ///    "ultra",
+    ///    "doomsday"
     ///  ]
     ///}
     /// ```
@@ -16731,6 +18189,8 @@ pub mod types {
         Full,
         #[serde(rename = "ultra")]
         Ultra,
+        #[serde(rename = "doomsday")]
+        Doomsday,
     }
 
     impl ::std::fmt::Display for Intensity {
@@ -16740,6 +18200,7 @@ pub mod types {
                 Self::Aggressive => f.write_str("aggressive"),
                 Self::Full => f.write_str("full"),
                 Self::Ultra => f.write_str("ultra"),
+                Self::Doomsday => f.write_str("doomsday"),
             }
         }
     }
@@ -16752,6 +18213,7 @@ pub mod types {
                 "aggressive" => Ok(Self::Aggressive),
                 "full" => Ok(Self::Full),
                 "ultra" => Ok(Self::Ultra),
+                "doomsday" => Ok(Self::Doomsday),
                 _ => Err("invalid value".into()),
             }
         }
@@ -23081,6 +24543,13 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "review_target_branch": {
+    ///      "title": "Review Target Branch",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "seed_commit_sha": {
     ///      "title": "Seed Commit Sha",
     ///      "type": [
@@ -23137,6 +24606,8 @@ pub mod types {
         pub repo_names: ::std::option::Option<::std::vec::Vec<::std::string::String>>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub repository_filter: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub review_target_branch: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub seed_commit_sha: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -24978,25 +26449,6 @@ pub mod types {
     /// diff against.",
     ///  "type": "object",
     ///  "properties": {
-    ///    "advisor_enabled": {
-    ///      "title": "Advisor Enabled",
-    ///      "description": "Local/dev-only opt-out for this run's background
-    /// Pentest advisor; true cannot bypass the instance-level
-    /// PENTEST_ADVISOR_ENABLED setting.",
-    ///      "type": [
-    ///        "boolean",
-    ///        "null"
-    ///      ]
-    ///    },
-    ///    "credit_limit": {
-    ///      "title": "Credit Limit",
-    ///      "type": [
-    ///        "integer",
-    ///        "null"
-    ///      ],
-    ///      "maximum": 1000000000.0,
-    ///      "exclusiveMinimum": 0.0
-    ///    },
     ///    "execution_host": {
     ///      "$ref": "#/components/schemas/RunExecutionHost"
     ///    },
@@ -25036,13 +26488,6 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct RunLaunchRequest {
-        ///Local/dev-only opt-out for this run's background Pentest advisor;
-        /// true cannot bypass the instance-level PENTEST_ADVISOR_ENABLED
-        /// setting.
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub advisor_enabled: ::std::option::Option<bool>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub credit_limit: ::std::option::Option<::std::num::NonZeroU64>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub execution_host: ::std::option::Option<RunExecutionHost>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -25064,8 +26509,6 @@ pub mod types {
     impl ::std::default::Default for RunLaunchRequest {
         fn default() -> Self {
             Self {
-                advisor_enabled: Default::default(),
-                credit_limit: Default::default(),
                 execution_host: Default::default(),
                 intensity: Default::default(),
                 jev_enabled: Default::default(),
@@ -25245,6 +26688,8 @@ pub mod types {
     ///    },
     ///    "credit_limit": {
     ///      "title": "Credit Limit",
+    ///      "description": "Historical per-run credit ceiling. New Runs do not
+    /// set or enforce this field.",
     ///      "type": [
     ///        "integer",
     ///        "null"
@@ -25252,8 +26697,8 @@ pub mod types {
     ///    },
     ///    "credit_limit_reached_at": {
     ///      "title": "Credit Limit Reached At",
-    ///      "description": "When the loop checkpoint stopped testing at or
-    /// above 90% of the run credit limit.",
+    ///      "description": "Historical timestamp when a saved per-run credit
+    /// ceiling stopped testing.",
     ///      "type": [
     ///        "string",
     ///        "null"
@@ -25418,10 +26863,12 @@ pub mod types {
         pub conversation_id: ::std::option::Option<::uuid::Uuid>,
         pub counts: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
         pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        ///Historical per-run credit ceiling. New Runs do not set or enforce
+        /// this field.
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub credit_limit: ::std::option::Option<i64>,
-        ///When the loop checkpoint stopped testing at or above 90% of the run
-        /// credit limit.
+        ///Historical timestamp when a saved per-run credit ceiling stopped
+        /// testing.
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub credit_limit_reached_at:
             ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
@@ -32130,6 +33577,11 @@ pub mod types {
             super::AgentCliExecutionStartedStatus::Running
         }
 
+        pub(super) fn cli_conversation_search_request_time_field(
+        ) -> super::CliConversationSearchRequestTimeField {
+            super::CliConversationSearchRequestTimeField::Updated
+        }
+
         pub(super) fn code_review_detail_finding_finding_source() -> ::std::string::String {
             "code_review".to_string()
         }
@@ -34503,6 +35955,48 @@ impl Client {
         }
     }
 
+    ///Search Conversations
+    ///
+    ///Sends a `POST` request to `/api/v1/cli/conversations/search`
+    pub async fn cli_search_conversations<'a>(
+        &'a self,
+        workspace_id: Option<&'a ::serde_json::Value>,
+        body: &'a types::CliConversationSearchRequest,
+    ) -> Result<ResponseValue<types::CliConversationSearchResult>, Error<()>> {
+        let url = format!("{}/api/v1/cli/conversations/search", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .query(&progenitor_client::QueryParam::new(
+                "workspace_id",
+                &workspace_id,
+            ))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "cli_search_conversations",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
     ///Read Trace
     ///
     ///Sends a `GET` request to
@@ -35714,10 +37208,11 @@ impl Client {
     ///   level.
     /// - `sort_by`: Sort field. 'queue_priority' orders by investigation queue
     ///   bucket first (AI handling, Needs decision, Not started, Resolved,
-    ///   Dismissed) and by recency inside each bucket, so no bucket is starved
-    ///   by paging. 'severity_open_first' orders open incidents Critical to
-    ///   Info, then unknown severity, then Resolved and Dismissed, newest first
-    ///   in each.
+    ///   Dismissed) and by last activity inside each bucket, so no bucket is
+    ///   starved by paging. 'severity_open_first' orders open incidents
+    ///   Critical to Info, then unknown severity, then Resolved and Dismissed,
+    ///   newest first in each. 'last_activity' orders by the later of the last
+    ///   alert and the last record change, so a re-fire moves an incident up.
     /// - `sort_order`: Sort order
     /// - `status`
     /// - `to`

@@ -23,6 +23,7 @@ use crate::retry::classify;
 
 mod agents;
 mod connections;
+mod conversation_search;
 mod cyber;
 mod doctor;
 mod incidents;
@@ -39,6 +40,14 @@ pub use connections::{
     ConnectionDetail, ConnectionDisconnect, ConnectionDisconnectPhase, ConnectionKind,
     ConnectionLocation, ConnectionMatch, ConnectionStatus, ConnectionTest, ConnectionTestPhase,
     ConnectionView, Connections, validate_connect_prefix,
+};
+pub use conversation_search::{
+    CONVERSATION_SEARCH_DEFAULT_LIMIT, CONVERSATION_SEARCH_FUZZY_DEFAULT_SCORE,
+    CONVERSATION_SEARCH_FUZZY_MAX_SCORE, CONVERSATION_SEARCH_FUZZY_MIN_SCORE,
+    CONVERSATION_SEARCH_MAX_LIMIT, CONVERSATION_SEARCH_MAX_QUERY_CHARS, ConversationSearch,
+    ConversationSearchCoverage, ConversationSearchEvidence, ConversationSearchHit,
+    ConversationSearchMatchMode, ConversationSearchQuery, ConversationSearchScope,
+    ConversationSearchStatus, ConversationSearchTimeField,
 };
 pub use cyber::{
     Coverage, CoverageReport, CoverageRow, CoverageStatus, CyberApp, CyberDiscoveryTarget,

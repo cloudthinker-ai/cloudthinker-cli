@@ -32,12 +32,12 @@ pub struct WorkerArgs {
 
 #[derive(Debug, Subcommand)]
 enum WorkerCommand {
-    /// Create, list, or archive the outposts this workspace can run work on.
+    /// Create, list, or archive the environments this workspace can run work on.
     Outpost {
         #[command(subcommand)]
         command: OutpostCommand,
     },
-    /// Serve one folder on this machine as an outpost worker until interrupted.
+    /// Serve one folder on this machine as an environment worker until interrupted.
     Start(StartArgs),
     /// Keep a worker running under systemd --user or launchd.
     Service {
@@ -51,9 +51,9 @@ enum WorkerCommand {
         #[command(subcommand)]
         command: WorktreesCommand,
     },
-    /// Show one outpost's availability as the workspace sees it.
+    /// Show one environment's availability as the workspace sees it.
     Status {
-        /// Outpost UUID or exact name.
+        /// Environment UUID or exact name.
         #[arg(long, env = "CLOUDTHINKER_OUTPOST_ID")]
         outpost: String,
 
@@ -76,7 +76,7 @@ enum WorkerCommand {
 enum WorktreesCommand {
     /// List worktrees with their branch, last use, and whether they hold uncommitted changes.
     Ls {
-        /// Only this outpost's worktrees: UUID or exact name.
+        /// Only this environment's worktrees: UUID or exact name.
         #[arg(long)]
         outpost: Option<String>,
 
@@ -86,7 +86,7 @@ enum WorktreesCommand {
     },
     /// Remove worktrees unused for 14 days that have no uncommitted changes.
     Prune {
-        /// Only this outpost's worktrees: UUID or exact name.
+        /// Only this environment's worktrees: UUID or exact name.
         #[arg(long)]
         outpost: Option<String>,
 
@@ -98,7 +98,7 @@ enum WorktreesCommand {
 
 #[derive(Debug, Subcommand)]
 enum OutpostCommand {
-    /// Register a new outpost and store its worker credential on this machine.
+    /// Register a new environment and store its worker credential on this machine.
     Create {
         /// Display name, unique within the scope.
         name: String,
@@ -111,15 +111,15 @@ enum OutpostCommand {
         #[arg(long)]
         json: bool,
     },
-    /// List the outposts this workspace can run work on.
+    /// List the environments this workspace can run work on.
     Ls {
         /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
     },
-    /// Retire an outpost so no further work is routed to it.
+    /// Retire an environment so no further work is routed to it.
     Archive {
-        /// Outpost UUID or exact name.
+        /// Environment UUID or exact name.
         outpost: String,
 
         /// Print JSON on stdout instead of text.
@@ -130,7 +130,7 @@ enum OutpostCommand {
 
 #[derive(Debug, Args)]
 pub struct DoctorArgs {
-    /// Outpost UUID or exact name; defaults to the only outpost set up on this machine.
+    /// Environment UUID or exact name; defaults to the only environment set up on this machine.
     #[arg(long, env = "CLOUDTHINKER_OUTPOST_ID")]
     outpost: Option<String>,
 
@@ -166,7 +166,7 @@ enum LogFormat {
 
 #[derive(Debug, Args)]
 pub struct StartArgs {
-    /// Outpost UUID or exact name; omit it only with `--register`.
+    /// Environment UUID or exact name; omit it only with `--register`.
     #[arg(long, env = "CLOUDTHINKER_OUTPOST_ID")]
     outpost: Option<String>,
 
@@ -194,7 +194,7 @@ pub struct StartArgs {
     #[arg(long)]
     inherit_env: bool,
 
-    /// Serve a replaced folder at --workdir as a new folder for this outpost.
+    /// Serve a replaced folder at --workdir as a new folder for this environment.
     #[arg(long)]
     reset_folder: bool,
 
@@ -400,7 +400,7 @@ fn resolve<'a>(
         [choice] => Ok(choice),
         [] => Err(CtError::Usage("outpost not found".into())),
         _ => Err(CtError::Usage(
-            "outpost name is ambiguous; use its id".into(),
+            "environment name is ambiguous; use its id".into(),
         )),
     }
 }

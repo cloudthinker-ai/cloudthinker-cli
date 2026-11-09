@@ -26,6 +26,7 @@ use clap::parser::ValueSource;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use cloudthinker_client::OriginSource;
 use cloudthinker_client::{
+    ConversationSearchMatchMode, ConversationSearchQuery, ConversationSearchTimeField,
     CyberFindingStatus, CyberIntensity, CyberSeverity, CyberTriageState, FindingFilter,
     IncidentStatus, PolicyImportMode, PolicyImportOptions, RecommendationStatus,
 };
@@ -46,6 +47,21 @@ impl From<IntensityArg> for CyberIntensity {
             IntensityArg::Safe => CyberIntensity::Safe,
             IntensityArg::Aggressive => CyberIntensity::Aggressive,
             IntensityArg::Full => CyberIntensity::Full,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum SearchTimeFieldArg {
+    Created,
+    Updated,
+}
+
+impl From<SearchTimeFieldArg> for ConversationSearchTimeField {
+    fn from(value: SearchTimeFieldArg) -> Self {
+        match value {
+            SearchTimeFieldArg::Created => ConversationSearchTimeField::Created,
+            SearchTimeFieldArg::Updated => ConversationSearchTimeField::Updated,
         }
     }
 }
@@ -169,7 +185,7 @@ const CONNECT_WAIT_TIMEOUT_SECS: u64 = 900;
 #[command(
     name = "cloudthinker",
     version,
-    about = "CloudThinker in your terminal: the agent, code review, Cyber pentests, and outpost workers",
+    about = "CloudThinker in your terminal: the agent, code review, Cyber pentests, and self-hosted environments",
     disable_help_subcommand = true,
     after_help = "Get started:\n  cloudthinker login                  Sign in; over SSH it shows a short code instead of a browser\n  cloudthinker                        Start CloudThinker Agent in this folder\n  cloudthinker chat -p 'Check prod'   Ask CloudThinker Agent in the cloud; stdout gets only the answer\n  cloudthinker agent -p 'Explain src' Ask CloudThinker Agent about this folder, headless\n\nAgent guidance: cloudthinker --skill (then --skill <module> as needed)."
 )]
@@ -242,7 +258,7 @@ enum Command {
     Auth(AuthArgs),
     /// Cyber Apps, domains, runs, and findings; ask the agent to start a pentest.
     Cyber(CyberArgs),
-    /// Run this machine as an outpost worker, and manage its outposts.
+    /// Run the worker on this machine and manage execution environments.
     Worker(commands::worker::WorkerArgs),
     /// Run the agent on a remote machine over SSH; it keeps running when the connection drops.
     Remote(commands::remote::RemoteArgs),
@@ -321,7 +337,7 @@ struct LogoutArgs {
 #[derive(Debug, Args)]
 #[command(
     args_conflicts_with_subcommands = true,
-    after_help = "Examples:\n  cloudthinker chat -p 'Check production health'\n  kubectl logs deploy/api --tail 200 | cloudthinker chat -p 'Why does this crash?'\n  cloudthinker chat -p - < prompt.md\n  cloudthinker chat -p 'Now inspect the database' --continue <run-or-conversation-uuid>\n  cloudthinker chat -p 'Start an audit' --no-wait --json\n  cloudthinker chat status <run-uuid> --wait\n  cloudthinker chat ls --limit 10"
+    after_help = "Examples:\n  cloudthinker chat -p 'Check production health'\n  kubectl logs deploy/api --tail 200 | cloudthinker chat -p 'Why does this crash?'\n  cloudthinker chat -p - < prompt.md\n  cloudthinker chat -p 'Now inspect the database' --continue <run-or-conversation-uuid>\n  cloudthinker chat -p 'Start an audit' --no-wait --json\n  cloudthinker chat status <run-uuid> --wait\n  cloudthinker chat ls --limit 10\n  cloudthinker chat search 'lifecycle policy'"
 )]
 struct ChatArgs {
     #[command(subcommand)]
@@ -369,6 +385,80 @@ enum ChatSub {
         #[arg(
             long,
             help = "Print one JSON snapshot with explicit truncation metadata."
+        )]
+        json: bool,
+    },
+    #[command(
+        about = "Search prior conversations in the selected workspace by text, regex or fuzzy match.",
+        long_about = "Search prior conversations you can view in the selected workspace. Only conversation titles, message text, tool names, tool inputs, tool outputs and attachment names are searched; JSON keys, IDs, thinking, hidden prompts and attachment contents are not. Matching ignores case and never runs shell syntax. By default the query is exact literal text. --regex reads it as a Python regular expression, and --fuzzy finds approximate text whose similarity score (0 to 100) reaches --min-score. Each match shows the conversation title, full UUID, a redacted excerpt and a web link. The command starts no agent run or model call. Output always states whether the search was complete, stopped at --limit, or partial; a partial search with no matches exits 1 because it does not prove absence.",
+        after_help = "Examples:\n  cloudthinker chat search 'lifecycle policy'\n  cloudthinker chat search OOMKilled --since 2026-10-01 --type rca --limit 20\n  cloudthinker chat search --regex 'eks-[0-9]+'\n  cloudthinker chat search --fuzzy 'kubernets upgrade' --min-score 80\n  cloudthinker chat search 'timeout' --json\n  cloudthinker chat search 'timeout' --cursor <next_cursor>\n  cloudthinker chat search -- '--force'"
+    )]
+    Search {
+        #[arg(
+            value_name = "QUERY",
+            help = "Text to find, at most 200 characters. Literal unless --regex or --fuzzy is set. Put `--` before text that starts with a dash."
+        )]
+        query: String,
+        #[arg(
+            long,
+            conflicts_with = "fuzzy",
+            help = "Read QUERY as a Python regular expression. ^ and $ match at each line inside a field. An invalid pattern exits 2."
+        )]
+        regex: bool,
+        #[arg(
+            long,
+            help = "Find approximate text, such as a typo, by string similarity. This is not semantic search."
+        )]
+        fuzzy: bool,
+        #[arg(
+            long = "min-score",
+            value_name = "SCORE",
+            requires = "fuzzy",
+            value_parser = clap::value_parser!(u64).range(cloudthinker_client::CONVERSATION_SEARCH_FUZZY_MIN_SCORE..=cloudthinker_client::CONVERSATION_SEARCH_FUZZY_MAX_SCORE),
+            help = "Lowest similarity score, 60 through 100, that counts as a fuzzy match. Default 85."
+        )]
+        min_score: Option<u64>,
+        #[arg(
+            long,
+            default_value_t = cloudthinker_client::CONVERSATION_SEARCH_DEFAULT_LIMIT,
+            value_parser = clap::value_parser!(u64).range(1..=cloudthinker_client::CONVERSATION_SEARCH_MAX_LIMIT),
+            help = "Maximum matching conversations to show, 1 through 50."
+        )]
+        limit: u64,
+        #[arg(
+            long,
+            value_name = "DATE",
+            help = "Only conversations at or after this date: YYYY-MM-DD in the server search timezone, or a datetime with Z or an offset."
+        )]
+        since: Option<String>,
+        #[arg(
+            long,
+            value_name = "DATE",
+            help = "Only conversations before this date, in the same formats as --since."
+        )]
+        until: Option<String>,
+        #[arg(
+            long = "time-field",
+            value_enum,
+            default_value_t = SearchTimeFieldArg::Updated,
+            help = "Which conversation time --since and --until compare."
+        )]
+        time_field: SearchTimeFieldArg,
+        #[arg(
+            long = "type",
+            value_name = "TYPE",
+            help = "Only search this conversation type, such as chat, headless or rca. Repeat for more types."
+        )]
+        types: Vec<String>,
+        #[arg(
+            long,
+            value_name = "TOKEN",
+            help = "Continue a partial search with the next_cursor it printed. Keep the same query and filters."
+        )]
+        cursor: Option<String>,
+        #[arg(
+            long,
+            help = "Print one JSON result with hits, coverage status, reasons and next_cursor."
         )]
         json: bool,
     },
@@ -1338,6 +1428,39 @@ async fn run_command(
                 )
                 .await
             }
+            Some(ChatSub::Search {
+                query,
+                regex,
+                fuzzy,
+                min_score,
+                limit,
+                since,
+                until,
+                time_field,
+                types,
+                cursor,
+                json,
+            }) => {
+                let match_mode = if regex {
+                    ConversationSearchMatchMode::Regex
+                } else if fuzzy {
+                    ConversationSearchMatchMode::Fuzzy
+                } else {
+                    ConversationSearchMatchMode::Literal
+                };
+                let search = ConversationSearchQuery {
+                    query: &query,
+                    match_mode,
+                    min_score,
+                    limit,
+                    since: since.as_deref(),
+                    until: until.as_deref(),
+                    time_field: time_field.into(),
+                    conversation_types: &types,
+                    cursor: cursor.as_deref(),
+                };
+                commands::chat::run_search(base_url, workspace.as_deref(), &search, json).await
+            }
             Some(ChatSub::Status {
                 run_id,
                 json,
@@ -1385,7 +1508,7 @@ async fn run_command(
                 }
                 None => {
                     engine::output::eprintln_error(
-                        "provide `-p <PROMPT>`, `chat status <run_id>`, or `chat ls`",
+                        "provide `-p <PROMPT>`, `chat status <run_id>`, `chat ls`, or `chat search <QUERY>`",
                     );
                     ExitCode::Usage
                 }

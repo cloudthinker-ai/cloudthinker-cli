@@ -109,12 +109,14 @@ pub async fn install_agent(
         &http,
         &asset_url(release_base, version, &asset),
         MAX_ASSET_BYTES,
+        CtError::AgentInstall,
     )
     .await?;
     let sidecar = download(
         &http,
         &asset_url(release_base, version, &format!("{asset}.sha256")),
         MAX_CHECKSUM_BYTES,
+        CtError::AgentInstall,
     )
     .await?;
     let archive = archive::verify_digest(archive, &sidecar, &asset)?;
@@ -122,6 +124,7 @@ pub async fn install_agent(
         &http,
         &asset_url(release_base, version, CHECKSUM_INVENTORY),
         MAX_CHECKSUM_BYTES,
+        CtError::AgentInstall,
     )
     .await?;
     let archive = archive.verify_inventory(&inventory)?;
@@ -309,7 +312,7 @@ fn bundle_process_status(bundle: &Path) -> Option<i32> {
         .and_then(|output| output.status.code())
 }
 
-fn http_client() -> CtResult<reqwest::Client> {
+pub(crate) fn http_client() -> CtResult<reqwest::Client> {
     crate::tls::http_client_builder()
         .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
         .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
@@ -319,7 +322,12 @@ fn http_client() -> CtResult<reqwest::Client> {
 
 /// Fetch `url` into memory, refusing a body over `max_bytes` before buffering
 /// when the server declares its length and as soon as the stream crosses it.
-async fn download(http: &reqwest::Client, url: &str, max_bytes: u64) -> CtResult<Vec<u8>> {
+pub(crate) async fn download(
+    http: &reqwest::Client,
+    url: &str,
+    max_bytes: u64,
+    install_error: fn(String) -> CtError,
+) -> CtResult<Vec<u8>> {
     let mut response = http
         .get(url)
         .send()
@@ -327,13 +335,13 @@ async fn download(http: &reqwest::Client, url: &str, max_bytes: u64) -> CtResult
         .map_err(|e| CtError::Transport(e.to_string()))?;
     let status = response.status();
     if !status.is_success() {
-        return Err(CtError::AgentInstall(format!(
+        return Err(install_error(format!(
             "{url} returned HTTP {}",
             status.as_u16()
         )));
     }
     if response.content_length().is_some_and(|len| len > max_bytes) {
-        return Err(oversized_error(url, max_bytes));
+        return Err(oversized_error(url, max_bytes, install_error));
     }
     let mut body = Vec::new();
     while let Some(chunk) = response
@@ -342,15 +350,15 @@ async fn download(http: &reqwest::Client, url: &str, max_bytes: u64) -> CtResult
         .map_err(|e| CtError::Transport(e.to_string()))?
     {
         if (body.len() + chunk.len()) as u64 > max_bytes {
-            return Err(oversized_error(url, max_bytes));
+            return Err(oversized_error(url, max_bytes, install_error));
         }
         body.extend_from_slice(&chunk);
     }
     Ok(body)
 }
 
-fn oversized_error(url: &str, max_bytes: u64) -> CtError {
-    CtError::AgentInstall(format!("{url} is larger than the {max_bytes} byte limit"))
+fn oversized_error(url: &str, max_bytes: u64, install_error: fn(String) -> CtError) -> CtError {
+    install_error(format!("{url} is larger than the {max_bytes} byte limit"))
 }
 
 fn create_dir(path: &Path) -> CtResult<()> {
@@ -956,11 +964,19 @@ mod tests {
         let http = http_client().unwrap();
         let url = format!("{}/big", server.uri());
 
-        let err = download(&http, &url, 16).await.unwrap_err();
+        let err = download(&http, &url, 16, CtError::AgentInstall)
+            .await
+            .unwrap_err();
 
         assert!(matches!(err, CtError::AgentInstall(_)));
         assert!(err.to_string().contains("larger than the 16 byte limit"));
-        assert_eq!(download(&http, &url, 17).await.unwrap().len(), 17);
+        assert_eq!(
+            download(&http, &url, 17, CtError::AgentInstall)
+                .await
+                .unwrap()
+                .len(),
+            17
+        );
     }
 
     #[tokio::test]
@@ -982,7 +998,9 @@ mod tests {
         });
         let http = http_client().unwrap();
 
-        let err = download(&http, &url, 16).await.unwrap_err();
+        let err = download(&http, &url, 16, CtError::AgentInstall)
+            .await
+            .unwrap_err();
 
         assert!(err.to_string().contains("larger than the 16 byte limit"));
         server.join().unwrap();

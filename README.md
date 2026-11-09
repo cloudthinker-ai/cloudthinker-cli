@@ -273,6 +273,38 @@ treating the returned window as complete. Tool arguments, outputs and thinking
 are excluded. Mirrored Agent CLI sessions are unsupported. The source budget
 covers the full conversation, so reducing `--limit` may not resolve overflow.
 
+Search earlier conversations in the selected workspace:
+
+```sh
+cloudthinker chat search "lifecycle policy"
+cloudthinker chat search OOMKilled --since 2026-10-01 --type rca --limit 20 --json
+cloudthinker chat search --regex 'eks-[0-9]+'
+cloudthinker chat search --fuzzy "kubernets upgrade" --min-score 80
+cloudthinker chat search "lifecycle policy" --cursor <next_cursor>
+cloudthinker chat search -- "--force"
+```
+
+`chat search` searches only conversation titles, message text, tool names,
+tool inputs, tool outputs and attachment names. JSON keys, IDs, thinking,
+hidden prompts and attachment contents are never searched. Matching ignores
+case. Pick at most one mode:
+
+| Mode | Matches |
+|---|---|
+| default | The exact text, punctuation included. |
+| `--regex` | A Python regular expression. `^` and `$` match at each line in a field. An invalid pattern exits 2. |
+| `--fuzzy` | Approximate text by string similarity, not by meaning. `--min-score` (60 to 100, default 85) sets the cutoff. |
+
+The fuzzy score is the best similarity, from 0 to 100, between the query and
+a same-length stretch of the field, after lowercasing. A field shorter than
+the query is compared whole. Each match shows the title, the full
+conversation UUID, the field, a redacted excerpt, the fuzzy score and a web
+link. Search starts no agent run or model call.
+The status is `complete`, `limit_reached` or `partial`. A partial page lists
+its reasons and, when it can continue, a `next_cursor` to pass to `--cursor`
+with the same query and filters. A partial search with no matches exits 1,
+because it does not prove there are none.
+
 ## Code review
 
 Review local changes through CloudThinker and print the findings in your terminal:

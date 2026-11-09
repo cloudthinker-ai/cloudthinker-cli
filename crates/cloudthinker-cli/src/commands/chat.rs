@@ -4,7 +4,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
-use cloudthinker_client::{CtClient, CtError, RunStatus, RunView};
+use cloudthinker_client::{
+    ConversationSearchQuery, ConversationSearchStatus, CtClient, CtError, RunStatus, RunView,
+};
 use uuid::Uuid;
 
 use crate::engine::exit::{self, ExitCode};
@@ -26,6 +28,32 @@ pub async fn run_trace(
     };
     match client.conversation_trace(conversation_id, limit).await {
         Ok(trace) => exit::finish_output(output::emit_trace(&trace, json)),
+        Err(error) => exit::report(&error),
+    }
+}
+
+pub async fn run_search(
+    base_url: &str,
+    workspace: Option<&str>,
+    query: &ConversationSearchQuery<'_>,
+    json: bool,
+) -> ExitCode {
+    let client = match build_client(base_url, workspace) {
+        Ok(client) => client,
+        Err(error) => return exit::report(&error),
+    };
+    match client.search_conversations(query).await {
+        Ok(search) => {
+            let rendered = exit::finish_output(output::emit_conversation_search(&search, json));
+            if rendered == ExitCode::Ok
+                && search.coverage.status == ConversationSearchStatus::Partial
+                && search.hits.is_empty()
+            {
+                ExitCode::JobFailed
+            } else {
+                rendered
+            }
+        }
         Err(error) => exit::report(&error),
     }
 }

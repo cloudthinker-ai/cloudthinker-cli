@@ -67,6 +67,7 @@ _CHAT_PATHS = frozenset(
         "/api/v1/cli/runs",
         "/api/v1/cli/runs/{run_id}",
         "/api/v1/cli/conversations/{conversation_id}/trace",
+        "/api/v1/cli/conversations/search",
     }
 )
 

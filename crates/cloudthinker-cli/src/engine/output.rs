@@ -23,6 +23,8 @@ use uuid::Uuid;
 
 mod agents;
 mod connections;
+mod conversation_search;
+pub use conversation_search::emit_conversation_search;
 mod doctor;
 pub use doctor::emit_doctor;
 mod policy;

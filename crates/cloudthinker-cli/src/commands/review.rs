@@ -81,10 +81,10 @@ async fn setup_worker(client: &CtClient, selector: Option<&str>) -> Result<uuid:
     match shared.as_slice() {
         [choice] => choice.target_id.ok_or_else(|| CtError::Usage("Worker has no ID".into())),
         [] => Err(CtError::Usage(
-            "No matching shared Worker. List Workers with `cloudthinker worker outpost ls`.".into(),
+            "No matching shared environment. List environments with `cloudthinker worker outpost ls`.".into(),
         )),
         _ => Err(CtError::Usage(
-            "Choose a shared Worker with --worker <name-or-id>; list them with `cloudthinker worker outpost ls`.".into(),
+            "Choose a shared environment with --worker <name-or-id>; list them with `cloudthinker worker outpost ls`.".into(),
         )),
     }
 }

@@ -565,7 +565,7 @@
         "type": "object"
       },
       "AgentRunStatus": {
-        "description": "Lifecycle state of a background agent run.\n\nValues are deliberately identical to TaskScheduleStatus (app/models/tasks.py)\nso AgentExecutionResult.status needs zero remapping when origins migrate onto\nAgentRun (plan decision, plans/product-cli-mr-c-agentrun.md).",
+        "description": "Lifecycle state of a background agent run.\n\nValues are deliberately identical to TaskScheduleStatus (app/models/tasks.py)\nso AgentExecutionResult.status needs zero remapping when origins migrate onto\nAgentRun.",
         "enum": [
           "pending",
           "running",
@@ -1779,6 +1779,377 @@
         "title": "ClaimAssignmentRequest",
         "type": "object"
       },
+      "CliConversationSearchCoverage": {
+        "properties": {
+          "cursor_expires_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Cursor Expires At",
+            "type": "string"
+          },
+          "hint": {
+            "nullable": true,
+            "title": "Hint",
+            "type": "string"
+          },
+          "next_cursor": {
+            "nullable": true,
+            "title": "Next Cursor",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "scanned_sources": {
+            "title": "Scanned Sources",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "limit_reached",
+              "partial"
+            ],
+            "title": "CliConversationSearchCoverage_status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reasons",
+          "scanned_sources",
+          "next_cursor",
+          "cursor_expires_at",
+          "hint"
+        ],
+        "title": "CliConversationSearchCoverage",
+        "type": "object"
+      },
+      "CliConversationSearchEvidence": {
+        "properties": {
+          "at": {
+            "nullable": true,
+            "title": "At",
+            "type": "string"
+          },
+          "field": {
+            "enum": [
+              "title",
+              "text",
+              "name",
+              "input",
+              "output"
+            ],
+            "title": "CliConversationSearchEvidence_field",
+            "type": "string"
+          },
+          "line": {
+            "minimum": 1,
+            "title": "Line",
+            "type": "integer"
+          },
+          "match_end": {
+            "description": "End of the match, exclusive, in the same decoded value. Equals match_start for a zero-width regex match.",
+            "minimum": 0,
+            "title": "Match End",
+            "type": "integer"
+          },
+          "match_start": {
+            "description": "Start of the match, in characters, inside the decoded text value that matched.",
+            "minimum": 0,
+            "title": "Match Start",
+            "type": "integer"
+          },
+          "record_id": {
+            "nullable": true,
+            "title": "Record Id",
+            "type": "string"
+          },
+          "record_type": {
+            "enum": [
+              "conversation",
+              "message",
+              "tool",
+              "attachment"
+            ],
+            "title": "CliConversationSearchEvidence_record_type",
+            "type": "string"
+          },
+          "role": {
+            "nullable": true,
+            "title": "Role",
+            "type": "string"
+          },
+          "score": {
+            "description": "Fuzzy only: similarity score from 0 to 100 for this match.",
+            "nullable": true,
+            "title": "Score",
+            "type": "number"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          },
+          "snippet_truncated": {
+            "title": "Snippet Truncated",
+            "type": "boolean"
+          },
+          "tool_name": {
+            "nullable": true,
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_type",
+          "field",
+          "line",
+          "match_start",
+          "match_end",
+          "snippet",
+          "snippet_truncated"
+        ],
+        "title": "CliConversationSearchEvidence",
+        "type": "object"
+      },
+      "CliConversationSearchHit": {
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "conversation_type": {
+            "nullable": true,
+            "title": "Conversation Type",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/CliConversationSearchEvidence"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "title": {
+            "nullable": true,
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "reference",
+          "title",
+          "conversation_type",
+          "created_at",
+          "updated_at",
+          "evidence"
+        ],
+        "title": "CliConversationSearchHit",
+        "type": "object"
+      },
+      "CliConversationSearchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_types": {
+            "description": "Only search these conversation types, for example chat or rca.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Conversation Types",
+            "type": "array"
+          },
+          "cursor": {
+            "description": "Continuation token from a previous partial page with the same query and filters.",
+            "nullable": true,
+            "pattern": "^cs_[0-9a-f]{32}_[0-9]{1,3}$",
+            "title": "CliConversationSearchRequest_cursor",
+            "type": "string"
+          },
+          "limit": {
+            "default": 10,
+            "description": "Maximum matching conversations to return on this page.",
+            "maximum": 50,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "match_mode": {
+            "$ref": "#/components/schemas/CliSearchMatchMode"
+          },
+          "min_score": {
+            "description": "Fuzzy only: lowest similarity score from 0 to 100 that counts as a match. Defaults to 85.",
+            "maximum": 100,
+            "minimum": 60,
+            "nullable": true,
+            "title": "Min Score",
+            "type": "integer"
+          },
+          "query": {
+            "description": "Text to find in conversation titles, message text, tool names, tool inputs, tool outputs and attachment names. Matching ignores case. match_mode decides how the text is read; shell syntax never applies.",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "CliConversationSearchRequest_query",
+            "type": "string"
+          },
+          "since": {
+            "description": "Inclusive lower bound: YYYY-MM-DD in the instance search timezone, or a datetime with Z or an offset.",
+            "nullable": true,
+            "pattern": "^[0-9][0-9TZ:.+-]{9,34}$",
+            "title": "CliConversationSearchRequest_since",
+            "type": "string"
+          },
+          "time_field": {
+            "default": "updated",
+            "description": "Timestamp that since and until compare.",
+            "enum": [
+              "created",
+              "updated"
+            ],
+            "title": "CliConversationSearchRequest_time_field",
+            "type": "string"
+          },
+          "until": {
+            "description": "Exclusive upper bound in the same formats as since.",
+            "nullable": true,
+            "pattern": "^[0-9][0-9TZ:.+-]{9,34}$",
+            "title": "CliConversationSearchRequest_until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "CliConversationSearchRequest",
+        "type": "object"
+      },
+      "CliConversationSearchResult": {
+        "properties": {
+          "coverage": {
+            "$ref": "#/components/schemas/CliConversationSearchCoverage"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/CliConversationSearchHit"
+            },
+            "title": "Hits",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "match_mode": {
+            "$ref": "#/components/schemas/CliSearchMatchMode"
+          },
+          "min_score": {
+            "nullable": true,
+            "title": "Min Score",
+            "type": "integer"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/CliConversationSearchScope"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "query",
+          "match_mode",
+          "min_score",
+          "limit",
+          "hits",
+          "coverage",
+          "scope",
+          "warnings"
+        ],
+        "title": "CliConversationSearchResult",
+        "type": "object"
+      },
+      "CliConversationSearchScope": {
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "As Of",
+            "type": "string"
+          },
+          "conversation_types": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Conversation Types",
+            "type": "array"
+          },
+          "since": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Since",
+            "type": "string"
+          },
+          "time_field": {
+            "enum": [
+              "created",
+              "updated"
+            ],
+            "title": "CliConversationSearchScope_time_field",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "until": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "time_field",
+          "since",
+          "until",
+          "conversation_types",
+          "timezone",
+          "as_of"
+        ],
+        "title": "CliConversationSearchScope",
+        "type": "object"
+      },
       "CliDeviceAuthorizationResponse": {
         "description": "Short user code plus the private device credential used for polling.",
         "properties": {
@@ -1856,6 +2227,15 @@
         ],
         "title": "CliDeviceTokenRequest",
         "type": "object"
+      },
+      "CliSearchMatchMode": {
+        "enum": [
+          "literal",
+          "regex",
+          "fuzzy"
+        ],
+        "title": "CliSearchMatchMode",
+        "type": "string"
       },
       "CliTokenRequest": {
         "description": "Token-exchange request: the one-time code plus the PKCE verifier.",
@@ -4423,6 +4803,7 @@
               "workspace_memory",
               "conversation_tmp",
               "conversation_uploads",
+              "conversation_files",
               "review_rules",
               "conversation_research"
             ],
@@ -5317,6 +5698,12 @@
             "title": "Conversation Id",
             "type": "string"
           },
+          "correlated_alert_count": {
+            "default": 1,
+            "description": "Alerts merged into this incident, re-fires included",
+            "title": "Correlated Alert Count",
+            "type": "integer"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -5345,6 +5732,12 @@
             "description": "Detailed description",
             "nullable": true,
             "title": "Description",
+            "type": "string"
+          },
+          "first_alert_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "First Alert At",
             "type": "string"
           },
           "id": {
@@ -5376,6 +5769,13 @@
           "is_deleted": {
             "title": "Is Deleted",
             "type": "boolean"
+          },
+          "last_alert_at": {
+            "description": "When the newest alert arrived; a re-fire moves it, not `updated_at`",
+            "format": "date-time",
+            "nullable": true,
+            "title": "Last Alert At",
+            "type": "string"
           },
           "last_webhook_at": {
             "format": "date-time",
@@ -5592,7 +5992,8 @@
           "safe",
           "aggressive",
           "full",
-          "ultra"
+          "ultra",
+          "doomsday"
         ],
         "title": "Intensity",
         "type": "string"
@@ -7685,6 +8086,11 @@
             "title": "Repository Filter",
             "type": "string"
           },
+          "review_target_branch": {
+            "nullable": true,
+            "title": "Review Target Branch",
+            "type": "string"
+          },
           "seed_commit_sha": {
             "nullable": true,
             "title": "Seed Commit Sha",
@@ -7995,20 +8401,6 @@
       "RunLaunchRequest": {
         "description": "Request body for POST /appsec/apps/{app_id}/runs.\n\nrun_scope narrows the App's scope for this run \u2014 MUST be \u2286 app.scope.\nOmit or pass null for a full-scope run. mode and intensity are\noptional \u2014 when omitted (None), the use case applies the backend default\n(Mode.BLACK / app.default_intensity). The default lives in\nlaunch_run only, not here. scan_mode is optional too \u2014 omitted (None)\ncoalesces to incremental in the use case (the single default source); pass\n\"full\" for a deep whole-worktree sweep (moot for gray/black).\n\nNote an App with NO prior SUCCESS run always runs \"full\": the use case\ncoerces scan_mode on a first run, so an explicit \"incremental\" here is\nhonoured only once a successful run exists to diff against.",
         "properties": {
-          "advisor_enabled": {
-            "description": "Local/dev-only opt-out for this run's background Pentest advisor; true cannot bypass the instance-level PENTEST_ADVISOR_ENABLED setting.",
-            "nullable": true,
-            "title": "Advisor Enabled",
-            "type": "boolean"
-          },
-          "credit_limit": {
-            "exclusiveMinimum": true,
-            "maximum": 1000000000,
-            "minimum": 0,
-            "nullable": true,
-            "title": "Credit Limit",
-            "type": "integer"
-          },
           "execution_host": {
             "$ref": "#/components/schemas/RunExecutionHost",
             "nullable": true
@@ -8098,12 +8490,13 @@
             "type": "string"
           },
           "credit_limit": {
+            "description": "Historical per-run credit ceiling. New Runs do not set or enforce this field.",
             "nullable": true,
             "title": "Credit Limit",
             "type": "integer"
           },
           "credit_limit_reached_at": {
-            "description": "When the loop checkpoint stopped testing at or above 90% of the run credit limit.",
+            "description": "Historical timestamp when a saved per-run credit ceiling stopped testing.",
             "format": "date-time",
             "nullable": true,
             "title": "Credit Limit Reached At",
@@ -12252,6 +12645,48 @@
         ]
       }
     },
+    "/api/v1/cli/conversations/search": {
+      "post": {
+        "operationId": "cli_search_conversations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CliConversationSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliConversationSearchResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Search Conversations",
+        "tags": [
+          "cli"
+        ]
+      }
+    },
     "/api/v1/cli/conversations/{conversation_id}/trace": {
       "get": {
         "operationId": "cli_get_conversation_trace",
@@ -13610,13 +14045,13 @@
             }
           },
           {
-            "description": "Sort field. 'queue_priority' orders by investigation queue bucket first (AI handling, Needs decision, Not started, Resolved, Dismissed) and by recency inside each bucket, so no bucket is starved by paging. 'severity_open_first' orders open incidents Critical to Info, then unknown severity, then Resolved and Dismissed, newest first in each.",
+            "description": "Sort field. 'queue_priority' orders by investigation queue bucket first (AI handling, Needs decision, Not started, Resolved, Dismissed) and by last activity inside each bucket, so no bucket is starved by paging. 'severity_open_first' orders open incidents Critical to Info, then unknown severity, then Resolved and Dismissed, newest first in each. 'last_activity' orders by the later of the last alert and the last record change, so a re-fire moves an incident up.",
             "in": "query",
             "name": "sort_by",
             "required": false,
             "schema": {
               "default": "created_at",
-              "description": "Sort field. 'queue_priority' orders by investigation queue bucket first (AI handling, Needs decision, Not started, Resolved, Dismissed) and by recency inside each bucket, so no bucket is starved by paging. 'severity_open_first' orders open incidents Critical to Info, then unknown severity, then Resolved and Dismissed, newest first in each.",
+              "description": "Sort field. 'queue_priority' orders by investigation queue bucket first (AI handling, Needs decision, Not started, Resolved, Dismissed) and by last activity inside each bucket, so no bucket is starved by paging. 'severity_open_first' orders open incidents Critical to Info, then unknown severity, then Resolved and Dismissed, newest first in each. 'last_activity' orders by the later of the last alert and the last record change, so a re-fire moves an incident up.",
               "title": "Sort By",
               "type": "string"
             }

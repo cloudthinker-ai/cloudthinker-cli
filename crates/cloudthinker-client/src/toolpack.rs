@@ -7,16 +7,11 @@
 
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
+use crate::agent_release::{download, http_client};
 use crate::error::{CtError, CtResult};
-
-const CONNECT_TIMEOUT_SECS: u64 = 30;
-
-/// Upper bound on one download, connect to last body byte.
-const REQUEST_TIMEOUT_SECS: u64 = 600;
 
 /// Largest release archive the installer buffers; a bigger response is refused.
 const MAX_ASSET_BYTES: u64 = 128 * 1024 * 1024;
@@ -71,7 +66,7 @@ pub async fn install_tool(
     }
     remove_invalid_install(&installed)?;
     let http = http_client()?;
-    let archive = download(&http, url, MAX_ASSET_BYTES).await?;
+    let archive = download(&http, url, MAX_ASSET_BYTES, CtError::ToolInstall).await?;
     verify_sha256(&archive, sha256_hex, tool)?;
 
     let member = member.to_string();
@@ -252,50 +247,6 @@ fn verify_sha256(archive: &[u8], expected_hex: &str, tool: &str) -> CtResult<()>
         )));
     }
     Ok(())
-}
-
-fn http_client() -> CtResult<reqwest::Client> {
-    crate::tls::http_client_builder()
-        .connect_timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS))
-        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| CtError::Transport(format!("http client build: {e}")))
-}
-
-/// Fetch `url` into memory, refusing a body over `max_bytes` before buffering
-/// when the server declares its length, and as soon as the stream crosses it.
-async fn download(http: &reqwest::Client, url: &str, max_bytes: u64) -> CtResult<Vec<u8>> {
-    let mut response = http
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| CtError::Transport(e.to_string()))?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(CtError::ToolInstall(format!(
-            "{url} returned HTTP {}",
-            status.as_u16()
-        )));
-    }
-    if response.content_length().is_some_and(|len| len > max_bytes) {
-        return Err(oversized_error(url, max_bytes));
-    }
-    let mut body = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|e| CtError::Transport(e.to_string()))?
-    {
-        if (body.len() + chunk.len()) as u64 > max_bytes {
-            return Err(oversized_error(url, max_bytes));
-        }
-        body.extend_from_slice(&chunk);
-    }
-    Ok(body)
-}
-
-fn oversized_error(url: &str, max_bytes: u64) -> CtError {
-    CtError::ToolInstall(format!("{url} is larger than the {max_bytes} byte limit"))
 }
 
 fn create_dir(path: &Path) -> CtResult<()> {
