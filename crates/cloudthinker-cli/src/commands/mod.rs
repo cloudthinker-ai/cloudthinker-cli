@@ -30,7 +30,29 @@ pub mod worker_doctor;
 pub mod worker_service;
 pub mod workspace;
 
-use cloudthinker_client::{CtClient, CtError, TOKEN_ENV_VAR, resolve_store};
+use cloudthinker_client::{CtClient, CtError, CtResult, TOKEN_ENV_VAR, resolve_store};
+use serde::Serialize;
+
+use crate::engine::exit::{self, ExitCode};
+use crate::engine::output;
+
+pub(crate) fn render_fetched<T: Serialize>(
+    result: CtResult<T>,
+    json: bool,
+    print: impl FnOnce(&T) -> Result<(), String>,
+) -> ExitCode {
+    match result {
+        Ok(value) => {
+            let rendered = if json {
+                output::emit_json(&value)
+            } else {
+                print(&value)
+            };
+            exit::finish_output(rendered)
+        }
+        Err(err) => exit::report(&err),
+    }
+}
 
 /// Read by `--workspace`, and handed to the `agent` child so its own
 /// `cloudthinker auth token` resolves the workspace this process resolved.

@@ -9,6 +9,7 @@ use crate::engine::watch::{Poll, WatchConfig, watch};
 
 use super::build_client;
 use super::chat::{Interrupted, listen_for_interrupt};
+use super::render_fetched;
 
 pub async fn run_list(
     base_url: &str,
@@ -21,16 +22,11 @@ pub async fn run_list(
         Ok(client) => client,
         Err(err) => return exit::report(&err),
     };
-    let incidents = match client.list_incidents(status, limit).await {
-        Ok(incidents) => incidents,
-        Err(err) => return exit::report(&err),
-    };
-    let result = if json {
-        output::emit_json(&incidents)
-    } else {
-        output::print_incident_list(&incidents)
-    };
-    exit::finish_output(result)
+    render_fetched(
+        client.list_incidents(status, limit).await,
+        json,
+        |incidents| output::print_incident_list(incidents),
+    )
 }
 
 pub async fn run_status(

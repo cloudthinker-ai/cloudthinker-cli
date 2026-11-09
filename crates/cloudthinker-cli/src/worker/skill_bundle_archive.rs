@@ -383,11 +383,11 @@ pub(super) fn hash_file(path: &Path) -> Result<String, &'static str> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-pub(super) fn set_readonly_file(path: &Path) -> Result<(), &'static str> {
+fn set_permission_mode(path: &Path, mode: u32) -> Result<(), &'static str> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o444))
+        fs::set_permissions(path, fs::Permissions::from_mode(mode))
             .map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
     }
     #[cfg(not(unix))]
@@ -395,10 +395,14 @@ pub(super) fn set_readonly_file(path: &Path) -> Result<(), &'static str> {
         let mut permissions = fs::metadata(path)
             .map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?
             .permissions();
-        permissions.set_readonly(true);
+        permissions.set_readonly((mode & 0o200) == 0);
         fs::set_permissions(path, permissions).map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
     }
     Ok(())
+}
+
+pub(super) fn set_readonly_file(path: &Path) -> Result<(), &'static str> {
+    set_permission_mode(path, 0o444)
 }
 
 pub(super) fn set_readonly_tree(path: &Path) -> Result<(), &'static str> {
@@ -423,21 +427,7 @@ pub(super) fn set_readonly_tree(path: &Path) -> Result<(), &'static str> {
 }
 
 pub(super) fn set_readonly_directory(path: &Path) -> Result<(), &'static str> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o555))
-            .map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
-    }
-    #[cfg(not(unix))]
-    {
-        let mut permissions = fs::metadata(path)
-            .map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?
-            .permissions();
-        permissions.set_readonly(true);
-        fs::set_permissions(path, permissions).map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
-    }
-    Ok(())
+    set_permission_mode(path, 0o555)
 }
 
 pub(super) fn remove_staging_tree(path: &Path) -> Result<(), &'static str> {
@@ -470,39 +460,11 @@ pub(super) fn remove_staging_tree(path: &Path) -> Result<(), &'static str> {
 }
 
 fn set_staging_directory_writable(path: &Path) -> Result<(), &'static str> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
-            .map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
-    }
-    #[cfg(not(unix))]
-    {
-        let mut permissions = fs::metadata(path)
-            .map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?
-            .permissions();
-        permissions.set_readonly(false);
-        fs::set_permissions(path, permissions).map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
-    }
-    Ok(())
+    set_permission_mode(path, 0o700)
 }
 
 fn set_staging_file_writable(path: &Path) -> Result<(), &'static str> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-            .map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
-    }
-    #[cfg(not(unix))]
-    {
-        let mut permissions = fs::metadata(path)
-            .map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?
-            .permissions();
-        permissions.set_readonly(false);
-        fs::set_permissions(path, permissions).map_err(|_| "BUNDLE_CACHE_UNAVAILABLE")?;
-    }
-    Ok(())
+    set_permission_mode(path, 0o600)
 }
 
 pub(super) fn fsync_dir(path: &Path) -> Result<(), &'static str> {

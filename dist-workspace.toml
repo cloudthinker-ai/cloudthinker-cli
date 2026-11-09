@@ -21,6 +21,12 @@ targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-da
 # installer appends it to PATH.
 install-path = "~/.local/bin"
 
+# GitHub retired the macos-14 image that dist 0.32 picks for Apple Silicon by
+# default ("The configuration 'macos-14-arm64-us-default' is not supported", the
+# v0.12.1 tag run on 2026-11-09), so pin the arm64 build to macos-15.
+[dist.github-custom-runners]
+aarch64-apple-darwin = "macos-15"
+
 # The @cloudthinker/agent tarballs ride this release. The build script path resolves
 # against the release mirror, whose root is this monorepo's cli/ directory, so
 # agent-cli/ sits beside crates/ there and nowhere in the monorepo.

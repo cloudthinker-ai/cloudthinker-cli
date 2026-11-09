@@ -21,6 +21,7 @@ use tokio::time::{Instant, MissedTickBehavior};
 
 use super::catalog::{Meta, expand, home_folder, tilde};
 use super::paths::{HOST_PID_ENV, PASTE_MAX_AGE_SECS, READY_ENV, REMOTE_ENV, RemotePaths};
+use super::unix_now;
 use super::wire::{
     AttachState, Frame, Hello, PROTOCOL_VERSION, Size, Upload, UploadKind, Welcome, output_frames,
     read_frame, write_frame,
@@ -522,12 +523,6 @@ fn absolute_display(path: &Path) -> String {
         .to_string()
 }
 
-fn now_seconds() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |elapsed| elapsed.as_secs())
-}
-
 async fn handshake(mut stream: UnixStream, events: mpsc::Sender<Event>) {
     let first = tokio::time::timeout(HELLO_WAIT, read_frame(&mut stream)).await;
     let refusal = match first {
@@ -681,7 +676,7 @@ fn spawn_agent(
         .take_writer()
         .map_err(|error| HostError::Agent(error.to_string()))?;
     let pid = child.process_id();
-    let started_at = now_seconds();
+    let started_at = unix_now();
     let (output_sender, output) = mpsc::channel(OUTPUT_QUEUE);
     let (input, input_queue) = std::sync::mpsc::channel();
     let (exit_sender, exited) = oneshot::channel();
@@ -800,12 +795,7 @@ fn resolve_cwd(requested: Option<&str>, home: &Path) -> (PathBuf, bool) {
 
 fn save_upload(paths: &RemotePaths, upload: &Upload) -> Result<PathBuf, CtError> {
     let dir = paths.open_pastes()?;
-    let name = paste_name(
-        now_seconds(),
-        rand::random::<u16>(),
-        &upload.name,
-        upload.kind,
-    );
+    let name = paste_name(unix_now(), rand::random::<u16>(), &upload.name, upload.kind);
     write_private(&dir, &name, &upload.bytes)?;
     let path = paths.pastes().join(name);
     Ok(std::path::absolute(&path).unwrap_or(path))

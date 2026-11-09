@@ -2,7 +2,7 @@ use std::ffi::OsString;
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use cloudthinker_client::{CtError, CtResult};
 use tokio::io::AsyncReadExt;
@@ -22,6 +22,7 @@ use super::picker::{
 };
 use super::targets;
 use super::tty::{RawTerminal, TtyInput, bottom_line, clear_bottom_line, window_size};
+use super::unix_now;
 use super::wire::{
     AttachState, Catalog, Frame, Hello, MAX_UPLOAD, PROTOCOL_VERSION, Query, Size, Upload,
     UploadKind, Welcome, WireError, read_frame, write_frame,
@@ -1206,12 +1207,6 @@ fn countdown(left: Duration) -> u64 {
     u64::try_from(left.as_millis().div_ceil(1000))
         .unwrap_or(u64::MAX)
         .max(1)
-}
-
-fn unix_now() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs())
 }
 
 fn say(line: &str) {

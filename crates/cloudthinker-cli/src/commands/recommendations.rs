@@ -4,6 +4,7 @@ use crate::engine::exit::{self, ExitCode};
 use crate::engine::output;
 
 use super::build_client;
+use super::render_fetched;
 
 pub async fn run_list(
     base_url: &str,
@@ -16,14 +17,9 @@ pub async fn run_list(
         Ok(client) => client,
         Err(err) => return exit::report(&err),
     };
-    let recommendations = match client.list_recommendations(status, limit).await {
-        Ok(recommendations) => recommendations,
-        Err(err) => return exit::report(&err),
-    };
-    let result = if json {
-        output::emit_json(&recommendations)
-    } else {
-        output::print_recommendation_list(&recommendations)
-    };
-    exit::finish_output(result)
+    render_fetched(
+        client.list_recommendations(status, limit).await,
+        json,
+        |recommendations| output::print_recommendation_list(recommendations),
+    )
 }

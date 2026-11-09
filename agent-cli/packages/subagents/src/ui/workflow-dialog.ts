@@ -1011,11 +1011,6 @@ export function handleWorkflowDialogKey(
  * Rendering
  * ------------------------------------------------------------------------- */
 
-/** The dialog as plain text — what the layout tests assert against. */
-export function plainWorkflowDialogLines(lines: readonly WorkflowCardLine[]): string[] {
-  return lines.map(line => line.map(segment => segment.text).join(""));
-}
-
 /**
  * The `/agents → Workflows` overlay.
  *

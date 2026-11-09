@@ -4482,7 +4482,8 @@
           "conventions",
           "convention_chains",
           "glob_read",
-          "write_batch"
+          "write_batch",
+          "write_atomic_batch"
         ],
         "title": "FileEndpoint",
         "type": "string"
@@ -4534,6 +4535,11 @@
       "FileRequest": {
         "additionalProperties": false,
         "properties": {
+          "atomic": {
+            "nullable": true,
+            "title": "Atomic",
+            "type": "boolean"
+          },
           "auto_detect_binary": {
             "nullable": true,
             "title": "Auto Detect Binary",
@@ -4656,6 +4662,11 @@
             "nullable": true,
             "title": "Glob",
             "type": "string"
+          },
+          "hash_only": {
+            "nullable": true,
+            "title": "Hash Only",
+            "type": "boolean"
           },
           "head_limit": {
             "anyOf": [
@@ -12604,7 +12615,7 @@
     },
     "/api/v1/builtin-connection/{builtin_id}/test-status": {
       "get": {
-        "description": "Return the current phase of a connection's async test job.\n\nReads from Redis (`conn:test:{id}` key, 1h TTL); falls back to deriving\nphase from the row's persisted status when Redis is empty (e.g. after\nTTL expiry or worker restart). See `_resolve_phase_status` for the\nworkspace-scoping and cache-warming contract.",
+        "description": "Return the current phase of a connection's async test job.\n\nReads from Redis (`conn:test:{id}` key, 1h TTL); falls back to deriving\nphase from the row's persisted status when Redis is empty (e.g. after\nTTL expiry or worker restart). See `resolve_connection_phase_status` for the\nworkspace-scoping and cache-warming contract.",
         "operationId": "builtin-connection-get_connection_test_status",
         "parameters": [
           {
@@ -14440,7 +14451,7 @@
     },
     "/api/v1/mcp-connection/{mcp_conn_id}/test-status": {
       "get": {
-        "description": "Return the current phase of an MCP connection's async test job.\n\nReads from Redis (``conn:test:{id}`` key, 1h TTL); falls back to deriving\nphase from the row's persisted status when Redis is empty. See\n``_resolve_phase_status`` for the workspace-scoping and cache-warming\ncontract.",
+        "description": "Return the current phase of an MCP connection's async test job.\n\nReads from Redis (``conn:test:{id}`` key, 1h TTL); falls back to deriving\nphase from the row's persisted status when Redis is empty. See\n``resolve_connection_phase_status`` for the workspace-scoping and\ncache-warming contract.",
         "operationId": "mcp-connection-get_mcp_connection_test_status",
         "parameters": [
           {

@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::engine::exit::{self, ExitCode};
 use crate::engine::output;
 
-use super::build_client;
+use super::{build_client, render_fetched};
 
 pub struct RunOpenOptions<'a> {
     pub app_ref: Option<&'a str>,
@@ -83,17 +83,9 @@ pub async fn list_apps(base_url: &str, workspace: Option<&str>, json: bool) -> E
         Ok(client) => client,
         Err(err) => return exit::report(&err),
     };
-    match client.cyber_list_apps().await {
-        Ok(apps) => {
-            let result = if json {
-                output::emit_json(&apps)
-            } else {
-                output::print_cyber_apps(&apps)
-            };
-            exit::finish_output(result)
-        }
-        Err(err) => exit::report(&err),
-    }
+    render_fetched(client.cyber_list_apps().await, json, |apps| {
+        output::print_cyber_apps(apps)
+    })
 }
 
 pub async fn list_domains(base_url: &str, workspace: Option<&str>, json: bool) -> ExitCode {
@@ -101,17 +93,9 @@ pub async fn list_domains(base_url: &str, workspace: Option<&str>, json: bool) -
         Ok(client) => client,
         Err(err) => return exit::report(&err),
     };
-    match client.cyber_list_domains().await {
-        Ok(domains) => {
-            let result = if json {
-                output::emit_json(&domains)
-            } else {
-                output::print_cyber_domains(&domains)
-            };
-            exit::finish_output(result)
-        }
-        Err(err) => exit::report(&err),
-    }
+    render_fetched(client.cyber_list_domains().await, json, |domains| {
+        output::print_cyber_domains(domains)
+    })
 }
 
 pub async fn create_domain(
@@ -459,17 +443,11 @@ pub async fn finding_get(
         Ok(client) => client,
         Err(err) => return exit::report(&err),
     };
-    match client.cyber_get_finding(finding_id).await {
-        Ok(finding) => {
-            let result = if json {
-                output::emit_json(&finding)
-            } else {
-                output::print_cyber_finding(&finding)
-            };
-            exit::finish_output(result)
-        }
-        Err(err) => exit::report(&err),
-    }
+    render_fetched(
+        client.cyber_get_finding(finding_id).await,
+        json,
+        output::print_cyber_finding,
+    )
 }
 
 pub async fn findings_export(
@@ -706,17 +684,11 @@ pub async fn plan(base_url: &str, workspace: Option<&str>, run_id: Uuid, json: b
         Ok(client) => client,
         Err(err) => return exit::report(&err),
     };
-    match client.cyber_issue_work_plan(run_id).await {
-        Ok(plan) => {
-            let rendered = if json {
-                output::emit_json(&plan)
-            } else {
-                output::print_work_plan(&plan)
-            };
-            exit::finish_output(rendered)
-        }
-        Err(err) => exit::report(&err),
-    }
+    render_fetched(
+        client.cyber_issue_work_plan(run_id).await,
+        json,
+        output::print_work_plan,
+    )
 }
 
 /// Execute the backend's plan on this machine and report the observations back.
@@ -850,17 +822,11 @@ pub async fn surface(
         Ok(client) => client,
         Err(err) => return exit::report(&err),
     };
-    match client.cyber_surface(run_id).await {
-        Ok(surface) => {
-            let rendered = if json {
-                output::emit_json(&surface)
-            } else {
-                output::print_surface(&surface)
-            };
-            exit::finish_output(rendered)
-        }
-        Err(err) => exit::report(&err),
-    }
+    render_fetched(
+        client.cyber_surface(run_id).await,
+        json,
+        output::print_surface,
+    )
 }
 
 /// Carve the plan into theme lanes for fan-out. `--themes` is a JSON object or
