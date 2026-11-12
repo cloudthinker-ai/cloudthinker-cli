@@ -43,9 +43,11 @@ pub async fn flush(
     cancel: CancellationToken,
 ) -> Result<Value, &'static str> {
     let scanning = identity.clone();
-    let paths = tokio::task::spawn_blocking(move || files::artifact_paths(&scanning.root))
-        .await
-        .map_err(|_| "EXECUTOR_ARTIFACT_SCAN_FAILED")??;
+    let paths = tokio::task::spawn_blocking(move || {
+        files::artifact_paths(&scanning.root, &scanning.output_baseline)
+    })
+    .await
+    .map_err(|_| "EXECUTOR_ARTIFACT_SCAN_FAILED")??;
     let lease = Arc::new(UploadLease::of(envelope));
     let total = Arc::new(AtomicUsize::new(0));
     let mut queued = paths.into_iter();

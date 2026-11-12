@@ -1,3 +1,7 @@
+## [0.12.2]
+
+- `worker start` no longer fails its folder check when `output/` already holds files. The worker notes the files in `output/` when it starts and uploads only files that are new or changed after that. A folder with more than 64 files or 16 MB in `output/` used to fail with `EXECUTOR_ARTIFACT_LIMIT_EXCEEDED`. The failure line now says that `output/` is over the upload limit.
+
 ## [0.12.1]
 
 - Internal: agent install and tool install share one size-capped download path. Timeouts, size limits and error messages are unchanged.

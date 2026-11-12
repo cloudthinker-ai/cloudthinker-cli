@@ -125,7 +125,18 @@ pub fn list(dir: &Dir, request: &api::FilesList) -> Result<Value, &'static str> 
     )
 }
 
-pub fn artifact_paths(dir: &Dir) -> Result<Vec<PathBuf>, &'static str> {
+pub type OutputBaseline = std::collections::HashMap<PathBuf, (u64, u128)>;
+
+pub fn output_baseline(dir: &Dir) -> OutputBaseline {
+    scan(dir, Path::new("output"), true)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|entry| !entry.directory)
+        .map(|entry| (entry.path, (entry.size, entry.modified_ns)))
+        .collect()
+}
+
+pub fn artifact_paths(dir: &Dir, baseline: &OutputBaseline) -> Result<Vec<PathBuf>, &'static str> {
     let entries = match scan(dir, Path::new("output"), true) {
         Ok(entries) => entries,
         Err("FILE_NOT_FOUND") => return Ok(Vec::new()),
@@ -136,7 +147,10 @@ pub fn artifact_paths(dir: &Dir) -> Result<Vec<PathBuf>, &'static str> {
     if entries.len() == MAX_ENTRIES {
         return Err("EXECUTOR_ARTIFACT_LIMIT_EXCEEDED");
     }
-    for entry in entries.into_iter().filter(|e| !e.directory) {
+    for entry in entries
+        .into_iter()
+        .filter(|e| !e.directory && baseline.get(&e.path) != Some(&(e.size, e.modified_ns)))
+    {
         size = size.saturating_add(entry.size);
         if paths.len() == MAX_ARTIFACT_FILES
             || size > MAX_ARTIFACT_BYTES as u64
@@ -577,6 +591,7 @@ struct Entry {
     directory: bool,
     size: u64,
     modified: u64,
+    modified_ns: u128,
 }
 
 fn scan(dir: &Dir, root: &Path, recursive: bool) -> Result<Vec<Entry>, &'static str> {
@@ -605,13 +620,13 @@ fn scan(dir: &Dir, root: &Path, recursive: bool) -> Result<Vec<Entry>, &'static 
                 .modified()
                 .ok()
                 .and_then(|t| t.into_std().duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
+                .unwrap_or_default();
             result.push(Entry {
                 path,
                 directory,
                 size: metadata.len(),
-                modified,
+                modified: modified.as_secs(),
+                modified_ns: modified.as_nanos(),
             });
             if result.len() >= MAX_ENTRIES {
                 result.sort_by(|a, b| a.path.cmp(&b.path));
@@ -791,7 +806,7 @@ mod tests {
         assert_eq!(report["children"][0]["path"], "output/reports/proof.txt");
         assert_eq!(report["children"][0]["size"], 5);
         assert_eq!(
-            artifact_paths(&dir).unwrap_err(),
+            artifact_paths(&dir, &OutputBaseline::new()).unwrap_err(),
             "EXECUTOR_ARTIFACT_LIMIT_EXCEEDED"
         );
     }
@@ -805,7 +820,7 @@ mod tests {
             dir.create_dir(format!("output/d-{index}")).unwrap();
         }
         assert_eq!(
-            artifact_paths(&dir).unwrap_err(),
+            artifact_paths(&dir, &OutputBaseline::new()).unwrap_err(),
             "EXECUTOR_ARTIFACT_LIMIT_EXCEEDED"
         );
     }

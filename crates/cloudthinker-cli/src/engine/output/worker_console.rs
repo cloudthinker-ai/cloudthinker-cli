@@ -81,6 +81,9 @@ const NEW_COMMAND: &str = "Stop the worker, then run a new command from CloudThi
 fn check_failure(code: &str) -> String {
     match code {
         "FILE_SCAN_LIMIT_EXCEEDED" => "The folder was too large to check.".to_owned(),
+        "EXECUTOR_ARTIFACT_LIMIT_EXCEEDED" => {
+            "Files in output/ are over the upload limit (64 files, 16 MB).".to_owned()
+        }
         code => format!(
             "The worker could not finish its checks ({}).",
             terminal_text(code)

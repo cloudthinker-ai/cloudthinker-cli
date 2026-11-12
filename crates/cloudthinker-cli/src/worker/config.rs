@@ -31,6 +31,7 @@ pub struct WorkdirIdentity {
     pub path: PathBuf,
     pub state: PathBuf,
     pub background_bytes: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    pub output_baseline: std::sync::Arc<super::files::OutputBaseline>,
     process_lock: Option<std::fs::File>,
     served_lock: Option<std::fs::File>,
 }
@@ -74,6 +75,7 @@ impl WorkdirIdentity {
         process_lock
             .try_lock_exclusive()
             .map_err(|_| CtError::Usage("a worker already serves this outpost directory".into()))?;
+        let output_baseline = std::sync::Arc::new(super::files::output_baseline(&root));
         Ok(Self {
             installation_id,
             workdir_id: identity.workdir_id,
@@ -81,6 +83,7 @@ impl WorkdirIdentity {
             path,
             state,
             background_bytes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            output_baseline,
             process_lock: Some(process_lock),
             served_lock: Some(served_lock),
         })
@@ -97,6 +100,7 @@ impl WorkdirIdentity {
             path,
             state: self.state.clone(),
             background_bytes: self.background_bytes.clone(),
+            output_baseline: std::sync::Arc::default(),
             process_lock: None,
             served_lock: None,
         })
