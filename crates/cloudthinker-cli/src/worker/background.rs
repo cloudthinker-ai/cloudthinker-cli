@@ -444,6 +444,10 @@ fn kill_supervisor(identity: &WorkdirIdentity, task_id: &str) {
 }
 
 pub(crate) fn liveness(task: &TaskDir) -> Liveness {
+    liveness_of(task, || manifest_pid(task))
+}
+
+fn liveness_of(task: &TaskDir, pid: impl FnOnce() -> Option<Pid>) -> Liveness {
     if let Some(code) = exit_code(task) {
         return Liveness::Exited(code);
     }
@@ -451,16 +455,20 @@ pub(crate) fn liveness(task: &TaskDir) -> Liveness {
         return Liveness::Vanished;
     };
     if rustix::fs::flock(&lock, FlockOperation::NonBlockingLockExclusive).is_err() {
-        return Liveness::Running(manifest_pid(task));
+        return Liveness::Running(pid());
     }
     exit_code(task).map_or(Liveness::Vanished, Liveness::Exited)
 }
 
 fn supervisor_pid(task: &TaskDir) -> Option<Pid> {
+    supervisor_pid_of(task, || manifest_pid(task))
+}
+
+fn supervisor_pid_of(task: &TaskDir, pid: impl FnOnce() -> Option<Pid>) -> Option<Pid> {
     let lock = task.dir.open(LOCK_FILE).ok()?;
     rustix::fs::flock(&lock, FlockOperation::NonBlockingLockExclusive)
         .is_err()
-        .then(|| manifest_pid(task))
+        .then(pid)
         .flatten()
 }
 
@@ -471,10 +479,17 @@ fn exit_code(task: &TaskDir) -> Option<i32> {
         .map(|text| text.trim().parse().unwrap_or(EXIT_CODE_UNKNOWN_TERMINAL))
 }
 
-fn manifest_pid(task: &TaskDir) -> Option<Pid> {
+fn manifest(task: &TaskDir) -> Option<TaskManifest> {
     let bytes = task.dir.read(MANIFEST_FILE).ok()?;
-    let manifest: TaskManifest = serde_json::from_slice(&bytes).ok()?;
-    Pid::from_raw(i32::try_from(manifest.pid).ok()?)
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn manifest_pid(task: &TaskDir) -> Option<Pid> {
+    pid_of(manifest(task).as_ref())
+}
+
+fn pid_of(manifest: Option<&TaskManifest>) -> Option<Pid> {
+    Pid::from_raw(i32::try_from(manifest?.pid).ok()?)
 }
 
 fn tail_wait(wait_seconds: Option<i64>, deadline: DateTime<Utc>) -> Duration {
@@ -688,23 +703,23 @@ fn scan(identity: &WorkdirIdentity, root: &Dir, now: SystemTime) -> Vec<Scanned>
         .filter_map(|entry| {
             let task_id = entry.ok()?.file_name().into_string().ok()?;
             let task = TaskDir::open(identity, &task_id).ok()??;
+            let manifest = manifest(&task);
             Some(Scanned {
-                age: age(&task, now),
+                age: age(&task, manifest.as_ref(), now),
                 bytes: dir_bytes(&task.dir),
-                running: matches!(liveness(&task), Liveness::Running(_)),
-                pid: supervisor_pid(&task),
+                running: matches!(
+                    liveness_of(&task, || pid_of(manifest.as_ref())),
+                    Liveness::Running(_)
+                ),
+                pid: supervisor_pid_of(&task, || pid_of(manifest.as_ref())),
                 task_id,
             })
         })
         .collect()
 }
 
-fn age(task: &TaskDir, now: SystemTime) -> Duration {
-    let started = task
-        .dir
-        .read(MANIFEST_FILE)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<TaskManifest>(&bytes).ok())
+fn age(task: &TaskDir, manifest: Option<&TaskManifest>, now: SystemTime) -> Duration {
+    let started = manifest
         .and_then(|manifest| DateTime::parse_from_rfc3339(&manifest.started_at).ok())
         .map(SystemTime::from)
         .or_else(|| {

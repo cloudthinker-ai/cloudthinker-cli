@@ -9,6 +9,9 @@ export const DEFAULT_MODE = "pro";
 export const DEFAULT_MODEL = `${PROVIDER_ID}/${DEFAULT_MODE}`;
 export const CONVERSATION_HEADER = "X-CloudThinker-Conversation";
 export const TURN_HEADER = "X-CloudThinker-Turn";
+export const PURPOSE_HEADER = "X-CloudThinker-Purpose";
+
+export type SessionPurpose = "chat" | "review";
 
 export const MODELS_UNAVAILABLE_STATUS = "no agent modes: /cloud retry";
 export const NO_MODES_REASON = "the server advertised no agent mode";
@@ -118,9 +121,11 @@ export function applyConversationHeader(
 	provider: string | undefined,
 	conversationId: string | undefined,
 	turnId?: string,
+	purpose?: SessionPurpose,
 ): void {
 	if (provider !== PROVIDER_ID) return;
 	if (!conversationId) return;
 	headers[CONVERSATION_HEADER] = conversationId;
 	if (turnId) headers[TURN_HEADER] = turnId;
+	if (purpose) headers[PURPOSE_HEADER] = purpose;
 }

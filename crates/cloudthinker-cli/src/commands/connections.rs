@@ -1,4 +1,4 @@
-use std::io::{BufRead, IsTerminal, Write};
+use std::io::BufRead;
 use std::time::{Duration, Instant};
 
 use cloudthinker_client::{
@@ -7,6 +7,7 @@ use cloudthinker_client::{
 };
 use uuid::Uuid;
 
+use crate::engine::confirm::{self, Consent, ask, consent_gate};
 use crate::engine::exit::{self, ExitCode};
 use crate::engine::login_mode::{self, LoginEnvironment, LoginFlow};
 use crate::engine::output::{self, ConnectLink};
@@ -143,7 +144,7 @@ pub async fn run_disconnect(
     yes: bool,
     json: bool,
 ) -> ExitCode {
-    let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+    let interactive = confirm::interactive();
     if consent_gate(yes, interactive) == Consent::Refuse {
         return refuse_without_yes(base_url, workspace, target);
     }
@@ -178,7 +179,7 @@ async fn disconnect_with(
             &connection.prefix,
             connection.id,
         );
-        if !ask(&prompt, input) {
+        if !ask(&prompt, "nothing was disconnected", input) {
             output::progress("Cancelled. Nothing was disconnected.");
             return ExitCode::JobFailed;
         }
@@ -242,21 +243,6 @@ fn disconnect_command(url: Option<&str>, workspace: Option<&str>, target: &str) 
     words.join(" ")
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Consent {
-    Given,
-    Ask,
-    Refuse,
-}
-
-fn consent_gate(yes: bool, interactive: bool) -> Consent {
-    match (yes, interactive) {
-        (true, _) => Consent::Given,
-        (false, true) => Consent::Ask,
-        (false, false) => Consent::Refuse,
-    }
-}
-
 fn confirm_prompt(name: &str, kind: ConnectionKind, prefix: &str, id: Uuid) -> String {
     format!(
         "Disconnect `{}` ({} {}, {id})? This deletes the connection and its saved credentials from the workspace, and agents can no longer use it. [y/N] ",
@@ -264,30 +250,6 @@ fn confirm_prompt(name: &str, kind: ConnectionKind, prefix: &str, id: Uuid) -> S
         kind.label(),
         output::terminal_text(prefix)
     )
-}
-
-fn ask(prompt: &str, input: &mut impl BufRead) -> bool {
-    eprint!("{prompt}");
-    if let Err(error) = std::io::stderr().flush() {
-        output::eprintln_error(&format!(
-            "could not show the confirmation question: {error}; nothing was disconnected"
-        ));
-        return false;
-    }
-    let mut line = String::new();
-    match input.read_line(&mut line) {
-        Ok(_) => accepts(&line),
-        Err(error) => {
-            output::eprintln_error(&format!(
-                "could not read your answer: {error}; nothing was disconnected"
-            ));
-            false
-        }
-    }
-}
-
-fn accepts(line: &str) -> bool {
-    matches!(line.trim(), "y" | "Y" | "yes" | "Yes" | "YES")
 }
 
 pub async fn run_connect_url(
@@ -607,9 +569,7 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use super::{
-        Consent, accepts, ask, confirm_prompt, consent_gate, disconnect_command, disconnect_with,
-    };
+    use super::{confirm_prompt, disconnect_command, disconnect_with};
     use crate::engine::exit::ExitCode;
 
     const AWS_ID: &str = "aaaaaaaa-0000-4000-8000-000000000001";
@@ -728,14 +688,6 @@ mod tests {
     }
 
     #[test]
-    fn disconnect_asks_on_a_terminal_and_refuses_without_one() {
-        assert_eq!(consent_gate(true, true), Consent::Given);
-        assert_eq!(consent_gate(true, false), Consent::Given);
-        assert_eq!(consent_gate(false, true), Consent::Ask);
-        assert_eq!(consent_gate(false, false), Consent::Refuse);
-    }
-
-    #[test]
     fn disconnect_prompt_names_the_connection() {
         let id = Uuid::from_u128(7);
         let prompt = confirm_prompt("AWS \u{1b}[31mprod", ConnectionKind::Builtin, "aws", id);
@@ -744,18 +696,5 @@ mod tests {
             "{prompt}"
         );
         assert!(prompt.ends_with("[y/N] "), "{prompt}");
-    }
-
-    #[test]
-    fn only_an_explicit_yes_confirms_a_disconnect() {
-        for line in ["y\n", "Y", "yes\n", " Yes "] {
-            assert!(accepts(line), "{line:?}");
-        }
-        for line in ["", "\n", "n", "no", "yep", "aws"] {
-            assert!(!accepts(line), "{line:?}");
-        }
-        assert!(ask("", &mut Cursor::new("yes\n")));
-        assert!(!ask("", &mut Cursor::new("\n")));
-        assert!(!ask("", &mut Cursor::new("")));
     }
 }

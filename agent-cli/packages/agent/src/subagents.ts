@@ -18,6 +18,7 @@ import { workflowConcurrency } from "@cloudthinker/subagents/src/workflow/runtim
 
 import cloudthinker from "@cloudthinker/cloud/src/index.ts";
 import { PROVIDER_ID } from "@cloudthinker/cloud/src/provider.ts";
+import { tickMs } from "@cloudthinker/cloud/src/motion.ts";
 import { CLOUD_ENTRY_TYPE } from "@cloudthinker/cloud/src/runtime.ts";
 import { cloudDefaultEnabled } from "@cloudthinker/cloud/src/settings.ts";
 import { findLinkedSession, findSelectedAgentReference } from "@cloudthinker/cloud/src/session.ts";
@@ -190,11 +191,13 @@ export const subagentHost: SubagentHost = {
 	resolveModel: resolveCloudMode,
 	loaderOptions: childLoaderOptions,
 	createSession: createCloudChild,
+	conversationId: (session) => findLinkedSession(session.sessionManager.getEntries())?.conversation_id,
 	modelChoices: (ctx) => ctx.modelRegistry.getAll().filter((model) => model.provider === PROVIDER_ID).map((model) => `${PROVIDER_ID}/${model.id}`),
 	taskRows: (rows, active) => tasksPane.setGroup("Agents", rows, active),
 	tasks: () => tasksPane.commands.map((task) => ({ id: task.id, label: task.command, stats: formatClock(Date.now() - task.startedAt) })),
 	openTask: (id, ui) => tasksPane.open(id, ui),
 	stopTask: (id) => tasksPane.commands.find((task) => task.id === id)?.stop() ?? Promise.resolve(),
+	tickMs,
 };
 
 interface NotificationDetails {

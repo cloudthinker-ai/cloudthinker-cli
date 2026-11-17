@@ -1,5 +1,6 @@
 //! Download, verify, and install the released `cloudthinker-agent` bundle.
 
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
@@ -13,6 +14,8 @@ mod archive;
 /// GitHub release download root the published agent assets hang off.
 pub const DEFAULT_RELEASE_BASE_URL: &str =
     "https://github.com/cloudthinker-ai/cloudthinker-cli/releases/download";
+
+pub const RELEASE_URL_ENV_VAR: &str = "CLOUDTHINKER_RELEASE_URL";
 
 /// The archive's single top-level directory, and the installed directory name.
 const BUNDLE_DIR_NAME: &str = "cloudthinker-agent";
@@ -38,22 +41,179 @@ pub struct InstalledAgent {
     pub prune_failures: Vec<CtError>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Libc {
+    Gnu,
+    Musl,
+}
+
 /// The release target triple for an `(OS, ARCH)` pair from `std::env::consts`.
-pub fn target_triple(os: &str, arch: &str) -> CtResult<&'static str> {
-    match (os, arch) {
-        ("macos", "aarch64") => Ok("aarch64-apple-darwin"),
-        ("macos", "x86_64") => Ok("x86_64-apple-darwin"),
-        ("linux", "aarch64") => Ok("aarch64-unknown-linux-gnu"),
-        ("linux", "x86_64") => Ok("x86_64-unknown-linux-gnu"),
+pub fn target_triple(os: &str, arch: &str, libc: Libc) -> CtResult<&'static str> {
+    match (os, arch, libc) {
+        ("macos", "aarch64", _) => Ok("aarch64-apple-darwin"),
+        ("macos", "x86_64", _) => Ok("x86_64-apple-darwin"),
+        ("linux", "aarch64", Libc::Gnu) => Ok("aarch64-unknown-linux-gnu"),
+        ("linux", "x86_64", Libc::Gnu) => Ok("x86_64-unknown-linux-gnu"),
+        ("linux", "aarch64", Libc::Musl) => Ok("aarch64-unknown-linux-musl"),
+        ("linux", "x86_64", Libc::Musl) => Ok("x86_64-unknown-linux-musl"),
         _ => Err(CtError::AgentInstall(format!(
             "no agent build for {os}/{arch}"
         ))),
     }
 }
 
+fn linux_libc(root: &Path, arch: &str, own_libc: Libc) -> Libc {
+    let glibc_loader = match arch {
+        "x86_64" => "lib64/ld-linux-x86-64.so.2",
+        "aarch64" => "lib/ld-linux-aarch64.so.1",
+        _ => return Libc::Gnu,
+    };
+    let musl_loader = root.join(format!("lib/ld-musl-{arch}.so.1"));
+    if musl_loader.exists() && (own_libc == Libc::Musl || !root.join(glibc_loader).exists()) {
+        Libc::Musl
+    } else {
+        Libc::Gnu
+    }
+}
+
+const OWN_LIBC: Libc = if cfg!(target_env = "musl") {
+    Libc::Musl
+} else {
+    Libc::Gnu
+};
+
 /// The release target triple of the host this process runs on.
 pub fn host_target_triple() -> CtResult<&'static str> {
-    target_triple(std::env::consts::OS, std::env::consts::ARCH)
+    let (os, arch) = (std::env::consts::OS, std::env::consts::ARCH);
+    let libc = if os == "linux" {
+        linux_libc(Path::new("/"), arch, OWN_LIBC)
+    } else {
+        Libc::Gnu
+    };
+    target_triple(os, arch, libc)
+}
+
+/// The CLI and agent release targets for a Linux host described by a probe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LinuxTargets {
+    pub cli: &'static str,
+    pub agent: &'static str,
+}
+
+/// What a remote probe reports about a Linux host's C library.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LinuxLibc {
+    pub glibc: Option<(u32, u32)>,
+    pub glibc_loader: bool,
+    pub musl_loader: bool,
+}
+
+const GNU_CLI_GLIBC: (u32, u32) = (2, 35);
+
+/// Pick the builds a Linux host runs, with the shell installer's glibc rule
+/// for the CLI and the CLI's own loader rule for the agent.
+pub fn linux_targets(arch: &str, libc: LinuxLibc) -> CtResult<LinuxTargets> {
+    let cli_libc = match libc.glibc {
+        Some(version) if version >= GNU_CLI_GLIBC => Libc::Gnu,
+        _ => Libc::Musl,
+    };
+    let agent_libc = if libc.musl_loader && (cli_libc == Libc::Musl || !libc.glibc_loader) {
+        Libc::Musl
+    } else {
+        Libc::Gnu
+    };
+    Ok(LinuxTargets {
+        cli: target_triple("linux", arch, cli_libc)?,
+        agent: target_triple("linux", arch, agent_libc)?,
+    })
+}
+
+/// One verified release file and the mode it lands with on the other host.
+pub struct ReleaseFile {
+    pub name: String,
+    pub bytes: Vec<u8>,
+    pub mode: u32,
+}
+
+/// The CLI executable's name inside its release archive and on the other host.
+pub const CLI_BINARY_NAME: &str = "cloudthinker";
+
+/// The release asset name carrying the CLI for `triple`.
+pub fn cli_asset_name(triple: &str) -> String {
+    format!("cloudthinker-cli-{triple}.tar.xz")
+}
+
+/// Fetch and verify the CLI archive and the agent bundle another host needs,
+/// with the agent's sidecar and checksum inventory so that host can verify
+/// and install the bundle from a local release folder.
+pub async fn fetch_host_release(
+    release_base: &str,
+    version: &str,
+    targets: LinuxTargets,
+) -> CtResult<Vec<ReleaseFile>> {
+    fetch_host_files(release_base, version, targets)
+        .await
+        .map_err(|error| name_source(error, release_base))
+}
+
+async fn fetch_host_files(
+    release_base: &str,
+    version: &str,
+    targets: LinuxTargets,
+) -> CtResult<Vec<ReleaseFile>> {
+    let http = http_client()?;
+    let cli = cli_asset_name(targets.cli);
+    let agent = asset_name(targets.agent);
+    let get = async |name: &str, max_bytes: u64| -> CtResult<ReleaseFile> {
+        let bytes = fetch(&http, &asset_url(release_base, version, name), max_bytes).await?;
+        Ok(ReleaseFile {
+            name: name.to_owned(),
+            bytes,
+            mode: 0o644,
+        })
+    };
+    let cli_archive = get(&cli, MAX_ASSET_BYTES).await?;
+    let cli_sidecar = get(&format!("{cli}.sha256"), MAX_CHECKSUM_BYTES).await?;
+    archive::verify_checksum(&cli_archive.bytes, &cli_sidecar.bytes, &cli)?;
+    let cli_binary = ReleaseFile {
+        name: CLI_BINARY_NAME.to_owned(),
+        bytes: cli_binary(&cli_archive.bytes, &cli)?,
+        mode: 0o755,
+    };
+    let agent_archive = get(&agent, MAX_ASSET_BYTES).await?;
+    let agent_sidecar = get(&format!("{agent}.sha256"), MAX_CHECKSUM_BYTES).await?;
+    let inventory = get(CHECKSUM_INVENTORY, MAX_CHECKSUM_BYTES).await?;
+    archive::verify_checksum(&agent_archive.bytes, &agent_sidecar.bytes, &agent)?;
+    archive::verify_inventory(&agent_archive.bytes, &inventory.bytes, &agent)?;
+    Ok(vec![cli_binary, agent_archive, agent_sidecar, inventory])
+}
+
+fn cli_binary(archive: &[u8], asset: &str) -> CtResult<Vec<u8>> {
+    let unpack_error = |error: &dyn std::fmt::Display| {
+        CtError::AgentInstall(format!("could not unpack {asset}: {error}"))
+    };
+    let mut tarball = Vec::new();
+    lzma_rs::xz_decompress(&mut std::io::BufReader::new(archive), &mut tarball)
+        .map_err(|error| unpack_error(&error))?;
+    let mut entries = tar::Archive::new(tarball.as_slice());
+    for entry in entries.entries().map_err(|error| unpack_error(&error))? {
+        let mut entry = entry.map_err(|error| unpack_error(&error))?;
+        let is_binary = entry
+            .path()
+            .map_err(|error| unpack_error(&error))?
+            .file_name()
+            .is_some_and(|name| name == CLI_BINARY_NAME);
+        if is_binary && entry.header().entry_type().is_file() {
+            let mut binary = Vec::new();
+            entry
+                .read_to_end(&mut binary)
+                .map_err(|error| unpack_error(&error))?;
+            return Ok(binary);
+        }
+    }
+    Err(CtError::AgentInstall(format!(
+        "{asset} carries no {CLI_BINARY_NAME} executable"
+    )))
 }
 
 /// The release asset name carrying the bundle for `triple`.
@@ -103,37 +263,116 @@ pub async fn install_agent(
     triple: &str,
     bin_root: &Path,
 ) -> CtResult<InstalledAgent> {
-    let asset = asset_name(triple);
-    let http = http_client()?;
-    let archive = download(
-        &http,
-        &asset_url(release_base, version, &asset),
-        MAX_ASSET_BYTES,
-        CtError::AgentInstall,
-    )
-    .await?;
-    let sidecar = download(
-        &http,
-        &asset_url(release_base, version, &format!("{asset}.sha256")),
-        MAX_CHECKSUM_BYTES,
-        CtError::AgentInstall,
-    )
-    .await?;
-    let archive = archive::verify_digest(archive, &sidecar, &asset)?;
-    let inventory = download(
-        &http,
-        &asset_url(release_base, version, CHECKSUM_INVENTORY),
-        MAX_CHECKSUM_BYTES,
-        CtError::AgentInstall,
-    )
-    .await?;
-    let archive = archive.verify_inventory(&inventory)?;
-
+    let archive = fetch_bundle(release_base, version, triple)
+        .await
+        .map_err(|error| name_source(error, release_base))?;
     let bin_root = bin_root.to_path_buf();
     let version = version.to_string();
     tokio::task::spawn_blocking(move || commit_bundle(&archive, &bin_root, &version))
         .await
         .map_err(|e| CtError::AgentInstall(format!("bundle install task failed: {e}")))?
+}
+
+pub fn release_base() -> CtResult<String> {
+    let value = match std::env::var(RELEASE_URL_ENV_VAR) {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => String::new(),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(CtError::AgentInstall(format!(
+                "{RELEASE_URL_ENV_VAR} is not valid UTF-8"
+            )));
+        }
+    };
+    let value = value.trim();
+    if value.is_empty() {
+        return Ok(DEFAULT_RELEASE_BASE_URL.to_string());
+    }
+    if value.starts_with("https://") || value.starts_with("file://") || !value.contains("://") {
+        return Ok(value.to_string());
+    }
+    Err(CtError::AgentInstall(format!(
+        "{RELEASE_URL_ENV_VAR}={value} is not an https:// URL, a file:// URL, or a directory"
+    )))
+}
+
+async fn fetch_bundle(
+    release_base: &str,
+    version: &str,
+    triple: &str,
+) -> CtResult<archive::VerifiedArchive> {
+    let asset = asset_name(triple);
+    let http = http_client()?;
+    let archive = fetch(
+        &http,
+        &asset_url(release_base, version, &asset),
+        MAX_ASSET_BYTES,
+    )
+    .await?;
+    let sidecar = fetch(
+        &http,
+        &asset_url(release_base, version, &format!("{asset}.sha256")),
+        MAX_CHECKSUM_BYTES,
+    )
+    .await?;
+    let archive = archive::verify_digest(archive, &sidecar, &asset)?;
+    let inventory = fetch(
+        &http,
+        &asset_url(release_base, version, CHECKSUM_INVENTORY),
+        MAX_CHECKSUM_BYTES,
+    )
+    .await?;
+    archive.verify_inventory(&inventory)
+}
+
+fn name_source(error: CtError, release_base: &str) -> CtError {
+    if release_base == DEFAULT_RELEASE_BASE_URL {
+        return error;
+    }
+    let source = format!("release source {release_base} from {RELEASE_URL_ENV_VAR}");
+    match error {
+        CtError::AgentInstall(message) => CtError::AgentInstall(format!("{message} ({source})")),
+        CtError::Transport(message) => CtError::Transport(format!("{message} ({source})")),
+        other => other,
+    }
+}
+
+async fn fetch(http: &reqwest::Client, location: &str, max_bytes: u64) -> CtResult<Vec<u8>> {
+    match local_path(location)? {
+        Some(path) => tokio::task::spawn_blocking(move || read_local(&path, max_bytes))
+            .await
+            .map_err(|e| CtError::AgentInstall(format!("release read task failed: {e}")))?,
+        None => download(http, location, max_bytes, CtError::AgentInstall).await,
+    }
+}
+
+fn local_path(location: &str) -> CtResult<Option<PathBuf>> {
+    if !location.contains("://") {
+        return Ok(Some(PathBuf::from(location)));
+    }
+    if !location.starts_with("file://") {
+        return Ok(None);
+    }
+    url::Url::parse(location)
+        .ok()
+        .and_then(|parsed| parsed.to_file_path().ok())
+        .map(Some)
+        .ok_or_else(|| CtError::AgentInstall(format!("{location} is not a local file URL")))
+}
+
+fn read_local(path: &Path, max_bytes: u64) -> CtResult<Vec<u8>> {
+    let file = std::fs::File::open(path).map_err(|e| fs_error("read", path, &e))?;
+    let mut body = Vec::new();
+    file.take(max_bytes + 1)
+        .read_to_end(&mut body)
+        .map_err(|e| fs_error("read", path, &e))?;
+    if body.len() as u64 > max_bytes {
+        return Err(oversized_error(
+            &path.display().to_string(),
+            max_bytes,
+            CtError::AgentInstall,
+        ));
+    }
+    Ok(body)
 }
 
 fn commit_bundle(
@@ -273,17 +512,50 @@ fn probe_bundle(staging: &Path, timeout: Duration) -> CtResult<()> {
             .env("PI_SKIP_VERSION_CHECK", "1")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        let status = wait_bounded(&mut command, timeout)
+            .stderr(Stdio::piped());
+        let output = wait_bounded(&mut command, timeout)
             .map_err(|e| CtError::AgentInstall(format!("staged agent {argument} failed: {e}")))?;
-        if !status.status.success() {
-            return Err(CtError::AgentInstall(format!(
-                "staged agent {argument} exited with {}",
-                status.status
+        if !output.status.success() {
+            return Err(CtError::AgentInstall(probe_failure(
+                argument,
+                &output.status,
+                &String::from_utf8_lossy(&output.stderr),
             )));
         }
     }
     Ok(())
+}
+
+fn probe_failure(argument: &str, status: &std::process::ExitStatus, stderr: &str) -> String {
+    let mut message = format!("staged agent {argument} exited with {status}");
+    if let Some(line) = stderr.lines().map(str::trim).rfind(|line| !line.is_empty()) {
+        message.push_str(": ");
+        message.extend(line.chars().take(300));
+    }
+    if let Some(hint) = probe_hint(status, stderr) {
+        message.push_str(". ");
+        message.push_str(hint);
+    }
+    message
+}
+
+fn probe_hint(status: &std::process::ExitStatus, stderr: &str) -> Option<&'static str> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt as _;
+        if status.signal() == Some(4) {
+            return Some("This CPU lacks instructions the agent build needs");
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = status;
+    if stderr.contains("libstdc++") {
+        Some("Install the C++ runtime first, for example `apk add libstdc++` on Alpine")
+    } else if stderr.contains("GLIBC_") || stderr.contains("symbol not found") {
+        Some("This agent build does not match the system C library")
+    } else {
+        None
+    }
 }
 
 fn bundle_is_unused(bundle: &Path) -> bool {
@@ -298,6 +570,42 @@ fn bundle_is_unused(bundle: &Path) -> bool {
 }
 
 fn bundle_process_status(bundle: &Path) -> Option<i32> {
+    lsof_status(bundle).or_else(|| proc_status(Path::new("/proc"), bundle))
+}
+
+fn proc_status(proc_root: &Path, bundle: &Path) -> Option<i32> {
+    let bundle = std::fs::canonicalize(bundle).ok()?;
+    let bundle = bundle.as_path();
+    let processes = std::fs::read_dir(proc_root).ok()?;
+    let mut seen = false;
+    for process in processes.flatten() {
+        if !process
+            .file_name()
+            .to_string_lossy()
+            .bytes()
+            .all(|b| b.is_ascii_digit())
+        {
+            continue;
+        }
+        let path = process.path();
+        if std::fs::read_link(path.join("exe")).is_ok_and(|exe| exe.starts_with(bundle)) {
+            return Some(0);
+        }
+        let Ok(descriptors) = std::fs::read_dir(path.join("fd")) else {
+            continue;
+        };
+        seen = true;
+        if descriptors
+            .flatten()
+            .any(|fd| std::fs::read_link(fd.path()).is_ok_and(|target| target.starts_with(bundle)))
+        {
+            return Some(0);
+        }
+    }
+    seen.then_some(1)
+}
+
+fn lsof_status(bundle: &Path) -> Option<i32> {
     let mut command = Command::new("lsof");
     command
         .args(["-F", "p"])
@@ -617,23 +925,23 @@ mod tests {
     #[test]
     fn target_triple_maps_every_released_host() {
         let cases = [
-            ("macos", "aarch64", "aarch64-apple-darwin"),
-            ("macos", "x86_64", "x86_64-apple-darwin"),
-            ("linux", "aarch64", "aarch64-unknown-linux-gnu"),
-            ("linux", "x86_64", "x86_64-unknown-linux-gnu"),
+            ("macos", "aarch64", Libc::Gnu, "aarch64-apple-darwin"),
+            ("macos", "x86_64", Libc::Gnu, "x86_64-apple-darwin"),
+            ("linux", "aarch64", Libc::Gnu, "aarch64-unknown-linux-gnu"),
+            ("linux", "x86_64", Libc::Gnu, "x86_64-unknown-linux-gnu"),
         ];
-        for (os, arch, expected) in cases {
-            assert_eq!(target_triple(os, arch).unwrap(), expected);
+        for (os, arch, libc, expected) in cases {
+            assert_eq!(target_triple(os, arch, libc).unwrap(), expected);
         }
     }
 
     #[test]
     fn target_triple_names_an_unreleased_host_in_one_line() {
-        let err = target_triple("linux", "riscv64").unwrap_err();
+        let err = target_triple("linux", "riscv64", Libc::Gnu).unwrap_err();
 
         assert!(matches!(err, CtError::AgentInstall(_)));
         assert!(err.to_string().contains("no agent build for linux/riscv64"));
-        assert!(target_triple("windows", "x86_64").is_err());
+        assert!(target_triple("windows", "x86_64", Libc::Gnu).is_err());
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashSet};
+use std::collections::{BTreeSet, BinaryHeap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -153,18 +153,26 @@ pub fn complete(typed: &str, home: &Path) -> Vec<String> {
         return Vec::new();
     };
     let hidden = partial.starts_with('.');
-    let mut names: Vec<String> = entries
-        .flatten()
-        .filter_map(|entry| {
-            let name = entry.file_name().into_string().ok()?;
-            let wanted = name.starts_with(partial) && (hidden || !name.starts_with('.'));
-            (wanted && entry.path().is_dir()).then_some(name)
-        })
-        .collect();
-    names.sort_unstable();
+    let mut names = BTreeSet::new();
+    for entry in entries.flatten() {
+        let Some(name) = entry.file_name().into_string().ok() else {
+            continue;
+        };
+        let wanted = name.starts_with(partial) && (hidden || !name.starts_with('.'));
+        if wanted && entry.path().is_dir() {
+            if names.len() < COMPLETION_LIMIT {
+                names.insert(name);
+            } else if names
+                .last()
+                .is_some_and(|largest| name.as_str() < largest.as_str())
+            {
+                names.pop_last();
+                names.insert(name);
+            }
+        }
+    }
     names
         .into_iter()
-        .take(COMPLETION_LIMIT)
         .map(|name| format!("{folder}{name}/"))
         .collect()
 }

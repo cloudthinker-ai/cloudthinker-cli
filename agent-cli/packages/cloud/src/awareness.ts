@@ -77,8 +77,12 @@ export function setMachineState(next: Partial<MachineState>): void {
 	machineState = { ...machineState, ...next };
 }
 
-export function machineBarLines(style: TagStyle = PLAIN_TAGS): string[] {
+export function machineBarLines(style: TagStyle = PLAIN_TAGS, layout: "full" | "compact" = "full"): string[] {
 	const state = machineState;
+	if (layout === "compact") {
+		const status = !state.cloudEnabled ? "Off" : state.linked ? "On" : "On · not linked";
+		return [`${style.local(LOCAL_TAG)} this machine · ${style.cloud(CLOUD_TAG)} sandbox · Cloud: ${status}`];
+	}
 	const local = `${style.local(LOCAL_TAG)} this machine  ${sanitizeTerminalText(state.cwd)}   bash - read - write - edit`;
 	let sandbox: string;
 	if (!state.cloudEnabled) {

@@ -23,13 +23,13 @@ cloudthinker cloud load-skill --session "$CT_SESSION" --connection "$CT_PREFIX" 
 Repeat `--name` only for guides you need under that prefix. Read `content` and its tool policy. For an MCP with no authored guide, omit `--name`; `roster_only=true` returns the real roster so you can choose an enabled tool. A loaded skill grants no permission to perform additional work.
 
 - `execution_method=cli`: follow the guide's existing provider scripts and bounded commands. For an AWS inventory request, load the advertised AWS guide, run its discovery script, then the documented inventory command in read mode. Provider credentials remain in cloud.
-- `execution_method=sdk`: read the roster, select exact enabled tool names, then load their current schemas:
+- `execution_method=sdk`: read the roster, select exact enabled tool names, then search for their current schemas by exact name (`prefix.tool`). Plain words instead rank matching tools when you do not know the name:
 
 ```sh
-cloudthinker cloud load-tools --session "$CT_SESSION" --connection "$CT_PREFIX" --tool "$CT_TOOL" --json
+cloudthinker cloud tool-search --session "$CT_SESSION" "$CT_PREFIX.$CT_TOOL" --json
 ```
 
-Repeat `--tool` only for the tools used next. For a PagerDuty investigation, first run the loaded guide's discovery script, load the actual incident-list tool's schema, and write TypeScript using its exact fields. Follow the returned SDK imports, instance syntax, `bun` execution and `format(data)` output instructions, including TOON. Do not guess tool names or parameters. After a schema validation error, reload the exact schema before changing the script.
+List only the tools used next, separated by spaces; `--limit N` caps ranked results. For a PagerDuty investigation, first run the loaded guide's discovery script, load the actual incident-list tool's schema, and write TypeScript using its exact fields. Follow the returned SDK imports, instance syntax, `bun` execution and `format(data)` output instructions, including TOON. Do not guess tool names or parameters. After a schema validation error, search the exact name again before changing the script.
 
 Execute a bounded command or upload a local script's bytes:
 

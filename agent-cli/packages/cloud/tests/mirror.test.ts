@@ -356,14 +356,12 @@ test("an oversized payload ships truncated so the parent walk stays unbroken", a
 			const sent = appended[0]?.[0];
 			assert.equal(sent?.parent_id, "e0");
 			assert.equal(sent?.entry_type, "message");
-			assert.deepEqual(sent?.payload, {
-				type: "message",
-				id: "big",
-				parentId: "e0",
-				timestamp: "2026-09-06T00:00:00.000Z",
-				truncated: true,
-			});
-			assert.ok(payloadBytes(sent as MirrorEntryInput) < 1024);
+			const payload = sent?.payload as { message: { role: string; content: string }; truncated: boolean; id: string };
+			assert.equal(payload.id, "big");
+			assert.equal(payload.truncated, true);
+			assert.equal(payload.message.role, "user");
+			assert.match(payload.message.content, /^x+\n… \d+ bytes cut …\nx+$/);
+			assert.ok(payloadBytes(sent as MirrorEntryInput) <= 1024 * 1024);
 			assert.ok(statuses.at(-1)?.includes("1 truncated"));
 		});
 	} finally {

@@ -39,7 +39,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { projectRoot, userRoot, workspaceRoot } from "../roots.ts";
 import { isSymlink, isUnsafeName, safeReadFile } from "../memory.ts";
 import { hasMetaDeclaration } from "./meta.ts";
 import { MAX_SCRIPT_LENGTH } from "./runtime.ts";
@@ -50,9 +50,9 @@ const WORKFLOW_EXTENSION = ".js";
 /** The roots a `name` is looked up in, highest priority first. */
 export function savedWorkflowRoots(cwd: string): string[] {
   return [
-    join(cwd, ".pi", "workflows"),
-    join(cwd, ".agents", "workflows"),
-    join(getAgentDir(), "workflows"),
+    projectRoot(cwd, "workflows"),
+    workspaceRoot(cwd, "workflows"),
+    userRoot("workflows"),
   ];
 }
 

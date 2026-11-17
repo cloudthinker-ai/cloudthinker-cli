@@ -1,4 +1,5 @@
 import { SettingsManager, getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { readSetting } from "./pi-settings.ts";
 
 export const TOOL_OUTPUT_SETTING = "toolOutput";
 export const TOOL_OUTPUT_MODES = ["compact", "preview"] as const;
@@ -21,9 +22,7 @@ export function setDiffStyle(next: DiffStyle): void {
 
 export function configuredDiffStyle(cwd: string, projectTrusted: boolean): DiffStyle {
 	const settings = SettingsManager.create(cwd, getAgentDir(), { projectTrusted });
-	const merged = { ...settings.getGlobalSettings(), ...settings.getProjectSettings() } as Record<string, unknown>;
-	const value = merged[DIFF_STYLE_SETTING];
-	return DIFF_STYLES.includes(value as DiffStyle) ? (value as DiffStyle) : "auto";
+	return readSetting(settings, DIFF_STYLE_SETTING, (value): value is DiffStyle => DIFF_STYLES.includes(value as DiffStyle), "auto");
 }
 
 export function toolOutputMode(): ToolOutputMode {
@@ -40,9 +39,7 @@ function isMode(value: unknown): value is ToolOutputMode {
 
 export function configuredToolOutputMode(cwd: string, projectTrusted: boolean): ToolOutputMode {
 	const settings = SettingsManager.create(cwd, getAgentDir(), { projectTrusted });
-	const merged = { ...settings.getGlobalSettings(), ...settings.getProjectSettings() } as Record<string, unknown>;
-	const value = merged[TOOL_OUTPUT_SETTING];
-	return isMode(value) ? value : "compact";
+	return readSetting(settings, TOOL_OUTPUT_SETTING, isMode, "compact");
 }
 
 export function registerVerbosity(pi: ExtensionAPI): void {

@@ -46,9 +46,11 @@
 
 import { createHash } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
+import type { WorkflowExecution } from "./runtime.ts";
 
 /** One settled agent call, as replayed. */
 export interface WorkflowJournalEntry {
+  execution?: WorkflowExecution;
   /** Position in the run — the same counter that names `wf-agent-N`. */
   index: number;
   /** Hash of the call's payload; a mismatch ends the replayable prefix. */
@@ -77,6 +79,7 @@ export interface WorkflowJournalEntry {
  * sees, so re-grouping phases should not throw away an hour of results.
  */
 export interface JournalKeyInput {
+  receipt?: boolean;
   prompt: string;
   label?: string;
   model?: string;
@@ -106,6 +109,7 @@ export function journalKey(input: JournalKeyInput): string {
     // call keys exactly as it always did, and adding or changing a schema still
     // produces a different key.
     ...(input.schema !== undefined ? [input.schema] : []),
+    ...(input.receipt ? ["execution-receipt-v1"] : []),
   ]);
   return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
@@ -158,7 +162,14 @@ function isEntry(value: unknown): value is WorkflowJournalEntry {
     (entry.index as number) >= 0 &&
     typeof entry.key === "string" &&
     typeof entry.ok === "boolean" &&
+    (entry.execution === undefined || isExecution(entry.execution)) &&
     (entry.text === undefined || typeof entry.text === "string") &&
     (entry.resumed === undefined || entry.resumed === true)
   );
+}
+
+function isExecution(value: unknown): value is WorkflowExecution {
+  return typeof value === "object" && value !== null && "record_id" in value &&
+    typeof value.record_id === "string" && value.record_id.length > 0 &&
+    (!("conversation_id" in value) || typeof value.conversation_id === "string");
 }

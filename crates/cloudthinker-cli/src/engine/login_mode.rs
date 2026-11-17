@@ -27,11 +27,12 @@ pub enum LoginFlow {
 impl LoginEnvironment {
     pub fn from_process(device_auth_flag: bool) -> Self {
         let set = |name: &str| std::env::var_os(name).is_some_and(|value| !value.is_empty());
+        let ssh = set("SSH_CONNECTION") || set("SSH_CLIENT") || set("SSH_TTY");
         Self {
             device_auth_flag,
             mode_override: std::env::var(LOGIN_MODE_ENV_VAR).ok(),
-            ssh: set("SSH_CONNECTION") || set("SSH_CLIENT") || set("SSH_TTY"),
-            browser_helper: set("BROWSER"),
+            ssh,
+            browser_helper: set("BROWSER") && (!ssh || set("VSCODE_IPC_HOOK_CLI")),
             display: set("DISPLAY") || set("WAYLAND_DISPLAY"),
             wsl: set("WSL_DISTRO_NAME") || set("WSL_INTEROP"),
             platform: if cfg!(target_os = "linux") {

@@ -1,6 +1,6 @@
 import type { CloudThinkerClient } from "./client.ts";
 import type { MemorySnapshot } from "./runtime.ts";
-import { sleep } from "./tools/shared.ts";
+import { pollUntil } from "./tools/shared.ts";
 
 export const MEMORY_MARKER = "<<<CT_MEMORY_INDEX>>>";
 export const USERS_MARKER = "<<<CT_USER_NOTES>>>";
@@ -49,19 +49,22 @@ export async function fetchMemory(
 		run_in_background: true,
 	});
 	if (started.status === "completed") return parseMemory(started.stdout);
-	const now = options.now ?? Date.now;
-	const deadline = now() + (options.maxWaitMs ?? MAX_WAIT_MS);
 	let since = 0;
 	let collected = "";
-	for (;;) {
-		const page = await client.readExecution(started.task_id, {
-			conversation_id: conversationId,
-			since,
-		});
-		collected += page.output;
-		since = page.next_cursor;
-		if (page.status !== "running") return parseMemory(collected);
-		if (now() >= deadline) return undefined;
-		await sleep(options.intervalMs ?? POLL_INTERVAL_MS);
-	}
+	const last = await pollUntil({
+		read: async () => {
+			const page = await client.readExecution(started.task_id, {
+				conversation_id: conversationId,
+				since,
+			});
+			collected += page.output;
+			since = page.next_cursor;
+			return page;
+		},
+		settled: (page) => page.status !== "running",
+		intervalMs: options.intervalMs ?? POLL_INTERVAL_MS,
+		maxWaitMs: options.maxWaitMs ?? MAX_WAIT_MS,
+		now: options.now,
+	});
+	return last.status !== "running" ? parseMemory(collected) : undefined;
 }

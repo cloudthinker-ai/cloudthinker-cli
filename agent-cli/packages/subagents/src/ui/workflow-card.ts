@@ -47,6 +47,7 @@ import {
   type WorkflowRunStatus,
 } from "../workflow/progress.ts";
 import type { Theme } from "./agent-widget.ts";
+import { magnitude } from "./magnitude.ts";
 
 /**
  * Header re-render cadence. Claude Code ticks the workflow clock once a second,
@@ -186,9 +187,7 @@ export interface WorkflowCardInput {
 
 /** `18.4k` / `1.2M` — bare magnitude, since the row already reads as a stat. */
 export function formatCompactTokens(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
-  return `${count}`;
+  return magnitude(count);
 }
 
 /**

@@ -46,7 +46,7 @@ check: fmt clippy discovery-runtime-check test
 # rustfmt (which stable `cargo fmt` disagrees with), so the fmt gate covers only
 # the hand-written crates.
 fmt:
-	cd $(CLI_DIR) && cargo fmt --check -p cloudthinker-client -p cloudthinker-cli
+	cd $(CLI_DIR) && cargo fmt --check -p cloudthinker-client -p cloudthinker-cli -p cloudthinker-spec
 
 clippy:
 	cd $(CLI_DIR) && cargo clippy --all-targets -- -D warnings

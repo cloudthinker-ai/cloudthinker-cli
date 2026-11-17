@@ -48,7 +48,7 @@ test("auto with no argument prints the mode and who can change it", async () => 
 	assert.deepEqual(editor.printed, [
 		{
 			message: [
-				"Approval mode: Manual — every cloud write waits for a human",
+				"Approval mode: Manual — every cloud write, local file change and local command that changes something waits for a human",
 				"change it with /cloudthinker:auto on|off",
 			].join("\n"),
 			type: "info",
@@ -82,7 +82,7 @@ test("auto on and off patch the workspace and update the session's mode", async 
 		editor.printed.map((entry) => entry.message),
 		[
 			"Approval mode: Auto — a cloud write runs when the workspace rule allows it",
-			"Approval mode: Manual — every cloud write waits for a human",
+			"Approval mode: Manual — every cloud write, local file change and local command that changes something waits for a human",
 		],
 	);
 });
@@ -103,7 +103,7 @@ test("a write verdict keeps the session's mode current", () => {
 	const session = harness({}, true, false);
 	session.runtime.noteWriteVerdict("auto_mode_disabled");
 	assert.equal(session.runtime.autoMode?.enabled, false);
-	session.runtime.noteWriteVerdict("workspace_trusted_command");
+	session.runtime.noteWriteVerdict("classifier_allow");
 	assert.equal(session.runtime.autoMode?.enabled, true);
 });
 

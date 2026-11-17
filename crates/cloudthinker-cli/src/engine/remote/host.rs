@@ -17,20 +17,19 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
-use tokio::time::{Instant, MissedTickBehavior};
+use tokio::time::Instant;
 
-use super::catalog::{Meta, expand, home_folder, tilde};
-use super::paths::{HOST_PID_ENV, PASTE_MAX_AGE_SECS, READY_ENV, REMOTE_ENV, RemotePaths};
-use super::unix_now;
-use super::wire::{
-    AttachState, Frame, Hello, PROTOCOL_VERSION, Size, Upload, UploadKind, Welcome, output_frames,
-    read_frame, write_frame,
+use super::catalog::Meta;
+use super::link::{
+    FromHost, LINK_VERSION, Open, Ready, Start, ToHost, read_to_host, write_from_host,
 };
+use super::paths::{HOST_PID_ENV, READY_ENV, REMOTE_ENV, RemotePaths};
+use super::unix_now;
+use super::wire::{AttachState, Size};
 use crate::engine::exit::ExitCode;
 
-const HELLO_WAIT: Duration = Duration::from_secs(10);
+const OPEN_WAIT: Duration = Duration::from_secs(10);
 const FIRST_ATTACH_WAIT: Duration = Duration::from_secs(30);
-const PING_EVERY: Duration = Duration::from_secs(5);
 const JIGGLE_WAIT: Duration = Duration::from_millis(50);
 const WRITE_STALL: Duration = Duration::from_secs(15);
 const FLUSH_WAIT: Duration = Duration::from_secs(2);
@@ -40,11 +39,8 @@ const PTY_READ_CHUNK: usize = 16 * 1024;
 const OUTPUT_QUEUE: usize = 256;
 const CLIENT_QUEUE: usize = 512;
 const EVENT_QUEUE: usize = 64;
-const PASTE_NAME_MAX: usize = 80;
 const NO_UPDATE_ENV: &str = "CLOUDTHINKER_NO_UPDATE_CHECK";
 const SSH_AGENT_ENV: &str = "SSH_AUTH_SOCK";
-const PASTE_START: &[u8] = b"\x1b[200~";
-const PASTE_END: &[u8] = b"\x1b[201~";
 const FALLBACK_SIZE: Size = Size { rows: 24, cols: 80 };
 
 pub const TERMINAL_ENV: [&str; 5] = ["TERM", "COLORTERM", "TERM_PROGRAM", "LC_TERMINAL", "LANG"];
@@ -52,7 +48,10 @@ pub const TERMINAL_ENV: [&str; 5] = ["TERM", "COLORTERM", "TERM_PROGRAM", "LC_TE
 pub async fn run(name: &str) -> ExitCode {
     let paths = match RemotePaths::for_name(name) {
         Ok(paths) => paths,
-        Err(_) => return ExitCode::JobFailed,
+        Err(error) => {
+            crate::engine::output::eprintln_error(&error.to_string());
+            return ExitCode::Usage;
+        }
     };
     let log = Log::new(&paths);
     match serve(&paths, &log).await {
@@ -90,13 +89,12 @@ async fn serve(paths: &RemotePaths, log: &Log) -> Result<(), HostError> {
     else {
         return Ok(());
     };
-    let _ = std::fs::remove_file(paths.socket());
+    let _ = std::fs::remove_file(paths.link());
     let listener =
-        UnixListener::bind(paths.socket()).map_err(|_| HostError::Setup("socket bind failed"))?;
-    std::fs::set_permissions(paths.socket(), Permissions::from_mode(0o600))
+        UnixListener::bind(paths.link()).map_err(|_| HostError::Setup("socket bind failed"))?;
+    std::fs::set_permissions(paths.link(), Permissions::from_mode(0o600))
         .map_err(|_| HostError::Setup("socket mode could not be set"))?;
     log.event("host start");
-    prune_pastes(paths);
     let (events, inbox) = mpsc::channel(EVENT_QUEUE);
     let outcome = Host::new(paths, log, events)
         .serve(&listener, &mut hangup, &mut detach, inbox)
@@ -107,7 +105,7 @@ async fn serve(paths: &RemotePaths, log: &Log) -> Result<(), HostError> {
 }
 
 fn cleanup(paths: &RemotePaths) {
-    let _ = std::fs::remove_file(paths.socket());
+    let _ = std::fs::remove_file(paths.link());
     let _ = std::fs::remove_file(paths.ready());
     let _ = std::fs::remove_file(paths.agent_socket());
     let _ = std::fs::remove_file(paths.meta());
@@ -131,8 +129,8 @@ impl fmt::Display for HostError {
 }
 
 enum Event {
-    Joined { stream: UnixStream, hello: Hello },
-    Frame { id: u64, frame: Frame },
+    Joined { stream: UnixStream, open: Open },
+    Frame { id: u64, frame: ToHost },
     Left { id: u64 },
 }
 
@@ -154,6 +152,18 @@ struct Agent {
     size: Size,
     started_at: u64,
     cwd: String,
+}
+
+impl Agent {
+    fn ready(&self, state: AttachState, session: u64) -> FromHost {
+        FromHost::Ready(Ready {
+            state,
+            pid: self.pid,
+            started_at: self.started_at,
+            cwd: self.cwd.clone(),
+            session,
+        })
+    }
 }
 
 struct Host<'a> {
@@ -191,8 +201,6 @@ impl<'a> Host<'a> {
         let first_attach_deadline = Instant::now() + FIRST_ATTACH_WAIT;
         let mut output: Option<mpsc::Receiver<Vec<u8>>> = None;
         let mut exited: Option<oneshot::Receiver<i32>> = None;
-        let mut ping = tokio::time::interval(PING_EVERY);
-        ping.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
             let jiggle_at = self.jiggle.map(|(at, _)| at);
             tokio::select! {
@@ -215,15 +223,12 @@ impl<'a> Host<'a> {
                     }
                 },
                 chunk = recv_or_pending(&mut output) => match chunk {
-                    Some(bytes) => self.forward(&bytes),
+                    Some(bytes) => self.send(FromHost::Output(bytes)),
                     None => output = None,
                 },
                 code = exit_or_pending(&mut exited) => {
                     self.finish(code, output.take()).await;
                     return Ok(());
-                }
-                _ = ping.tick() => {
-                    self.send(Frame::Ping);
                 }
                 () = sleep_or_pending(jiggle_at) => self.restore_size(),
                 _ = hangup.recv() => {}
@@ -235,7 +240,7 @@ impl<'a> Host<'a> {
 
     fn on_event(&mut self, event: Event) -> Next {
         match event {
-            Event::Joined { stream, hello } => self.attach(stream, &hello),
+            Event::Joined { stream, open } => self.attach(stream, open),
             Event::Frame { id, frame } if self.is_current(id) => {
                 self.on_frame(frame);
                 Next::Continue
@@ -253,7 +258,7 @@ impl<'a> Host<'a> {
         let Some(client) = self.client.take() else {
             return;
         };
-        client.send(Frame::Detach);
+        client.send(FromHost::Detach);
         self.log.event("detach (agent)");
         tokio::spawn(client.flush());
     }
@@ -262,86 +267,87 @@ impl<'a> Host<'a> {
         self.client.as_ref().is_some_and(|client| client.id == id)
     }
 
-    fn attach(&mut self, stream: UnixStream, hello: &Hello) -> Next {
-        prune_pastes(self.paths);
-        if let Some(resumed) = hello.resume {
-            if self.agent.is_none() {
-                self.next_id += 1;
-                let client = Client::spawn(stream, self.next_id, self.events.clone());
-                client.send(Frame::Exit(last_exit(self.paths)));
-                self.log.event("resume after agent exit");
-                self.client = Some(client);
+    fn refuse(&mut self, stream: UnixStream, frame: FromHost) {
+        self.next_id += 1;
+        let client = Client::spawn(stream, self.next_id, self.events.clone());
+        client.send(frame);
+        tokio::spawn(client.flush());
+    }
+
+    fn attach(&mut self, stream: UnixStream, open: Open) -> Next {
+        if open.version != LINK_VERSION {
+            self.log.event("attach refused: link version");
+            self.refuse(
+                stream,
+                FromHost::Failed(format!(
+                    "the running agent speaks host link {LINK_VERSION}, and this cloudthinker speaks {}",
+                    open.version
+                )),
+            );
+            return Next::Continue;
+        }
+        if open.resume.is_some_and(|resumed| resumed != self.session) && self.agent.is_some() {
+            self.log.event("resume refused: replaced");
+            self.refuse(stream, FromHost::Replaced);
+            return Next::Continue;
+        }
+        let start = match (&self.agent, open.start) {
+            (Some(_), _) => None,
+            (None, Some(start)) => Some(start),
+            (None, None) => {
+                self.log.event("attach with no agent");
+                self.refuse(stream, FromHost::Exit(last_exit(self.paths)));
                 return Next::Stop;
             }
-            if resumed != self.session {
-                self.next_id += 1;
-                let client = Client::spawn(stream, self.next_id, self.events.clone());
-                client.send(Frame::Replaced);
-                self.log.event("resume refused: replaced");
-                tokio::spawn(client.flush());
-                return Next::Continue;
-            }
-        }
+        };
         if let Some(previous) = self.client.take() {
-            previous.send(Frame::Replaced);
+            previous.send(FromHost::Replaced);
+            tokio::spawn(previous.flush());
             self.log.event("replaced");
         }
         self.next_id += 1;
         self.session = new_session(self.next_id);
         self.client = Some(Client::spawn(stream, self.next_id, self.events.clone()));
         self.log.event("attach");
-        if self.agent.is_some() {
-            self.reattach(hello);
+        let Some(start) = start else {
+            self.reattach(open.size);
             return Next::Continue;
-        }
+        };
         let _ = std::fs::remove_file(self.paths.exit());
-        let home = home_folder();
-        let (cwd, moved) = resolve_cwd(hello.cwd.as_deref(), &home);
-        match spawn_agent(self.paths, hello, &cwd, &home) {
+        match spawn_agent(self.paths, &start, open.size) {
             Ok((agent, io)) => {
                 match agent.pid {
                     Some(pid) => self.log.event(&format!("agent start pid {pid}")),
                     None => self.log.event("agent start"),
                 }
-                if write_meta(self.paths, &cwd, agent.started_at).is_err() {
+                if write_meta(self.paths, &agent.cwd, agent.started_at).is_err() {
                     self.log.event("meta write failed");
                 }
-                let frame = welcome(AttachState::Started, &agent, self.session);
+                let frame = agent.ready(AttachState::Started, self.session);
                 self.agent = Some(agent);
                 self.send(frame);
-                if moved {
-                    self.send(Frame::Notice(format!(
-                        "the folder {} is not there; the agent started in {}",
-                        hello.cwd.as_deref().unwrap_or_default(),
-                        home.display()
-                    )));
-                }
                 Next::Started(io)
             }
             Err(error) => {
                 self.log.event("agent start failed");
-                self.send(Frame::Notice(format!("the agent could not start: {error}")));
-                self.send(Frame::Exit(1));
+                self.send(FromHost::Failed(format!(
+                    "the agent could not start: {error}"
+                )));
+                self.send(FromHost::Exit(1));
                 Next::Stop
             }
         }
     }
 
-    fn reattach(&mut self, hello: &Hello) {
+    fn reattach(&mut self, size: Size) {
         if let Some(frame) = self
             .agent
             .as_ref()
-            .map(|agent| welcome(AttachState::Attached, agent, self.session))
+            .map(|agent| agent.ready(AttachState::Attached, self.session))
         {
             self.send(frame);
         }
-        if hello.resume.is_none() && (hello.cwd.is_some() || !hello.args.is_empty()) {
-            self.send(Frame::Notice(
-                "the agent is already running; --cwd and agent arguments apply only when it starts"
-                    .into(),
-            ));
-        }
-        self.resize(hello.size);
+        self.resize(size);
         let Some(agent) = &self.agent else {
             return;
         };
@@ -385,97 +391,45 @@ impl<'a> Host<'a> {
         }
     }
 
-    fn on_frame(&mut self, frame: Frame) {
+    fn on_frame(&mut self, frame: ToHost) {
         match frame {
-            Frame::Input(bytes) => self.type_into_agent(bytes),
-            Frame::Resize(size) => self.resize(size),
-            Frame::Upload(upload) => self.upload(&upload),
-            Frame::Hello(_)
-            | Frame::Welcome(_)
-            | Frame::Output(_)
-            | Frame::Ping
-            | Frame::Notice(_)
-            | Frame::Exit(_)
-            | Frame::Replaced
-            | Frame::Query(_)
-            | Frame::Catalog(_)
-            | Frame::Complete(_)
-            | Frame::Completions(_)
-            | Frame::Detach => {}
-        }
-    }
-
-    fn type_into_agent(&self, bytes: Vec<u8>) {
-        if let Some(agent) = &self.agent {
-            let _ = agent.input.send(bytes);
-        }
-    }
-
-    fn upload(&mut self, upload: &Upload) {
-        match save_upload(self.paths, upload) {
-            Ok(path) => {
-                self.log.event(&format!("upload {}", upload.bytes.len()));
-                self.type_into_agent(bracketed_paste(&path));
+            ToHost::Input(bytes) => {
+                if let Some(agent) = &self.agent {
+                    let _ = agent.input.send(bytes);
+                }
             }
-            Err(error) => {
-                self.send(Frame::Notice(format!(
-                    "the pasted file could not be saved: {error}"
-                )));
-            }
+            ToHost::Resize(size) => self.resize(size),
+            ToHost::Open(_) => {}
         }
     }
 
-    fn forward(&mut self, bytes: &[u8]) {
-        if self.client.is_none() {
-            return;
-        }
-        for frame in output_frames(bytes) {
-            if !self.send(frame) {
-                return;
-            }
-        }
-    }
-
-    fn send(&mut self, frame: Frame) -> bool {
+    fn send(&mut self, frame: FromHost) {
         let Some(client) = &self.client else {
-            return false;
+            return;
         };
-        if client.send(frame) {
-            return true;
+        if !client.send(frame) {
+            self.client = None;
+            self.log.event("detach");
         }
-        self.client = None;
-        self.log.event("detach");
-        false
     }
 
     async fn finish(&mut self, code: i32, output: Option<mpsc::Receiver<Vec<u8>>>) {
         if let Some(mut output) = output {
             let deadline = Instant::now() + DRAIN_WAIT;
             while let Ok(Some(bytes)) = tokio::time::timeout_at(deadline, output.recv()).await {
-                self.forward(&bytes);
+                self.send(FromHost::Output(bytes));
             }
         }
         self.log.event(&format!("agent exit {code}"));
         if save_exit(self.paths, code).is_err() {
             self.log.event("exit code write failed");
         }
-        self.send(Frame::Exit(code));
+        self.send(FromHost::Exit(code));
         if let Some(client) = self.client.take() {
             client.flush().await;
         }
         self.agent = None;
     }
-}
-
-fn welcome(state: AttachState, agent: &Agent, session: u64) -> Frame {
-    Frame::Welcome(Welcome {
-        version: PROTOCOL_VERSION,
-        cli_version: env!("CARGO_PKG_VERSION").into(),
-        state,
-        started_at: agent.started_at,
-        cwd: agent.cwd.clone(),
-        session,
-    })
 }
 
 fn new_session(id: u64) -> u64 {
@@ -495,14 +449,14 @@ fn save_exit(paths: &RemotePaths, code: i32) -> Result<(), CtError> {
     write_private(&dir, name, code.to_string().as_bytes())
 }
 
-fn last_exit(paths: &RemotePaths) -> i32 {
+pub(super) fn last_exit(paths: &RemotePaths) -> i32 {
     std::fs::read_to_string(paths.exit())
         .ok()
         .and_then(|text| text.trim().parse().ok())
         .unwrap_or(0)
 }
 
-fn write_meta(paths: &RemotePaths, cwd: &Path, started: u64) -> Result<(), CtError> {
+fn write_meta(paths: &RemotePaths, cwd: &str, started: u64) -> Result<(), CtError> {
     let dir = paths.open_root()?;
     let file = paths.meta();
     let name = file
@@ -510,53 +464,24 @@ fn write_meta(paths: &RemotePaths, cwd: &Path, started: u64) -> Result<(), CtErr
         .and_then(|name| name.to_str())
         .ok_or_else(|| CtError::Usage("the agent name is not a file name".into()))?;
     let meta = Meta {
-        cwd: absolute_display(cwd),
+        cwd: cwd.to_string(),
         started,
     };
     write_private(&dir, name, meta.render().as_bytes())
 }
 
-fn absolute_display(path: &Path) -> String {
-    std::path::absolute(path)
-        .unwrap_or_else(|_| path.to_path_buf())
-        .display()
-        .to_string()
-}
-
 async fn handshake(mut stream: UnixStream, events: mpsc::Sender<Event>) {
-    let first = tokio::time::timeout(HELLO_WAIT, read_frame(&mut stream)).await;
-    let refusal = match first {
-        Ok(Ok(Some(Frame::Hello(hello)))) if hello.version == PROTOCOL_VERSION => {
-            let _ = events.send(Event::Joined { stream, hello }).await;
-            return;
-        }
-        Ok(Ok(Some(Frame::Hello(hello)))) => version_notice(hello.version),
-        Ok(Ok(Some(_))) => {
-            "the remote side expected a hello first; update cloudthinker on both machines".into()
-        }
-        Ok(Err(error)) => format!(
-            "the remote side could not read the hello ({error}); update cloudthinker on both machines"
-        ),
-        Ok(Ok(None)) | Err(_) => return,
-    };
-    let _ = tokio::time::timeout(
-        FLUSH_WAIT,
-        write_frame(&mut stream, &Frame::Notice(refusal)),
-    )
-    .await;
+    let first = tokio::time::timeout(OPEN_WAIT, read_to_host(&mut stream)).await;
+    if let Ok(Ok(Some(ToHost::Open(open)))) = first {
+        let _ = events.send(Event::Joined { stream, open }).await;
+        return;
+    }
     let _ = stream.shutdown().await;
-}
-
-fn version_notice(client: u16) -> String {
-    format!(
-        "this machine's cloudthinker {} speaks remote protocol {PROTOCOL_VERSION}, and yours speaks {client}; update cloudthinker on both machines",
-        env!("CARGO_PKG_VERSION")
-    )
 }
 
 struct Client {
     id: u64,
-    frames: mpsc::Sender<Frame>,
+    frames: mpsc::Sender<FromHost>,
     reader: JoinHandle<()>,
     writer: Option<JoinHandle<()>>,
 }
@@ -573,7 +498,7 @@ impl Client {
         }
     }
 
-    fn send(&self, frame: Frame) -> bool {
+    fn send(&self, frame: FromHost) -> bool {
         self.frames.try_send(frame).is_ok()
     }
 
@@ -594,7 +519,7 @@ impl Drop for Client {
 
 async fn read_client(mut reader: OwnedReadHalf, id: u64, events: mpsc::Sender<Event>) {
     loop {
-        let event = match read_frame(&mut reader).await {
+        let event = match read_to_host(&mut reader).await {
             Ok(Some(frame)) => Event::Frame { id, frame },
             Ok(None) | Err(_) => Event::Left { id },
         };
@@ -607,13 +532,13 @@ async fn read_client(mut reader: OwnedReadHalf, id: u64, events: mpsc::Sender<Ev
 
 async fn write_client(
     mut writer: OwnedWriteHalf,
-    mut queue: mpsc::Receiver<Frame>,
+    mut queue: mpsc::Receiver<FromHost>,
     id: u64,
     events: mpsc::Sender<Event>,
 ) {
     while let Some(frame) = queue.recv().await {
         if !matches!(
-            tokio::time::timeout(WRITE_STALL, write_frame(&mut writer, &frame)).await,
+            tokio::time::timeout(WRITE_STALL, write_from_host(&mut writer, &frame)).await,
             Ok(Ok(()))
         ) {
             let _ = events.send(Event::Left { id }).await;
@@ -646,12 +571,11 @@ async fn sleep_or_pending(at: Option<Instant>) {
 
 fn spawn_agent(
     paths: &RemotePaths,
-    hello: &Hello,
-    cwd: &Path,
-    home: &Path,
+    start: &Start,
+    size: Size,
 ) -> Result<(Agent, AgentIo), HostError> {
-    let size = if pty_size(hello.size).is_some() {
-        hello.size
+    let size = if pty_size(size).is_some() {
+        size
     } else {
         FALLBACK_SIZE
     };
@@ -664,7 +588,7 @@ fn spawn_agent(
     let _ = std::fs::remove_file(paths.ready());
     let child = pair
         .slave
-        .spawn_command(agent_command(paths, hello, &program, cwd))
+        .spawn_command(agent_command(paths, start, &program))
         .map_err(|error| HostError::Agent(error.to_string()))?;
     drop(pair.slave);
     let reader = pair
@@ -690,18 +614,18 @@ fn spawn_agent(
             pid,
             size,
             started_at,
-            cwd: tilde(cwd, home),
+            cwd: start.cwd.clone(),
         },
         AgentIo { output, exited },
     ))
 }
 
-fn agent_command(paths: &RemotePaths, hello: &Hello, program: &Path, cwd: &Path) -> CommandBuilder {
+fn agent_command(paths: &RemotePaths, start: &Start, program: &Path) -> CommandBuilder {
     let mut command = CommandBuilder::new(program);
     command.arg("agent");
-    command.args(&hello.args);
-    command.cwd(cwd);
-    for (key, value) in hello
+    command.args(&start.args);
+    command.cwd(&start.cwd);
+    for (key, value) in start
         .env
         .iter()
         .filter(|(key, _)| TERMINAL_ENV.contains(&key.as_str()))
@@ -781,86 +705,13 @@ fn to_pty(size: Size) -> PtySize {
     }
 }
 
-fn resolve_cwd(requested: Option<&str>, home: &Path) -> (PathBuf, bool) {
-    let Some(requested) = requested.filter(|requested| !requested.is_empty()) else {
-        return (home.to_path_buf(), false);
-    };
-    let candidate = expand(requested, home);
-    if candidate.is_dir() {
-        (candidate, false)
-    } else {
-        (home.to_path_buf(), true)
-    }
-}
-
-fn save_upload(paths: &RemotePaths, upload: &Upload) -> Result<PathBuf, CtError> {
-    let dir = paths.open_pastes()?;
-    let name = paste_name(unix_now(), rand::random::<u16>(), &upload.name, upload.kind);
-    write_private(&dir, &name, &upload.bytes)?;
-    let path = paths.pastes().join(name);
-    Ok(std::path::absolute(&path).unwrap_or(path))
-}
-
-fn paste_name(seconds: u64, tag: u16, name: &str, kind: UploadKind) -> String {
-    let base = name.rsplit(['/', '\\']).next().unwrap_or_default();
-    let mut clean: String = base
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-') {
-                character
-            } else {
-                '_'
-            }
-        })
-        .take(PASTE_NAME_MAX)
-        .collect();
-    if clean.chars().all(|character| character == '.') {
-        clean = match kind {
-            UploadKind::Image => "clipboard.png".into(),
-            UploadKind::File => "file".into(),
-        };
-    }
-    format!("{seconds}-{tag:04x}-{clean}")
-}
-
-fn bracketed_paste(path: &Path) -> Vec<u8> {
-    let mut bytes = PASTE_START.to_vec();
-    bytes.extend_from_slice(path.as_os_str().as_encoded_bytes());
-    bytes.extend_from_slice(PASTE_END);
-    bytes
-}
-
-fn prune_pastes(paths: &RemotePaths) {
-    let Ok(dir) = paths.open_pastes() else {
-        return;
-    };
-    let Ok(entries) = dir.entries() else {
-        return;
-    };
-    let now = SystemTime::now();
-    for entry in entries.flatten() {
-        let stale = entry
-            .metadata()
-            .ok()
-            .filter(cap_std::fs::Metadata::is_file)
-            .and_then(|metadata| metadata.modified().ok())
-            .is_some_and(|modified| {
-                now.duration_since(modified.into_std())
-                    .is_ok_and(|age| age.as_secs() > PASTE_MAX_AGE_SECS)
-            });
-        if stale {
-            let _ = dir.remove_file(entry.file_name());
-        }
-    }
-}
-
-struct Log {
+pub(super) struct Log {
     path: PathBuf,
     rotated: PathBuf,
 }
 
 impl Log {
-    fn new(paths: &RemotePaths) -> Self {
+    pub(super) fn new(paths: &RemotePaths) -> Self {
         let path = paths.log();
         let mut rotated = OsString::from(path.as_os_str());
         rotated.push(".1");
@@ -870,7 +721,7 @@ impl Log {
         }
     }
 
-    fn event(&self, event: &str) {
+    pub(super) fn event(&self, event: &str) {
         if std::fs::metadata(&self.path).is_ok_and(|metadata| metadata.len() >= LOG_CAP_BYTES) {
             let _ = std::fs::rename(&self.path, &self.rotated);
         }
@@ -888,47 +739,6 @@ impl Log {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn paste_names_keep_only_a_safe_basename() {
-        assert_eq!(
-            paste_name(7, 0xab, "../../etc/pass wd;rm", UploadKind::File),
-            "7-00ab-pass_wd_rm"
-        );
-        assert_eq!(
-            paste_name(7, 1, "C:\\Users\\me\\shot.png", UploadKind::Image),
-            "7-0001-shot.png"
-        );
-        assert_eq!(
-            paste_name(7, 1, "", UploadKind::Image),
-            "7-0001-clipboard.png"
-        );
-        assert_eq!(paste_name(7, 1, "..", UploadKind::File), "7-0001-file");
-        assert_eq!(paste_name(7, 1, "dir/", UploadKind::File), "7-0001-file");
-        assert_eq!(paste_name(7, 1, "é.txt", UploadKind::File), "7-0001-_.txt");
-        let long = paste_name(7, 1, &"x".repeat(300), UploadKind::File);
-        assert_eq!(long.len(), "7-0001-".len() + PASTE_NAME_MAX);
-    }
-
-    #[test]
-    fn the_working_folder_falls_back_to_home_when_missing() {
-        let home = tempfile::tempdir().unwrap();
-        std::fs::create_dir(home.path().join("app")).unwrap();
-        let home = home.path();
-        assert_eq!(resolve_cwd(None, home), (home.to_path_buf(), false));
-        assert_eq!(resolve_cwd(Some("~"), home), (home.to_path_buf(), false));
-        assert_eq!(resolve_cwd(Some("~/app"), home), (home.join("app"), false));
-        assert_eq!(resolve_cwd(Some("app"), home), (home.join("app"), false));
-        let absolute = home.join("app").display().to_string();
-        assert_eq!(
-            resolve_cwd(Some(&absolute), home),
-            (home.join("app"), false)
-        );
-        assert_eq!(
-            resolve_cwd(Some("~/gone"), home),
-            (home.to_path_buf(), true)
-        );
-    }
 
     #[test]
     fn only_a_positive_pid_in_the_ready_file_counts() {

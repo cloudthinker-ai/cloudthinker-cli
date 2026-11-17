@@ -23,6 +23,13 @@ Use the document library's table layout to keep rows together and wrap cells.
 Upload final artifacts with `cloudthinker cyber run evidence`. Keep credentials
 and unredacted secrets out of every artifact.
 
-Before settling, confirm coverage and candidate outcomes, upload final evidence,
-and check the returned run state. Report what was verified and what remains
+Join required workers, adjudicate each candidate and preserve any independence
+limitations before closure. Ultra requires a joined closure Critic review.
+Obtain the server's close decision and report readiness through the local
+checkpoint adapter before generating the final document. A close decision alone
+does not establish readiness. Repair returned gaps and checkpoint again. Changed
+claims require fresh verification; changed records require current readiness.
+
+Before settling, confirm current coverage and candidate outcomes, upload final
+evidence, and check the returned run state. Report what was verified and what remains
 untested.

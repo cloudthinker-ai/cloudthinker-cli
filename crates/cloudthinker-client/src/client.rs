@@ -4,12 +4,12 @@
 //! and owns the 401-retry / proactive-refresh dance so commands never touch
 //! reqwest, serde, or refresh logic directly.
 
-use std::num::NonZeroU64;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use cloudthinker_spec::Method;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -29,6 +29,7 @@ mod doctor;
 mod incidents;
 mod memory;
 mod policy;
+mod public;
 mod recommendations;
 mod reviews;
 mod trace;
@@ -68,11 +69,18 @@ pub use policy::{
     POLICY_DOCUMENT_MAX_BYTES, PolicyImportCounts, PolicyImportIssue, PolicyImportMode,
     PolicyImportOptions, PolicyImportReport, PolicyImportRule, PolicyImportSection,
 };
+pub use public::{
+    BodyField, BodyInput, JsonDocument, PublicCall, PublicReply, PublicSpec, QueryValue,
+    SpecFreshness, TokenView, cached_public_spec, check_personal_token, operation_summary,
+    read_public_spec_file,
+};
 pub use recommendations::{RecommendationStatus, RecommendationView};
 pub use reviews::{
-    LoupeReadiness, LoupeReadinessCheck, LoupeReadinessCheckName, LoupeReadinessState,
-    LoupeSetupConversation, LoupeSetupObservation, LoupeSetupScope, LoupeSetupState, ReviewFinding,
-    ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView, valid_setup_web_url,
+    LocalReviewContext, LocalReviewContextRequest, LocalReviewFindingIn, LocalReviewSeverity,
+    LocalReviewStored, LocalReviewUpload, LoupeReadiness, LoupeReadinessCheck,
+    LoupeReadinessCheckName, LoupeReadinessState, LoupeSetupConversation, LoupeSetupObservation,
+    LoupeSetupScope, LoupeSetupState, ReviewFinding, ReviewSeverityCounts, ReviewStatus,
+    ReviewVerdict, ReviewView, valid_setup_web_url,
 };
 pub use trace::{ConversationTrace, TRACE_MAX_MESSAGES};
 pub use workspaces::{WorkspaceView, Workspaces};
@@ -86,6 +94,7 @@ pub struct DeviceAuthorization {
     pub device_code: String,
     pub user_code: String,
     pub verification_uri: String,
+    pub verification_uri_complete: String,
     pub expires_in: Duration,
     pub interval: Duration,
 }
@@ -115,7 +124,7 @@ pub struct CliIdentity {
 }
 
 /// Terminal + non-terminal run states, serialized with the API's wire values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunStatus {
     Pending,
@@ -136,20 +145,6 @@ impl RunStatus {
     }
 }
 
-impl From<cloudthinker_api::types::AgentRunStatus> for RunStatus {
-    fn from(status: cloudthinker_api::types::AgentRunStatus) -> Self {
-        use cloudthinker_api::types::AgentRunStatus as A;
-        match status {
-            A::Pending => Self::Pending,
-            A::Running => Self::Running,
-            A::Succeeded => Self::Succeeded,
-            A::Failed => Self::Failed,
-            A::RequiredApproval => Self::RequiredApproval,
-            A::Cancelled => Self::Cancelled,
-        }
-    }
-}
-
 /// Result of `POST /cli/runs`.
 #[derive(Debug, Clone)]
 pub struct SubmittedRun {
@@ -157,17 +152,6 @@ pub struct SubmittedRun {
     pub conversation_id: Uuid,
     pub status: RunStatus,
     pub web_url: String,
-}
-
-impl SubmittedRun {
-    fn from_api(api: cloudthinker_api::types::HeadlessRunSubmitted) -> Self {
-        Self {
-            run_id: api.run_id,
-            conversation_id: api.conversation_id,
-            status: api.status.into(),
-            web_url: api.web_url,
-        }
-    }
 }
 
 /// One recent headless run returned by `GET /cli/runs`.
@@ -181,17 +165,52 @@ pub struct RunListItem {
     pub web_url: Option<String>,
 }
 
-impl From<cloudthinker_api::types::HeadlessRunListItem> for RunListItem {
-    fn from(api: cloudthinker_api::types::HeadlessRunListItem) -> Self {
+impl From<PublicRunSummary> for RunListItem {
+    fn from(run: PublicRunSummary) -> Self {
         Self {
-            run_id: api.run_id,
-            conversation_id: api.conversation_id,
-            status: api.status.into(),
-            prompt_preview: api.prompt_preview,
-            created_at: api.created_at,
-            web_url: api.web_url,
+            run_id: run.id,
+            conversation_id: run.conversation_id,
+            status: run.status,
+            prompt_preview: run.prompt_preview,
+            created_at: run.created_at,
+            web_url: run.url,
         }
     }
+}
+
+#[derive(Serialize)]
+struct PublicRunCreate<'a> {
+    prompt: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    conversation_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    agent: Option<&'a str>,
+}
+
+#[derive(Deserialize)]
+struct PublicRun {
+    id: Uuid,
+    conversation_id: Option<Uuid>,
+    status: RunStatus,
+    answer: Option<String>,
+    message: Option<String>,
+    failure_kind: Option<String>,
+    url: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PublicRunSummary {
+    id: Uuid,
+    conversation_id: Option<Uuid>,
+    status: RunStatus,
+    prompt_preview: Option<String>,
+    created_at: DateTime<Utc>,
+    url: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PublicRunPage {
+    items: Vec<PublicRunSummary>,
 }
 
 /// A polled view of a run (`GET /cli/runs/{id}`).
@@ -206,16 +225,16 @@ pub struct RunView {
     pub web_url: Option<String>,
 }
 
-impl RunView {
-    fn from_api(api: cloudthinker_api::types::HeadlessRunStatus) -> Self {
+impl From<PublicRun> for RunView {
+    fn from(run: PublicRun) -> Self {
         Self {
-            run_id: api.run_id,
-            conversation_id: api.conversation_id,
-            status: api.status.into(),
-            answer: api.answer,
-            message: api.message,
-            failure_kind: api.failure_kind,
-            web_url: api.web_url,
+            run_id: run.id,
+            conversation_id: run.conversation_id,
+            status: run.status,
+            answer: run.answer,
+            message: run.message,
+            failure_kind: run.failure_kind,
+            web_url: run.url,
         }
     }
 }
@@ -342,35 +361,36 @@ impl CtClient {
         selected_agent_reference: Option<&str>,
         idempotency_key: Option<&str>,
     ) -> CtResult<SubmittedRun> {
-        let prompt_field = prompt
-            .parse::<cloudthinker_api::types::SubmitHeadlessRunRequestPrompt>()
-            .map_err(|_| CtError::Usage("prompt must be 1–50000 characters".into()))?;
-        let selected_agent_reference = selected_agent_reference.map(str::trim);
-        if selected_agent_reference.is_some_and(str::is_empty) {
+        if !(1..=50_000).contains(&prompt.chars().count()) {
+            return Err(CtError::Usage("prompt must be 1–50000 characters".into()));
+        }
+        let agent = selected_agent_reference.map(str::trim);
+        if agent.is_some_and(str::is_empty) {
             return Err(CtError::Usage("--agent must not be empty".into()));
         }
-        let body = cloudthinker_api::types::SubmitHeadlessRunRequest {
+        let body = serde_json::to_vec(&PublicRunCreate {
+            prompt,
             conversation_id,
-            idempotency_key: idempotency_key
-                .map(str::parse)
-                .transpose()
-                .map_err(|_| CtError::Usage("invalid run idempotency key".into()))?,
-            prompt: prompt_field,
-            selection: cloudthinker_api::types::SavedSelection {
-                option_id: "mode:pro".parse().map_err(|error| {
-                    CtError::Protocol(format!("invalid default selection: {error}"))
-                })?,
-                thinking_effort: None,
-            },
-            source_conversation_id: None,
-            selected_agent_reference: selected_agent_reference.map(str::to_owned),
-        };
-        let submitted = self
-            .authed(async |c: cloudthinker_api::Client| {
-                c.cli_submit_headless_run(None, &body).await
-            })
+            agent,
+        })
+        .map_err(|error| CtError::Usage(error.to_string()))?;
+        let run: PublicRun = self
+            .public_json(
+                Method::Post,
+                "/chat/runs",
+                &[],
+                Some(&body),
+                idempotency_key,
+            )
             .await?;
-        Ok(SubmittedRun::from_api(submitted))
+        Ok(SubmittedRun {
+            run_id: run.id,
+            conversation_id: run.conversation_id.ok_or_else(|| {
+                CtError::Protocol(format!("run {} has no conversation id", run.id))
+            })?,
+            status: run.status,
+            web_url: run.url.unwrap_or_default(),
+        })
     }
 
     /// Resolve a `--continue` UUID. A known run maps to its conversation; a
@@ -391,23 +411,37 @@ impl CtClient {
         limit: u64,
         conversation_id: Option<Uuid>,
     ) -> CtResult<Vec<RunListItem>> {
-        let limit = NonZeroU64::new(limit)
-            .ok_or_else(|| CtError::Usage("--limit must be between 1 and 50".into()))?;
-        let runs = self
-            .authed(async |c: cloudthinker_api::Client| {
-                c.cli_list_headless_runs(conversation_id.as_ref(), Some(limit), None)
-                    .await
-            })
+        if !(1..=50).contains(&limit) {
+            return Err(CtError::Usage("--limit must be between 1 and 50".into()));
+        }
+        let mut query = vec![QueryValue {
+            name: "limit".into(),
+            value: limit.to_string(),
+        }];
+        if let Some(id) = conversation_id {
+            query.push(QueryValue {
+                name: "conversation_id".into(),
+                value: id.to_string(),
+            });
+        }
+        let page: PublicRunPage = self
+            .public_json(Method::Get, "/chat/runs", &query, None, None)
             .await?;
-        Ok(runs.into_iter().map(RunListItem::from).collect())
+        Ok(page.items.into_iter().map(RunListItem::from).collect())
     }
 
     /// Poll one run's current status.
     pub async fn get_run(&self, run_id: Uuid) -> CtResult<RunView> {
-        let view = self
-            .authed(async |c: cloudthinker_api::Client| c.cli_get_headless_run(&run_id, None).await)
+        let run: PublicRun = self
+            .public_json(
+                Method::Get,
+                &format!("/chat/runs/{run_id}"),
+                &[],
+                None,
+                None,
+            )
             .await?;
-        Ok(RunView::from_api(view))
+        Ok(RunView::from(run))
     }
 
     /// Resolve the live account and workspace carried by this credential.
@@ -481,10 +515,13 @@ impl CtClient {
         let expires_in = positive_duration(response.expires_in, "expires_in")?;
         let interval = positive_duration(response.interval, "interval")?;
         validate_verification_uri(&self.base_url, &response.verification_uri)?;
+        let verification_uri_complete =
+            verification_uri_with_code(&response.verification_uri, &response.user_code)?;
         Ok(DeviceAuthorization {
             device_code: response.device_code,
             user_code: response.user_code,
             verification_uri: response.verification_uri,
+            verification_uri_complete,
             expires_in,
             interval,
         })
@@ -800,6 +837,13 @@ fn validate_verification_uri(base_url: &str, verification_uri: &str) -> CtResult
     Ok(())
 }
 
+fn verification_uri_with_code(verification_uri: &str, user_code: &str) -> CtResult<String> {
+    let mut url = url::Url::parse(verification_uri)
+        .map_err(|e| CtError::Protocol(format!("invalid device verification URL: {e}")))?;
+    url.query_pairs_mut().append_pair("code", user_code);
+    Ok(url.into())
+}
+
 /// A 401 surfacing here (rather than being cured by refresh) means the user
 /// must log in again.
 fn reclassify(err: CtError, base_url: &str) -> CtError {
@@ -958,7 +1002,7 @@ mod tests {
 
     #[test]
     fn cancelled_run_status_is_terminal_and_serializes_as_cancelled() {
-        let status = RunStatus::from(cloudthinker_api::types::AgentRunStatus::Cancelled);
+        let status = RunStatus::Cancelled;
 
         assert_eq!(status, RunStatus::Cancelled);
         assert!(status.is_terminal());
@@ -968,6 +1012,7 @@ mod tests {
     #[test]
     fn local_run_brief_json_does_not_expose_server_memory_paths() {
         let brief = CyberRunBrief {
+            checkpoint: None,
             run_id: Uuid::from_u128(1),
             app_id: Uuid::from_u128(2),
             app_name: "ct32-local".into(),
@@ -1034,16 +1079,16 @@ mod tests {
 
     fn run_status_json(status: &str, answer: Option<&str>) -> serde_json::Value {
         serde_json::json!({
-            "run_id": "11111111-1111-4111-8111-111111111111",
+            "id": "11111111-1111-4111-8111-111111111111",
             "conversation_id": "22222222-2222-4222-8222-222222222222",
             "status": status,
             "answer": answer,
             "message": null,
             "failure_kind": null,
-            "web_url": "https://app.example.com/c/22222222-2222-4222-8222-222222222222",
+            "url": "https://app.example.com/c/22222222-2222-4222-8222-222222222222",
             "created_at": "2026-07-20T00:00:00Z",
-            "start_time": null,
-            "end_time": null,
+            "started_at": null,
+            "ended_at": null,
         })
     }
 
@@ -1528,7 +1573,9 @@ mod tests {
     async fn ca_cli_14_submit_secret_gate_422_returns_detail() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/api/v1/cli/runs"))
+            .and(path(
+                "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs",
+            ))
             .respond_with(ResponseTemplate::new(422).set_body_json(serde_json::json!({
                 "detail": "prompt contains a secret"
             })))
@@ -1561,7 +1608,9 @@ mod tests {
     async fn ca_cli_14_malformed_success_body_is_protocol_error() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/api/v1/cli/runs"))
+            .and(path(
+                "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs",
+            ))
             .respond_with(ResponseTemplate::new(202).set_body_string("not json at all"))
             .mount(&server)
             .await;
@@ -1695,7 +1744,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path(
-                "/api/v1/cli/runs/33333333-3333-4333-8333-333333333333",
+                "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs/33333333-3333-4333-8333-333333333333",
             ))
             .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
                 "detail": "Authentication required."
@@ -1725,7 +1774,7 @@ mod tests {
         // First GET 401 (once), then 200 succeeded.
         Mock::given(method("GET"))
             .and(path(
-                "/api/v1/cli/runs/33333333-3333-4333-8333-333333333333",
+                "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs/33333333-3333-4333-8333-333333333333",
             ))
             .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
                 "detail": "Authentication required."
@@ -1736,7 +1785,7 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path(
-                "/api/v1/cli/runs/33333333-3333-4333-8333-333333333333",
+                "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs/33333333-3333-4333-8333-333333333333",
             ))
             .respond_with(
                 ResponseTemplate::new(200)
@@ -1769,7 +1818,7 @@ mod tests {
         use crate::auth::store::TokenStore;
 
         let server = MockServer::start().await;
-        let run_path = "/api/v1/cli/runs/33333333-3333-4333-8333-333333333333";
+        let run_path = "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs/33333333-3333-4333-8333-333333333333";
         Mock::given(method("GET"))
             .and(path(run_path))
             .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
@@ -1808,7 +1857,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path(
-                "/api/v1/cli/runs/33333333-3333-4333-8333-333333333333",
+                "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs/33333333-3333-4333-8333-333333333333",
             ))
             .respond_with(
                 ResponseTemplate::new(200)
@@ -1834,7 +1883,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path(
-                "/api/v1/cli/runs/44444444-4444-4444-8444-444444444444",
+                "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs/44444444-4444-4444-8444-444444444444",
             ))
             .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
                 "detail": "Run not found"
@@ -1969,7 +2018,7 @@ mod tests {
             let coords = MrCoordinates {
                 provider: MrProvider::Gitlab,
                 project_path: "group/my-repo".to_string(),
-                mr_iid: NonZeroU64::new(42).unwrap(),
+                mr_iid: std::num::NonZeroU64::new(42).unwrap(),
             };
             let view = client.lookup_review(&coords).await.unwrap();
 
@@ -2011,7 +2060,7 @@ mod tests {
         let coords = MrCoordinates {
             provider: MrProvider::Github,
             project_path: "owner/repo".to_string(),
-            mr_iid: NonZeroU64::new(99).unwrap(),
+            mr_iid: std::num::NonZeroU64::new(99).unwrap(),
         };
         let err = client.lookup_review(&coords).await.unwrap_err();
         assert!(

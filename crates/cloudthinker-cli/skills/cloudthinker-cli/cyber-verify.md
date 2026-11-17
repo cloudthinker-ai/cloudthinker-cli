@@ -1,27 +1,43 @@
 # Local Cyber verification
 
-Use an independent verifier for each candidate when the workflow can dispatch
-one. The verifier must replay the claim; the scout's original response is not
-verification. Read the candidate, relevant source or contract, and expected
-access rules. Test against the run's frozen target and record a fresh observation.
-Give the verifier the claim, policy, and raw evidence; let it decide the outcome.
+Apply the shared investigation proof standard above. This local adapter owns
+artifact layout and the workflow result shape. Read the candidate, expected rule,
+producer references, exact identity revision, target scope and assigned evidence
+paths. Replay the claim and controls in this fresh execution.
 
-For authorization claims, compare the same resource across relevant identities,
-including an allowed control. Status codes alone do not prove a boundary
-failure. For state changes, inspect the effect and use a safe control. Confirm
-only when the unsafe effect reproduces and evidence supports impact. Refute only
-after a complete replay and controls show the claim does not hold. Otherwise,
-leave it unresolved and record the missing identity, state, control, or other
-blocker; do not promote source-only or speculative evidence.
-Record a contract or usability mismatch as an observation unless it violates a
-security property; an unexpected response alone is not a vulnerability.
-Move prior false positives to `findings/dismissed/`, retaining proof and the
-reason for the new verdict.
-Keep an existing finding's filename, `display_id`, and human status metadata.
+Each task has one assignment, technical verification or final-record review.
+Return the structured shape requested by `agent(prompt, { schema, receipt: true })`; missing proof
+returns `inconclusive`, never a fabricated confirmation. Save evidence-bearing
+reports before returning. For technical verification, return:
 
-Keep the redacted request, observed result, control, and source references with
-the candidate evidence. Put confirmed findings under `findings/open/` (still the folder this release); use
-`needs-verification/` or `dismissed/` for other outcomes as appropriate.
+```json
+{"assignment":"technical","claims":[{"candidate":"<candidate path>","decision":"confirmed","report":"<assigned report path>"}]}
+```
+
+Use `confirmed`, `refuted` or `inconclusive` per claim and include every assigned
+member. The report records the expected rule, prerequisites, identity/revision,
+redacted request, captured response or resulting state, allowed control, impact
+and limitations. Technical verification does not adjudicate its own result.
+
+A separate final-record reviewer reads the exact adjudicated revision without
+editing it. Return `assignment: "final-record-review"`, `report`, `finding`,
+`revision` and `discrepancies`. Return discrepancies as an array; an empty array
+means no discrepancy was found within the reviewed evidence. It is not a new
+runtime proof. Material claim changes require fresh technical verification.
+
+Keep actual runtime receipts separate from these model-authored results. The
+coordinator uses the runtime envelope's `execution.conversation_id`, not an ID
+from this report. Verification and final review require fresh executions, with
+`execution.resumed` false. Save the assigned report so the coordinator can upload
+and hash it. If conversation linkage or the receipt is missing, keep the
+independence limitation explicit and do not promote the affected claim. The coordinator reads reports, applies the verdict,
+and retains human triage and existing finding identity.
+
+Keep draft leads under `findings/candidates/open/`. After adjudication, confirmed
+findings use `findings/open/`; unresolved ones use `needs-verification/` and
+refuted ones use `dismissed/`. Preserve the existing filename, `display_id`, human
+status and previous evidence. Retesting a prior finding requires its original
+proof and controls. Source-only or speculative evidence remains unresolved.
 
 Published findings use this frontmatter:
 

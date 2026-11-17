@@ -88,6 +88,10 @@ pub fn choose(catalog: &Catalog, laptop_origin: Option<&str>, explicit: Explicit
     })
 }
 
+pub fn here(catalog: &Catalog, cwd: &str) -> Decision {
+    open_folder(catalog, &resolve(cwd, &catalog.home), false)
+}
+
 pub fn resolve(typed: &str, home: &str) -> String {
     trim_folder(&expand(typed, Path::new(home)).to_string_lossy()).to_string()
 }

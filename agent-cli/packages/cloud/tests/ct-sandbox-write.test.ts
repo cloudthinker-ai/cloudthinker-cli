@@ -9,14 +9,11 @@ import type { CloudThinkerClient, CloudWrite, WriteOutcome, WriteRequest } from 
 import { CloudThinkerApiError } from "../src/client.ts";
 import { CloudThinkerRuntime } from "../src/runtime.ts";
 import {
-	APPROVE_AND_TRUST,
 	APPROVE_HERE,
 	DECIDE_IN_BROWSER,
 	DECISION_OPTIONS,
 	DECLINE_HERE,
 	NOT_AN_APPROVER_MESSAGE,
-	TRUST_DECISION_OPTIONS,
-	TRUST_REFUSED_MESSAGE,
 	approvalCard,
 	askInTerminal,
 	decideInTerminal,
@@ -42,7 +39,6 @@ function write(status: CloudWrite["status"], extra: Partial<CloudWrite> = {}): C
 		verdict: "require_approval",
 		verdict_reason: "classifier",
 		status,
-		trusted: false,
 		decided_by_name: null,
 		decline_reason: null,
 		task_id: null,
@@ -122,33 +118,19 @@ test("an executed write renders the approver and the sandbox output", () => {
 	);
 });
 
-test("a trusted approval says so in the summary and tells the model the command is now trusted", () => {
-	const trusted = write("executed", { decided_by_name: "Duc Bui", trusted: true, return_code: 0 });
-	assert.equal(
-		writeSummary({ write: trusted, execution: null, elapsed_ms: 1500 }, theme),
-		"auto: needs approval · approved and trusted by Duc Bui · ran on the workspace machine · 1.5s",
-	);
-	const body = renderWrite({
-		write: trusted,
-		execution: { status: "completed", return_code: 0, stdout: "ok", stderr: "" },
-	});
-	assert.match(body, /approved_by: Duc Bui\ntrusted: the workspace now runs this command without approval/);
-});
-
-test("every verdict renders as the mode that decided it, with the trusted reason humanised", () => {
-	assert.equal(verdictLabel({ verdict: "allow", verdict_reason: "workspace_trusted_command" }), "auto: allowed (trusted command)");
+test("every verdict renders as the mode that decided it", () => {
 	assert.equal(verdictLabel({ verdict: "allow", verdict_reason: "classifier_allow" }), "auto: allowed (classifier_allow)");
 	assert.equal(verdictLabel({ verdict: "require_approval", verdict_reason: "classifier" }), "auto: needs approval");
 	assert.equal(verdictLabel({ verdict: "require_approval", verdict_reason: "auto_mode_disabled" }), "manual: needs approval");
 	assert.equal(verdictLabel({ verdict: "escalate", verdict_reason: "escalation_pending" }), "auto: escalated");
 	assert.equal(verdictLabel({ verdict: "hard_deny", verdict_reason: "destructive_policy" }), "auto: denied");
 
-	const allowed = write("executed", { verdict: "allow", verdict_reason: "workspace_trusted_command" });
+	const allowed = write("executed", { verdict: "allow", verdict_reason: "classifier_allow" });
 	assert.equal(
 		writeSummary({ write: allowed, execution: null, elapsed_ms: 2000 }, theme),
-		"auto: allowed (trusted command) · ran on the workspace machine · 2.0s",
+		"auto: allowed (classifier_allow) · ran on the workspace machine · 2.0s",
 	);
-	assert.match(renderWrite({ write: allowed, execution: { status: "completed", return_code: 0, stdout: "", stderr: "" } }), /verdict: auto: allowed \(trusted command\)/);
+	assert.match(renderWrite({ write: allowed, execution: { status: "completed", return_code: 0, stdout: "", stderr: "" } }), /verdict: auto: allowed \(classifier_allow\)/);
 	assert.match(
 		writeSummary({ write: write("required_approval", { verdict_reason: "auto_mode_disabled" }), execution: null }, theme),
 		/^manual: needs approval · waiting for approval in browser → /,
@@ -260,7 +242,7 @@ function modal(...keys: string[]) {
 				custom: async <T>(factory: (tui: unknown, theme: unknown, keybindings: unknown, done: (result: T) => void) => { render(width: number): string[]; handleInput(data: string): void }) => {
 					let result: T | undefined;
 					let finished = false;
-					const component = factory({ requestRender: () => {} }, theme, {}, (value) => {
+					const component = factory({ requestRender: () => {}, terminal: { rows: 40 } }, theme, {}, (value) => {
 						result = value;
 						finished = true;
 					});
@@ -289,25 +271,17 @@ test("the TUI asks in one modal that shows the whole command; escape declines an
 	assert.match(quick.screens[0]!, /esc decline/);
 
 	assert.deepEqual(await askInTerminal(modal("\x1b").ctx, multiline), { decision: "decline" });
-	assert.deepEqual(await askInTerminal(modal("a").ctx, multiline), { decision: "approve", trust: true });
 	assert.deepEqual(await askInTerminal(modal("b").ctx, multiline), { decision: "browser" });
-	assert.deepEqual(await askInTerminal(modal("\x1b[B", "\x1b[B", "\r").ctx, multiline), { decision: "decline", reason: undefined });
-	assert.deepEqual(await askInTerminal(modal("x", "4").ctx, multiline), { decision: "browser" });
-	assert.deepEqual(await askInTerminal(modal("a").ctx, multiline, false), { decision: "decline" });
+	assert.deepEqual(await askInTerminal(modal("\x1b[B", "\r").ctx, multiline), { decision: "decline", reason: undefined });
+	assert.deepEqual(await askInTerminal(modal("x", "3").ctx, multiline), { decision: "browser" });
+	assert.deepEqual(await askInTerminal(modal("a").ctx, multiline), { decision: "decline" });
 });
 
-test("the terminal offers approve-and-trust as a fourth option, and only there", async () => {
-	const trust = ui(APPROVE_AND_TRUST);
-	assert.deepEqual(await askInTerminal(trust.ctx, write("required_approval")), {
-		decision: "approve",
-		trust: true,
-	});
-	assert.deepEqual(trust.offered, [TRUST_DECISION_OPTIONS]);
-	assert.deepEqual(TRUST_DECISION_OPTIONS, [APPROVE_HERE, APPROVE_AND_TRUST, DECLINE_HERE, DECIDE_IN_BROWSER]);
-
+test("the terminal offers approve, decline, and the browser", async () => {
 	const plain = ui(APPROVE_HERE);
-	await askInTerminal(plain.ctx, write("required_approval"), false);
+	assert.deepEqual(await askInTerminal(plain.ctx, write("required_approval")), { decision: "approve" });
 	assert.deepEqual(plain.offered, [DECISION_OPTIONS]);
+	assert.deepEqual(DECISION_OPTIONS, [APPROVE_HERE, DECLINE_HERE, DECIDE_IN_BROWSER]);
 });
 
 function decider(outcomes: (CloudWrite | CloudThinkerApiError)[]) {
@@ -323,28 +297,14 @@ function decider(outcomes: (CloudWrite | CloudThinkerApiError)[]) {
 	};
 }
 
-test("approve-and-trust sends trust:true and the trusted write comes back", async () => {
-	const client = decider([write("approved", { trusted: true })]);
-	const terminal = ui(APPROVE_AND_TRUST);
-	const warnings: string[] = [];
-	const decided = await decideInTerminal(client, terminal.ctx, write("required_approval"), (m) => warnings.push(m));
-	assert.equal(decided?.trusted, true);
-	assert.deepEqual(client.bodies, [{ decision: "approve", reason: undefined, trust: true }]);
-	assert.deepEqual(warnings, []);
-});
-
-test("a refused trust applies nothing and asks again without the trust option", async () => {
-	const client = decider([new CloudThinkerApiError(403, "cannot trust"), write("approved")]);
-	const terminal = ui(APPROVE_AND_TRUST, undefined, APPROVE_HERE);
+test("an approve sends only the decision and the approved write comes back", async () => {
+	const client = decider([write("approved")]);
+	const terminal = ui(APPROVE_HERE);
 	const warnings: string[] = [];
 	const decided = await decideInTerminal(client, terminal.ctx, write("required_approval"), (m) => warnings.push(m));
 	assert.equal(decided?.status, "approved");
-	assert.deepEqual(terminal.offered, [TRUST_DECISION_OPTIONS, DECISION_OPTIONS]);
-	assert.deepEqual(client.bodies, [
-		{ decision: "approve", reason: undefined, trust: true },
-		{ decision: "approve", reason: undefined, trust: undefined },
-	]);
-	assert.deepEqual(warnings, [TRUST_REFUSED_MESSAGE]);
+	assert.deepEqual(client.bodies, [{ decision: "approve", reason: undefined }]);
+	assert.deepEqual(warnings, []);
 });
 
 test("a plain approve that is refused hands the write to the browser", async () => {
@@ -386,7 +346,7 @@ function registered(client: Partial<CloudThinkerClient>) {
 }
 
 const executed: WriteOutcome = {
-	write: write("executed", { verdict: "allow", verdict_reason: "workspace_trusted_command", return_code: 0 }),
+	write: write("executed", { verdict: "allow", verdict_reason: "classifier_allow", return_code: 0 }),
 	execution: { status: "completed", return_code: 0, stdout: "tagged", stderr: "" },
 };
 
@@ -484,7 +444,7 @@ test("a 422 for an unconnected prefix names the requested and connected prefixes
 });
 
 test("a write the workspace machine could not start says so and asks for no retry by id", () => {
-	const failed = write("failed", { verdict: "allow", verdict_reason: "workspace_trusted_command" });
+	const failed = write("failed", { verdict: "allow", verdict_reason: "classifier_allow" });
 
 	const body = renderWrite({ write: failed, execution: null });
 	assert.match(body, /status: failed/);
@@ -492,7 +452,7 @@ test("a write the workspace machine could not start says so and asks for no retr
 	assert.doesNotMatch(body, /again with only this write_id/);
 	assert.equal(
 		writeSummary({ write: failed, execution: null }, theme),
-		"auto: allowed (trusted command) · the workspace machine could not start it",
+		"auto: allowed (classifier_allow) · the workspace machine could not start it",
 	);
 });
 

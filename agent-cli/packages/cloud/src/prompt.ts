@@ -4,7 +4,7 @@ import { CT_ASK, CT_SANDBOX_READ, CT_SANDBOX_WRITE, CT_RUN_STATUS } from "./tool
 
 export const AUTO_MODE_LINE =
 	"Workspace approval mode: Auto. A write runs at once when the workspace rule allows it and pauses otherwise.";
-export const MANUAL_MODE_LINE = "Workspace approval mode: Manual. Every write pauses for a human.";
+export const MANUAL_MODE_LINE = "Workspace approval mode: Manual. Every cloud write, local file edit and local command that changes something pauses for a human; read-only local commands run at once.";
 
 export const MENTION_GUIDANCE = "Mentions in a user message: `#connection/<prefix>` or `#connection/<prefix>/<alias>` names the Connection the request is about; `@` followed by a relative path, such as `@./src/app.ts` or `@../notes.md`, names a file on this machine; a bare `@name` names an agent.";
 
@@ -29,6 +29,7 @@ export const CONNECTION_SKILLS_DIR = `${SANDBOX_HOME}/_skills/connections`;
 export const CONNECTION_SKILL_LINE = `A \`skill:\` line inside a Connection names that Connection's guide, a SKILL.md on the workspace machine. Before your first command on a Connection, read its guide with ${CT_SANDBOX_READ} and an empty connection_list (\`cat ${CONNECTION_SKILLS_DIR}/*/<skill>/SKILL.md\`), then follow it: its scripts run on the workspace machine through ${CT_SANDBOX_READ} with that Connection, so do not write your own script for what the guide already provides.`;
 
 const CYBER_OPERATING_GUIDANCE = "For Cyber work, read `cloudthinker --skill cyber`, use `ct_workflow` for staged execution, and bind each run to this session's conversation id.";
+export const FINISH_GUIDANCE = "Finish the task before you end your turn. When you say you will take a step, take it in the same reply with a tool call. End your turn only when the work is done and checked, or when you need the user's decision; then name the concrete blocker or question.";
 const LOCAL_SEARCH_GUIDANCE = "For local shell searches, use `rg` for file contents and `fd` for file and directory names. Scope searches to the relevant paths and keep ignore rules enabled. Use `grep` or `find` for these searches only if the corresponding preferred command is unavailable. Before falling back, confirm unavailability with `command -v rg` or `command -v fd`; an empty search result is not unavailability.";
 
 export function sandboxLayout(runtime: CloudThinkerRuntime): string {
@@ -38,7 +39,7 @@ export function sandboxLayout(runtime: CloudThinkerRuntime): string {
 
 export function buildPromptBlock(runtime: CloudThinkerRuntime): string {
 	if (!runtime.cloudEnabled) {
-		return `<cloudthinker>\nYou are the \`cloudthinker agent\` running in the developer's terminal. Cloud is off, so workspace tools and CloudThinker delegation are unavailable; local tools remain available. The user can enable Cloud with /cloud on.\n${LOCAL_SEARCH_GUIDANCE}\n</cloudthinker>`;
+		return `<cloudthinker>\nYou are the \`cloudthinker agent\` running in the developer's terminal. Cloud is off, so workspace tools and CloudThinker delegation are unavailable; local tools remain available. The user can enable Cloud with /cloud on.\n${FINISH_GUIDANCE}\n${LOCAL_SEARCH_GUIDANCE}\n</cloudthinker>`;
 	}
 	const lines: string[] = [];
 	if (runtime.identity) {
@@ -54,6 +55,7 @@ export function buildPromptBlock(runtime: CloudThinkerRuntime): string {
 		"1. This machine: the developer's own computer and the current directory. Local tools (bash, read, write, edit, grep, find, ls) run here. It holds NO cloud credential, and you never ask the user for one.",
 		`2. The workspace machine: CloudThinker's machine in the cloud that the workspace owns. Only ${CT_SANDBOX_READ} and ${CT_SANDBOX_WRITE} run there, with a workspace Connection's credential injected for the run; the credential never leaves the cloud and never reaches this machine.${sandboxLayout(runtime)}`,
 		`Local tools use this machine's filesystem; workspace tools use the cloud filesystem. Paths returned by an API are not necessarily local files or mounts.`,
+		FINISH_GUIDANCE,
 		LOCAL_SEARCH_GUIDANCE,
 		MENTION_GUIDANCE,
 		`Connected workspace Connections: ${neutralizeBlockTags(runtime.connectedPrefixes.join(", ")) || "none"}. A Connection is a credential the workspace machine can use, not a third environment.`,

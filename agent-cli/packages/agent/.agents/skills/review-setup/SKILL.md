@@ -77,7 +77,7 @@ not invent those arguments or treat a setup check as an MR run.
 
 ## Remember and hand over
 
-Load `ct_codereview` with `load_skill` before calling it. Call
+If `ct_codereview` is not in your tools, call `tool_search(query="ct_codereview")` first. Call
 `ct_codereview(command="check_setup", provider=..., repository_exact=...,
 setup_browser={origin: ..., route: ..., viewport: "desktop", journey: [...]})`
 to check the running app on the selected Worker. Each journey step supplies a click

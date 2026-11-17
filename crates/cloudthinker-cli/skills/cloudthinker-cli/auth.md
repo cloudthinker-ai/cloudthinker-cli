@@ -29,6 +29,8 @@ Browser login is the default on a desktop. Over SSH or on Linux without a displa
 
 Login selects the workspace through its consent flow. `--workspace` selects an existing stored login and cannot be combined with `login`. `CLOUDTHINKER_TOKEN` takes precedence over stored credentials and cannot be combined with `--workspace`; do not silently discard an explicitly supplied credential to switch identity.
 
+A person may give you an access token (`ct_pat_...`) for headless work. Have them pipe it, `cloudthinker login --token < token.txt`; never put a token in argv, a prompt or a log. It is saved for each workspace it covers and never refreshes.
+
 ## Stored logins
 
 ```bash

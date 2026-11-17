@@ -8,8 +8,7 @@ const REQUIRED = [
 	"theme/cloudthinker-dark.json", "theme/cloudthinker-light.json",
 	"assets/clankolas.png", "export-html/template.html", "export-html/template.css",
 	"export-html/template.js", "export-html/vendor/marked.min.js",
-	"export-html/vendor/highlight.min.js", "docs/usage.md", "docs/extensions.md",
-	"examples/rpc-extension-ui.ts", ".agents/skills/tour/SKILL.md", ".agents/skills/review-setup/SKILL.md",
+	"export-html/vendor/highlight.min.js", ".agents/skills/tour/SKILL.md", ".agents/skills/review-setup/SKILL.md",
 ];
 
 export function assetFiles(root: string, prefix = ""): string[] {
@@ -28,11 +27,8 @@ export function assetFiles(root: string, prefix = ""): string[] {
 	return files.sort();
 }
 
-export function validateAssets(bundle: string, piRoot: string): void {
+export function validateAssets(bundle: string): void {
 	const expected = new Set(REQUIRED);
-	for (const directory of ["docs", "examples"]) {
-		for (const file of assetFiles(join(piRoot, directory))) expected.add(`${directory}/${file}`);
-	}
 	const files = new Set(assetFiles(bundle));
 	for (const file of expected) {
 		if (!files.has(file)) throw new Error(`Missing bundle asset: ${file}`);
@@ -66,7 +62,7 @@ export function validateAssets(bundle: string, piRoot: string): void {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-	const [bundle, piRoot] = process.argv.slice(2);
-	if (!bundle || !piRoot) throw new Error("Usage: validate-assets.ts <bundle> <pi-root>");
-	validateAssets(bundle, piRoot);
+	const [bundle] = process.argv.slice(2);
+	if (!bundle) throw new Error("Usage: validate-assets.ts <bundle>");
+	validateAssets(bundle);
 }

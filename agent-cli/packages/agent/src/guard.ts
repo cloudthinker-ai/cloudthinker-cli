@@ -20,6 +20,7 @@ import { applyRemoteLeave } from "./remote-leave.ts";
 import { applyReasoningUiGuard } from "./reasoning-ui.ts";
 import { applySkillCatalogGuard } from "./skill-catalog.ts";
 import { applyScrollPill } from "./scroll-pill.ts";
+import { applySshPaste } from "./ssh-paste.ts";
 import { applyStartupUi } from "./startup.ts";
 import { applyMarkdownCopy } from "./copy-markdown.ts";
 import { applyTerminalCopyNote } from "./terminal-copy.ts";
@@ -27,7 +28,12 @@ import { applyThinkingUi } from "./thinking-ui.ts";
 import { applyToolGroups } from "./tool-groups.ts";
 import { applyTranscriptUi } from "./transcript.ts";
 
-export const DISABLED_COMMANDS: readonly string[] = ["thinking", "scoped-models"];
+export const DISABLED_COMMANDS: readonly string[] = ["thinking", "scoped-models", "reload", "import", "clone"];
+const REMOVED_REPLACEMENTS: ReadonlyMap<string, string> = new Map([
+	["clone", "/fork"],
+	["import", "/resume"],
+	["reload", "restart the agent"],
+]);
 export const THINKING_STATUS =
 	"/thinking is disabled: the agent mode you pick with /model carries its own thinking level.";
 export const SCOPED_MODELS_STATUS = "/scoped-models is disabled: /model lists your CloudThinker Agent modes.";
@@ -79,7 +85,9 @@ export function disabledCommandStatus(text: string): string | undefined {
 	const trimmed = text.trim();
 	if (trimmed === "/thinking" || trimmed.startsWith("/thinking ")) return THINKING_STATUS;
 	if (trimmed === "/scoped-models") return SCOPED_MODELS_STATUS;
-	return undefined;
+	const name = /^\/(\S+)$/.exec(trimmed)?.[1];
+	const replacement = name === undefined ? undefined : REMOVED_REPLACEMENTS.get(name);
+	return replacement === undefined ? undefined : `/${name} is removed: use ${replacement}.`;
 }
 
 export function guardedSubmit(
@@ -209,4 +217,5 @@ export function applyGuard(): void {
 	applyCloudModelGuidance();
 	applyRemoteAttach();
 	applyRemoteLeave();
+	applySshPaste();
 }

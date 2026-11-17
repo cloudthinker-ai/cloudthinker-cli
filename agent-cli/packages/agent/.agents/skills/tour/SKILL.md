@@ -32,6 +32,7 @@ When Cloud is off, offer a local task and explain that `/cloud on` enables remot
 
 - `/cloud` shows workspace and Connection status; `/cloud on|off` controls cloud tools for this session. Off does not cancel remote work already running.
 - Cloud reads run in the sandbox; cloud changes follow the workspace's approval policy. Local writes follow local permissions.
+- `/rewind` takes back the last turn: it restores the files the agent edited or created, rewinds the conversation, and refuses if a file changed since. Shell commands, sub-agents, and cloud changes are not rewound.
 - Successful sandbox output is collapsed by default. `Ctrl+O` expands tool details and output; failures keep a short preview. Collapsing affects the display, not what the agent receives.
 - The CLI can delegate a cloud task to CloudThinker in the workspace with `ct_ask` and follow it with `ct_run_status`. Delegation may produce changes, so keep onboarding to explanations and requested bounded reads.
 - Outside the session, `cloudthinker chat -p "<task>"` asks CloudThinker from a script and prints the answer. It is a separate cloud run, not this local agent.

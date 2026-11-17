@@ -129,7 +129,7 @@ fn bundle_relative_path(path: &Path) -> Option<PathBuf> {
     Some(relative)
 }
 
-fn verify_checksum(archive: &[u8], sidecar: &[u8], asset: &str) -> CtResult<()> {
+pub(super) fn verify_checksum(archive: &[u8], sidecar: &[u8], asset: &str) -> CtResult<()> {
     let text = String::from_utf8_lossy(sidecar);
     let mut fields = text.split_whitespace();
     let (Some(expected), Some(named)) = (fields.next(), fields.next()) else {
@@ -151,7 +151,7 @@ fn verify_checksum(archive: &[u8], sidecar: &[u8], asset: &str) -> CtResult<()> 
     Ok(())
 }
 
-fn verify_inventory(archive: &[u8], inventory: &[u8], asset: &str) -> CtResult<()> {
+pub(super) fn verify_inventory(archive: &[u8], inventory: &[u8], asset: &str) -> CtResult<()> {
     let text = std::str::from_utf8(inventory)
         .map_err(|_| CtError::AgentInstall("checksum inventory is not UTF-8".into()))?;
     let mut selected = None;

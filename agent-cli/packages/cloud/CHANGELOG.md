@@ -1,3 +1,29 @@
+## [0.13.0]
+
+- `cloudthinker review` names its purpose (`X-CloudThinker-Purpose: review`) on every model call, so the review runs on the workspace's Code Review model instead of the chat model.
+- Show the approved centered Cutout only on the first empty CLI boot, with the product title below it and the original bright/dim dot pattern.
+- Keep the small Cloud outline after the first message and during `/new`, resume, reload and session switches; do not replay the launch banner.
+- Keep account details, attribution, editor, footer and startup diagnostics accessible, with compact fallback for short terminals, warnings or long metadata. Ordinary startup summaries yield to the hero without changing saved preferences.
+- Preserve quiet-startup and header-only preferences, and keep Tour and keyboard hints in the expanded details.
+- Add an optional brief outline highlight with four scheduled 50 ms steps and no idle animation loop; colorless, dumb and noninteractive output stay static, and reset, disposal and shutdown cancel pending frames.
+- Play a 1.4 s Decode intro on the first launch after each install or update that fits the hero; noise veils the editor and footer until the cloud settles, input works from the first frame, any key skips it, and `/settings` → Intro animation turns it off.
+- Draw the cloud in the calmer Mist palette: a near-monochrome slate blue with a white star rim, darkened on light themes to keep 3:1 contrast.
+- `CLOUDTHINKER_CLI_MOTION=1` also replays the intro each launch; `CLOUDTHINKER_CLI_MOTION=0` keeps the launch static.
+- Over SSH, Mosh and inside `cloudthinker remote`, the CLI redraws less: the launch intro draws every fourth frame with no editor veil, and the working spinner, task pane and sub-agent spinners tick every 400 ms instead of 80 ms. `CLOUDTHINKER_CLI_MOTION=1` restores full motion.
+- Fold the model and context share into the footer's first row when nothing else needs the second line and the width allows.
+- Approve, decline or hand to the browser a `ct_ask` run that stops for approval, from the terminal; `ct_run_status` offers the same for a paused run.
+- Keep an oversized mirrored entry's structure and cut only its longest text, with a marker naming the bytes cut.
+- Over SSH the header and the status line show `on <host>`; a narrow footer drops the folder first, then the branch, and keeps the host.
+- Fit the cloud write approval to the terminal height, keep the title, choices and key hints on screen, and scroll the reasoning and whole script with PgUp/PgDn, Home/End and the wheel; Enter scrolls to the end of an unread script before it confirms.
+- Remove "Approve and trust this command" from the cloud write approval; a command an active workspace Rule allows runs at once, and every other command waits for approval.
+- The start-up logo now uses 256 colours when the terminal does not report 24-bit colour, as over SSH or in tmux. On the Linux text console (`TERM=linux`), it draws the logo in ASCII and skips the intro animation.
+- In Manual approval mode, the agent now asks before a local command that may change something, a PowerShell command, or any file edit or write, in the same approval card as a cloud write. Read-only commands such as `ls`, `cat`, `rg`, `git status`, `kubectl get` and `aws describe`/`list`/`get` run without asking. Under `agent -p`, Manual blocks those calls and tells the agent why. Auto mode is unchanged.
+- A cold skill refresh downloads up to four workspace skills at a time instead of one after another, and reports each failure in the same order as before.
+- Unpacking a workspace skill creates each folder once and writes its files in parallel instead of one after another, with the same installed files.
+- Internal refactor in this package: shared helpers replace duplicated code, with no user-visible change.
+- When the model's reply is cut off at its output limit, the agent now continues the same run instead of stopping half done, up to two times per prompt; after that it says the run ended unfinished and how to resume. The agent is also told to finish and check the work, or name the blocker, before it ends its turn.
+- When the model returns an answer that cannot be used (a malformed tool call or an answer the provider cut short), the agent now retries it instead of stopping as if the task were done. A print or JSON run that still stops at the output limit after two continues now exits with an error and says the run ended unfinished.
+
 ## [0.11.0]
 
 - Make the Review setup Skill available to the local agent.

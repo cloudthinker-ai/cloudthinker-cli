@@ -45,7 +45,7 @@ export const AUTO_MODE_EDITOR_HINT =
 export function approvalModeSentence(enabled: boolean): string {
 	return enabled
 		? "Approval mode: Auto — a cloud write runs when the workspace rule allows it"
-		: "Approval mode: Manual — every cloud write waits for a human";
+		: "Approval mode: Manual — every cloud write, local file change and local command that changes something waits for a human";
 }
 
 export function autoModeLines(mode: AutoMode): string[] {

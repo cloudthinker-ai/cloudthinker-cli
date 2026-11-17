@@ -322,6 +322,7 @@ const EFFORT_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"];
  * way. Naming the option costs one error message and no model calls.
  */
 const AGENT_OPTIONS = [
+  "receipt",
   "label",
   "phase",
   "model",
@@ -468,6 +469,10 @@ async function agentIn(scope, prompt, opts) {
   const resume = optionalText(options.resume, "agent() opts.resume");
   const effort = optionalText(options.effort, "agent() opts.effort");
   const schema = options.schema;
+  const receipt = options.receipt;
+  if (receipt !== undefined && typeof receipt !== "boolean") {
+    throw new Error("agent() opts.receipt must be a boolean.");
+  }
   if (schema !== undefined) {
     if (typeof schema !== "object" || schema === null || Array.isArray(schema)) {
       throw new Error("agent() opts.schema must be a JSON Schema object.");
@@ -535,9 +540,10 @@ async function agentIn(scope, prompt, opts) {
     resume: resume,
     effort: effort,
     schema: schema,
+    receipt: receipt,
   });
   if (result === undefined || result === null) return null;
-  if (schema === undefined) return result;
+  if (schema === undefined && !receipt) return result;
   // Parsed with the realm's own JSON.parse so the script gets an object whose
   // prototype is its own — \`x instanceof Object\` and \`x.list instanceof Array\`
   // both hold, and it survives assertBoundary if the script returns it.

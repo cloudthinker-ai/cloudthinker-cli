@@ -6,10 +6,11 @@
 
 `cloudthinker` brings [CloudThinker](https://cloudthinker.io) to your terminal.
 Type `cloudthinker`, describe what you want in plain language, and watch the
-agent work in your current directory. For example, ask it to pentest an API;
-CloudThinker checks and repairs its local setup, runs the work, and shows
-progress and results in the terminal. Headless chat and focused commands remain
-available for scripts and automation.
+agent work in your current directory. For example, ask it to review your
+changes, investigate a failing deployment, or explain a cloud bill; CloudThinker
+checks and repairs its local setup, runs the work, and shows progress and
+results in the terminal. Headless chat and focused commands remain available
+for scripts and automation.
 
 ```sh
 curl -fsSL https://cloudthinker.io/install.sh | sh
@@ -22,7 +23,7 @@ cloudthinker
 | Task | Command |
 | --- | --- |
 | Start work in the current directory | `cloudthinker`, then describe the task |
-| Ask for a local pentest | `cloudthinker`, then say “Pentest http://localhost:3000” |
+| Investigate a cloud or deployment problem | `cloudthinker`, then say “Why is the checkout service returning 500s?” |
 | Ask CloudThinker one question and pipe the answer | `cloudthinker chat -p "Check production health"` |
 | Review local Git changes with CloudThinker | `cloudthinker review [--base <REF>]` |
 | Follow a CloudThinker review on a merge request or pull request | `cloudthinker review watch <MR_URL>` |
@@ -41,6 +42,12 @@ The installer supports macOS (Apple Silicon and Intel) and Linux (x86_64 and
 arm64). It puts the `cloudthinker` binary in `~/.local/bin` and adds that
 directory to your `PATH`. Open a new shell after the install.
 
+On Linux, the installer picks the build for your system. Systems with glibc
+2.35 or newer get the glibc build. Older systems, such as RHEL and Rocky 8,
+Amazon Linux 2, Debian 11, and Ubuntu 20.04, get the static musl build, and so
+does Alpine. `cloudthinker update` picks the same way. On Alpine, the agent
+also needs the C++ runtime: `apk add libstdc++`.
+
 In a terminal, the installer asks once whether to use `ct` as a shortcut for
 `cloudthinker`, before opening login. Press Enter to keep `cloudthinker`.
 Choose Yes to add a persistent alias for Bash, Zsh, or Fish, then open a new
@@ -57,6 +64,10 @@ line that names it. It checks at most every 20 hours.
 Answer `s` to skip that version until a newer one ships. Set
 `CLOUDTHINKER_NO_UPDATE_CHECK=1` to turn off the offer.
 
+Run `cloudthinker update --version 0.12.2` to install one release from the
+releases page. An older version rolls back. To stay on it, skip the offer
+with `s` or set `CLOUDTHINKER_NO_UPDATE_CHECK=1`.
+
 ## Quick start
 
 ```sh
@@ -64,11 +75,18 @@ cloudthinker
 ```
 
 On first use, CloudThinker verifies your login and opens the interactive agent.
-Describe the task there; for a local pentest, name the target in plain language.
-The agent checks its Cyber setup, repairs its pinned tools, saves confirmed
-project settings in `.cloudthinker/config.toml`, runs the pentest, and reports
-progress and results. It asks only when required target or authorization
-details cannot be determined safely.
+Describe the task there, for example “Review my staged changes” or “Why did
+last night's deploy fail?”. The agent works in your directory and asks before
+it changes anything that matters.
+
+```sh
+cloudthinker review                                      # review your local Git changes
+cloudthinker chat -p "Check production health"           # one question, answer on stdout
+cloudthinker review watch <MR_URL>                       # follow a review on a merge request
+```
+
+Pentesting is gated. It is available to workspaces where it is enabled; ask your
+CloudThinker contact to turn it on. See [Pentest](#pentest-gated).
 
 Over SSH, or on Linux with no display, `login` shows a short code to enter in
 any browser instead of waiting for a loopback callback. `login --device-auth`
@@ -88,6 +106,15 @@ cloudthinker completion zsh > "${fpath[1]}/_cloudthinker"
 cloudthinker completion fish > ~/.config/fish/completions/cloudthinker.fish
 ```
 
+
+## Pentest (gated)
+
+Local pentesting runs only in workspaces where CloudThinker has enabled it. Ask
+your CloudThinker contact for access. Once enabled, run `cloudthinker`, then say
+“Pentest http://localhost:3000”. The agent checks its Cyber setup, repairs its
+pinned tools, saves confirmed project settings in `.cloudthinker/config.toml`,
+runs the pentest, and reports progress and results. It asks only when required
+target or authorization details cannot be determined safely.
 
 ## Diagnose CLI setup
 
@@ -182,12 +209,49 @@ cloudthinker agent -- --url http://localhost:3000  # after `--`, every argument 
 
 The agent receives every argument after `agent` without change. On the first
 run, the CLI downloads the agent build for your platform from the same GitHub
-release as the binary. It checks the build against the release's SHA-256
+release as the binary. On Linux, that is the musl build when the system has no
+glibc, as on Alpine, and the glibc build otherwise. It checks the build against the release's SHA-256
 sidecar and installs it under `~/.cloudthinker/agent/bin/<version>/`. Later runs
 reuse that build, and a new version replaces it.
 
 The interactive agent is the one command that starts a login by itself. Focused
 commands continue to print a login hint when authentication is missing.
+
+The first empty boot opens with the centered Cutout cloud artwork. After your
+first message, the small Cloud outline keeps the session details visible.
+`/new`, resume, reload and session switches use the compact header immediately;
+they do not replay the large banner.
+
+The artwork adapts to the terminal and the space needed by startup warnings.
+Short terminals or long account details use the compact header. Ctrl+O before
+the first message expands startup details and key hints; after a message it
+opens the transcript. `/cloudthinker:about` shows versions and attribution. `/skill:tour` starts the guided tour. Startup
+warnings stay visible even when the large artwork is shown. Ordinary startup
+resource summaries yield to the artwork and remain available in the expanded
+details. Saved quiet-startup preferences remain supported.
+
+The first launch after you install or update plays a short intro: the cloud
+gathers from scattered dots in about 1.4 seconds, then the prompt and status
+line appear. You can type at once, and any key skips the intro. Later launches show the still cloud. To turn the intro
+off, open `/settings` and set **Intro animation** to `false`.
+
+`CLOUDTHINKER_CLI_MOTION=1 cloudthinker agent` plays the intro on every launch
+and adds a brief highlight on the session outline. `CLOUDTHINKER_CLI_MOTION=0`,
+`NO_COLOR`, `TERM=dumb`, and redirected output show no motion.
+
+Over SSH, Mosh, and `cloudthinker remote`, the CLI redraws less to save
+bandwidth: the intro draws every fourth frame, and spinners tick every 400 ms
+instead of 80 ms. `CLOUDTHINKER_CLI_MOTION=1` restores full motion.
+
+## Paste a screenshot over SSH
+
+Ctrl+V in the agent reads the clipboard of the machine the agent runs on. Over
+plain SSH that is the server, so in kitty the agent asks the terminal for the
+clipboard image (kitty asks once to allow it) and pastes the saved PNG's path.
+In iTerm2, Terminal.app, WezTerm, Windows Terminal, and inside tmux there is no
+route over a plain SSH session: Ctrl+V says so and names the next step, `scp`
+the image and paste its path, or use `cloudthinker remote <host>`, where Ctrl+V
+reads your laptop clipboard.
 
 ## Discover workspace agents
 
@@ -240,7 +304,11 @@ kubectl logs deploy/api --tail 200 | cloudthinker chat -p "Why does this crash?"
 cloudthinker chat -p - < prompt.md
 ```
 
-Piped stdin joins the prompt. `-p -` reads the whole prompt from stdin. On a
+Piped stdin joins the prompt. `-p -` reads the whole prompt from stdin. Piped
+input is a finite batch: the CLI reads it to the end, up to 50,000 characters,
+and then sends the prompt. It never streams. If the input has not ended after a
+few seconds, the CLI says so on stderr; pipe a snapshot such as `tail -n 200 app.log`,
+not `tail -f`. Input past the limit stops the read at once with an error. On a
 terminal a spinner shows the run status while you wait. Ctrl-C stops the wait
 and prints the command that resumes it; the run continues on the server.
 
@@ -314,9 +382,20 @@ cloudthinker review                         # staged, unstaged, and untracked ch
 cloudthinker review --base origin/develop   # branch diff from the merge base, including dirty edits
 cloudthinker review --json                  # one machine-readable result on stdout
 cloudthinker review --fail-on high          # exit 6 when a high or critical finding exists
+cloudthinker review --no-upload             # keep the findings on this machine
 ```
 
-The command requires `cloudthinker login`. It starts the bundled local Pi agent in the checkout with read-only `read`, `grep`, `find`, and `ls` tools. CloudThinker supplies model inference, so model requests and responses pass through its gateway and normal observability traces. The local Pi transcript and findings are not mirrored as Agent CLI session entries or saved chat messages; the session metadata uses a generic title and cwd. Findings are validated against changed paths and lines and printed here. It does not create a source-control review, post comments, apply fixes, or change the Git index or worktree. `--timeout <secs>` limits the local agent run; rerun the command after a timeout.
+The command requires `cloudthinker login`. It starts the bundled local Pi agent in the checkout with read-only `read`, `grep`, `find`, and `ls` tools. CloudThinker supplies model inference, so model requests and responses pass through its gateway and normal observability traces. The local Pi transcript and findings are not mirrored as Agent CLI session entries or saved chat messages; the session metadata uses a generic title and cwd. Findings are validated against changed paths and lines and printed here. It does not create a source-control review, post comments, apply fixes, or change the Git index or worktree. `--timeout <secs>` limits each local agent run; rerun the command after a timeout.
+
+A diff over 40 KiB is reviewed in parts of up to 40 KiB, split by file. The review runs on the workspace's Code Review model. When the `origin` remote is a repository connected to CloudThinker, the review also uses that repository's review instructions, Learnings and Convention Rules, and sends the findings to CloudThinker so the first review of the pull request for this branch can credit them: fixed findings are not reported again, and open ones are checked. `--no-upload` keeps the findings on this machine. `--json` reports `uploaded` and `dropped_findings` (findings that did not point at a changed line).
+
+Use it from Claude Code as a skill that reviews, confirms, and fixes your changes before you open a pull request:
+
+```sh
+mkdir -p .claude/skills/cloudthinker-review && cloudthinker --skill review > .claude/skills/cloudthinker-review/SKILL.md
+```
+
+Then run `/cloudthinker-review` in Claude Code.
 
 Prepare Loupe on a shared Worker:
 
@@ -331,7 +410,7 @@ Inspect a CloudThinker review of a merge request or pull request by its URL:
 
 ```sh
 cloudthinker review status <MR_URL>
-cloudthinker review findings <MR_URL>          # worst severity first
+cloudthinker review findings <MR_URL>          # worst severity first; a finding ID reads one
 cloudthinker review watch <MR_URL> --json      # poll until the review finishes
 cloudthinker review watch <MR_URL> --fail-on high
 ```
@@ -423,6 +502,17 @@ cloudthinker logout                 # the selected or active workspace only
 cloudthinker logout --all           # every workspace for this host
 ```
 
+For CI and scripts, sign in with an access token (`ct_pat_...`) from the
+token page. Pipe it on stdin; the CLI refuses a token typed on screen:
+
+```sh
+cloudthinker login --token < token.txt
+```
+
+The CLI checks the token with the server, saves it for every workspace it
+covers, and makes the first one active (`auth switch` picks another). It never
+refreshes; make a new token when it expires.
+
 List the workspaces you can reach, checked live, before you pick one:
 
 ```sh
@@ -457,6 +547,42 @@ Keep that value secret. It authenticates as you until it expires.
 The CLI stores credentials in `cloudthinker/credentials.json` under the
 operating system's config directory, with mode 0600.
 
+## Public API
+
+Every CloudThinker public API operation is a command. The CLI reads the
+operation list from the server's public API spec, so a new operation needs no
+CLI update:
+
+```sh
+cloudthinker api --list                                   # every operation, its command and scope
+cloudthinker resolve incidents list --status open --all   # cloudthinker <module> <resource> <verb>
+cloudthinker review reviews get <review-id> -w <workspace-id>
+cloudthinker chat runs list --status running
+cloudthinker resolve incidents update <incident-id> --set status=resolved --etag <etag>
+cloudthinker api GET /v1/workspaces/<workspace-id>/resolve/incidents --query status=open
+```
+
+- Path IDs are positional; query parameters are flags. `--all` follows
+  `next_cursor` (at most 10,000 items). Output is the response JSON.
+- `-w <workspace-id>` picks the workspace; without it, the workspace of your
+  login is used.
+- Writes send an `Idempotency-Key` (pass `--key` to retry safely).
+  A response `ETag` is printed on stderr; pass it back with `--etag`.
+- A write runs when your token's scopes allow it. An operation the server
+  marks for confirmation (`x-confirm` in the spec, every delete by default)
+  asks `Run <METHOD> <path> (<operation>)? [y/N]` on a terminal; any answer
+  but `y` or `yes` cancels it (exit 1). Pass `--yes` (`-y`) to skip the
+  question. Without a terminal the command refuses unless `--yes` is given
+  (exit 2).
+- `cloudthinker api METHOD PATH` accepts only `/v1/` paths that match a public
+  operation, and never follows a redirect.
+- The spec is saved under `~/.cloudthinker/public-api/` and checked again after
+  6 hours; when the server is unreachable the saved copy is used with a warning.
+- `chat`, `review`, `cyber` and `workspace` hold both their own commands and
+  the public API resources: `cloudthinker review --help` lists both.
+- `cloudthinker review findings <MR_URL>` lists a merge request's findings;
+  `cloudthinker review findings <finding-id>` reads one finding.
+
 ## Environment
 
 | Variable | Effect |
@@ -464,8 +590,10 @@ operating system's config directory, with mode 0600.
 | `CLOUDTHINKER_URL` | API base URL. Defaults to the origin of your last `login --url`, else `https://app.cloudthinker.io`. Pass the bare origin. |
 | `CLOUDTHINKER_LOGIN` | `browser` or `device` overrides the login flow that `login` picks for this machine. |
 | `CLOUDTHINKER_WORKSPACE` | Same as `--workspace`. |
+| `CLOUDTHINKER_CONFIG_DIR` | Folder for this CLI's credentials and worker state. Defaults to the platform's `cloudthinker` config folder. Set it per person when several people share one Unix account. `whoami` prints the credentials path when it is set. |
 | `CLOUDTHINKER_TOKEN` | Uses this bearer instead of stored credentials. Cannot be combined with `--workspace`. |
 | `CLOUDTHINKER_NO_UPDATE_CHECK` | Turns off the start-up update offer and the update notice. |
+| `CLOUDTHINKER_CLI_MOTION` | `0` turns off the launch intro. `1` plays it on every launch and adds a brief session-outline highlight. Applies only in an interactive color terminal. Default: the intro plays once after each install or update, with reduced motion over SSH, Mosh, and `cloudthinker remote`. |
 
 ## Exit codes
 

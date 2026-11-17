@@ -64,8 +64,6 @@ _LOGIN_PATHS = frozenset(
 
 _CHAT_PATHS = frozenset(
     {
-        "/api/v1/cli/runs",
-        "/api/v1/cli/runs/{run_id}",
         "/api/v1/cli/conversations/{conversation_id}/trace",
         "/api/v1/cli/conversations/search",
     }
@@ -76,13 +74,6 @@ _REVIEW_PATHS = frozenset(
         "/api/v1/code-review/merge-requests/lookup",
         "/api/v1/code-review/setup/loupe-conversation",
         "/api/v1/code-review/setup/loupe-target/check",
-    }
-)
-
-_RESOLVE_PATHS = frozenset(
-    {
-        "/api/v1/incidents/",
-        "/api/v1/incidents/{incident_id}",
     }
 )
 
@@ -112,6 +103,7 @@ _CYBER_PATHS = frozenset(
         "/api/v1/appsec/runs/{run_id}/bind",
         "/api/v1/appsec/runs/{run_id}/evidence",
         "/api/v1/appsec/runs/{run_id}/settle",
+        "/api/v1/appsec/runs/{run_id}/checkpoint",
         "/api/v1/appsec/runs/{run_id}/plan",
         "/api/v1/appsec/runs/{run_id}/plan/{plan_id}/observations",
         "/api/v1/appsec/runs/{run_id}/coverage",
@@ -147,27 +139,28 @@ _AGENTS_PATHS = frozenset(
     }
 )
 
-_CLOUD_PATHS = frozenset({
-    "/api/v1/agent-cli/sessions",
-    "/api/v1/agent-cli/connections",
-    "/api/v1/agent-cli/skills/load",
-    "/api/v1/agent-cli/tools/load",
-    "/api/v1/agent-cli/executions",
-    "/api/v1/agent-cli/executions/{task_id}",
-    "/api/v1/agent-cli/writes",
-    "/api/v1/agent-cli/writes/{write_id}",
-    "/api/v1/agent-cli/writes/{write_id}/run",
-    "/api/v1/agent-cli/sessions/{conversation_id}/writes",
-})
+_CLOUD_PATHS = frozenset(
+    {
+        "/api/v1/agent-cli/sessions",
+        "/api/v1/agent-cli/connections",
+        "/api/v1/agent-cli/skills/load",
+        "/api/v1/agent-cli/tools/search",
+        "/api/v1/agent-cli/executions",
+        "/api/v1/agent-cli/executions/{task_id}",
+        "/api/v1/agent-cli/writes",
+        "/api/v1/agent-cli/writes/{write_id}",
+        "/api/v1/agent-cli/writes/{write_id}/run",
+        "/api/v1/agent-cli/sessions/{conversation_id}/writes",
+    }
+)
 
 ALLOWED_PATHS = (
-    _CLOUD_PATHS |
-    _OUTPOST_PATHS
+    _CLOUD_PATHS
+    | _OUTPOST_PATHS
     | _WORKER_PATHS
     | _LOGIN_PATHS
     | _CHAT_PATHS
     | _REVIEW_PATHS
-    | _RESOLVE_PATHS
     | _OPTIMIZE_PATHS
     | _POLICY_PATHS
     | _CYBER_PATHS
@@ -183,8 +176,6 @@ _GET_ONLY_PATHS = frozenset(
         "/api/v1/builtin-connection/{builtin_id}/test-status",
         "/api/v1/mcp-connection",
         "/api/v1/mcp-connection/{mcp_conn_id}/test-status",
-        "/api/v1/incidents/",
-        "/api/v1/incidents/{incident_id}",
         "/api/v1/recommendations/",
         "/api/v1/agents/",
         "/api/v1/agents/custom/{agent_id}",
@@ -245,7 +236,6 @@ _AGENT_UNREAD = frozenset(
 )
 
 _UNREAD_PROPERTIES = {
-    "IncidentPublic": frozenset({"declaration_actor_kind"}),
     "BuiltinConnectionsPublic": frozenset({"categories"}),
     "BuiltinConnectionPublic": _BUILTIN_CONNECTION_UNREAD,
     "BuiltinConnectionDetail": _BUILTIN_CONNECTION_UNREAD,
@@ -274,7 +264,6 @@ _UNREAD_PROPERTIES = {
             "owner_id",
             "policy_enforcement_enabled",
             "policy_templates_enabled",
-            "policy_tool_enabled",
             "pulse_auto_subscribe",
             "updated_at",
             "workers_enabled",
@@ -304,9 +293,7 @@ def _drop_unread_properties(schemas: dict) -> dict:
             continue
         schema = dict(schema)
         schema["properties"] = {
-            key: value
-            for key, value in schema.get("properties", {}).items()
-            if key not in dropped
+            key: value for key, value in schema.get("properties", {}).items() if key not in dropped
         }
         if "required" in schema:
             schema["required"] = [key for key in schema["required"] if key not in dropped]
@@ -389,9 +376,7 @@ def prune(spec: dict) -> dict:
         only = _ONLY_METHODS.get(path)
         if only is not None:
             item = {
-                method: operation
-                for method, operation in item.items()
-                if method.lower() in only
+                method: operation for method, operation in item.items() if method.lower() in only
             }
         for method in list(item):
             if method.lower() in _HTTP_METHODS:
@@ -404,9 +389,7 @@ def prune(spec: dict) -> dict:
     pruned["paths"] = {p: kept_paths[p] for p in sorted(kept_paths)}
     components = dict(spec.get("components", {}))
     components.pop("securitySchemes", None)
-    components["schemas"] = _open_enums(
-        _drop_unread_properties(components.get("schemas", {}))
-    )
+    components["schemas"] = _open_enums(_drop_unread_properties(components.get("schemas", {})))
     pruned["components"] = components
     pruned.pop("security", None)
     prune_unused_schemas(pruned)

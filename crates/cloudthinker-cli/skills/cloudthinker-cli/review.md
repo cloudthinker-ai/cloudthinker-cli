@@ -1,4 +1,23 @@
+---
+name: cloudthinker-review
+description: 'Use before opening a pull request, or when asked to review local changes with CloudThinker: runs cloudthinker review, confirms each finding in the code, fixes the confirmed ones, and reports what was found, fixed, and dismissed.'
+---
+
 # Review local changes or inspect a tracked review
+
+## Review and fix before a pull request
+
+1. Run `cloudthinker review --base <target branch> --json`, for example `--base origin/main`.
+2. Read each finding at its `file` and `line`, with the code around it. Confirm the defect is real
+   before you act on it.
+3. Fix each confirmed finding with the smallest change that removes the defect.
+4. Run the same review once more to check the fixes.
+5. Report what the review found, what you fixed, and what you dismissed, with one reason for each
+   dismissal.
+
+A failed run (any exit code other than 0 or 6) is not a clean result. Report the error; never claim
+the change is clean. The findings are sent to CloudThinker so the first review of the pull request
+can credit them; add `--no-upload` to keep them on this machine.
 
 ## Prepare a Worker for Loupe
 
@@ -33,7 +52,13 @@ Bare `review` checks staged, unstaged, and non-ignored untracked changes against
 checks from the merge base with that ref and includes dirty edits. This path requires CloudThinker
 login and starts the bundled Pi agent in the local checkout with read-only `read`, `grep`, `find`,
 and `ls` tools. CloudThinker supplies model inference, so requests and responses pass through its normal gateway observability. Local Pi entries and findings are not mirrored as Agent CLI session entries or saved chat messages. Findings are validated and printed by the CLI. It does not create
-a source-control review, post comments, edit files, or change the Git index. A clean result means
+a source-control review, post comments, edit files, or change the Git index.
+When the `origin` remote is a repository connected to CloudThinker, the review uses that
+repository's review instructions and Learnings, and the findings are sent to CloudThinker so the
+first review of the pull request for this branch credits them (`uploaded` in `--json`).
+`--no-upload` keeps them local. A diff over 40 KiB is reviewed in parts, and `--timeout` limits the
+whole review. Findings that do not point at a changed line are dropped and counted in
+`dropped_findings`. A clean result means
 the model returned no findings; it is not a guarantee that the change is defect-free.
 
 When the scope is empty, the base cannot resolve, authentication fails, CloudThinker is unavailable,
@@ -51,6 +76,7 @@ Read this module when checking review progress or findings for a merge request o
 ```bash
 cloudthinker review status '<mr-or-pr-url>' --json
 cloudthinker review findings '<mr-or-pr-url>' --json
+cloudthinker review findings <finding-id>        # one finding, JSON
 ```
 
 Use the exact provider URL from the task. Add the selected global `--workspace` and `--url` before `review` when applicable. These commands inspect an already tracked CloudThinker review. They do not trigger a review, submit fixes, resolve findings, approve, or merge the provider request.

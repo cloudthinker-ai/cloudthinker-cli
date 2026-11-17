@@ -600,6 +600,48 @@ pub async fn bind_run(
     }
 }
 
+pub async fn checkpoint(
+    base_url: &str,
+    workspace: Option<&str>,
+    run_id: Uuid,
+    input: &Path,
+    json: bool,
+) -> ExitCode {
+    let request = match std::fs::read_to_string(input) {
+        Ok(value) => value,
+        Err(_) => {
+            return exit::report(&CtError::Usage(
+                "Cannot read the checkpoint input file.".to_string(),
+            ));
+        }
+    };
+    let client = match build_client(base_url, workspace) {
+        Ok(client) => client,
+        Err(error) => return exit::report(&error),
+    };
+    match client.cyber_checkpoint(run_id, &request).await {
+        Ok(result) => {
+            let rendered = if json {
+                output::emit_json(&result)
+            } else {
+                output::print_lines(&[
+                    format!(
+                        "Pass {}: {} ({})",
+                        result.generation, result.outcome, result.reason
+                    ),
+                    format!(
+                        "Report ready: {}. Repair gaps: {}.",
+                        result.report_ready,
+                        result.gaps.len()
+                    ),
+                ])
+            };
+            exit::finish_output(rendered)
+        }
+        Err(error) => exit::report(&error),
+    }
+}
+
 fn attach_local_workspace(brief: &mut cloudthinker_client::CyberRunBrief) -> Result<(), String> {
     let conversation_id = brief
         .conversation_id

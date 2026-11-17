@@ -7,6 +7,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { withinBudget } from "./async.ts";
 import { LOCAL_TOOLS, MISSING_LOCAL_FILE_HINT, localMissingFile, sanitizeTerminalText, setMachineState } from "./awareness.ts";
 import { registerCommands } from "./commands.ts";
+import { registerContinuation } from "./continuation.ts";
 import { CreditsMeter } from "./credits.ts";
 import { PRODUCT_NAME } from "./header.ts";
 import { LocationTracker } from "./location.ts";
@@ -29,15 +30,17 @@ import { linkLazily, refreshConnections, refreshIdentity, restoreModels, startLo
 import { discoverSkillPaths, hasSkillIndex, refreshSkills } from "./skills.ts";
 import { statusLineFooter } from "./status-line.ts";
 import { markStartup } from "./timing.ts";
-import { TOUR_OFFER, bundledReviewSetupPath, bundledTourPath } from "./onboarding.ts";
+import { bundledReviewSetupPath, bundledTourPath } from "./onboarding.ts";
 import { registerCommandTools } from "./tools/command-tools.ts";
 import { registerAsk } from "./tools/ct-ask.ts";
 import { registerSandboxRead } from "./tools/ct-sandbox-read.ts";
 import { registerSandboxWrite } from "./tools/ct-sandbox-write.ts";
+import { registerLocalApproval } from "./local-approval.ts";
 import { registerRunStatus } from "./tools/ct-run-status.ts";
 import { registerReadTaskOutput } from "./tools/read-task-output.ts";
 import { registerLocalReviewBoundary } from "./tools/local-review-boundary.ts";
 import { CONNECTION_MENTIONS_ENTRY, mentionContext, resolveConnectionMentions, setConnectionSource } from "./connection-mentions.ts";
+import { reducedMotion, SERVER_TICK_MS } from "./motion.ts";
 
 const SHUTDOWN_FLUSH_MS = 5_000;
 export const LINKING_STATUS = "linking cloud…";
@@ -71,6 +74,7 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 		runtime.setStatus(formatMirrorStatus(status)),
 	);
 	let sessionGeneration = 0;
+	let initialStartupSeen = false;
 	const locations = new LocationTracker(pi);
 	const credits = new CreditsMeter(runtime);
 
@@ -85,11 +89,13 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 	if (!localReview) {
 		registerSandboxRead(runtime);
 		registerSandboxWrite(runtime);
+		registerLocalApproval(pi, () => runtime.autoMode);
 		registerReadTaskOutput(runtime);
 		registerAsk(runtime);
 		registerRunStatus(runtime);
 		registerCommands(runtime, { changelogPath: options.changelogPath });
 	}
+	registerContinuation(pi);
 
 	const workspaceId = (): string | undefined =>
 		runtime.identity?.workspace_id ?? runtime.session?.workspace_id;
@@ -143,7 +149,12 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 		runtime.sourceConversationId = options.sourceConversationId;
 		mirror.unlink();
 		runtime.reset();
-		const cloudEntry = ctx.sessionManager.getEntries().findLast(
+		const entries = ctx.sessionManager.getEntries();
+		const hasUserMessage = entries.some((entry) => entry.type === "message" && entry.message.role === "user");
+		const showLaunchPresentation = event.reason === "startup" && !initialStartupSeen && !hasUserMessage;
+		initialStartupSeen = true;
+		runtime.header.setPresentation(showLaunchPresentation ? "launch" : "session");
+		const cloudEntry = entries.findLast(
 			(entry) => entry.type === "custom" && entry.customType === CLOUD_ENTRY_TYPE,
 		);
 		const cloudData = cloudEntry?.type === "custom" ? cloudEntry.data as { enabled?: unknown } | undefined : undefined;
@@ -151,17 +162,13 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 		if (options.cloudEnabled === false && cloudData?.enabled !== false) pi.appendEntry(CLOUD_ENTRY_TYPE, { enabled: false });
 		locations.reset();
 		if (ctx.mode === "tui") {
+			if (reducedMotion()) ctx.ui.setWorkingIndicator({ intervalMs: SERVER_TICK_MS });
 			if (root && !localReview) ctx.ui.setFooter(statusLineFooter(runtime, ctx));
 			runtime.setTitle(sessionTitle(ctx.cwd, undefined));
-			if (!SettingsManager.create(ctx.cwd, getAgentDir()).getQuietStartup()) {
+			if (SettingsManager.create(ctx.cwd, getAgentDir()).getQuietStartup() !== true) {
+				runtime.header.listen((handler) => ctx.ui.onTerminalInput(handler));
 				ctx.ui.setHeader(runtime.header.factory);
 			}
-		}
-		if (root && !localReview && (event.reason === "startup" || event.reason === "new") && ctx.mode === "tui") {
-			const hasUserMessage = ctx.sessionManager.getEntries().some(
-				(entry) => entry.type === "message" && entry.message.role === "user",
-			);
-			if (!hasUserMessage) runtime.notify(TOUR_OFFER, "info");
 		}
 		const link = async (): Promise<void> => {
 			if (localReview) {
@@ -238,11 +245,13 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 			ctx.model?.provider,
 			runtime.session?.conversation_id,
 			runtime.turnId,
+			localReview ? "review" : undefined,
 		);
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
 		runtime.bind(ctx);
+		runtime.header.setPresentation("session");
 		runtime.turnId = randomUUID();
 		if (localReview) {
 			if (!runtime.session) throw new Error("CloudThinker local review session is unavailable");
@@ -280,6 +289,7 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 	}
 
 	pi.on("session_shutdown", async () => {
+		runtime.header.stop();
 		runtime.closed = true;
 		runtime.cancelRetry();
 	});

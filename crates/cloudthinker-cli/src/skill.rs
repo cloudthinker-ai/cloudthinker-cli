@@ -3,6 +3,7 @@ use clap::ValueEnum;
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum Module {
     Index,
+    Api,
     Auth,
     Chat,
     Cloud,
@@ -21,15 +22,28 @@ impl Module {
     pub fn document(self) -> &'static str {
         match self {
             Self::Index => include_str!("../skills/cloudthinker-cli/SKILL.md"),
+            Self::Api => include_str!("../skills/cloudthinker-cli/api.md"),
             Self::Auth => include_str!("../skills/cloudthinker-cli/auth.md"),
             Self::Cloud => include_str!("../skills/cloudthinker-cli/cloud.md"),
             Self::Connections => include_str!("../skills/cloudthinker-cli/connections.md"),
             Self::Policy => include_str!("../skills/cloudthinker-cli/policy.md"),
             Self::Chat => include_str!("../skills/cloudthinker-cli/chat.md"),
             Self::Review => include_str!("../skills/cloudthinker-cli/review.md"),
-            Self::Cyber => include_str!("../skills/cloudthinker-cli/cyber.md"),
-            Self::CyberScan => include_str!("../skills/cloudthinker-cli/cyber-scan.md"),
-            Self::CyberVerify => include_str!("../skills/cloudthinker-cli/cyber-verify.md"),
+            Self::Cyber => concat!(
+                include_str!("../skills/cloudthinker-cli/cyber.md"),
+                "\n",
+                include_str!("../skills/cloudthinker-cli/cyber-methodology.md")
+            ),
+            Self::CyberScan => concat!(
+                include_str!("../skills/cloudthinker-cli/cyber-methodology.md"),
+                "\n",
+                include_str!("../skills/cloudthinker-cli/cyber-scan.md")
+            ),
+            Self::CyberVerify => concat!(
+                include_str!("../skills/cloudthinker-cli/cyber-methodology.md"),
+                "\n",
+                include_str!("../skills/cloudthinker-cli/cyber-verify.md")
+            ),
             Self::CyberReport => include_str!("../skills/cloudthinker-cli/cyber-report.md"),
             Self::Worker => include_str!("../skills/cloudthinker-cli/worker.md"),
             Self::Remote => include_str!("../skills/cloudthinker-cli/remote.md"),

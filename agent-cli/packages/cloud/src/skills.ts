@@ -87,11 +87,12 @@ export async function unpackSkill(
 	try {
 		await writeFile(join(staging, "target.json"), JSON.stringify(name));
 		await writeFile(join(staging, "revision.json"), JSON.stringify(previousRevision ?? null));
-		for (const [path, bytes] of files) {
-			const stagedPath = join(stagedSkill, relative(target, path));
-			await mkdir(dirname(stagedPath), { recursive: true });
-			await writeFile(stagedPath, bytes);
-		}
+		const staged = [...files].map(
+			([path, bytes]) => [join(stagedSkill, relative(target, path)), bytes] as const,
+		);
+		const directories = new Set(staged.map(([stagedPath]) => dirname(stagedPath)));
+		await Promise.all([...directories].map((directory) => mkdir(directory, { recursive: true })));
+		await Promise.all(staged.map(([stagedPath, bytes]) => writeFile(stagedPath, bytes)));
 		try {
 			await rename(target, backup);
 			movedOld = true;
@@ -264,22 +265,39 @@ export async function refreshSkills(
 	const next: SkillIndex = {};
 	const installed: string[] = [];
 	const failed = new Set<string>();
+	const pending: WorkspaceSkill[] = [];
 	for (const skill of installable) {
 		if (cached[skill.name] === skill.updated_at && onDisk.has(skill.name)) {
 			next[skill.name] = skill.updated_at;
 			continue;
 		}
-		try {
-			skillTarget(root, skill.name);
-			await unpackSkill(
-				await client.downloadSkill(skill.name),
-				root,
-				skill.name,
-				cached[skill.name],
-			);
-			next[skill.name] = skill.updated_at;
-			installed.push(skill.name);
-		} catch (error) {
+		pending.push(skill);
+	}
+	const INSTALL_BATCH = 4;
+	for (let start = 0; start < pending.length; start += INSTALL_BATCH) {
+		const results = await Promise.all(
+			pending.slice(start, start + INSTALL_BATCH).map(async (skill) => {
+				try {
+					skillTarget(root, skill.name);
+					await unpackSkill(
+						await client.downloadSkill(skill.name),
+						root,
+						skill.name,
+						cached[skill.name],
+					);
+					return { skill, ok: true as const };
+				} catch (error) {
+					return { skill, ok: false as const, error };
+				}
+			}),
+		);
+		for (const result of results) {
+			const { skill } = result;
+			if (result.ok) {
+				next[skill.name] = skill.updated_at;
+				installed.push(skill.name);
+				continue;
+			}
 			failed.add(skill.name);
 			const cachedRevision = cached[skill.name];
 			if (
@@ -289,7 +307,7 @@ export async function refreshSkills(
 			) {
 				next[skill.name] = cachedRevision;
 			}
-			onSkillError(skill.name, error);
+			onSkillError(skill.name, result.error);
 		}
 	}
 	const removed: string[] = [];

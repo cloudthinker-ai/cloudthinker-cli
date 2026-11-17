@@ -192,7 +192,8 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 			if (!params.taskId) throw new Error(`taskId is required for ${params.action}`);
 			if (params.action === "output") {
 				const output = manager.readOutput(params.taskId, params.afterByte ?? 0, params.maxBytes);
-				return toolResult(`Output bytes ${output.startByte}–${output.nextByte} of ${output.totalBytes}${output.truncated ? " (older output was truncated)" : ""}\n${output.text}`, { taskId: params.taskId, ...output });
+				const { logPath } = manager.get(params.taskId);
+				return toolResult(`Output bytes ${output.startByte}–${output.nextByte} of ${output.totalBytes}${output.truncated ? " (older output was truncated)" : ""} · full log: ${logPath}\n${output.text}`, { taskId: params.taskId, logPath, ...output });
 			}
 			const task = await manager.cancel(params.taskId);
 			return toolResult(`Background command ${task.id} is ${task.state}.`, { task });
@@ -403,5 +404,5 @@ function sanitizeTerminalText(text: string): string {
 
 function formatTask(task: BackgroundTaskSummary): string {
 	const duration = Math.max(0, Math.floor(((task.finishedAt ?? Date.now()) - task.createdAt) / 1000));
-	return `${task.id} · ${task.stoppedByUser ? "stopped by the user" : task.state} · ${duration}s${task.exitCode === undefined ? "" : ` · exit ${task.exitCode}`}\n${oneLine(task.command, 200)}`;
+	return `${task.id} · ${task.stoppedByUser ? "stopped by the user" : task.state} · ${duration}s${task.exitCode === undefined ? "" : ` · exit ${task.exitCode}`}\n${oneLine(task.command, 200)}\nlog: ${task.logPath}`;
 }

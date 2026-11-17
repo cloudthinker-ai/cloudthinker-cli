@@ -9,16 +9,46 @@ use super::paths::ROOT_ENV;
 const FILE: &str = "targets";
 const KEEP: usize = 10;
 const LIMIT: u64 = 64 * 1024;
+const VIA_PREFIX: &str = "-via\t";
 
-pub fn latest() -> CtResult<Option<String>> {
-    let dir = open()?;
-    Ok(read(&dir)?.into_iter().next())
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Saved {
+    pub target: String,
+    pub via: Option<String>,
 }
 
-pub fn remember(target: &str) -> CtResult<()> {
+pub fn latest() -> CtResult<Option<Saved>> {
+    Ok(list()?.into_iter().next())
+}
+
+pub fn find(target: &str) -> CtResult<Option<Saved>> {
+    Ok(list()?.into_iter().find(|saved| saved.target == target))
+}
+
+pub fn list() -> CtResult<Vec<Saved>> {
+    read(&open()?)
+}
+
+pub fn remember(target: &str, via: Option<&str>) -> CtResult<()> {
     let dir = open()?;
-    let list = put_first(read(&dir)?, target);
+    let saved = Saved {
+        target: target.to_string(),
+        via: via.map(str::to_string),
+    };
+    let list = put_first(read(&dir)?, saved);
     write_private(&dir, FILE, render(&list).as_bytes())
+}
+
+pub fn forget(target: &str) -> CtResult<bool> {
+    let dir = open()?;
+    let mut list = read(&dir)?;
+    let before = list.len();
+    list.retain(|saved| saved.target != target);
+    if list.len() == before {
+        return Ok(false);
+    }
+    write_private(&dir, FILE, render(&list).as_bytes())?;
+    Ok(true)
 }
 
 fn open() -> CtResult<Dir> {
@@ -40,7 +70,7 @@ fn open() -> CtResult<Dir> {
     })
 }
 
-fn read(dir: &Dir) -> CtResult<Vec<String>> {
+fn read(dir: &Dir) -> CtResult<Vec<Saved>> {
     if !dir.exists(FILE) {
         return Ok(Vec::new());
     }
@@ -48,49 +78,89 @@ fn read(dir: &Dir) -> CtResult<Vec<String>> {
     Ok(parse(&String::from_utf8_lossy(&bytes)))
 }
 
-fn parse(text: &str) -> Vec<String> {
-    let mut targets: Vec<String> = Vec::new();
-    for line in text.lines().map(str::trim) {
-        if !line.is_empty() && !line.starts_with('-') && !targets.iter().any(|seen| seen == line) {
-            targets.push(line.to_string());
+fn parse(text: &str) -> Vec<Saved> {
+    let mut targets: Vec<Saved> = Vec::new();
+    for saved in text.lines().map(str::trim).filter_map(parse_line) {
+        if !targets.iter().any(|seen| seen.target == saved.target) {
+            targets.push(saved);
         }
     }
     targets.truncate(KEEP);
     targets
 }
 
-fn put_first(mut targets: Vec<String>, target: &str) -> Vec<String> {
-    targets.retain(|seen| seen != target);
-    targets.insert(0, target.to_string());
+fn parse_line(line: &str) -> Option<Saved> {
+    if let Some(rest) = line.strip_prefix(VIA_PREFIX) {
+        let (target, via) = rest.split_once('\t')?;
+        let valid = !target.is_empty() && !target.starts_with('-') && !via.trim().is_empty();
+        return valid.then(|| Saved {
+            target: target.to_string(),
+            via: Some(via.to_string()),
+        });
+    }
+    (!line.is_empty() && !line.starts_with('-')).then(|| Saved {
+        target: line.to_string(),
+        via: None,
+    })
+}
+
+fn put_first(mut targets: Vec<Saved>, saved: Saved) -> Vec<Saved> {
+    targets.retain(|seen| seen.target != saved.target);
+    targets.insert(0, saved);
     targets.truncate(KEEP);
     targets
 }
 
-fn render(targets: &[String]) -> String {
-    targets.iter().map(|target| format!("{target}\n")).collect()
+fn render(targets: &[Saved]) -> String {
+    targets
+        .iter()
+        .map(|saved| match &saved.via {
+            Some(via) => format!("{VIA_PREFIX}{}\t{via}\n", saved.target),
+            None => format!("{}\n", saved.target),
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn list(items: &[&str]) -> Vec<String> {
-        items.iter().map(|item| (*item).to_string()).collect()
+    fn list(items: &[&str]) -> Vec<Saved> {
+        items
+            .iter()
+            .map(|item| Saved {
+                target: (*item).to_string(),
+                via: None,
+            })
+            .collect()
+    }
+
+    fn plain(target: &str) -> Saved {
+        Saved {
+            target: target.to_string(),
+            via: None,
+        }
     }
 
     #[test]
     fn the_newest_target_comes_first_and_the_list_keeps_ten() {
         let mut targets = Vec::new();
         for target in ["a", "b", "c", "a"] {
-            targets = put_first(targets, target);
+            targets = put_first(targets, plain(target));
         }
         assert_eq!(targets, list(&["a", "c", "b"]));
         for index in 0..12 {
-            targets = put_first(targets, &format!("host-{index}"));
+            targets = put_first(targets, plain(&format!("host-{index}")));
         }
         assert_eq!(targets.len(), KEEP);
-        assert_eq!(targets.first().map(String::as_str), Some("host-11"));
-        assert_eq!(targets.last().map(String::as_str), Some("host-2"));
+        assert_eq!(
+            targets.first().map(|saved| saved.target.as_str()),
+            Some("host-11")
+        );
+        assert_eq!(
+            targets.last().map(|saved| saved.target.as_str()),
+            Some("host-2")
+        );
     }
 
     #[test]

@@ -29,15 +29,17 @@ mod update_cache;
 mod test_support;
 
 pub use agent_release::{
-    DEFAULT_RELEASE_BASE_URL, InstalledAgent, agent_bin_root, any_agent_installed,
-    host_target_triple, install_agent, installed_agent_binary,
+    CLI_BINARY_NAME, DEFAULT_RELEASE_BASE_URL, InstalledAgent, LinuxLibc, LinuxTargets,
+    RELEASE_URL_ENV_VAR, ReleaseFile, agent_bin_root, any_agent_installed, cli_asset_name,
+    fetch_host_release, host_target_triple, install_agent, installed_agent_binary, linux_targets,
+    release_base,
 };
 pub use auth::device::wait_for_device_token;
 pub use auth::pkce::{Loopback, PkceChallenge, consent_url};
 pub use auth::refresh::{PROACTIVE_REFRESH_SKEW_SECS, RefreshCoordinator};
 pub use auth::store::{
-    CredentialProvenance, CredentialSource, EnvTokenStore, FileStore, StoredToken, StoredWorkspace,
-    TOKEN_ENV_VAR, TokenStore, WorkspaceSelector,
+    CONFIG_DIR_ENV_VAR, CredentialProvenance, CredentialSource, EnvTokenStore, FileStore,
+    StoredToken, StoredWorkspace, TOKEN_ENV_VAR, TokenStore, WorkspaceSelector, config_dir,
 };
 pub use cli_config::{
     CliConfig, URL_ENV_VAR, cli_config_path, effective_default_url, resolve_base_url,
@@ -62,6 +64,11 @@ pub use client::{
     validate_connect_prefix,
 };
 pub use client::{
+    BodyField, BodyInput, JsonDocument, PublicCall, PublicReply, PublicSpec, QueryValue,
+    SpecFreshness, TokenView, cached_public_spec, check_personal_token, operation_summary,
+    read_public_spec_file,
+};
+pub use client::{
     CONVERSATION_SEARCH_DEFAULT_LIMIT, CONVERSATION_SEARCH_FUZZY_DEFAULT_SCORE,
     CONVERSATION_SEARCH_FUZZY_MAX_SCORE, CONVERSATION_SEARCH_FUZZY_MIN_SCORE,
     CONVERSATION_SEARCH_MAX_LIMIT, CONVERSATION_SEARCH_MAX_QUERY_CHARS, ConversationSearch,
@@ -74,9 +81,14 @@ pub use client::{
     DoctorCause, DoctorCheck, DoctorCoverage, DoctorReport, DoctorStatus, OriginSource, diagnose,
 };
 pub use client::{
+    LocalReviewContext, LocalReviewContextRequest, LocalReviewFindingIn, LocalReviewSeverity,
+    LocalReviewStored, LocalReviewUpload,
+};
+pub use client::{
     POLICY_DOCUMENT_MAX_BYTES, PolicyImportCounts, PolicyImportIssue, PolicyImportMode,
     PolicyImportOptions, PolicyImportReport, PolicyImportRule, PolicyImportSection,
 };
+pub use cloudthinker_spec as spec;
 pub use cyber_run_guard::{wait_for_run_stop, while_run_running};
 pub use discovery::{
     CyberDiscoveryArtifacts, CyberDiscoveryCollectorHealth, CyberDiscoveryHealth,

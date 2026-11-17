@@ -29,6 +29,16 @@ use crate::error::{CtError, CtResult};
 const KEYRING_SERVICE: &str = "cloudthinker-cli";
 const STORE_VERSION: u8 = 2;
 pub const TOKEN_ENV_VAR: &str = "CLOUDTHINKER_TOKEN";
+pub const CONFIG_DIR_ENV_VAR: &str = "CLOUDTHINKER_CONFIG_DIR";
+
+pub fn config_dir() -> CtResult<PathBuf> {
+    if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV_VAR).filter(|dir| !dir.is_empty()) {
+        return Ok(PathBuf::from(dir));
+    }
+    dirs::config_dir()
+        .map(|base| base.join("cloudthinker"))
+        .ok_or_else(|| CtError::Store("no config dir for this platform".into()))
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CredentialSource {
@@ -287,7 +297,7 @@ impl FileStore {
         login_command(&self.origin)
     }
 
-    /// Opens `<config dir>/cloudthinker/credentials.json`. The first open after
+    /// Opens `<config dir>/credentials.json`, where the config dir is `CLOUDTHINKER_CONFIG_DIR` or the platform's `cloudthinker` folder. The first open after
     /// the 0.5.3 upgrade writes: it moves the origin's keyring logins from
     /// releases before 0.5.3 into the file and deletes the keyring entry, so a
     /// read-only command keeps the login it had before the upgrade.
@@ -301,10 +311,8 @@ impl FileStore {
         origin: String,
         selector: WorkspaceSelector,
     ) -> CtResult<Self> {
-        let base = dirs::config_dir()
-            .ok_or_else(|| CtError::Store("no config dir for this platform".into()))?;
         Ok(Self::with_selector(
-            base.join("cloudthinker").join("credentials.json"),
+            config_dir()?.join("credentials.json"),
             origin,
             selector,
         ))

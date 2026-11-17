@@ -20,8 +20,8 @@ MONO_ROOT="$(git -C "$CLI_DIR" rev-parse --show-toplevel)"
 MONO_SHA="$(git -C "$CLI_DIR" rev-parse HEAD)"
 
 python3 "$CLI_DIR/scripts/changelog.py" pending
-if [ -n "$(git -C "$CLI_DIR" status --porcelain -- . ../agent-cli ../executor/app/skills/public/review-setup)" ]; then
-  echo "error: commit CLI, agent, and review-setup Skill changes before release-sync" >&2
+if [ -n "$(git -C "$CLI_DIR" status --porcelain -- . ../agent-cli ../executor/app/skills/public/review-setup ../executor/app/skills/public/cyber/scan/investigation.md)" ]; then
+  echo "error: commit CLI, agent, and shared Skill changes before release-sync" >&2
   exit 1
 fi
 

@@ -34,28 +34,18 @@ export const RECENT_USER_MESSAGES = 3;
 export const RECENT_USER_MESSAGE_CHARS = 2_000;
 export const WRITE_SUBJECT = "A cloud write";
 export const APPROVE_HERE = "Approve and run";
-export const APPROVE_AND_TRUST = "Approve and trust this command";
 export const DECLINE_HERE = "Decline";
 export const DECIDE_IN_BROWSER = "Decide in the browser";
 export const APPROVAL_TITLE = "Cloud write needs your approval";
 export const APPROVAL_NOTIFICATION = "CloudThinker: approval needed";
 export const CHOICE_KEYS: Readonly<Record<string, string>> = {
 	[APPROVE_HERE]: "y",
-	[APPROVE_AND_TRUST]: "a",
 	[DECLINE_HERE]: "n",
 	[DECIDE_IN_BROWSER]: "b",
 };
 export const DECISION_OPTIONS = [APPROVE_HERE, DECLINE_HERE, DECIDE_IN_BROWSER];
-export const TRUST_DECISION_OPTIONS = [
-	APPROVE_HERE,
-	APPROVE_AND_TRUST,
-	DECLINE_HERE,
-	DECIDE_IN_BROWSER,
-];
 export const NOT_AN_APPROVER_MESSAGE =
 	"Only a workspace approver can approve a cloud write. Ask one to open the link in the browser.";
-export const TRUST_REFUSED_MESSAGE =
-	"The approval was not applied: only a workspace settings editor can trust a command. Decide again without trusting it.";
 
 const parameters = Type.Object({
 	connection_list: Type.Optional(
@@ -105,7 +95,7 @@ type Params = Static<typeof parameters>;
 
 const description = [
 	"Run ONE state-changing command on the workspace machine, CloudThinker's computer in the cloud, with a workspace Connection's credential injected.",
-	"The workspace decides whether it runs: a command the workspace already trusts runs at once; anything else pauses until a human approves it, in this terminal or in the browser, then runs here.",
+	"The workspace decides whether it runs: a command an active workspace Rule allows runs at once; anything else pauses until a human approves it, in this terminal or in the browser, then runs here.",
 	"",
 	"The credential stays in the cloud. You never see it, you only get stdout back.",
 	`Read-only lookups (describe, list, get, logs) belong in ${CT_SANDBOX_READ}; open-ended, multi-step cloud work belongs in ${CT_ASK}.`,
@@ -179,7 +169,6 @@ export type TerminalDecision = "approve" | "decline" | "browser";
 export interface TerminalAnswer {
 	decision: TerminalDecision;
 	reason?: string;
-	trust?: boolean;
 }
 
 export function approvalChoices(options: readonly string[]): ApprovalChoice[] {
@@ -200,7 +189,7 @@ async function chooseDecision(
 			script: write.script,
 			webUrl: write.web_url,
 			choices: approvalChoices(options),
-		}, theme, done, () => tui.requestRender()));
+		}, theme, done, () => tui.requestRender(), () => tui.terminal.rows));
 	}
 	ctx.ui.setWidget(APPROVAL_KEY, approvalCard(write), { placement: "aboveEditor" });
 	return ctx.ui.select(`Cloud write: ${firstLine(write.reasoning)}`, [...options]);
@@ -209,12 +198,10 @@ async function chooseDecision(
 export async function askInTerminal(
 	ctx: Pick<ExtensionContext, "hasUI" | "ui"> & Partial<Pick<ExtensionContext, "mode">>,
 	write: CloudWrite,
-	offerTrust = true,
 ): Promise<TerminalAnswer> {
 	if (!ctx.hasUI) return { decision: "browser" };
-	const choice = await chooseDecision(ctx, write, offerTrust ? TRUST_DECISION_OPTIONS : DECISION_OPTIONS);
+	const choice = await chooseDecision(ctx, write, DECISION_OPTIONS);
 	if (choice === APPROVE_HERE) return { decision: "approve" };
-	if (choice === APPROVE_AND_TRUST) return { decision: "approve", trust: true };
 	if (choice === DECIDE_IN_BROWSER) return { decision: "browser" };
 	if (choice === undefined) return { decision: "decline" };
 	const reason = await ctx.ui.input("Why decline? (optional)", "reason");
@@ -224,7 +211,7 @@ export async function askInTerminal(
 export interface WriteDecider {
 	decideWrite(
 		writeId: string,
-		body: { decision: "approve" | "decline"; reason?: string; trust?: boolean },
+		body: { decision: "approve" | "decline"; reason?: string },
 		signal?: AbortSignal,
 	): Promise<CloudWrite>;
 }
@@ -236,42 +223,27 @@ export async function decideInTerminal(
 	warn: (message: string) => void,
 	signal?: AbortSignal,
 ): Promise<CloudWrite | undefined> {
-	let offerTrust = true;
-	for (;;) {
-		const answer = await askInTerminal(ctx, write, offerTrust);
-		if (answer.decision === "browser") return undefined;
-		try {
-			return await client.decideWrite(
-				write.id,
-				{ decision: answer.decision, reason: answer.reason, trust: answer.trust },
-				signal,
-			);
-		} catch (error) {
-			if (!(error instanceof CloudThinkerApiError) || error.status !== 403) throw error;
-			if (!answer.trust) {
-				warn(NOT_AN_APPROVER_MESSAGE);
-				return undefined;
-			}
-			warn(TRUST_REFUSED_MESSAGE);
-			offerTrust = false;
-		}
+	const answer = await askInTerminal(ctx, write);
+	if (answer.decision === "browser") return undefined;
+	try {
+		return await client.decideWrite(
+			write.id,
+			{ decision: answer.decision, reason: answer.reason },
+			signal,
+		);
+	} catch (error) {
+		if (!(error instanceof CloudThinkerApiError) || error.status !== 403) throw error;
+		warn(NOT_AN_APPROVER_MESSAGE);
+		return undefined;
 	}
-}
-
-export function humaniseReason(reason: string): string {
-	return reason === "workspace_trusted_command" ? "trusted command" : reason;
 }
 
 export function verdictLabel(write: Pick<CloudWrite, "verdict" | "verdict_reason">): string {
 	if (write.verdict_reason === AUTO_MODE_OFF_REASON) return "manual: needs approval";
-	if (write.verdict === "allow") return `auto: allowed (${humaniseReason(write.verdict_reason)})`;
+	if (write.verdict === "allow") return `auto: allowed (${write.verdict_reason})`;
 	if (write.verdict === "require_approval") return "auto: needs approval";
 	if (write.verdict === "escalate") return "auto: escalated";
 	return "auto: denied";
-}
-
-function decidedBy(write: CloudWrite): string {
-	return `${write.trusted ? "approved and trusted" : "approved"} by ${write.decided_by_name}`;
 }
 
 export function renderWrite(outcome: WriteOutcome): string {
@@ -283,7 +255,6 @@ export function renderWrite(outcome: WriteOutcome): string {
 	];
 	if (write.status === "executed" && execution) {
 		if (write.decided_by_name) lines.push(`approved_by: ${write.decided_by_name}`);
-		if (write.trusted) lines.push("trusted: the workspace now runs this command without approval");
 		lines.push("", renderExecution(execution));
 		return lines.join("\n");
 	}
@@ -328,7 +299,7 @@ export function writeSummary(
 	const { write } = outcome;
 	const verdict = verdictLabel(write);
 	if (write.status === "executed") {
-		const by = write.decided_by_name ? `${decidedBy(write)} · ` : "";
+		const by = write.decided_by_name ? `approved by ${write.decided_by_name} · ` : "";
 		return `${verdict} · ${by}ran on the workspace machine · ${formatElapsed(outcome.elapsed_ms)}`;
 	}
 	if (write.status === "required_approval") {

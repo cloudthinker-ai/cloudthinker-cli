@@ -1,5 +1,6 @@
 //! Engine: exit-code mapping, login guidance, output rendering, and the generic watch loop.
 
+pub mod confirm;
 pub mod exit;
 pub mod local_review;
 pub mod login_guide;

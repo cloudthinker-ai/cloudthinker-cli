@@ -212,7 +212,9 @@ impl WorkerClient {
         observe(&self.observed, reply.headers());
         let status = reply.status();
         if status.is_success() {
-            let body = read_capped(reply).await.ok_or_else(protocol_mismatch)?;
+            let body = read_capped(reply, MAX_REPLY_BYTES)
+                .await
+                .map_err(|_| protocol_mismatch())?;
             return serde_json::from_slice(&body).map_err(|_| protocol_mismatch());
         }
         let wait = retry_after(reply.headers());
@@ -712,25 +714,36 @@ fn is_retryable(status: u16) -> bool {
     matches!(status, 408 | 429) || (500..=599).contains(&status)
 }
 
-async fn read_capped(mut reply: reqwest::Response) -> Option<Vec<u8>> {
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum CappedReadError {
+    #[error("the response is larger than {0} bytes")]
+    TooLarge(usize),
+    #[error("reading the response: {0}")]
+    Transport(#[from] reqwest::Error),
+}
+
+pub(crate) async fn read_capped(
+    mut reply: reqwest::Response,
+    max_bytes: usize,
+) -> Result<Vec<u8>, CappedReadError> {
     if reply
         .content_length()
-        .is_some_and(|len| len > MAX_REPLY_BYTES as u64)
+        .is_some_and(|len| len > max_bytes as u64)
     {
-        return None;
+        return Err(CappedReadError::TooLarge(max_bytes));
     }
     let mut body = Vec::new();
-    while let Some(chunk) = reply.chunk().await.ok()? {
-        if body.len().saturating_add(chunk.len()) > MAX_REPLY_BYTES {
-            return None;
+    while let Some(chunk) = reply.chunk().await? {
+        if body.len().saturating_add(chunk.len()) > max_bytes {
+            return Err(CappedReadError::TooLarge(max_bytes));
         }
         body.extend_from_slice(&chunk);
     }
-    Some(body)
+    Ok(body)
 }
 
 async fn read_capped_text(reply: reqwest::Response) -> Option<String> {
-    String::from_utf8(read_capped(reply).await?).ok()
+    String::from_utf8(read_capped(reply, MAX_REPLY_BYTES).await.ok()?).ok()
 }
 
 fn protocol_mismatch() -> CtError {

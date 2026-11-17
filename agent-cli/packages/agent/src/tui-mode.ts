@@ -1,11 +1,11 @@
 import type { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { mergedSettings } from "./pi-settings.ts";
 
 export const TUI_MODE_FLAG = "--tui-mode";
 export const DEFAULT_TUI_MODE = "fullscreen";
 
 export function savedTuiMode(settings: Pick<SettingsManager, "getGlobalSettings" | "getProjectSettings">): unknown {
-	const merged = { ...settings.getGlobalSettings(), ...settings.getProjectSettings() } as Record<string, unknown>;
-	return merged.tuiMode;
+	return mergedSettings(settings).tuiMode;
 }
 
 export function tuiModeArgs(argv: readonly string[], saved: unknown): string[] {

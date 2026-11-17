@@ -603,6 +603,15 @@ mod landlock_rules {
             .map_err(seccomp_failed)
     }
 
+    fn request_equals<T>(request: T) -> Result<SeccompRule, SandboxError>
+    where
+        u32: TryFrom<T>,
+        <u32 as TryFrom<T>>::Error: Display,
+    {
+        let request = u32::try_from(request).map_err(seccomp_failed)?;
+        arg_equals(1, u64::from(request))
+    }
+
     fn ioctl_numbers() -> Vec<i64> {
         let mut numbers = with_x32(libc::SYS_ioctl);
         if cfg!(target_arch = "x86_64") {
@@ -614,8 +623,8 @@ mod landlock_rules {
     fn syscall_filter() -> Result<BpfProgram, SandboxError> {
         let unix = arg_equals(0, u64::from(libc::AF_UNIX.unsigned_abs()))?;
         let terminal_input = vec![
-            arg_equals(1, libc::TIOCSTI)?,
-            arg_equals(1, libc::TIOCLINUX)?,
+            request_equals(libc::TIOCSTI)?,
+            request_equals(libc::TIOCLINUX)?,
         ];
         let mut rules: BTreeMap<i64, Vec<SeccompRule>> = with_x32(libc::SYS_socket)
             .into_iter()

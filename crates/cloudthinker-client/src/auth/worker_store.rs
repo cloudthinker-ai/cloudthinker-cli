@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+use crate::auth::store::config_dir;
 use crate::{CtError, CtResult, origin_of};
 
 pub const WORKER_TOKEN_ENV: &str = "CLOUDTHINKER_WORKER_TOKEN";
@@ -25,17 +26,13 @@ pub struct WorkerStore {
 
 impl WorkerStore {
     pub fn open_default(base_url: &str) -> CtResult<Self> {
-        let root = dirs::config_dir()
-            .ok_or_else(|| CtError::Store("worker configuration directory unavailable".into()))?;
-        Self::open(&root.join("cloudthinker/worker-state"), base_url)
+        Self::open(&config_dir()?.join("worker-state"), base_url)
     }
 
     pub fn default_state_root(base_url: &str) -> CtResult<PathBuf> {
-        let root = dirs::config_dir()
-            .ok_or_else(|| CtError::Store("worker configuration directory unavailable".into()))?;
         let origin = origin_of(base_url)?;
         let digest = format!("{:x}", Sha256::digest(origin.as_bytes()));
-        Ok(root.join("cloudthinker/worker-state").join(digest))
+        Ok(config_dir()?.join("worker-state").join(digest))
     }
 
     pub fn open(root: &Path, base_url: &str) -> CtResult<Self> {

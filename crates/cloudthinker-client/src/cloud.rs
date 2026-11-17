@@ -21,6 +21,7 @@ pub enum CloudResult {
     Session(api::AgentCliSessionCreated),
     Connections(api::AgentCliConnectionsContext),
     Content(api::LoadedConnectionContent),
+    ToolSearch(api::ToolSearchResponse),
     Read {
         conversation_id: Uuid,
         #[serde(flatten)]
@@ -138,24 +139,32 @@ impl CtClient {
         .map(CloudResult::Content)
     }
 
-    pub async fn cloud_load_tools(
+    pub async fn cloud_tool_search(
         &self,
         session: Uuid,
-        prefix: &str,
-        tools: Vec<String>,
+        query: String,
+        limit: Option<i64>,
     ) -> CtResult<CloudResult> {
-        let body = api::LoadConnectionToolsRequest {
+        let body = api::ToolSearchRequest {
             conversation_id: session,
-            connection_prefix: prefix
+            query: query
                 .parse()
-                .map_err(|_| CtError::Usage("Invalid Connection prefix.".into()))?,
-            tools,
+                .map_err(|_| CtError::Usage("Query is empty.".into()))?,
+            limit: limit
+                .map(|value| {
+                    u64::try_from(value)
+                        .ok()
+                        .filter(|value| (1..=10).contains(value))
+                        .and_then(std::num::NonZeroU64::new)
+                        .ok_or_else(|| CtError::Usage("--limit must be 1 to 10.".into()))
+                })
+                .transpose()?,
         };
         self.authed_with_timeout(Duration::from_secs(180), async |client| {
-            client.agent_cli_load_agent_cli_tools(None, &body).await
+            client.agent_cli_search_agent_cli_tools(None, &body).await
         })
         .await
-        .map(CloudResult::Content)
+        .map(CloudResult::ToolSearch)
     }
 
     pub async fn cloud_read(&self, input: CloudExecutionInput) -> CtResult<CloudResult> {

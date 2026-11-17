@@ -18,16 +18,15 @@ class CheckReleaseTests(unittest.TestCase):
             for group in config["dist"]["extra-artifacts"]
             for asset in group["artifacts"]
         ]
-        assets = agent_assets + [
-            f"cloudthinker-cli-{target}.{extension}"
-            for target, extension in [
-                ("aarch64-apple-darwin", "tar.xz"),
-                ("x86_64-apple-darwin", "tar.xz"),
-                ("aarch64-unknown-linux-gnu", "tar.xz"),
-                ("x86_64-unknown-linux-gnu", "tar.xz"),
-                ("x86_64-pc-windows-msvc", "zip"),
-            ]
-        ] + ["cloudthinker-cli-installer.sh", "cloudthinker-cli-installer.ps1", "sha256.sum"]
+        cli_assets = [
+            f"cloudthinker-cli-{target}.{'zip' if 'windows' in target else 'tar.xz'}"
+            for target in config["dist"]["targets"]
+        ]
+        assets = agent_assets + cli_assets + [
+            "cloudthinker-cli-installer.sh",
+            "cloudthinker-cli-installer.ps1",
+            "sha256.sum",
+        ]
         sidecars = [name for name in agent_assets if name.endswith((".sha256", "-sha256.sum"))]
         cases = [(None, None, 0)] + [
             (name if missing else None, None if missing else name, 1)

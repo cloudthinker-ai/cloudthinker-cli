@@ -86,6 +86,11 @@ fn younger_than(stamp_unix: u64, now_unix: u64, max_age_secs: u64) -> bool {
 }
 
 pub(crate) fn write_json_file<T: Serialize>(path: &Path, value: &T) -> CtResult<()> {
+    let body = serde_json::to_vec_pretty(value).map_err(|e| CtError::Store(e.to_string()))?;
+    write_file(path, &body)
+}
+
+pub(crate) fn write_file(path: &Path, body: &[u8]) -> CtResult<()> {
     let parent = path
         .parent()
         .ok_or_else(|| CtError::Store(format!("no parent for {}", path.display())))?;
@@ -94,7 +99,6 @@ pub(crate) fn write_json_file<T: Serialize>(path: &Path, value: &T) -> CtResult<
         .and_then(|name| name.to_str())
         .unwrap_or(CACHE_FILE_NAME);
     std::fs::create_dir_all(parent).map_err(|e| store_error("create", parent, &e))?;
-    let body = serde_json::to_vec_pretty(value).map_err(|e| CtError::Store(e.to_string()))?;
     let tmp = parent.join(format!(".{name}.tmp-{:08x}", rand::random::<u32>()));
     std::fs::write(&tmp, body).map_err(|e| store_error("write", &tmp, &e))?;
     std::fs::rename(&tmp, path).map_err(|e| {

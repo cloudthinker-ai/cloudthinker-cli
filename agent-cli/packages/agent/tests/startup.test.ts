@@ -6,6 +6,7 @@ import { InteractiveMode, initTheme } from "@earendil-works/pi-coding-agent";
 import { Container } from "@earendil-works/pi-tui";
 
 import { setMachineState } from "@cloudthinker/cloud/src/awareness.ts";
+import { setStartupHeroVisible, startupDiagnosticRows } from "@cloudthinker/cloud/src/startup-presentation.ts";
 import { applyStartupUi } from "../src/startup.ts";
 
 initTheme("dark");
@@ -84,5 +85,37 @@ test("the machine bar reads the current Cloud state on every render", () => {
 	assert.doesNotMatch(off, /Cloud: On/);
 	assert.match(off, /\[C\] sandbox\s+off for this session/);
 	setMachineState({ cloudEnabled: true });
+	assert.match(rendered(host), /Cloud: On/);
+});
+
+
+test("launch artwork yields only ordinary startup rows while diagnostics remain available", (t) => {
+	t.after(() => setStartupHeroVisible(false));
+	const host = startup();
+	assert.equal(startupDiagnosticRows(), 1);
+	setStartupHeroVisible(true);
+	const hero = rendered(host);
+	assert.match(hero, /1 startup error/);
+	assert.match(hero, /1 startup warning/);
+	assert.doesNotMatch(hero, /\[L\]|\[C\]|150 skills/);
+	const component = host.loadedResourcesContainer.children[0] as unknown as { setExpanded(expanded: boolean): void };
+	component.setExpanded(true);
+	assert.match(rendered(host), /Duplicate skill retained project copy/);
+	assert.match(rendered(host), /Extension failed to load/);
+	component.setExpanded(false);
+	setStartupHeroVisible(false);
+	assert.match(rendered(host), /\[L\] this machine/);
+	assert.match(rendered(host), /1 startup warning/);
+});
+
+test("a clean hero adds no startup row and later clean sessions clear diagnostic budget", (t) => {
+	t.after(() => setStartupHeroVisible(false));
+	startup();
+	assert.equal(startupDiagnosticRows(), 1);
+	const host = startup({ issues: false });
+	assert.equal(startupDiagnosticRows(), 0);
+	setStartupHeroVisible(true);
+	assert.equal(rendered(host), "");
+	setStartupHeroVisible(false);
 	assert.match(rendered(host), /Cloud: On/);
 });

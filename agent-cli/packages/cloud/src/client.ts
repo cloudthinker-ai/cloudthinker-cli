@@ -236,7 +236,6 @@ export interface CloudWrite {
 	verdict: WriteVerdict;
 	verdict_reason: string;
 	status: WriteStatus;
-	trusted: boolean;
 	decided_by_name: string | null;
 	decline_reason: string | null;
 	task_id: string | null;
@@ -339,6 +338,26 @@ export interface RunState {
 	message: string | null;
 	failure_kind: string | null;
 	web_url: string | null;
+}
+
+export interface RunPendingApproval {
+	tool_call_id: string;
+	tool_name: string;
+	reason: string;
+	arguments: string;
+	decidable: boolean;
+}
+
+export interface RunApproval {
+	run_id: string;
+	status: RunStatus;
+	web_url: string | null;
+	pending: RunPendingApproval | null;
+}
+
+export interface RunDecision {
+	run_id: string;
+	decision: "approve" | "decline";
 }
 
 interface CallOptions {
@@ -466,9 +485,32 @@ export class CloudThinkerClient {
 		});
 	}
 
+	getRunApproval(runId: string, signal?: AbortSignal): Promise<RunApproval> {
+		return this.json({
+			method: "GET",
+			path: `/agent-cli/runs/${encodeURIComponent(runId)}/approval`,
+			timeoutMs: DEFAULT_TIMEOUT_MS,
+			signal,
+		});
+	}
+
+	decideRun(
+		runId: string,
+		body: { tool_call_id: string; decision: "approve" | "decline"; reason?: string },
+		signal?: AbortSignal,
+	): Promise<RunDecision> {
+		return this.json({
+			method: "POST",
+			path: `/agent-cli/runs/${encodeURIComponent(runId)}/decision`,
+			body,
+			timeoutMs: DEFAULT_TIMEOUT_MS,
+			signal,
+		});
+	}
+
 	decideWrite(
 		writeId: string,
-		body: { decision: "approve" | "decline"; reason?: string; trust?: boolean },
+		body: { decision: "approve" | "decline"; reason?: string },
 		signal?: AbortSignal,
 	): Promise<CloudWrite> {
 		return this.json({

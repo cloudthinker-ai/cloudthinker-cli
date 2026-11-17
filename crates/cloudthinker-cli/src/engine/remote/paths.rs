@@ -12,6 +12,8 @@ pub const ROOT_ENV: &str = "CLOUDTHINKER_REMOTE_DIR";
 pub const HOST_PID_ENV: &str = "CLOUDTHINKER_REMOTE_HOST_PID";
 pub const PASTE_MAX_AGE_SECS: u64 = 24 * 60 * 60;
 const SOCKET_PATH_LIMIT: usize = 100;
+const CONTROL_PATH_LIMIT: usize = 87;
+const CONTROL_HASH_LEN: usize = 40;
 
 pub fn validate_name(name: &str) -> CtResult<()> {
     let valid = (1..=32).contains(&name.len())
@@ -65,6 +67,10 @@ impl RemotePaths {
         self.root.join(format!("{}.sock", self.name))
     }
 
+    pub fn link(&self) -> PathBuf {
+        self.root.join(format!("{}.pty", self.name))
+    }
+
     pub fn lock(&self) -> PathBuf {
         self.root.join(format!("{}.lock", self.name))
     }
@@ -99,6 +105,20 @@ pub fn remote_root() -> CtResult<PathBuf> {
         Some(dir) if !dir.is_empty() => Ok(PathBuf::from(dir)),
         _ => Ok(home()?.join(".cloudthinker").join("remote")),
     }
+}
+
+pub fn control_path() -> Option<PathBuf> {
+    let root = remote_root().ok()?;
+    if root.to_string_lossy().contains('%') {
+        return None;
+    }
+    let path = root.join("ssh-%C");
+    let expanded = path.as_os_str().len() - "%C".len() + CONTROL_HASH_LEN;
+    if expanded > CONTROL_PATH_LIMIT {
+        return None;
+    }
+    private_folder(&root).ok()?;
+    Some(path)
 }
 
 pub fn name_for_folder(folder: &str) -> String {

@@ -1,4 +1,4 @@
-import { getSubagentHost } from "../host.ts";
+import { getSubagentHost, hostTickMs } from "../host.ts";
 /**
  * agent-widget.ts — Persistent widget showing running/completed agents above the editor.
  *
@@ -12,6 +12,7 @@ import { type AgentManager, isTopLevelAgent } from "../agent-manager.ts";
 import { getConfig } from "../agent-types.ts";
 import type { AgentInvocation, SubagentType, WidgetMode } from "../types.ts";
 import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage, type SessionLike } from "../usage.ts";
+import { magnitude } from "./magnitude.ts";
 
 // ---- Constants ----
 
@@ -101,9 +102,7 @@ export function fgPreservingNestedStyles(theme: Theme, color: string, text: stri
 
 /** Format a token count compactly: "33.8k token", "1.2M token". */
 export function formatTokens(count: number): string {
-  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M token`;
-  if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k token`;
-  return `${count} token`;
+  return `${magnitude(count)} token`;
 }
 
 /**
@@ -352,7 +351,7 @@ export class AgentWidget {
   /** Ensure the widget update timer is running. */
   ensureTimer() {
     if (!this.widgetInterval) {
-      this.widgetInterval = setInterval(() => this.update(), 80);
+      this.widgetInterval = setInterval(() => this.update(), hostTickMs());
     }
   }
 

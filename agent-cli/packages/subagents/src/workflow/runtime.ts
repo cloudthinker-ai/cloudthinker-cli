@@ -120,6 +120,7 @@ export interface WorkflowSpawnRequest {
 }
 
 export interface WorkflowSpawnResult {
+  execution?: WorkflowExecution;
   ok: boolean;
   /** The agent's answer. Present when `ok`. */
   text?: string;
@@ -160,6 +161,11 @@ export interface WorkflowSpawnResult {
    * decision and the error shaping still happen there, in one place.
    */
   gate?: WorkflowGateResult;
+}
+
+export interface WorkflowExecution {
+  record_id: string;
+  conversation_id?: string;
 }
 
 /** Outcome of a `gate` command. `output` is what the user is shown when it fails. */
@@ -431,6 +437,7 @@ class Semaphore {
  * ------------------------------------------------------------------------- */
 
 interface AgentCallPayload {
+  receipt?: boolean;
   prompt: string;
   label?: string;
   model?: string;
@@ -884,6 +891,10 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<Workflow
         schema: payload.schema !== undefined ? JSON.stringify(payload.schema) : undefined,
       };
       let replayed = replayAt(index, journalKey(keyInput));
+      if (replayed !== undefined && payload.receipt && replayed.execution === undefined) {
+        prefixIntact = false;
+        replayed = undefined;
+      }
       // A replayed answer still has to satisfy the schema. The key covers a
       // schema that *changed*, but not a journal that was hand-edited, and not
       // the empty text a torn entry leaves behind — either would hand the
@@ -918,8 +929,8 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<Workflow
         // Re-recorded so this run's journal is complete on its own terms: a
         // resume of a resume must not have to walk back through a chain of
         // earlier files to find the prefix.
-        recordJournal?.({ index, key: replayed.key, ok: true, text: replayedText });
-        respond(callId, true, replayedText);
+        recordJournal?.({ index, key: replayed.key, ok: true, text: replayedText, execution: replayed.execution });
+        respond(callId, true, payload.receipt ? JSON.stringify({ result: compiledSchema === undefined ? replayedText : JSON.parse(replayedText), execution: { ...replayed.execution, resumed: false } }) : replayedText);
         return;
       }
 
@@ -1100,9 +1111,15 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<Workflow
 
           if (result.ok) {
             const text = result.text ?? "";
+            if (payload.receipt && result.execution === undefined) {
+              recordJournal?.({ index, key, ok: false, ...resumeMark });
+              emit([{ ...common, state: "error", error: "The workflow host did not return an execution receipt." }]);
+              respond(callId, true, null);
+              return;
+            }
             emit([{ ...common, state: "done", resultPreview: preview(text) }]);
-            recordJournal?.({ index, key, ok: true, text, ...resumeMark });
-            respond(callId, true, text);
+            recordJournal?.({ index, key, ok: true, text, execution: result.execution, ...resumeMark });
+            respond(callId, true, payload.receipt ? JSON.stringify({ result: compiledSchema === undefined ? text : JSON.parse(text), execution: { ...result.execution, resumed: payload.resume !== undefined } }) : text);
             return;
           }
           // Recorded as a failure rather than left out: a gap would be read as an

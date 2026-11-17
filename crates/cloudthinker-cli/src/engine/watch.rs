@@ -58,8 +58,11 @@ where
 {
     let mut policy = WatchPolicy::new(cfg);
     loop {
+        let response = tokio::time::timeout(policy.remaining()?, fetch())
+            .await
+            .map_err(|_| deadline_elapsed())?;
         policy.before_fetch()?;
-        match fetch().await {
+        match response {
             Ok(Poll::Terminal(value)) => return Ok(value),
             Ok(Poll::Pending) => policy.pending(),
             Err(err) => policy.failed(err)?,
@@ -85,11 +88,19 @@ impl<'a> WatchPolicy<'a> {
         }
     }
 
-    fn before_fetch(&self) -> CtResult<()> {
-        if self.start.elapsed() >= self.cfg.overall_timeout {
+    fn remaining(&self) -> CtResult<Duration> {
+        let remaining = self
+            .cfg
+            .overall_timeout
+            .saturating_sub(self.start.elapsed());
+        if remaining.is_zero() {
             return Err(deadline_elapsed());
         }
-        Ok(())
+        Ok(remaining)
+    }
+
+    fn before_fetch(&self) -> CtResult<()> {
+        self.remaining().map(|_| ())
     }
 
     fn pending(&mut self) {

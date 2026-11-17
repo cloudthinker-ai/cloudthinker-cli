@@ -13,7 +13,7 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use axoupdater::{AxoUpdater, UpdateRequest, Version};
+use axoupdater::{AxoUpdater, AxoupdateError, UpdateRequest, Version};
 use cloudthinker_client::UpdateCache;
 use serde::Serialize;
 
@@ -44,6 +44,9 @@ const RESTART_HINT: &str = "restart cloudthinker to pick up the new version";
 /// Manual reinstall command, printed when self-update is not possible.
 const REINSTALL_HINT: &str = "reinstall with: curl -fsSL https://cloudthinker.io/install.sh | sh";
 
+/// Where a user picks a version for `update --version`.
+const RELEASES_URL: &str = "https://github.com/cloudthinker-ai/cloudthinker-cli/releases";
+
 /// The `--json` envelope for `update`.
 #[derive(Debug, Serialize)]
 pub struct UpdateEnvelope {
@@ -62,10 +65,12 @@ fn refuse(reason: &str) -> ExitCode {
     ExitCode::JobFailed
 }
 
-/// What one attempt to install the latest release did.
+/// What one attempt to install a release did.
 enum Outcome {
     Updated { old: Option<String>, new: String },
     Current,
+    AlreadyAt(String),
+    NoSuchRelease(String),
     Refused(String),
     Failed(String),
 }
@@ -106,6 +111,14 @@ fn channel_of(base_url: &str) -> Channel {
 /// axoupdater owns the release math; the channel only picks its strategy.
 /// Both strategies key on the release source the receipt names, so the origin
 /// never touches the network — it only selects.
+/// Accepts `0.12.2` or `v0.12.2` and keeps the bare semver the release tags use.
+pub fn parse_version(raw: &str) -> Result<String, String> {
+    let bare = raw.trim().trim_start_matches('v');
+    Version::parse(bare)
+        .map(|version| version.to_string())
+        .map_err(|_| format!("`{raw}` is not a release version; use one like 0.12.2"))
+}
+
 fn request_for(channel: Channel) -> UpdateRequest {
     match channel {
         Channel::Stable => UpdateRequest::Latest,
@@ -113,7 +126,7 @@ fn request_for(channel: Channel) -> UpdateRequest {
     }
 }
 
-async fn install_latest(force: bool, channel: Channel) -> Outcome {
+async fn install(force: bool, channel: Channel, pinned: Option<&str>) -> Outcome {
     let mut updater = AxoUpdater::new_for(APP_NAME);
     match cloudthinker_client::https_client() {
         Ok(client) => updater.set_client(client),
@@ -130,7 +143,10 @@ async fn install_latest(force: bool, channel: Channel) -> Outcome {
     if !matches!(updater.check_receipt_is_for_this_executable(), Ok(true)) {
         return Outcome::Refused("the running binary does not match the install receipt".into());
     }
-    updater.configure_version_specifier(request_for(channel));
+    updater.configure_version_specifier(match pinned {
+        Some(version) => UpdateRequest::SpecificVersion(version.to_string()),
+        None => request_for(channel),
+    });
     updater.disable_installer_output();
     if force {
         updater.always_update(true);
@@ -140,15 +156,23 @@ async fn install_latest(force: bool, channel: Channel) -> Outcome {
             old: result.old_version.as_ref().map(ToString::to_string),
             new: result.new_version.to_string(),
         },
-        Ok(None) => Outcome::Current,
+        Ok(None) => match pinned {
+            Some(version) => Outcome::AlreadyAt(version.to_string()),
+            None => Outcome::Current,
+        },
+        Err(AxoupdateError::VersionNotFound { version, .. }) => Outcome::NoSuchRelease(version),
         Err(err) => Outcome::Failed(err.to_string()),
     }
 }
 
-pub async fn run(force: bool, json: bool, base_url: &str) -> ExitCode {
+pub async fn run(force: bool, pinned: Option<&str>, json: bool, base_url: &str) -> ExitCode {
     warn_on_env_overrides();
-    let step = (!json).then(|| output::step("Checking for updates"));
-    let outcome = install_latest(force, channel_of(base_url)).await;
+    let label = pinned.map_or_else(
+        || "Checking for updates".to_string(),
+        |version| format!("Finding cloudthinker {version}"),
+    );
+    let step = (!json).then(|| output::step(&label));
+    let outcome = install(force, channel_of(base_url), pinned).await;
     drop(step);
     if let Outcome::Updated { new, .. } = &outcome
         && crate::commands::agent::bundle_in_use()
@@ -186,7 +210,20 @@ fn render(outcome: &Outcome, json: bool) -> ExitCode {
             },
             "cloudthinker is already up to date".to_string(),
         ),
+        Outcome::AlreadyAt(version) => (
+            UpdateEnvelope {
+                updated: false,
+                old_version: None,
+                new_version: None,
+            },
+            format!("cloudthinker is already {version}"),
+        ),
         Outcome::Refused(reason) => return refuse(reason),
+        Outcome::NoSuchRelease(version) => {
+            output::eprintln_error(&format!("cloudthinker {version} was never released"));
+            output::eprintln_error(&format!("pick a version from {RELEASES_URL}"));
+            return ExitCode::Usage;
+        }
         Outcome::Failed(err) => {
             output::eprintln_error(&format!("update failed: {err}"));
             output::eprintln_error(&format!(
@@ -275,7 +312,7 @@ pub async fn offer_on_start(base_url: &str) -> PendingCheck {
     }
     warn_on_env_overrides();
     let step = output::step(&updating_line(&version));
-    let outcome = install_latest(false, channel).await;
+    let outcome = install(false, channel, None).await;
     let Outcome::Updated { new, .. } = &outcome else {
         drop(step);
         render(&outcome, false);

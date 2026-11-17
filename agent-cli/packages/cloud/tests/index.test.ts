@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
-import { loadSkills, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { initTheme, loadSkills, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { TUI } from "@earendil-works/pi-tui";
 
 import { CLOUD_ENTRY_TYPE, CloudThinkerRuntime, SESSION_ENTRY_TYPE } from "../src/runtime.ts";
 import { machineBarLines } from "../src/awareness.ts";
@@ -14,6 +15,7 @@ import type { CloudThinkerClient } from "../src/client.ts";
 import { CLOUD_TOOLS } from "../src/tools/names.ts";
 import cloudthinker, { LINKING_STATUS } from "../src/index.ts";
 import { bundledReviewSetupPath } from "../src/onboarding.ts";
+import { MARK_HEIGHT } from "../src/logo.ts";
 import { startFakeServer } from "./helpers.ts";
 
 const CONVERSATION = "11111111-1111-4111-8111-111111111111";
@@ -46,6 +48,7 @@ test("review setup discovers the packaged, mirror, and monorepo Skill", () => {
 });
 
 type Handler = (event: unknown, ctx: ExtensionContext) => unknown;
+type HeaderFactory = NonNullable<Parameters<ExtensionContext["ui"]["setHeader"]>[0]>;
 
 function settle(ms = 60): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -119,7 +122,7 @@ function piHarness() {
 	};
 }
 
-function sessionContext(cwd: string, entries: unknown[], options: { mode?: string; notify?: (message: string) => void; projectTrusted?: boolean; provider?: string } = {}): ExtensionContext {
+function sessionContext(cwd: string, entries: unknown[], options: { mode?: string; notify?: (message: string) => void; setHeader?: (factory: HeaderFactory | undefined) => void; projectTrusted?: boolean; provider?: string } = {}): ExtensionContext {
 	return {
 		mode: options.mode ?? "print",
 		hasUI: false,
@@ -132,7 +135,7 @@ function sessionContext(cwd: string, entries: unknown[], options: { mode?: strin
 			setStatus: () => {},
 			setWidget: () => {},
 			setTitle: () => {},
-			setHeader: () => {},
+			setHeader: (factory: HeaderFactory | undefined) => options.setHeader?.(factory),
 			setFooter: () => {},
 			notify: options.notify ?? (() => {}),
 		},
@@ -361,45 +364,113 @@ test("CA-AWARE-9: a local missing-path error names this machine and points at th
 	}
 });
 
-test("CA-AWARE-10: a brand-new TUI session offers the tour in one line and never runs it", async () => {
+test("CA-AWARE-10: only the first empty TUI startup uses launch presentation", async () => {
 	const savedUrl = process.env.CLOUDTHINKER_URL;
 	const savedToken = process.env.CLOUDTHINKER_TOKEN;
 	const server = await startCloudServer();
 	const { pi, handlers, dispose } = piHarness();
 	process.env.CLOUDTHINKER_URL = server.origin;
 	process.env.CLOUDTHINKER_TOKEN = "t";
-	const OFFER = "New here? /skill:tour helps you get started with Local and Cloud";
-	const count = (notices: string[]) => notices.filter((message) => message === OFFER).length;
+	const tourNotice = (notices: string[]) => notices.some((message) => message.includes("/skill:tour"));
 	const history = [{ type: "message", id: "m1", parentId: null, timestamp: "", message: { role: "user", content: "hi" } }];
 	try {
 		await cloudthinker(pi);
 		const entries: unknown[] = [];
 		const notices: string[] = [];
-		const ctx = sessionContext("/tmp/repo", entries, { mode: "tui", notify: (message) => notices.push(message) });
+		let headerFactory: HeaderFactory | undefined;
+		const ctx = sessionContext("/tmp/repo", entries, {
+			mode: "tui",
+			notify: (message) => notices.push(message),
+			setHeader: (factory) => { headerFactory = factory; },
+		});
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, ctx);
 		await settle();
-		assert.equal(count(notices), 1);
+		assert.equal(tourNotice(notices), false);
+		assert.ok(headerFactory);
+		const { getThemeByName } = await import(new URL("./modes/interactive/theme/theme.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
+		initTheme("dark");
+		const header = headerFactory({ requestRender() {} } as TUI, getThemeByName("dark")!);
+		const firstStartupText = header.render(80).join("\n");
+		assert.match(firstStartupText, /CloudThinker/);
+		assert.match(firstStartupText, /acme-prod/);
+		assert.ok(firstStartupText.split("\n").length > MARK_HEIGHT);
+		await handlers.get("before_agent_start")?.({ systemPrompt: "base", prompt: "hi" }, ctx);
+		const firstTurnText = header.render(80).join("\n");
+		assert.equal(firstTurnText.split("\n").length, MARK_HEIGHT);
+		assert.doesNotMatch(firstTurnText, /•/);
+		header.dispose?.();
+		let reloadedHeaderFactory: HeaderFactory | undefined;
+		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, sessionContext("/tmp/repo", [], {
+			mode: "tui",
+			setHeader: (factory) => { reloadedHeaderFactory = factory; },
+		}));
+		assert.ok(reloadedHeaderFactory);
+		const reloadedHeader = reloadedHeaderFactory({ requestRender() {} } as TUI, getThemeByName("dark")!);
+		const reloadedText = reloadedHeader.render(80).join("\n");
+		assert.equal(reloadedText.split("\n").length, MARK_HEIGHT);
+		assert.doesNotMatch(reloadedText, /•/);
+		reloadedHeader.dispose?.();
 		assert.equal(server.requests.some((request) => JSON.stringify(request.body ?? "").includes("uname")), false);
 		entries.push(...history);
 		await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, ctx);
 		await settle();
-		assert.equal(count(notices), 1);
+		assert.equal(tourNotice(notices), false);
 		const continued: string[] = [];
 		await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, sessionContext("/tmp/repo", history, { mode: "tui", notify: (message) => continued.push(message) }));
 		await settle();
-		assert.equal(count(continued), 0);
+		assert.equal(tourNotice(continued), false);
 		const resumed: string[] = [];
-		await handlers.get("session_start")?.({ type: "session_start", reason: "resume" }, sessionContext("/tmp/repo", history, { mode: "tui", notify: (message) => resumed.push(message) }));
+		let resumedHeaderFactory: HeaderFactory | undefined;
+		await handlers.get("session_start")?.({ type: "session_start", reason: "resume" }, sessionContext("/tmp/repo", history, {
+			mode: "tui",
+			notify: (message) => resumed.push(message),
+			setHeader: (factory) => { resumedHeaderFactory = factory; },
+		}));
 		await settle();
-		assert.equal(count(resumed), 0);
+		assert.equal(tourNotice(resumed), false);
+		assert.ok(resumedHeaderFactory);
+		const resumedHeader = resumedHeaderFactory({ requestRender() {} } as TUI, getThemeByName("dark")!);
+		const resumedText = resumedHeader.render(80).join("\n");
+		assert.equal(resumedText.split("\n").length, MARK_HEIGHT);
+		assert.doesNotMatch(resumedText, /•/);
+		resumedHeader.dispose?.();
 		const forked: string[] = [];
 		await handlers.get("session_start")?.({ type: "session_start", reason: "fork" }, sessionContext("/tmp/repo", history, { mode: "tui", notify: (message) => forked.push(message) }));
 		await settle();
-		assert.equal(count(forked), 0);
+		assert.equal(tourNotice(forked), false);
 		const renewed: string[] = [];
-		await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, sessionContext("/tmp/repo", [], { mode: "tui", notify: (message) => renewed.push(message) }));
+		let renewedHeaderFactory: HeaderFactory | undefined;
+		await handlers.get("session_start")?.({ type: "session_start", reason: "new" }, sessionContext("/tmp/repo", [], {
+			mode: "tui",
+			notify: (message) => renewed.push(message),
+			setHeader: (factory) => { renewedHeaderFactory = factory; },
+		}));
 		await settle();
-		assert.equal(count(renewed), 1);
+		assert.equal(tourNotice(renewed), false);
+		assert.ok(renewedHeaderFactory);
+		const renewedHeader = renewedHeaderFactory({ requestRender() {} } as TUI, getThemeByName("dark")!);
+		const renewedText = renewedHeader.render(80).join("\n");
+		assert.equal(renewedText.split("\n").length, MARK_HEIGHT);
+		assert.doesNotMatch(renewedText, /•/);
+		renewedHeader.dispose?.();
+		const prestarted = piHarness();
+		try {
+			await cloudthinker(prestarted.pi);
+			await prestarted.handlers.get("session_start")?.({ type: "session_start", reason: "resume" }, sessionContext("/tmp/repo", [], { mode: "tui" }));
+			let startupAfterResume: HeaderFactory | undefined;
+			await prestarted.handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, sessionContext("/tmp/repo", [], {
+				mode: "tui",
+				setHeader: (factory) => { startupAfterResume = factory; },
+			}));
+			assert.ok(startupAfterResume);
+			const afterResumeHeader = startupAfterResume({ requestRender() {} } as TUI, getThemeByName("dark")!);
+			const afterResumeText = afterResumeHeader.render(80).join("\n");
+			assert.equal(afterResumeText.split("\n").length, MARK_HEIGHT);
+			assert.doesNotMatch(afterResumeText, /•/);
+			afterResumeHeader.dispose?.();
+		} finally {
+			prestarted.dispose();
+		}
 	} finally {
 		if (savedUrl === undefined) delete process.env.CLOUDTHINKER_URL;
 		else process.env.CLOUDTHINKER_URL = savedUrl;

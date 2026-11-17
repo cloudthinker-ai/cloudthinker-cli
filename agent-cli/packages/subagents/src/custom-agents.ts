@@ -4,7 +4,8 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import { projectRoot, userRoot, workspaceRoot } from "./roots.ts";
 import { BUILTIN_TOOL_NAMES } from "./agent-types.ts";
 import type { AgentConfig, IsolationMode, MemoryScope, ThinkingLevel } from "./types.ts";
 
@@ -42,9 +43,9 @@ const RESERVED_IN_TYPE = ":";
  * filename clash, and `warnSkippedOverride` reports the substitution.
  */
 export function loadCustomAgents(cwd: string, strict = false): Map<string, AgentConfig> {
-  const globalDir = join(getAgentDir(), "agents");
-  const workspaceProjectDir = join(cwd, ".agents", "agents");
-  const projectDir = join(cwd, ".pi", "agents");
+  const globalDir = userRoot("agents");
+  const workspaceProjectDir = workspaceRoot(cwd, "agents");
+  const projectDir = projectRoot(cwd, "agents");
 
   const agents = new Map<string, AgentConfig>();
   loadFromDir(globalDir, agents, "global", strict);            // lowest priority

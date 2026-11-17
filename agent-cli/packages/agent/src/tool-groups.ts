@@ -1,5 +1,5 @@
 import { InteractiveMode } from "@earendil-works/pi-coding-agent";
-import { Box, type Component, Container, Text, TuiAltScreen, type TuiMouseEvent, type TuiMouseEventResult } from "@earendil-works/pi-tui";
+import { Box, type Component, Container, Spacer, Text, TuiAltScreen, type TuiMouseEvent, type TuiMouseEventResult } from "@earendil-works/pi-tui";
 
 import { LOCAL_TAG, taggedComponent } from "@cloudthinker/cloud/src/awareness.ts";
 
@@ -38,6 +38,28 @@ function onlyThinking(child: unknown): boolean {
 	return message.content.every((block) => block.type !== "text" || !block.text?.trim());
 }
 const open = new WeakSet<object>();
+const followsTool = new WeakSet<object>();
+
+interface PaddedBox {
+	paddingY: number;
+	invalidateCache(): void;
+}
+
+interface ToolShell {
+	children: unknown[];
+	contentBox?: PaddedBox;
+}
+
+function fitTool(tool: object, compact: boolean): void {
+	const shell = tool as ToolShell;
+	const padding = compact ? 0 : 1;
+	if (shell.contentBox && shell.contentBox.paddingY !== padding) {
+		shell.contentBox.paddingY = padding;
+		shell.contentBox.invalidateCache();
+	}
+	const gap = shell.children[0];
+	if (gap instanceof Spacer) gap.setLines(compact && followsTool.has(tool) ? 0 : 1);
+}
 
 function groupable(child: unknown): child is ToolLike {
 	return child instanceof ToolExecutionComponent
@@ -78,9 +100,15 @@ export function assignGroups(children: readonly Component[], width: number): voi
 		between = [];
 		pending = [];
 	};
+	let afterTool = false;
 	for (const child of children) {
 		roles.delete(child);
 		quiet.delete(child);
+		if (child instanceof ToolExecutionComponent) {
+			if (afterTool) followsTool.add(child);
+			else followsTool.delete(child);
+			afterTool = true;
+		} else if (!onlyThinking(child)) afterTool = false;
 		if (groupable(child)) {
 			if (run.length > 0) between.push(...pending);
 			pending = [];
@@ -91,13 +119,17 @@ export function assignGroups(children: readonly Component[], width: number): voi
 	close();
 }
 
+function tightenGap(tool: object, lines: string[], compact: boolean): string[] {
+	return compact && followsTool.has(tool) && lines[0] === "" ? lines.slice(1) : lines;
+}
+
 function headerLines(state: GroupState, width: number): string[] {
 	const isOpen = open.has(state.head);
 	const running = state.members.some((member) => member.result === undefined);
 	const line = new Text(`${theme.fg("muted", isOpen ? "▾" : "▸")} ${theme.fg("toolTitle", groupSummary(state.members))}`, 0, 0);
-	const box = new Box(1, isOpen ? 0 : 1, (text: string) => theme.bg(running ? "toolPendingBg" : "toolSuccessBg", text));
+	const box = new Box(1, 0, (text: string) => theme.bg(running ? "toolPendingBg" : "toolSuccessBg", text));
 	box.addChild(taggedComponent(LOCAL_TAG, theme, line));
-	return ["", ...box.render(width)];
+	return [...(followsTool.has(state.head) ? [] : [""]), ...box.render(width)];
 }
 
 export function applyToolGroups(): void {
@@ -110,10 +142,12 @@ export function applyToolGroups(): void {
 		throw new Error("pi's ToolExecutionComponent no longer renders and handles the mouse, so tool runs cannot be grouped");
 	}
 	tool.render = function (width) {
-		const state = toolOutputMode() === "compact" ? roles.get(this) : undefined;
-		if (!state) return render.call(this, width);
+		const compact = toolOutputMode() === "compact";
+		fitTool(this, compact);
+		const state = compact ? roles.get(this) : undefined;
+		if (!state) return tightenGap(this, render.call(this, width), compact);
 		if (!open.has(state.head)) return state.head === this ? headerLines(state, width) : [];
-		return state.head === this ? [...headerLines(state, width), ...render.call(this, width)] : render.call(this, width);
+		return state.head === this ? [...headerLines(state, width), ...render.call(this, width)] : tightenGap(this, render.call(this, width), compact);
 	};
 	tool.handleMouse = function (event) {
 		const state = toolOutputMode() === "compact" ? roles.get(this) : undefined;

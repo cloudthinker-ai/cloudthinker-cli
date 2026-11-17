@@ -1,10 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createWriteStream, type WriteStream } from "node:fs";
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { finished } from "node:stream/promises";
 import { join } from "node:path";
 import type { BashOperations } from "@earendil-works/pi-coding-agent";
 import lockfile from "proper-lockfile";
 
 export const BACKGROUND_MAX_OUTPUT_BYTES = 128 * 1024;
+export const BACKGROUND_MAX_LOG_BYTES = 256 * 1024 * 1024;
 export const BACKGROUND_MAX_READ_BYTES = 16 * 1024;
 export const BACKGROUND_MAX_TASKS = 100;
 export const BACKGROUND_DEFAULT_TIMEOUT_SECONDS = 1800;
@@ -27,7 +30,7 @@ export interface BackgroundTask {
 	stoppedByUser?: boolean;
 }
 
-export type BackgroundTaskSummary = Omit<BackgroundTask, "output" | "outputBaseByte" | "completionDelivered" | "persistenceErrorReported">;
+export type BackgroundTaskSummary = Omit<BackgroundTask, "output" | "outputBaseByte" | "completionDelivered" | "persistenceErrorReported"> & { logPath: string };
 
 export interface BackgroundOutputRead {
 	text: string;
@@ -88,6 +91,7 @@ function utf8Boundary(bytes: Buffer, start: number): number {
 export class BackgroundCommandManager {
 	private readonly tasks = new Map<string, BackgroundTask>();
 	private readonly running = new Map<string, RunningProcess>();
+	private readonly logs = new Map<string, { stream: WriteStream; bytes: number }>();
 	private readonly completions: string[] = [];
 	private readonly recoveryNotices: string[] = [];
 	private initialized = false;
@@ -360,6 +364,13 @@ export class BackgroundCommandManager {
 		};
 		let state: BackgroundTaskState = "failed";
 		let exitCode: number | null | undefined;
+		const logPath = this.logPath(task.id);
+		const log = createWriteStream(logPath, { flags: "a", mode: 0o600 });
+		log.on("error", (error) => {
+			this.logs.delete(task.id);
+			process.emitWarning(`Unable to write background command log ${logPath}: ${error.message}`);
+		});
+		this.logs.set(task.id, { stream: log, bytes: 0 });
 		try {
 			const result = await exec(task, onData, controller.signal, timeoutSeconds);
 			exitCode = result.exitCode;
@@ -370,6 +381,7 @@ export class BackgroundCommandManager {
 			exitCode = null;
 			if (state === "failed") onData(Buffer.from(`${message}\n`));
 		} finally {
+			await this.closeLog(task.id);
 			if (this.compromised) {
 				task.state = "interrupted";
 				task.exitCode = null;
@@ -394,8 +406,29 @@ export class BackgroundCommandManager {
 		}
 	}
 
+	private async closeLog(taskId: string): Promise<void> {
+		const log = this.logs.get(taskId);
+		if (!log) return;
+		this.logs.delete(taskId);
+		await finished(log.stream.end()).catch(() => {});
+	}
+
+	private writeLog(taskId: string, chunk: Buffer): void {
+		const log = this.logs.get(taskId);
+		if (!log || log.bytes >= BACKGROUND_MAX_LOG_BYTES) return;
+		const room = BACKGROUND_MAX_LOG_BYTES - log.bytes;
+		log.bytes += Math.min(chunk.length, room);
+		if (chunk.length <= room) {
+			log.stream.write(chunk);
+			return;
+		}
+		log.stream.write(chunk.subarray(0, room));
+		log.stream.write(`\n[log truncated at ${BACKGROUND_MAX_LOG_BYTES} bytes]\n`);
+	}
+
 	private appendOutput(task: BackgroundTask, chunk: Buffer): void {
 		if (chunk.length === 0) return;
+		this.writeLog(task.id, chunk);
 		const existing = Buffer.from(task.output, "base64");
 		const joined = Buffer.concat([existing, chunk]);
 		const excess = Math.max(0, joined.length - BACKGROUND_MAX_OUTPUT_BYTES);
@@ -437,6 +470,10 @@ export class BackgroundCommandManager {
 		await this.writeChain;
 	}
 
+	private logPath(taskId: string): string {
+		return join(this.options.storageDirectory, `${taskId}.log`);
+	}
+
 	private statePath(): string {
 		return join(this.options.storageDirectory, "tasks.json");
 	}
@@ -451,14 +488,14 @@ export class BackgroundCommandManager {
 	}
 
 	private validTask(task: BackgroundTask): boolean {
-		return typeof task?.id === "string" && typeof task.command === "string" && typeof task.cwd === "string" &&
+		return typeof task?.id === "string" && /^[\w-]+$/.test(task.id) && typeof task.command === "string" && typeof task.cwd === "string" &&
 			["running", "succeeded", "failed", "cancelled", "timed_out", "interrupted"].includes(task.state) &&
 			typeof task.output === "string" && Number.isSafeInteger(task.totalOutputBytes) && Number.isSafeInteger(task.outputBaseByte);
 	}
 
 	private publicTask(task: BackgroundTask): BackgroundTaskSummary {
 		const { output: _output, outputBaseByte: _outputBaseByte, completionDelivered: _completionDelivered, persistenceErrorReported: _persistenceErrorReported, ...summary } = task;
-		return { ...summary };
+		return { ...summary, logPath: this.logPath(task.id) };
 	}
 
 	private failForPersistence(task: BackgroundTask, error: unknown): void {
@@ -477,7 +514,12 @@ export class BackgroundCommandManager {
 
 	private pruneTasks(): void {
 		const terminal = [...this.tasks.values()].filter((task) => isTerminal(task.state) && task.completionDelivered).sort((a, b) => a.createdAt - b.createdAt);
-		while (this.tasks.size >= BACKGROUND_MAX_TASKS && terminal.length > 0) this.tasks.delete(terminal.shift()!.id);
+		while (this.tasks.size >= BACKGROUND_MAX_TASKS && terminal.length > 0) {
+			const task = terminal.shift()!;
+			this.tasks.delete(task.id);
+			const logPath = this.logPath(task.id);
+			void rm(logPath, { force: true }).catch((error: unknown) => process.emitWarning(`Unable to delete background command log ${logPath}: ${error instanceof Error ? error.message : String(error)}`));
+		}
 	}
 
 	private ensureReady(): void {

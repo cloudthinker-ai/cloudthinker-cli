@@ -39,6 +39,35 @@ Median readiness was 420.4 ms versus 141.2 ms. The optimization was retained.
 These artifacts were built from the in-progress adoption tree based on
 `e28eb7bfb0`; the artifact hashes, not that base commit alone, identify the builds.
 
+## Idle cost
+
+`idle.py` starts one compiled agent against the same fixture backend in a 120×40
+pseudo-terminal, waits out a warm-up, and measures an idle window at the empty
+prompt. It reports context switches per second summed over the threads that live
+through the window (wakeups), CPU percent, RSS, thread count, and bytes the agent
+writes to the terminal (repaints). `--env KEY=VALUE` passes the variables the
+`cloudthinker` wrapper sets, so an arm matches what users run.
+
+```bash
+uv run --with pyte==0.8.2 python agent-cli/scripts/benchmarks/idle.py \
+  /path/to/cloudthinker-agent --env BUN_JSC_numberOfGCMarkers=1 \
+  --count 5 --output /tmp/idle.json
+```
+
+`idle-comparison.json` records five 10-second windows per arm on 2026-11-16, on
+a shared box at load 85 to 100, so CPU percent is noisy:
+
+| Arm | Wakeups/s (median) | CPU | RSS | Threads | Idle repaint |
+|---|---|---|---|---|---|
+| 0.10.0 | 153 | 0.9% | 104 MiB | 15 | 0 B/s |
+| 0.10.0, one GC marker | 16 | 0.7% | 102 MiB | 8 | 0 B/s |
+| develop | 153 | 1.0% | 105 MiB | 15 | 0 B/s |
+| develop, one GC marker | 20 | 0.7% | 105 MiB | 8 | 0 B/s |
+
+The GC-marker setting the wrapper passes accounts for the whole idle drop; the
+agent code itself idles the same in both versions. Neither version repaints at
+an idle prompt.
+
 Do not apply this control fixture or its threshold to Code Review or SREGym.
 Those workloads need their own same-arm controls and correctness checks before
 timing comparisons. Live model/judge calibration is separate from this local

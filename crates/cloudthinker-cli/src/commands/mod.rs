@@ -19,6 +19,7 @@ pub mod incident;
 pub mod login;
 pub mod logout;
 pub mod policy;
+pub mod public_api;
 pub mod recommendations;
 pub mod remote;
 pub mod review;

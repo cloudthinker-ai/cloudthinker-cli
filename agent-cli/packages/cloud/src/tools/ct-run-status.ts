@@ -2,7 +2,7 @@ import { type Static, Type } from "typebox";
 
 import type { RunState } from "../client.ts";
 import type { CloudThinkerRuntime } from "../runtime.ts";
-import { askSummary, renderRun } from "./ct-ask.ts";
+import { approveRunInTerminal, askSummary, renderRun } from "./ct-ask.ts";
 import { CT_ASK, CT_RUN_STATUS } from "./names.ts";
 import { callComponent, callLine, resultBody, summaryComponent } from "./render.ts";
 import { text } from "./shared.ts";
@@ -27,9 +27,17 @@ export function registerRunStatus(runtime: CloudThinkerRuntime): void {
 			_toolCallId: string,
 			params: Static<typeof parameters>,
 			signal: AbortSignal | undefined,
+			_onUpdate,
+			ctx,
 		) => {
 			runtime.requireSession();
-			const state = await runtime.client.getRun(params.run_id, signal);
+			const state = await approveRunInTerminal({
+				client: runtime.client,
+				ctx,
+				state: await runtime.client.getRun(params.run_id, signal),
+				warn: (message) => runtime.notify(message, "warning"),
+				signal,
+			});
 			if (runtime.approvalRunId === state.run_id) {
 				if (state.status === "required_approval") {
 					if (state.web_url) runtime.awaitApproval(state.run_id, state.web_url);

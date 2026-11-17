@@ -16,7 +16,7 @@ source-tarball = false
 # Homebrew is deferred — it needs a separate `cloudthinker-ai/homebrew-tap` repo.
 installers = ["shell", "powershell"]
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "aarch64-unknown-linux-musl", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
 # Install to a Rust-independent location (customers may not have cargo); the
 # installer appends it to PATH.
 install-path = "~/.local/bin"
@@ -41,5 +41,9 @@ artifacts = [
     "agent-cli/packages/agent/dist/cloudthinker-agent-aarch64-unknown-linux-gnu.tar.gz.sha256",
     "agent-cli/packages/agent/dist/cloudthinker-agent-x86_64-unknown-linux-gnu.tar.gz",
     "agent-cli/packages/agent/dist/cloudthinker-agent-x86_64-unknown-linux-gnu.tar.gz.sha256",
+    "agent-cli/packages/agent/dist/cloudthinker-agent-aarch64-unknown-linux-musl.tar.gz",
+    "agent-cli/packages/agent/dist/cloudthinker-agent-aarch64-unknown-linux-musl.tar.gz.sha256",
+    "agent-cli/packages/agent/dist/cloudthinker-agent-x86_64-unknown-linux-musl.tar.gz",
+    "agent-cli/packages/agent/dist/cloudthinker-agent-x86_64-unknown-linux-musl.tar.gz.sha256",
     "agent-cli/packages/agent/dist/cloudthinker-agent-sha256.sum",
 ]

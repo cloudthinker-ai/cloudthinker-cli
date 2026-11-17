@@ -1,15 +1,19 @@
 use std::time::Duration;
 
 use cloudthinker_client::{
-    CtClient, CtError, LoupeReadiness, LoupeReadinessCheckName, LoupeReadinessState,
-    LoupeSetupScope, ReviewSeverityCounts, ReviewStatus, ReviewView, parse_mr_url,
-    valid_setup_web_url,
+    CtClient, CtError, LocalReviewContext, LocalReviewContextRequest, LocalReviewFindingIn,
+    LocalReviewSeverity, LocalReviewUpload, LoupeReadiness, LoupeReadinessCheckName,
+    LoupeReadinessState, LoupeSetupScope, ReviewSeverityCounts, ReviewStatus, ReviewView,
+    parse_mr_url, valid_setup_web_url,
     worker_types::{ExecutorChoiceKind, ExecutorScope},
 };
 use serde::Serialize;
 
 use crate::engine::exit::{self, ExitCode};
-use crate::engine::local_review::{self, FindingSeverity, LocalFinding, ReviewScope};
+use crate::engine::local_review::{
+    self, AgentAnswer, FindingSeverity, LocalFinding, LocalReviewResult, RepositoryIdentity,
+    ReviewScope, ReviewSnapshot, ServerGuidance,
+};
 use crate::engine::output::{self, ReviewEnvelope};
 use crate::engine::watch::{Poll, WatchConfig, watch};
 
@@ -263,6 +267,7 @@ pub struct LocalReviewOptions<'a> {
     pub json: bool,
     pub timeout_secs: u64,
     pub fail_on: Option<FailOn>,
+    pub upload: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
@@ -333,6 +338,7 @@ fn threshold_code(fail_on: Option<FailOn>, hits: impl FnOnce(FailOn) -> i64) -> 
 }
 
 pub async fn run_local(options: LocalReviewOptions<'_>) -> ExitCode {
+    let started = std::time::Instant::now();
     let cwd = match std::env::current_dir() {
         Ok(cwd) => cwd,
         Err(error) => {
@@ -356,27 +362,63 @@ pub async fn run_local(options: LocalReviewOptions<'_>) -> ExitCode {
             };
         }
     };
+    let agent = match super::agent::prepare_local_review(options.base_url, options.workspace).await
+    {
+        Ok(agent) => agent,
+        Err(code) => return code,
+    };
+    let identity = local_review::repository_identity(&snapshot.repository);
+    let client = build_client(options.base_url, options.workspace);
+    let guidance = match (&client, &identity) {
+        (Ok(client), Some(identity)) => fetch_guidance(client, identity, &snapshot).await,
+        (Err(error), Some(_)) => {
+            warn_guidance(&error.to_string());
+            Guidance::Unavailable
+        }
+        (_, None) => Guidance::Unavailable,
+    };
+    let chunks = local_review::diff_chunks(&snapshot.diff);
     let scope = options.base_ref.map_or_else(
         || "the worktree delta against HEAD".to_string(),
         |base| format!("the merge-base with {base}"),
     );
-    output::progress(&format!(
-        "Reviewing {} changed file(s) from {scope} with a local read-only agent; CloudThinker provides inference and findings stay in this terminal.",
-        snapshot.changed_file_count
-    ));
-    let prompt = local_review::build_review_prompt(&snapshot);
-    let answer = match super::agent::run_local_review(
-        options.base_url,
-        options.workspace,
-        &snapshot.repository,
-        &prompt,
-        Duration::from_secs(options.timeout_secs),
-    )
-    .await
-    {
-        Ok(answer) => answer,
-        Err(code) => return code,
+    let parts = if chunks.len() > 1 {
+        format!(" in {} parts", chunks.len())
+    } else {
+        String::new()
     };
+    output::progress(&format!(
+        "Reviewing {} changed file(s) from {scope}{parts} with a local read-only agent; CloudThinker provides inference.",
+        snapshot.changed_files.len()
+    ));
+    let deadline = started + Duration::from_secs(options.timeout_secs);
+    let mut answer = AgentAnswer::default();
+    for (index, chunk) in chunks.iter().enumerate() {
+        let part = (index + 1, chunks.len());
+        let timeout = deadline.saturating_duration_since(std::time::Instant::now());
+        if timeout.is_zero() {
+            output::eprintln_error(&format!(
+                "the review reached its {} s limit before part {} of {}; rerun with a longer --timeout",
+                options.timeout_secs, part.0, part.1
+            ));
+            return ExitCode::JobFailed;
+        }
+        if chunks.len() > 1 {
+            output::progress(&format!("Reviewing part {} of {}…", part.0, part.1));
+        }
+        let server = match &guidance {
+            Guidance::Server(context) => Some(ServerGuidance {
+                instructions: &context.instructions,
+                context: &context.context,
+            }),
+            Guidance::Unknown | Guidance::Unavailable => None,
+        };
+        let prompt = local_review::build_review_prompt(&snapshot, chunk, part, server);
+        match review_chunk(&agent, options.base_url, &snapshot, &prompt, deadline).await {
+            Ok(parsed) => answer.merge(parsed),
+            Err(code) => return code,
+        }
+    }
     let current = match local_review::collect_snapshot(&cwd, &review_scope) {
         Ok(snapshot) => snapshot,
         Err(error) => {
@@ -393,20 +435,17 @@ pub async fn run_local(options: LocalReviewOptions<'_>) -> ExitCode {
         );
         return ExitCode::JobFailed;
     }
-    let findings = match local_review::parse_agent_answer(&answer) {
-        Ok(findings) => findings,
-        Err(error) => {
-            output::eprintln_error(&error);
-            return ExitCode::JobFailed;
-        }
-    };
-    let result = match local_review::validate_result(&snapshot, findings) {
-        Ok(result) => result,
-        Err(error) => {
-            output::eprintln_error(&error);
-            return ExitCode::JobFailed;
-        }
-    };
+    let mut result = local_review::validate_result(&snapshot, answer);
+    if result.dropped_findings > 0 {
+        output::progress(&format!(
+            "Dropped {} finding(s) that did not point at a changed line or were incomplete.",
+            result.dropped_findings
+        ));
+    }
+    let known = !matches!(guidance, Guidance::Unknown);
+    if let (true, true, Ok(client), Some(identity)) = (options.upload, known, &client, &identity) {
+        result.uploaded = upload(client, identity, &snapshot, &result, started).await;
+    }
     let rendered = if options.json {
         output::emit_json(&result)
     } else {
@@ -419,6 +458,134 @@ pub async fn run_local(options: LocalReviewOptions<'_>) -> ExitCode {
     threshold_code(options.fail_on, |threshold| {
         threshold.local_hits(&result.findings)
     })
+}
+
+async fn review_chunk(
+    agent: &super::agent::LocalReviewAgent,
+    base_url: &str,
+    snapshot: &ReviewSnapshot,
+    prompt: &str,
+    deadline: std::time::Instant,
+) -> Result<AgentAnswer, ExitCode> {
+    let timeout = deadline.saturating_duration_since(std::time::Instant::now());
+    let answer =
+        super::agent::run_local_review(agent, base_url, &snapshot.repository, prompt, timeout)
+            .await?;
+    if let Ok(parsed) = local_review::parse_agent_answer(&answer) {
+        return Ok(parsed);
+    }
+    output::warn("The review answer was not valid JSON; asking the agent once more.");
+    let retry = local_review::retry_prompt(prompt);
+    let timeout = deadline.saturating_duration_since(std::time::Instant::now());
+    let answer =
+        super::agent::run_local_review(agent, base_url, &snapshot.repository, &retry, timeout)
+            .await?;
+    local_review::parse_agent_answer(&answer).map_err(|error| {
+        output::eprintln_error(&error);
+        ExitCode::JobFailed
+    })
+}
+
+enum Guidance {
+    Server(LocalReviewContext),
+    Unknown,
+    Unavailable,
+}
+
+async fn fetch_guidance(
+    client: &CtClient,
+    identity: &RepositoryIdentity,
+    snapshot: &ReviewSnapshot,
+) -> Guidance {
+    let request = LocalReviewContextRequest {
+        remote_url: &identity.remote_url,
+        branch: identity.branch.as_deref(),
+        base_sha: &snapshot.base_sha,
+        head_sha: &snapshot.head_sha,
+        changed_paths: &snapshot.changed_files,
+    };
+    match client.local_review_context(&request).await {
+        Ok(context) if context.repository_known => Guidance::Server(context),
+        Ok(_) => {
+            output::warn(
+                "CloudThinker does not know this repository yet, so the review uses the built-in instructions and the findings stay on this machine.",
+            );
+            Guidance::Unknown
+        }
+        Err(error) => {
+            warn_guidance(&error.to_string());
+            Guidance::Unavailable
+        }
+    }
+}
+
+fn warn_guidance(reason: &str) {
+    output::warn(&format!(
+        "Could not load this repository's review guidance from CloudThinker ({reason}); the review uses the built-in instructions."
+    ));
+}
+
+fn severity(severity: FindingSeverity) -> LocalReviewSeverity {
+    match severity {
+        FindingSeverity::Critical => LocalReviewSeverity::Critical,
+        FindingSeverity::High => LocalReviewSeverity::High,
+        FindingSeverity::Medium => LocalReviewSeverity::Medium,
+        FindingSeverity::Low => LocalReviewSeverity::Low,
+    }
+}
+
+async fn upload(
+    client: &CtClient,
+    identity: &RepositoryIdentity,
+    snapshot: &ReviewSnapshot,
+    result: &LocalReviewResult,
+    started: std::time::Instant,
+) -> bool {
+    let line_texts = result
+        .findings
+        .iter()
+        .map(|finding| local_review::line_text(&snapshot.repository, &finding.file, finding.line))
+        .collect::<Vec<_>>();
+    let findings = result
+        .findings
+        .iter()
+        .zip(&line_texts)
+        .map(|(finding, line_text)| LocalReviewFindingIn {
+            severity: severity(finding.severity),
+            file: &finding.file,
+            line: finding.line,
+            title: &finding.title,
+            explanation: &finding.explanation,
+            suggested_fix: &finding.suggested_fix,
+            line_text,
+        })
+        .collect::<Vec<_>>();
+    let upload = LocalReviewUpload {
+        remote_url: &identity.remote_url,
+        branch: identity.branch.as_deref(),
+        base_sha: &snapshot.base_sha,
+        head_sha: &snapshot.head_sha,
+        duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        findings: &findings,
+    };
+    match client.upload_local_review(&upload).await {
+        Ok(stored) if stored.repository_known && stored.id.is_some() => {
+            output::progress("Sent to CloudThinker: the PR review will credit these findings.");
+            true
+        }
+        Ok(_) => {
+            output::warn(
+                "CloudThinker does not know this repository yet, so these findings were not saved.",
+            );
+            false
+        }
+        Err(error) => {
+            output::warn(&format!(
+                "Could not send the findings to CloudThinker ({error}); they are printed here only."
+            ));
+            false
+        }
+    }
 }
 
 /// Show a review's current status. A read: exits 0 on any successful fetch —

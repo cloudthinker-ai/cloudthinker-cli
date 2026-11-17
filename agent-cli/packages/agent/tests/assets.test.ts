@@ -16,11 +16,10 @@ test("CA-AD-6 real pi assets validate, and a missing theme or unexpected entry f
 	try {
 		for (const [source, target] of [
 			["dist/modes/interactive/theme", "theme"], ["dist/modes/interactive/assets", "assets"],
-			["docs", "docs"], ["examples", "examples"],
 		]) {
 			cpSync(join(piRoot, source!), join(root, target!), {
 				recursive: true,
-				filter: (path) => lstatSync(path).isDirectory() || (target === "theme" ? path.endsWith(".json") : target === "assets" ? path.endsWith(".png") : true),
+				filter: (path) => lstatSync(path).isDirectory() || path.endsWith(target === "theme" ? ".json" : ".png"),
 			});
 		}
 		cpSync(new URL("../.agents/skills/", import.meta.url), join(root, ".agents/skills"), { recursive: true });
@@ -37,30 +36,34 @@ test("CA-AD-6 real pi assets validate, and a missing theme or unexpected entry f
 		for (const file of ["cloudthinker-agent", "NOTICE", "CHANGELOG.md", "photon_rs_bg.wasm"]) writeFileSync(join(root, file), "fixture");
 		writeFileSync(join(root, "NOTICE"), notice);
 		writeFileSync(join(root, "package.json"), JSON.stringify({ piVersion: "1.0.0", piConfig: { name: "cloudthinker" } }));
-		validateAssets(root, piRoot);
+		validateAssets(root);
 		const reviewSetupContent = readFileSync(reviewSetup);
 		rmSync(reviewSetup);
-		assert.throws(() => validateAssets(root, piRoot), /Missing bundle asset: .agents\/skills\/review-setup\/SKILL.md/);
+		assert.throws(() => validateAssets(root), /Missing bundle asset: .agents\/skills\/review-setup\/SKILL.md/);
 		writeFileSync(reviewSetup, reviewSetupContent);
 		const tourPath = join(root, ".agents/skills/tour/SKILL.md");
 		rmSync(tourPath);
-		assert.throws(() => validateAssets(root, piRoot), /Missing bundle asset: .agents\/skills\/tour\/SKILL.md/);
+		assert.throws(() => validateAssets(root), /Missing bundle asset: .agents\/skills\/tour\/SKILL.md/);
 		writeFileSync(tourPath, "");
-		assert.throws(() => validateAssets(root, piRoot), /Empty bundle asset: .agents\/skills\/tour\/SKILL.md/);
+		assert.throws(() => validateAssets(root), /Empty bundle asset: .agents\/skills\/tour\/SKILL.md/);
 		cpSync(new URL("../.agents/skills/tour/SKILL.md", import.meta.url), tourPath);
 		writeFileSync(join(root, "NOTICE"), "pi only");
-		assert.throws(() => validateAssets(root, piRoot), /Missing pi-subagents license notice/);
+		assert.throws(() => validateAssets(root), /Missing pi-subagents license notice/);
 		writeFileSync(join(root, "NOTICE"), subagentsLicense);
-		assert.throws(() => validateAssets(root, piRoot), /Missing pi-btw license notice/);
+		assert.throws(() => validateAssets(root), /Missing pi-btw license notice/);
 		writeFileSync(join(root, "NOTICE"), notice);
 		rmSync(join(root, "theme/dark.json"));
-		assert.throws(() => validateAssets(root, piRoot), /Missing bundle asset/);
+		assert.throws(() => validateAssets(root), /Missing bundle asset/);
 		cpSync(join(piRoot, "dist/modes/interactive/theme/dark.json"), join(root, "theme/dark.json"));
 		writeFileSync(join(root, "unexpected.txt"), "extra");
-		assert.throws(() => validateAssets(root, piRoot), /Unexpected bundle asset/);
+		assert.throws(() => validateAssets(root), /Unexpected bundle asset/);
 		rmSync(join(root, "unexpected.txt"));
+		mkdirSync(join(root, "docs"));
+		writeFileSync(join(root, "docs/usage.md"), "pi docs");
+		assert.throws(() => validateAssets(root), /Unexpected bundle asset: docs\/usage.md/);
+		rmSync(join(root, "docs"), { recursive: true });
 		mkdirSync(join(root, "unexpected-empty"));
-		assert.throws(() => validateAssets(root, piRoot), /Unexpected bundle directory/);
+		assert.throws(() => validateAssets(root), /Unexpected bundle directory/);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

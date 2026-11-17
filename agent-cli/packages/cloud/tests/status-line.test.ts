@@ -65,7 +65,7 @@ test("under cloudthinker remote the status line names the machine after the fold
 		hostVersionsFrom({ version: "0.4.0", piVersion: "0.85.1" }, "0.4.0"),
 	);
 	const remote = footer(runtime, [], "product-team-4");
-	assert.match(remote(100).split("\n")[0]!, /○ connecting… +~?\/?srv\/repo \(main\) · on product-team-4 $/);
+	assert.match(remote(100).split("\n")[0]!, /○ connecting… +~?\/?srv\/repo \(main\) · on product-team-4( · Pro · 42% context)? $/);
 	assert.match(remote(30).split("\n")[0]!, /^ ○ connecting…/);
 	assert.doesNotMatch(remote(30), /product-team-4/);
 	assert.doesNotMatch(footer(runtime, [])(100), / · on /);

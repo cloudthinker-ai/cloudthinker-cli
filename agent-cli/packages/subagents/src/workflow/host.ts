@@ -35,6 +35,7 @@
 import { existsSync } from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentManager } from "../agent-manager.ts";
+import { getSubagentHost } from "../host.ts";
 import { getAgentConfig, resolveSpawnType } from "../agent-types.ts";
 import { resolveModel } from "../model-resolver.ts";
 import { checkModelScope } from "../model-scope.ts";
@@ -125,7 +126,12 @@ function toSpawnResult(record: AgentRecord): WorkflowSpawnResult {
   // magnitude and make the documented guards useless.
   const outputTokens = record.lifetimeUsage?.output ?? 0;
   const cwd = childCwd(record);
+  const conversationId = record.session === undefined ? undefined : getSubagentHost()?.conversationId?.(record.session);
   const common = {
+    execution: {
+      record_id: record.id,
+      ...(conversationId !== undefined ? { conversation_id: conversationId } : {}),
+    },
     ...(tokens > 0 ? { tokens } : {}),
     ...(outputTokens > 0 ? { outputTokens } : {}),
     ...(record.toolUses > 0 ? { toolCalls: record.toolUses } : {}),

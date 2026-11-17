@@ -1,4 +1,5 @@
 import { InteractiveMode } from "@earendil-works/pi-coding-agent";
+import { sep } from "node:path";
 import { Box, Container, Text, type Component, sliceByColumn, visibleWidth } from "@earendil-works/pi-tui";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 
@@ -26,6 +27,17 @@ export function diffStats(diff: string): { added: number; removed: number } {
 	return { added: lines.filter((line) => line.startsWith("+")).length, removed: lines.filter((line) => line.startsWith("-")).length };
 }
 
+export function relativeArgs(args: any, cwd: unknown): any {
+	if (typeof cwd !== "string" || !args || typeof args !== "object") return args;
+	const prefix = cwd.endsWith(sep) ? cwd : `${cwd}${sep}`;
+	let copy: Record<string, unknown> | undefined;
+	for (const key of ["path", "file_path"]) {
+		const value = args[key];
+		if (typeof value === "string" && value.startsWith(prefix) && value.length > prefix.length) (copy ??= { ...args })[key] = value.slice(prefix.length);
+	}
+	return copy ?? args;
+}
+
 export function changeLine(toolName: string, args: any, theme: any, context: any): string {
 	const path = renderToolPath(typeof args?.file_path === "string" ? args.file_path : typeof args?.path === "string" ? args.path : "", theme, context.cwd);
 	const head = `${theme.fg("toolTitle", theme.bold(toolName))} ${path}`;
@@ -43,7 +55,7 @@ function collapsedChange(toolName: string, args: any, theme: any, context: any, 
 	if (!CHANGE_TOOLS.includes(toolName) || toolOutputMode() !== "compact" || context.expanded || context.isError) return undefined;
 	const line = tag(new Text(changeLine(toolName, args, theme, context), 0, 0));
 	if (toolName !== "edit") return line;
-	const box = new Box(1, 1, (text: string) => theme.bg(context.isPartial ? "toolPendingBg" : "toolSuccessBg", text));
+	const box = new Box(1, 0, (text: string) => theme.bg(context.isPartial ? "toolPendingBg" : "toolSuccessBg", text));
 	box.addChild(line);
 	return box;
 }
@@ -103,7 +115,8 @@ export function tagLocalToolDefinition(
 	const commandLine = new CommandLine();
 	return {
 		...definition,
-		renderCall: (args: any, theme: any, context: any) => {
+		renderCall: (given: any, theme: any, context: any) => {
+			const args = relativeArgs(given, context.cwd);
 			const inner = renderCall(args, theme, { ...context, lastComponent });
 			lastComponent = inner;
 			const tag = (component: Component) => taggedComponent(LOCAL_TAG, theme, component);

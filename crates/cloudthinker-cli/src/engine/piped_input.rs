@@ -1,10 +1,12 @@
 use std::io::{IsTerminal, Read};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Duration;
 
 pub const PROMPT_LIMIT_CHARS: usize = 50_000;
-const READ_LIMIT_BYTES: usize = PROMPT_LIMIT_CHARS * 4 + 4;
 const FIRST_BYTE_WAIT: Duration = Duration::from_secs(3);
+const STILL_OPEN_NOTICE_AFTER: Duration = Duration::from_secs(5);
 const STDIN_PROMPT: &str = "-";
 
 pub fn resolve_prompt(prompt: &str) -> Result<String, String> {
@@ -64,11 +66,14 @@ fn within_limit(prompt: String) -> Result<String, String> {
 fn read_stdin(first_byte_wait: Option<Duration>) -> Result<Option<Vec<u8>>, String> {
     let (started_tx, started_rx) = mpsc::channel::<()>();
     let (done_tx, done_rx) = mpsc::channel::<std::io::Result<Vec<u8>>>();
+    let received = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&received);
     std::thread::spawn(move || {
         let mut stdin = std::io::stdin().lock();
         let mut data = Vec::new();
         let mut buffer = [0u8; 8192];
         let mut started = Some(started_tx);
+        let mut chars = 0usize;
         loop {
             match stdin.read(&mut buffer) {
                 Ok(0) => break,
@@ -77,7 +82,12 @@ fn read_stdin(first_byte_wait: Option<Duration>) -> Result<Option<Vec<u8>>, Stri
                         let _ = started.send(());
                     }
                     data.extend_from_slice(&buffer[..read]);
-                    if data.len() > READ_LIMIT_BYTES {
+                    counter.store(data.len(), Ordering::Relaxed);
+                    chars += buffer[..read]
+                        .iter()
+                        .filter(|byte| (**byte & 0xC0) != 0x80)
+                        .count();
+                    if chars > PROMPT_LIMIT_CHARS {
                         break;
                     }
                 }
@@ -95,7 +105,17 @@ fn read_stdin(first_byte_wait: Option<Duration>) -> Result<Option<Vec<u8>>, Stri
     {
         return Ok(None);
     }
-    match done_rx.recv() {
+    let finished = match done_rx.recv_timeout(STILL_OPEN_NOTICE_AFTER) {
+        Err(RecvTimeoutError::Timeout) => {
+            crate::engine::output::warn(&format!(
+                "still reading stdin ({} bytes so far): the input has not ended. Piped input is read to the end before the prompt is sent. Pipe a finite snapshot, for example `tail -n 200 file`, not `tail -f`.",
+                received.load(Ordering::Relaxed)
+            ));
+            done_rx.recv().map_err(|_| RecvTimeoutError::Disconnected)
+        }
+        other => other,
+    };
+    match finished {
         Ok(Ok(data)) => Ok(Some(data)),
         Ok(Err(error)) => Err(format!("could not read stdin: {error}")),
         Err(_) => Err("could not read stdin".into()),

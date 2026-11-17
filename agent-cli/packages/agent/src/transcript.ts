@@ -1,7 +1,6 @@
 import { InteractiveMode, type SessionEntry, type Theme } from "@earendil-works/pi-coding-agent";
 import {
 	type Component,
-	decodeKittyPrintable,
 	matchesKey,
 	type TUI,
 	type TuiMouseEvent,
@@ -14,6 +13,7 @@ import {
 import { sanitizeTerminalText } from "@cloudthinker/cloud/src/awareness.ts";
 import { CommandBlock } from "./command-block.ts";
 import { hunksFromContent, parsePiDiff, plainHunks, renderHunks, resolveStyle, splitFits, takeRows, twoSided, type Hunk } from "./diff-view.ts";
+import { handleSearchKey, searchPrompt, searchStatus, stepMatch } from "./search-view.ts";
 import { copiedStatus } from "./terminal-copy.ts";
 import { diffStyle, setDiffStyle } from "./verbosity.ts";
 import { copyToClipboard } from "@earendil-works/pi-coding-agent";
@@ -32,6 +32,8 @@ export interface TranscriptBlock {
 	title: string;
 	body: string;
 	view?: BlockView;
+	full?: string;
+	firstLine?: number;
 }
 
 type Content = string | readonly { type: string; text?: string; thinking?: string; name?: string; arguments?: unknown }[];
@@ -61,34 +63,33 @@ function argumentsText(args: unknown): string {
 	return JSON.stringify(record, null, 2);
 }
 
-function callBlock(name: string, args: unknown, limit: (text: string) => string, full: boolean): TranscriptBlock {
+function callBlock(name: string, args: unknown, full: boolean): TranscriptBlock {
 	const record = (args && typeof args === "object" ? args : {}) as Record<string, unknown>;
 	if ((name === "bash" || name === "powershell") && typeof record.command === "string" && record.command.trim()) {
-		return { kind: "call", title: name, body: limit(record.command), view: { command: record.command, prompt: name === "powershell" ? "PS>" : "$" } };
+		return { kind: "call", title: name, body: record.command, view: { command: record.command, prompt: name === "powershell" ? "PS>" : "$" } };
 	}
 	if (name === "write" && typeof record.content === "string") {
 		const hunks = hunksFromContent(record.content);
 		const path = String(record.file_path ?? record.path ?? "");
-		if (hunks.length > 0) return { kind: "call", title: name, body: limit(`${path}\n\n${plainHunks(hunks)}`), view: { hunks, lead: path, path, wholeFile: true } };
+		if (hunks.length > 0) return { kind: "call", title: name, body: `${path}\n\n${plainHunks(hunks)}`, view: { hunks, lead: path, path, wholeFile: true } };
 	}
 	if (!full && name === "edit" && Array.isArray(record.edits) && typeof (record.file_path ?? record.path) === "string") {
 		const count = record.edits.length;
 		return { kind: "call", title: name, body: `${String(record.file_path ?? record.path)} · ${count} replacement${count === 1 ? "" : "s"}` };
 	}
-	return { kind: "call", title: name, body: limit(argumentsText(args)) };
+	return { kind: "call", title: name, body: argumentsText(args) };
 }
 
-function changeResultBlock(name: string, message: Record<string, unknown>, path: string | undefined, limit: (text: string) => string): TranscriptBlock | undefined {
+function changeResultBlock(name: string, message: Record<string, unknown>, path: string | undefined): TranscriptBlock | undefined {
 	const diff = (message.details as { diff?: unknown } | undefined)?.diff;
 	if (name !== "edit" || typeof diff !== "string") return undefined;
 	const hunks = parsePiDiff(diff);
 	if (hunks.length === 0) return undefined;
 	const lead = contentText(message.content as Content);
-	return { kind: "result", title: `${name} result`, body: limit([lead, plainHunks(hunks)].filter(Boolean).join("\n\n")), view: { hunks, lead, path } };
+	return { kind: "result", title: `${name} result`, body: [lead, plainHunks(hunks)].filter(Boolean).join("\n\n"), view: { hunks, lead, path } };
 }
 
 export function transcriptBlocks(entries: readonly SessionEntry[], full = false): TranscriptBlock[] {
-	const limit = full ? (text: string) => text : capped;
 	const blocks: TranscriptBlock[] = [];
 	const paths = new Map<string, string>();
 	const calls = new Map<string, unknown>();
@@ -120,36 +121,53 @@ export function transcriptBlocks(entries: readonly SessionEntry[], full = false)
 				const args = block.arguments as { path?: unknown; file_path?: unknown } | undefined;
 				const target = args?.file_path ?? args?.path;
 				if (typeof target === "string" && "id" in block) paths.set(String(block.id), target);
-				blocks.push(callBlock(block.name ?? "tool", block.arguments, limit, full));
+				blocks.push(callBlock(block.name ?? "tool", block.arguments, full));
 				if ("id" in block) calls.set(String(block.id), block.arguments);
 			}
 			if (message.stopReason === "error" && typeof message.errorMessage === "string") {
 				blocks.push({ kind: "error", title: "turn failed", body: message.errorMessage });
 			}
 		} else if (message.role === "toolResult") {
-			const changed = !message.isError ? changeResultBlock(String(message.toolName), message, paths.get(String(message.toolCallId)), limit) : undefined;
+			const changed = !message.isError ? changeResultBlock(String(message.toolName), message, paths.get(String(message.toolCallId))) : undefined;
 			if (changed) blocks.push(changed);
 			else blocks.push({
 				kind: message.isError ? "error" : "result",
 				title: `${String(message.toolName)} ${message.isError ? "failed" : "result"}`,
-				body: limit([
+				body: [
 					contentText(message.content as Content),
 					(message.details as { diff?: unknown } | undefined)?.diff,
 					!full && message.isError && message.toolName === "edit" && calls.has(String(message.toolCallId)) ? argumentsText(calls.get(String(message.toolCallId))) : undefined,
-				].filter((part) => typeof part === "string" && part).join("\n\n")),
+				].filter((part) => typeof part === "string" && part).join("\n\n"),
 			});
 		} else if (message.role === "bashExecution") {
 			const exit = message.cancelled ? "cancelled" : `exit ${String(message.exitCode ?? "?")}`;
 			blocks.push({
 				kind: "shell",
 				title: `$ ${String(message.command)} (${exit})`,
-				body: limit(String(message.output ?? "")),
+				body: String(message.output ?? ""),
 			});
 		} else if (message.role === "custom" && message.display) {
 			blocks.push({ kind: "note", title: String(message.customType), body: contentText(message.content as Content) });
 		}
 	}
-	return blocks;
+	return full ? blocks : blocks.map(cap);
+}
+
+function cap(block: TranscriptBlock): TranscriptBlock {
+	const body = capped(block.body);
+	return body === block.body ? block : { ...block, body, full: block.body };
+}
+
+function windowed(block: TranscriptBlock, line: number): { block: TranscriptBlock; start: number; end: number } {
+	const lines = (block.full ?? block.body).split("\n");
+	const start = Math.min(Math.max(0, lines.length - MAX_RESULT_LINES), Math.max(0, line - Math.floor(MAX_RESULT_LINES / 2)));
+	const end = Math.min(lines.length, start + MAX_RESULT_LINES);
+	const body = [
+		...(start > 0 ? [`… ${start} earlier lines`] : []),
+		...lines.slice(start, end),
+		...(end < lines.length ? [`… ${lines.length - end} more lines (press e to read everything in your editor)`] : []),
+	].join("\n");
+	return { block: { kind: block.kind, title: block.title, body, full: block.full, firstLine: start > 0 ? start - 1 : 0 }, start, end };
 }
 
 export function transcriptMarkdown(entries: readonly SessionEntry[]): string {
@@ -172,11 +190,12 @@ const MARKS: Record<BlockKind, { mark: string; color: "accent" | "text" | "muted
 	note: { mark: "◇", color: "muted" },
 };
 
-export function renderBlocks(blocks: readonly TranscriptBlock[], theme: Theme, width: number, starts: number[] = []): string[] {
+export function renderBlocks(blocks: readonly TranscriptBlock[], theme: Theme, width: number, starts: number[] = [], origins: number[] = []): string[] {
 	const inner = Math.max(10, width - 4);
 	const lines: string[] = [];
 	for (const block of blocks) {
 		starts.push(lines.length);
+		origins.length = lines.length;
 		const { mark, color } = MARKS[block.kind];
 		const safeTitle = sanitizeTerminalText(block.title);
 		const title = block.kind === "user" || block.kind === "assistant" ? theme.bold(safeTitle) : safeTitle;
@@ -193,11 +212,12 @@ export function renderBlocks(blocks: readonly TranscriptBlock[], theme: Theme, w
 			continue;
 		}
 		const lead = block.view ? block.view.lead : block.body;
-		for (const raw of lead || !block.view ? lead.replace(/\t/g, "  ").split("\n") : []) {
+		(lead || !block.view ? lead.replace(/\t/g, "  ").split("\n") : []).forEach((raw, index) => {
 			for (const wrapped of wrapTextWithAnsi(sanitizeTerminalText(raw), inner)) {
+				origins[lines.length] = (block.firstLine ?? 0) + index;
 				lines.push(`   ${theme.fg(bodyColor, wrapped)}`);
 			}
-		}
+		});
 		if (block.view && "hunks" in block.view) {
 			const taken = takeRows(block.view.hunks, MAX_RESULT_LINES);
 			const totalRows = block.view.hunks.reduce((sum, hunk) => sum + hunk.length, 0);
@@ -210,6 +230,7 @@ export function renderBlocks(blocks: readonly TranscriptBlock[], theme: Theme, w
 		}
 		lines.push("");
 	}
+	origins.length = lines.length;
 	return lines;
 }
 
@@ -226,12 +247,22 @@ export interface TranscriptViewOptions {
 	onCopy: (text: string) => Promise<void>;
 }
 
+interface Match {
+	block: number;
+	line: number;
+	row?: number;
+}
+
 export class TranscriptView implements Component {
 	private readonly options: TranscriptViewOptions;
 	private lines: string[] = [];
 	private plainLines: string[] = [];
 	private blocks: TranscriptBlock[] = [];
 	private starts: number[] = [];
+	private rowBlock: number[] = [];
+	private rowLine: number[] = [];
+	private reveal: { block: number; line: number } | undefined;
+	private window: { block: number; start: number; end: number } | undefined;
 	private notice = "";
 	private cacheKey = "";
 	private width = 0;
@@ -239,7 +270,7 @@ export class TranscriptView implements Component {
 	private follow = true;
 	private searching = false;
 	private query = "";
-	private matches: number[] = [];
+	private matches: Match[] = [];
 	private current = -1;
 
 	constructor(options: TranscriptViewOptions) {
@@ -257,13 +288,35 @@ export class TranscriptView implements Component {
 	private refresh(width: number): void {
 		const entries = this.options.entries();
 		const last = entries.at(-1);
-		const key = `${width}:${diffStyle()}:${entries.length}:${last?.id ?? ""}`;
+		const key = `${width}:${diffStyle()}:${entries.length}:${last?.id ?? ""}:${this.reveal?.block ?? ""}:${this.reveal?.line ?? ""}`;
 		if (key === this.cacheKey) return;
 		this.cacheKey = key;
 		this.blocks = transcriptBlocks(entries);
+		this.window = undefined;
+		const reveal = this.reveal;
+		const shown = this.blocks.map((block, index) => {
+			if (index !== reveal?.block || block.full === undefined) return block;
+			const { block: windowBlock, start, end } = windowed(block, reveal.line);
+			this.window = { block: index, start, end };
+			return windowBlock;
+		});
 		this.starts = [];
-		this.lines = this.blocks.length > 0 ? renderBlocks(this.blocks, this.options.theme, width, this.starts) : [`   ${this.options.theme.fg("muted", EMPTY_TRANSCRIPT)}`];
+		const origins: number[] = [];
+		this.lines = shown.length > 0 ? renderBlocks(shown, this.options.theme, width, this.starts, origins) : [`   ${this.options.theme.fg("muted", EMPTY_TRANSCRIPT)}`];
 		this.plainLines = this.lines.map((line) => plain(line).toLowerCase());
+		this.rowBlock = [];
+		this.rowLine = [];
+		let block = -1;
+		let line = -1;
+		for (let row = 0; row < this.lines.length; row += 1) {
+			if (this.starts[block + 1] === row) {
+				block += 1;
+				line = -1;
+			}
+			line = origins[row] ?? line;
+			this.rowBlock.push(block);
+			this.rowLine.push(line);
+		}
 		if (this.query) this.computeMatches();
 	}
 
@@ -278,26 +331,52 @@ export class TranscriptView implements Component {
 
 	private computeMatches(): void {
 		const needle = this.query.toLowerCase();
-		this.matches = needle ? this.plainLines.flatMap((line, index) => (line.includes(needle) ? [index] : [])) : [];
-		if (this.current >= this.matches.length) this.current = this.matches.length - 1;
+		const previous = this.matches[this.current];
+		const shown: Match[] = needle
+			? this.plainLines.flatMap((line, row) => (line.includes(needle) ? [{ block: this.rowBlock[row]!, line: this.rowLine[row]!, row }] : []))
+			: [];
+		const hidden: Match[] = [];
+		if (needle) {
+			this.blocks.forEach((block, index) => {
+				if (block.full === undefined) return;
+				const range = this.window?.block === index ? this.window : { start: 0, end: MAX_RESULT_LINES };
+				block.full.split("\n").forEach((line, number) => {
+					if ((number < range.start || number >= range.end) && sanitizeTerminalText(line).toLowerCase().includes(needle)) hidden.push({ block: index, line: number });
+				});
+			});
+		}
+		this.matches = [...shown, ...hidden].sort((a, b) => a.block - b.block || a.line - b.line || (a.row ?? Infinity) - (b.row ?? Infinity));
+		this.current = previous ? this.matches.findIndex((match) => match.block === previous.block && match.line === previous.line) : -1;
+	}
+
+	private position(match: Match): number {
+		if (match.row !== undefined) return match.row;
+		const start = this.starts[match.block] ?? 0;
+		return match.line < (this.window?.block === match.block ? this.window.start : 0) ? start + 1 : (this.starts[match.block + 1] ?? this.lines.length) - 1;
 	}
 
 	private jump(direction: 1 | -1): void {
 		if (this.matches.length === 0) return;
 		if (this.current === -1) {
 			const index = direction === 1
-				? this.matches.findIndex((line) => line >= this.top)
-				: this.matches.findLastIndex((line) => line < this.top + this.bodyHeight());
+				? this.matches.findIndex((match) => this.position(match) >= this.top)
+				: this.matches.findLastIndex((match) => this.position(match) < this.top + this.bodyHeight());
 			this.current = index === -1 ? (direction === 1 ? 0 : this.matches.length - 1) : index;
 		} else {
-			this.current = (this.current + direction + this.matches.length) % this.matches.length;
+			this.current = stepMatch(this.current, this.matches.length, direction);
 		}
-		const line = this.matches[this.current]!;
-		if (line < this.top || line >= this.top + this.bodyHeight()) this.scrollTo(line - Math.floor(this.bodyHeight() / 3));
+		const target = this.matches[this.current]!;
+		if (target.row === undefined) {
+			this.reveal = { block: target.block, line: target.line };
+			this.refresh(this.width);
+			this.current = this.matches.findIndex((match) => match.block === target.block && match.line === target.line && match.row !== undefined);
+		}
+		const row = this.matches[this.current]?.row;
+		if (row !== undefined && (row < this.top || row >= this.top + this.bodyHeight())) this.scrollTo(row - Math.floor(this.bodyHeight() / 3));
 	}
 
 	private selected(): number {
-		const line = this.current >= 0 ? this.matches[this.current]! : this.top;
+		const line = this.matches[this.current]?.row ?? this.top;
 		return this.starts.findLastIndex((start) => start <= line);
 	}
 
@@ -316,8 +395,8 @@ export class TranscriptView implements Component {
 		this.top = Math.min(this.top, this.maxTop());
 		const selectedStart = this.starts[this.selected()];
 		const body = this.bodyHeight();
-		const currentLine = this.current >= 0 ? this.matches[this.current] : undefined;
-		const matchSet = new Set(this.matches);
+		const currentLine = this.matches[this.current]?.row;
+		const matchSet = new Set(this.matches.map((match) => match.row));
 		const visible: string[] = [];
 		for (let row = 0; row < body; row += 1) {
 			const index = this.top + row;
@@ -351,10 +430,10 @@ export class TranscriptView implements Component {
 	private statusBar(width: number): string {
 		const theme = this.options.theme;
 		if (this.searching) {
-			return truncateToWidth(` ${theme.fg("accent", "/")}${this.query}${theme.fg("accent", "▏")}  ${theme.fg("dim", "enter find · esc cancel")}`, width);
+			return truncateToWidth(searchPrompt(theme, this.query, " "), width);
 		}
 		const found = this.query
-			? theme.fg(this.matches.length > 0 ? "text" : "warning", `"${this.query}" ${this.current >= 0 ? `${this.current + 1}/` : ""}${this.matches.length} · `)
+			? searchStatus(theme, this.query, this.matches.length, this.current, "")
 			: "";
 		if (this.notice) return truncateToWidth(` ${theme.fg("success", this.notice)}`, width);
 		const block = this.blocks[this.selected()];
@@ -419,26 +498,19 @@ export class TranscriptView implements Component {
 	}
 
 	private handleSearchInput(data: string): void {
-		if (matchesKey(data, "escape")) {
+		const key = handleSearchKey(this.query, data);
+		if (!key) return;
+		if (key.kind === "cancel") {
 			this.searching = false;
 			this.query = "";
 			this.matches = [];
 			this.current = -1;
-			return;
-		}
-		if (matchesKey(data, "enter") || matchesKey(data, "return")) {
+		} else if (key.kind === "confirm") {
 			this.searching = false;
 			this.computeMatches();
 			this.current = -1;
 			this.jump(1);
-			return;
-		}
-		if (matchesKey(data, "backspace")) {
-			this.query = this.query.slice(0, -1);
-			return;
-		}
-		const printable = decodeKittyPrintable(data) ?? (data.length === 1 && data >= " " ? data : undefined);
-		if (printable) this.query += printable;
+		} else this.query = key.query;
 	}
 
 	handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {

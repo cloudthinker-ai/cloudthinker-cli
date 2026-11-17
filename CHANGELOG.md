@@ -1,3 +1,63 @@
+## [0.13.0]
+
+- Add commands for every CloudThinker public API operation, read from the public API spec: `cloudthinker <module> <resource> <verb>` and `cloudthinker api`.
+- Read `cloudthinker --skill api` for how an AI agent calls the public API from the CLI.
+- Sign in for CI and scripts with `cloudthinker login --token < token.txt`, which reads a CloudThinker access token from stdin, checks it with the server, and saves it for each workspace it covers.
+- `cloudthinker review findings <finding-id>` reads one finding; a merge-request URL still lists its findings.
+- `incident ls`, `incident status`, `chat -p`, `chat status` and `chat ls` call the public API; flags and output are unchanged.
+- An operation the server marks for confirmation, such as a delete, asks `[y/N]` on a terminal. A global `--yes` (`-y`) skips the question, and without a terminal the command refuses unless `--yes` is given.
+- Public API commands take the workspace from a `CLOUDTHINKER_TOKEN` that covers one workspace.
+- A mistyped command shows its usage error and a suggestion even when the server is unreachable.
+- `cloudthinker review` no longer fails when the model wraps its JSON answer in prose or a code fence. It reads the findings object from the answer, asks the agent once more when no object is found, and drops single findings that do not point at a changed line or are incomplete instead of failing the run. It prints `Dropped N finding(s)…` on stderr, and `--json` adds `dropped_findings`.
+- A diff over 40 KiB is reviewed in parts of up to 40 KiB, split by file, and the findings are merged. A single file whose diff is longer than 40 KiB is cut short, and the agent is told to read the whole file. `--timeout` applies to each part.
+- The review runs on the workspace's Code Review model and uses the repository's review instructions, Learnings and Convention Rules from CloudThinker when the `origin` remote belongs to a connected repository. The agent also reads the nearest `AGENTS.md` and `CLAUDE.md`. When CloudThinker cannot supply them, the review warns once and uses the built-in instructions.
+- After a review, the findings are sent to CloudThinker so the first review of the pull request for this branch credits them: it skips the ones you fixed and checks the ones still open. The CLI prints `Sent to CloudThinker: the PR review will credit these findings.`, and `--json` adds `uploaded`. `--no-upload` keeps the findings on your machine. A failed upload prints a warning and never fails the review.
+- `cloudthinker --skill review` now prints a Claude Code skill: save it with `mkdir -p .claude/skills/cloudthinker-review && cloudthinker --skill review > .claude/skills/cloudthinker-review/SKILL.md` and run `/cloudthinker-review` to review, confirm, and fix your changes before you open a pull request.
+- Refresh the local Cyber discovery bundle to match the current scope and manifest rules.
+- Keep the CLI API models aligned with Cyber investigation timing and team limits.
+- Local pentests share cloud investigation guidance, checkpoint continuation, independent execution references and report readiness. New ordinary cloud runs use backend-issued coverage while retaining evidence validation.
+- `cloudthinker cloud tool-search --session <ID> <QUERY...> [--limit N]` replaces `cloudthinker cloud load-tools`. Plain words rank the tools your Connections offer; exact tool names (SDK tools as `prefix.tool`) return their full schemas. `load-tools` is removed, and the backend's old load route now answers with an upgrade message.
+- `review watch` now applies its overall timeout to each in-flight status request. A request that finishes after the deadline returns the timeout outcome, and the in-flight request is dropped when the deadline expires.
+- Reduce retained folder names during remote completion while preserving the existing first 50 results, lexical order and hidden-folder behavior.
+- Guide local Pentest investigations through stack evidence, advisory research and independent verification.
+- Refresh generated API models for the current backend worker and repository contracts.
+- `cloudthinker update` on a remote machine keeps a running `cloudthinker remote` agent; the next connect uses the new version. Starting an agent on a machine that stops user processes at logout now says to run `loginctl enable-linger`.
+- Run the CLI and the agent on Alpine and on older Linux servers such as RHEL and Rocky 8, Amazon Linux 2, Debian 11, and Ubuntu 20.04: releases add static musl builds for x86_64 and arm64, the installer and `update` pick them where glibc is older than 2.35 or absent, and the agent picks its musl build on Alpine.
+- Clarify Cyber investigation ownership: each persistent Fortress teammate coordinates independent verification and saves supported findings without Manager approval. Bounded helpers return evidence, and the Manager owns the final Run report.
+- Align generated Cyber API models with active finding counts, saved Run activity and current team limits.
+- When a `ct_ask` run stops for approval, the terminal shows the step and lets an approver approve, decline with a reason, or decide in the browser; `ct_run_status` offers the same for a paused run. Forms, break-glass overrides and sub-agent approvals stay in the browser.
+- Mirrored session entries are redacted on the server before they are stored, so credentials in a transcript stay out of the cloud copy; emails, IPs and hostnames are kept.
+- An oversized mirrored entry keeps its structure and cuts only its longest text, instead of losing the message.
+- Each background task writes its full output to its own log file, shown in the task's output and status.
+- `CLOUDTHINKER_CONFIG_DIR` moves the CLI's credentials and worker state, so people who share one Unix account can each keep their own login; `whoami` prints the credentials path when it is set.
+- Piped stdin that stays open now prints one stderr notice with the bytes received and the advice to pipe a finite snapshot; input past the limit stops the read at once.
+- Device login shows when the code expires, with a live countdown on a terminal, and over SSH a plain `BROWSER` no longer overrides the device code; a VS Code forwarding helper still does.
+- `chat trace` always states that tool arguments, tool output and thinking are excluded, says when older messages are capped, and points to the full record.
+- The README now leads with the generally available workflows and moves pentest to a gated section.
+- `CLOUDTHINKER_RELEASE_URL` installs the agent from an https mirror, a `file://` URL or a local directory laid out as `<base>/v<version>/<asset>`, with the same checksum checks; errors name the source and the variable.
+- A bare `cloudthinker` over SSH runs the agent so it keeps running when the connection drops; run `cloudthinker` again to return to it, or set `CLOUDTHINKER_REMOTE=0` to run it in the shell.
+- The cloud write approval fits the terminal height and scrolls the whole script with PgUp/PgDn and Home/End; Enter reads to the end of an unread script before it confirms.
+- The running-command view fills 80% of the terminal, follows the tail, wraps long lines, scrolls, and searches with `/` and `n`/`N`.
+- Ctrl+O transcript search finds matches past the 400-line cap of a tool result and opens that part of the result.
+- `cloudthinker remote` accepts `user@host:port` and `host:port`, including `[::1]:2222`, and opens one SSH login that the attach and `cloudthinker update` share.
+- After an SSH login fails, the reconnect waits 2, then 5, then 10 minutes instead of retrying every 30 seconds, so a server does not lock the account.
+- Output from `~/.bashrc`, `~/.profile` or a login message on the remote machine no longer breaks the connection; more than 64 KiB of it stops with a message that names those files.
+- `cloudthinker remote ls` lists the saved machines, `cloudthinker remote ls <machine>` lists the agents running there (`--json` for scripts), and `cloudthinker remote forget <machine>` removes one.
+- `cloudthinker remote <machine> --detach` starts the agent without attaching and prints how to return to it; it works without a terminal.
+- `cloudthinker remote <machine> --via '<command>'` reaches the machine with another command, such as `ssh -J`, and remembers it for later connects.
+- Idle agent sessions wake about 20 times a second instead of about 150, and run 8 threads instead of 15: `cloudthinker agent` starts the agent with one garbage-collector helper thread (set `BUN_JSC_numberOfGCMarkers` to choose another count).
+- On Alpine with `gcompat`, `cloudthinker agent` now installs the musl agent. It used to pick the glibc build, which failed with "symbol not found".
+- When a new agent fails its start-up check, the error now shows the agent's last error line and a fix where one is known: a missing `libstdc++`, a C library mismatch, or a CPU without the needed instructions. It used to say only "exited with status".
+- Hosts without `lsof` (minimal Alpine, Debian and Amazon Linux images) now remove old agent versions after an update. Each update used to leave another 120 MB on disk.
+- The start-up logo now uses 256 colours when the terminal does not report 24-bit colour, as over SSH or in tmux. On the Linux text console (`TERM=linux`), it draws the logo in ASCII and skips the intro animation.
+- In Manual approval mode, the agent now asks before a local command that may change something, a PowerShell command, or any file edit or write, in the same approval card as a cloud write. Read-only commands such as `ls`, `cat`, `rg`, `git status`, `kubectl get` and `aws describe`/`list`/`get` run without asking. Under `agent -p`, Manual blocks those calls and tells the agent why. Auto mode is unchanged.
+- `cloudthinker login` with a device code now opens the approval page with the code filled in. Check that the page shows the code from your terminal, then continue; the bare URL is still printed for manual entry.
+- `cloudthinker remote <host>` can now install the CLI on a Linux server that cannot reach GitHub. When cloudthinker is missing there, or too old and its own update fails, the laptop asks, downloads the matching Linux build and agent, checks their checksums, and copies them over the same SSH login. The agent on that server then installs from the copied files. The server needs only `tar`.
+- `cloudthinker update --version 0.12.2` installs that release, older or newer, so a team can pin every host to one version or roll back a bad update. A version that was never released exits 2 and names the releases page.
+- Background task cleanup reads each task manifest once per sweep instead of up to three times.
+- Container cleanup removes all labelled session networks with one `docker network rm` call instead of one call per network.
+- Internal: the CLI builds again from the current API, and its skill export test matches the Cyber guides it prints. No command changes.
+
 ## [0.12.2]
 
 - `worker start` no longer fails its folder check when `output/` already holds files. The worker notes the files in `output/` when it starts and uploads only files that are new or changed after that. A folder with more than 64 files or 16 MB in `output/` used to fail with `EXECUTOR_ARTIFACT_LIMIT_EXCEEDED`. The failure line now says that `output/` is over the upload limit.

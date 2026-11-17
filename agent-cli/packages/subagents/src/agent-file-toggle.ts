@@ -27,15 +27,15 @@
 
 import { existsSync } from "node:fs";
 import { join, sep } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { parseAgentFrontmatter } from "./custom-agents.ts";
+import { projectRoot, userRoot, workspaceRoot } from "./roots.ts";
 import type { AgentConfig } from "./types.ts";
 
 export type AgentFileLocation = "project" | "workspace" | "personal";
 
-export const projectAgentsDir = (cwd: string = process.cwd()) => join(cwd, ".pi", "agents");
-export const workspaceAgentsDir = (cwd: string = process.cwd()) => join(cwd, ".agents", "agents");
-export const personalAgentsDir = () => join(getAgentDir(), "agents");
+export const projectAgentsDir = (cwd: string = process.cwd()) => projectRoot(cwd, "agents");
+export const workspaceAgentsDir = (cwd: string = process.cwd()) => workspaceRoot(cwd, "agents");
+export const personalAgentsDir = () => userRoot("agents");
 
 /**
  * Find the file path of a custom agent by name, in discovery-precedence order

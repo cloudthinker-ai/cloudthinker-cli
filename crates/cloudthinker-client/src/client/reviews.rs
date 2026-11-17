@@ -1,4 +1,6 @@
-use serde::Serialize;
+use cloudthinker_api::{ClientInfo, Error as ApiError, ResponseValue};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 use super::CtClient;
 use crate::error::{CtError, CtResult};
@@ -342,6 +344,58 @@ impl ReviewView {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct LocalReviewContextRequest<'a> {
+    pub remote_url: &'a str,
+    pub branch: Option<&'a str>,
+    pub base_sha: &'a str,
+    pub head_sha: &'a str,
+    pub changed_paths: &'a [String],
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LocalReviewContext {
+    pub repository_known: bool,
+    pub instructions: String,
+    pub context: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LocalReviewSeverity {
+    Critical,
+    High,
+    Medium,
+    Low,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LocalReviewFindingIn<'a> {
+    pub severity: LocalReviewSeverity,
+    pub file: &'a str,
+    pub line: u64,
+    pub title: &'a str,
+    pub explanation: &'a str,
+    pub suggested_fix: &'a str,
+    pub line_text: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LocalReviewUpload<'a> {
+    pub remote_url: &'a str,
+    pub branch: Option<&'a str>,
+    pub base_sha: &'a str,
+    pub head_sha: &'a str,
+    pub duration_ms: u64,
+    pub findings: &'a [LocalReviewFindingIn<'a>],
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LocalReviewStored {
+    pub id: Option<uuid::Uuid>,
+    pub repository_known: bool,
+}
+
 fn to_api_provider(provider: MrProvider) -> cloudthinker_api::types::CodeReviewProvider {
     match provider {
         MrProvider::Gitlab => cloudthinker_api::types::CodeReviewProvider::Gitlab,
@@ -350,6 +404,45 @@ fn to_api_provider(provider: MrProvider) -> cloudthinker_api::types::CodeReviewP
 }
 
 impl CtClient {
+    pub async fn local_review_context(
+        &self,
+        request: &LocalReviewContextRequest<'_>,
+    ) -> CtResult<LocalReviewContext> {
+        self.post_review_json("/code-review/local-reviews/context", request)
+            .await
+    }
+
+    pub async fn upload_local_review(
+        &self,
+        upload: &LocalReviewUpload<'_>,
+    ) -> CtResult<LocalReviewStored> {
+        self.post_review_json("/code-review/local-reviews", upload)
+            .await
+    }
+
+    async fn post_review_json<B: Serialize, T: DeserializeOwned>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> CtResult<T> {
+        self.authed(async |c: cloudthinker_api::Client| {
+            let response = c
+                .client()
+                .post(format!("{}/api/v1{path}", c.baseurl()))
+                .header(reqwest::header::ACCEPT, "application/json")
+                .header("api-version", "0.1.0")
+                .json(body)
+                .send()
+                .await
+                .map_err(ApiError::CommunicationError)?;
+            match response.status().as_u16() {
+                200 | 201 => ResponseValue::from_response(response).await,
+                _ => Err(ApiError::UnexpectedResponse(response)),
+            }
+        })
+        .await
+    }
+
     pub async fn start_loupe_setup_conversation(
         &self,
         worker: uuid::Uuid,

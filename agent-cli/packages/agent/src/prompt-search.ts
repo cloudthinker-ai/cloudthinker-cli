@@ -70,16 +70,29 @@ export async function pastPrompts(sessionDir: string, current: readonly string[]
 	return [...new Set([...current, ...older.flat()])];
 }
 
-export function matchPrompts(prompts: readonly string[], query: string): string[] {
+interface SearchablePrompt {
+	text: string;
+	lower: string;
+}
+
+function searchable(prompts: readonly string[]): SearchablePrompt[] {
+	return prompts.map((text) => ({ text, lower: text.toLowerCase() }));
+}
+
+function matchPromptsDetailed(prompts: readonly SearchablePrompt[], query: string): string[] {
 	const needles = query.toLowerCase().split(/\s+/).filter(Boolean);
-	return prompts.filter((prompt) => {
-		const haystack = prompt.toLowerCase();
-		return needles.every((needle) => haystack.includes(needle));
-	});
+	return prompts
+		.filter((prompt) => needles.every((needle) => prompt.lower.includes(needle)))
+		.map((prompt) => prompt.text);
+}
+
+export function matchPrompts(prompts: readonly string[], query: string): string[] {
+	return matchPromptsDetailed(searchable(prompts), query);
 }
 
 export class PromptSearch implements Component {
 	private readonly prompts: readonly string[];
+	private readonly searchable: SearchablePrompt[];
 	private readonly theme: Theme;
 	private readonly done: (prompt: string | undefined) => void;
 	private query = "";
@@ -87,13 +100,14 @@ export class PromptSearch implements Component {
 
 	constructor(prompts: readonly string[], theme: Theme, done: (prompt: string | undefined) => void, query = "") {
 		this.prompts = prompts;
+		this.searchable = searchable(prompts);
 		this.theme = theme;
 		this.done = done;
 		this.query = query;
 	}
 
 	private matches(): string[] {
-		return matchPrompts(this.prompts, this.query);
+		return matchPromptsDetailed(this.searchable, this.query);
 	}
 
 	render(width: number): string[] {

@@ -1,3 +1,22 @@
+## [0.13.0]
+
+- Expose linked worker execution receipts to pentest workflows and preserve them when completed work is replayed.
+- Precompile startup bytecode to reduce local editor startup work, limiting nested bytecode generation to control archive growth.
+- Over SSH and `cloudthinker remote`, the task pane spinner ticks every 400 ms instead of 80 ms; `CLOUDTHINKER_CLI_MOTION=1` restores it.
+- Add `/rewind` to take back the last turn: it restores the files the agent edited or created, rewinds the conversation, and refuses when a file changed since.
+- Stop shipping pi's `docs/` and `examples/` in the agent bundle, and drop pi's documentation section from the system prompt.
+- Remove pi's `/reload`, `/import` and `/clone` commands; each answers with one line naming its replacement.
+- Paste a laptop clipboard image over plain SSH with Ctrl+V in kitty, and name the next step (`cloudthinker remote <host>` or scp) in other terminals and in tmux instead of doing nothing.
+- Draw compact tool calls without padding rows or a gap between consecutive calls, and show a path inside the working folder relative to it, so a read, shell command and edit take two rows each instead of five.
+- Write each background task's full output to `<task id>.log` beside the task record, readable only by you and capped at 256 MiB, and show its path in the output and status.
+- Size the running-command view to the terminal, follow the tail until scrolled, wrap long lines, scroll with ↑/↓, PgUp/PgDn and Home/End (End follows again), and search with `/` and `n`/`N`.
+- Search the whole text of a capped transcript block and open a 400-line window around a match past the cap.
+- Rows without styling no longer end with a reset, and styled rows without hyperlinks end with a plain reset, so each repaint sends fewer bytes.
+- Keep the launcher's garbage-collector tuning out of commands the agent runs.
+- Share one `/` search-overlay state machine between the transcript and the command pane.
+- Ctrl+R prompt search lowercases each past prompt once when it opens, so typing and moving the selection no longer redo that work on every repaint.
+- Internal refactor in this package: shared helpers replace duplicated code, with no user-visible change.
+
 ## [0.11.1]
 
 - The resume line printed when the agent exits now reads `cloudthinker agent --session <id>`, a command that works. It used to print `cloudthinker --session <id>`, which the CLI rejected.

@@ -10,8 +10,8 @@ use crate::engine::exit::{self, ExitCode};
 use crate::engine::{login_guide, output};
 use cloudthinker_client::URL_ENV_VAR;
 use cloudthinker_client::{
-    CliIdentity, CtError, DEFAULT_RELEASE_BASE_URL, agent_bin_root, any_agent_installed,
-    host_target_triple, install_agent, installed_agent_binary,
+    CliIdentity, CtError, agent_bin_root, any_agent_installed, host_target_triple, install_agent,
+    installed_agent_binary, release_base,
 };
 
 /// The version of this binary; the agent bundle is released under the same tag.
@@ -22,6 +22,7 @@ const AGENT_BIN_ENV_VAR: &str = "CLOUDTHINKER_AGENT_BIN";
 
 const BIN_ENV_VAR: &str = "CLOUDTHINKER_BIN";
 
+const GC_MARKERS_ENV_VAR: &str = "BUN_JSC_numberOfGCMarkers";
 const AGENT_HELP: &str = include_str!("../agent_help.txt");
 
 pub async fn run(base_url: &str, workspace: Option<&str>, args: Vec<OsString>) -> ExitCode {
@@ -47,7 +48,25 @@ pub async fn run(base_url: &str, workspace: Option<&str>, args: Vec<OsString>) -
         Err(err) => return exit::report(&err),
     };
     timing.mark("wrapper.install_check");
+    #[cfg(unix)]
+    if outlives_ssh(&args) {
+        let mut env = vec![(URL_ENV_VAR, base_url.to_string())];
+        env.extend(workspace.map(|workspace| (WORKSPACE_ENV_VAR, workspace.to_string())));
+        return crate::engine::remote::client::run_here(env).await;
+    }
     exec_agent(&binary, args, base_url, workspace_id)
+}
+
+#[cfg(unix)]
+fn outlives_ssh(args: &[OsString]) -> bool {
+    let set = |key: &str| std::env::var_os(key).is_some_and(|value| !value.is_empty());
+    args.is_empty()
+        && std::env::var_os(crate::engine::remote::paths::REMOTE_ENV).is_none()
+        && (set("SSH_CONNECTION") || set("SSH_TTY"))
+        && !set("TMUX")
+        && !set("STY")
+        && std::io::stdin().is_terminal()
+        && std::io::stdout().is_terminal()
 }
 
 fn asks_for_help(args: &[OsString]) -> bool {
@@ -99,24 +118,40 @@ async fn resolve_identity(
     }
 }
 
-pub(super) async fn run_local_review(
+pub(super) struct LocalReviewAgent {
+    binary: PathBuf,
+    workspace_id: uuid::Uuid,
+}
+
+pub(super) async fn prepare_local_review(
     base_url: &str,
     workspace: Option<&str>,
-    repository: &Path,
-    prompt: &str,
-    timeout: std::time::Duration,
-) -> Result<String, ExitCode> {
+) -> Result<LocalReviewAgent, ExitCode> {
     let identity = resolve_identity(base_url, workspace).await?;
     let binary = resolve_binary()
         .await
         .map_err(|error| exit::report(&error))?;
+    Ok(LocalReviewAgent {
+        binary,
+        workspace_id: identity.workspace_id,
+    })
+}
+
+pub(super) async fn run_local_review(
+    agent: &LocalReviewAgent,
+    base_url: &str,
+    repository: &Path,
+    prompt: &str,
+    timeout: std::time::Duration,
+) -> Result<String, ExitCode> {
+    let binary = &agent.binary;
     let session_dir = tempfile::tempdir().map_err(|error| {
         output::eprintln_error(&format!(
             "could not create a temporary local agent session: {error}"
         ));
         ExitCode::JobFailed
     })?;
-    let mut command = tokio::process::Command::new(&binary);
+    let mut command = tokio::process::Command::new(binary);
     command
         .current_dir(repository)
         .args([
@@ -140,7 +175,7 @@ pub(super) async fn run_local_review(
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     if !env_token_is_set() {
-        command.env(WORKSPACE_ENV_VAR, identity.workspace_id.to_string());
+        command.env(WORKSPACE_ENV_VAR, agent.workspace_id.to_string());
     }
     if let Some(own_binary) = own_binary() {
         command.env(BIN_ENV_VAR, own_binary);
@@ -214,8 +249,7 @@ async fn resolve_binary() -> cloudthinker_client::CtResult<PathBuf> {
     }
     let triple = host_target_triple()?;
     let step = output::step(&format!("Setting up cloudthinker {AGENT_VERSION}"));
-    let installed =
-        install_agent(DEFAULT_RELEASE_BASE_URL, AGENT_VERSION, triple, &bin_root).await?;
+    let installed = install_agent(&release_base()?, AGENT_VERSION, triple, &bin_root).await?;
     drop(step);
     for failure in &installed.prune_failures {
         output::warn(&format!("agent: {failure}"));
@@ -231,14 +265,9 @@ pub async fn prefetch_bundle(version: &str) -> cloudthinker_client::CtResult<()>
     if installed_agent_binary(&bin_root, version).is_some() {
         return Ok(());
     }
-    install_agent(
-        DEFAULT_RELEASE_BASE_URL,
-        version,
-        host_target_triple()?,
-        &bin_root,
-    )
-    .await
-    .map(|_| ())
+    install_agent(&release_base()?, version, host_target_triple()?, &bin_root)
+        .await
+        .map(|_| ())
 }
 
 pub fn bundle_in_use() -> bool {
@@ -264,6 +293,9 @@ fn exec_agent(
         .args(args)
         .env(URL_ENV_VAR, base_url)
         .env_remove("CLOUDTHINKER_TOKEN");
+    if std::env::var_os(GC_MARKERS_ENV_VAR).is_none() {
+        command.env(GC_MARKERS_ENV_VAR, "1");
+    }
     match own_binary() {
         Some(own_binary) => command.env(BIN_ENV_VAR, own_binary),
         None => command.env_remove(BIN_ENV_VAR),

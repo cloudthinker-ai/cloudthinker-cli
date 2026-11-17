@@ -1,29 +1,6 @@
 {
   "components": {
     "schemas": {
-      "AffectedService": {
-        "description": "Service affected by an incident.\n\nStores both external_id (ARN or cloud resource ID) and human-readable name.\nUsed by RCA agents to identify affected infrastructure and external services.",
-        "properties": {
-          "external_id": {
-            "description": "External resource ID (ARN for AWS, URL for external services)",
-            "nullable": true,
-            "title": "External Id",
-            "type": "string"
-          },
-          "name": {
-            "description": "Human-readable service name",
-            "maxLength": 256,
-            "minLength": 1,
-            "title": "AffectedService_name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "AffectedService",
-        "type": "object"
-      },
       "AgentCliAutoMode": {
         "description": "The workspace's Auto Mode as the terminal shows it at session start.",
         "properties": {
@@ -120,7 +97,7 @@
           },
           "payload": {
             "additionalProperties": true,
-            "description": "The pi entry verbatim, stored as JSONB and never rewritten.",
+            "description": "The pi entry, stored as JSONB with secrets redacted.",
             "title": "Payload",
             "type": "object"
           }
@@ -563,19 +540,6 @@
         ],
         "title": "AgentPublic",
         "type": "object"
-      },
-      "AgentRunStatus": {
-        "description": "Lifecycle state of a background agent run.\n\nValues are deliberately identical to TaskScheduleStatus (app/models/tasks.py)\nso AgentExecutionResult.status needs zero remapping when origins migrate onto\nAgentRun.",
-        "enum": [
-          "pending",
-          "running",
-          "succeeded",
-          "failed",
-          "required_approval",
-          "cancelled"
-        ],
-        "title": "AgentRunStatus",
-        "type": "string"
       },
       "AgentType": {
         "description": "Discriminator for agent types.",
@@ -1395,6 +1359,7 @@
         "type": "object"
       },
       "BgTaskStatus": {
+        "description": "One background CLI task's state. RUNNING moves once to a terminal state.\n\nThe same value lives in several places, all written together:\n- `bgtool:<id>:status` and the meta hash `status` field (one Lua script);\n- `bgtool:running` and `active_count` hold the task only while RUNNING;\n- the DB row `BackgroundCliRun.status` holds only the terminal value\n  (`BgCliRunStatus`, mapped in `bg_cli.persist_terminal`).\nUNKNOWN is a read result (Redis unavailable), never a stored state.",
         "enum": [
           "running",
           "done",
@@ -1730,38 +1695,6 @@
           "head_ref"
         ],
         "title": "ChangeFocusTarget",
-        "type": "object"
-      },
-      "ChildrenSeverityBreakdown": {
-        "description": "Severity breakdown for child incidents.",
-        "properties": {
-          "critical": {
-            "default": 0,
-            "title": "Critical",
-            "type": "integer"
-          },
-          "high": {
-            "default": 0,
-            "title": "High",
-            "type": "integer"
-          },
-          "info": {
-            "default": 0,
-            "title": "Info",
-            "type": "integer"
-          },
-          "low": {
-            "default": 0,
-            "title": "Low",
-            "type": "integer"
-          },
-          "medium": {
-            "default": 0,
-            "title": "Medium",
-            "type": "integer"
-          }
-        },
-        "title": "ChildrenSeverityBreakdown",
         "type": "object"
       },
       "ClaimAssignmentRequest": {
@@ -2519,6 +2452,10 @@
             "title": "Created At",
             "type": "string"
           },
+          "cross_repo": {
+            "$ref": "#/components/schemas/CodeReviewFindingCrossRepoPublic",
+            "nullable": true
+          },
           "external_comment_id": {
             "nullable": true,
             "title": "External Comment Id",
@@ -2693,6 +2630,67 @@
         "title": "CodeReviewDetailFinding",
         "type": "object"
       },
+      "CodeReviewFindingCrossRepoPublic": {
+        "properties": {
+          "companion_ref": {
+            "nullable": true,
+            "title": "Companion Ref",
+            "type": "string"
+          },
+          "deep_link_url": {
+            "nullable": true,
+            "title": "Deep Link Url",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PortKind"
+          },
+          "other_line": {
+            "title": "Other Line",
+            "type": "integer"
+          },
+          "other_path": {
+            "title": "Other Path",
+            "type": "string"
+          },
+          "other_repo_path": {
+            "title": "Other Repo Path",
+            "type": "string"
+          },
+          "read_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Read At",
+            "type": "string"
+          },
+          "read_ref": {
+            "title": "Read Ref",
+            "type": "string"
+          },
+          "strength": {
+            "$ref": "#/components/schemas/MatchStrength"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/Verdict"
+          }
+        },
+        "required": [
+          "verdict",
+          "kind",
+          "key",
+          "other_repo_path",
+          "other_path",
+          "other_line",
+          "read_ref",
+          "strength"
+        ],
+        "title": "CodeReviewFindingCrossRepoPublic",
+        "type": "object"
+      },
       "CodeReviewMergeRequestDetail": {
         "description": "Single merge-request review detail (header + stats + findings).",
         "properties": {
@@ -2762,6 +2760,16 @@
           "created_at": {
             "format": "date-time",
             "title": "Created At",
+            "type": "string"
+          },
+          "failure_next_step": {
+            "nullable": true,
+            "title": "Failure Next Step",
+            "type": "string"
+          },
+          "failure_reason": {
+            "nullable": true,
+            "title": "Failure Reason",
             "type": "string"
           },
           "files_changed": {
@@ -3093,6 +3101,21 @@
           "result"
         ],
         "title": "CompleteWorkerOperationRequest",
+        "type": "object"
+      },
+      "CompletionStopRule": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "default": "completion",
+            "enum": [
+              "completion"
+            ],
+            "title": "CompletionStopRule_kind",
+            "type": "string"
+          }
+        },
+        "title": "CompletionStopRule",
         "type": "object"
       },
       "ConnectionDisconnectPhase": {
@@ -4064,13 +4087,29 @@
         "title": "CyberReportStyle",
         "type": "string"
       },
-      "DeclarationMode": {
-        "enum": [
-          "active_response",
-          "retrospective"
+      "DurationStopRule": {
+        "additionalProperties": false,
+        "properties": {
+          "hours": {
+            "maximum": 168,
+            "minimum": 1,
+            "title": "Hours",
+            "type": "integer"
+          },
+          "kind": {
+            "default": "duration",
+            "enum": [
+              "duration"
+            ],
+            "title": "DurationStopRule_kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hours"
         ],
-        "title": "DeclarationMode",
-        "type": "string"
+        "title": "DurationStopRule",
+        "type": "object"
       },
       "EvidenceBasis": {
         "description": "Agent self-report of what backs the claim.",
@@ -4483,7 +4522,8 @@
           "convention_chains",
           "glob_read",
           "write_batch",
-          "write_atomic_batch"
+          "write_atomic_batch",
+          "project_finding"
         ],
         "title": "FileEndpoint",
         "type": "string"
@@ -4502,7 +4542,15 @@
             "type": "string"
           },
           "request": {
-            "$ref": "#/components/schemas/FileRequest"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FindingArtifactProjectionRequest"
+              },
+              {
+                "$ref": "#/components/schemas/FileRequest"
+              }
+            ],
+            "title": "Request"
           }
         },
         "required": [
@@ -4732,6 +4780,11 @@
             "title": "Max Bytes",
             "type": "integer"
           },
+          "metadata_only": {
+            "nullable": true,
+            "title": "Metadata Only",
+            "type": "boolean"
+          },
           "multiline": {
             "nullable": true,
             "title": "Multiline",
@@ -4803,6 +4856,11 @@
             "nullable": true,
             "title": "Src Path",
             "type": "string"
+          },
+          "stable_read": {
+            "nullable": true,
+            "title": "Stable Read",
+            "type": "boolean"
           },
           "strip_memory_staleness": {
             "nullable": true,
@@ -4917,6 +4975,336 @@
           "response"
         ],
         "title": "FindingApiCapturePublic",
+        "type": "object"
+      },
+      "FindingArtifactProjectionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "atomic": {
+            "nullable": true,
+            "title": "Atomic",
+            "type": "boolean"
+          },
+          "auto_detect_binary": {
+            "nullable": true,
+            "title": "Auto Detect Binary",
+            "type": "boolean"
+          },
+          "binary": {
+            "nullable": true,
+            "title": "Binary",
+            "type": "boolean"
+          },
+          "case_insensitive": {
+            "nullable": true,
+            "title": "Case Insensitive",
+            "type": "boolean"
+          },
+          "content": {
+            "nullable": true,
+            "title": "Content",
+            "type": "string"
+          },
+          "content_base64": {
+            "nullable": true,
+            "title": "Content Base64",
+            "type": "string"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Context"
+          },
+          "context_after": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Context After"
+          },
+          "context_before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Context Before"
+          },
+          "convention_filenames": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "Convention Filenames",
+            "type": "array"
+          },
+          "convention_patterns": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "Convention Patterns",
+            "type": "array"
+          },
+          "create_if_absent": {
+            "nullable": true,
+            "title": "Create If Absent",
+            "type": "boolean"
+          },
+          "dst_path": {
+            "nullable": true,
+            "title": "Dst Path",
+            "type": "string"
+          },
+          "file_path": {
+            "nullable": true,
+            "title": "File Path",
+            "type": "string"
+          },
+          "file_paths": {
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "title": "File Paths",
+            "type": "array"
+          },
+          "file_type": {
+            "nullable": true,
+            "title": "File Type",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/FileBatchEntry"
+            },
+            "nullable": true,
+            "title": "Files",
+            "type": "array"
+          },
+          "finding_id": {
+            "format": "uuid",
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "follow_symlinks": {
+            "nullable": true,
+            "title": "Follow Symlinks",
+            "type": "boolean"
+          },
+          "glob": {
+            "nullable": true,
+            "title": "Glob",
+            "type": "string"
+          },
+          "hash_only": {
+            "nullable": true,
+            "title": "Hash Only",
+            "type": "boolean"
+          },
+          "head_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Head Limit"
+          },
+          "ignore": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Ignore"
+          },
+          "include_content": {
+            "nullable": true,
+            "title": "Include Content",
+            "type": "boolean"
+          },
+          "include_memory_staleness": {
+            "nullable": true,
+            "title": "Include Memory Staleness",
+            "type": "boolean"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Limit"
+          },
+          "line_limit": {
+            "nullable": true,
+            "title": "Line Limit",
+            "type": "integer"
+          },
+          "line_numbers": {
+            "nullable": true,
+            "title": "Line Numbers",
+            "type": "boolean"
+          },
+          "max_bytes": {
+            "nullable": true,
+            "title": "Max Bytes",
+            "type": "integer"
+          },
+          "merge_request_id": {
+            "format": "uuid",
+            "title": "Merge Request Id",
+            "type": "string"
+          },
+          "metadata_only": {
+            "nullable": true,
+            "title": "Metadata Only",
+            "type": "boolean"
+          },
+          "multiline": {
+            "nullable": true,
+            "title": "Multiline",
+            "type": "boolean"
+          },
+          "new_string": {
+            "nullable": true,
+            "title": "New String",
+            "type": "string"
+          },
+          "offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "nullable": true,
+            "title": "Offset"
+          },
+          "old_string": {
+            "nullable": true,
+            "title": "Old String",
+            "type": "string"
+          },
+          "output_mode": {
+            "nullable": true,
+            "title": "Output Mode",
+            "type": "string"
+          },
+          "overwrite": {
+            "nullable": true,
+            "title": "Overwrite",
+            "type": "boolean"
+          },
+          "path": {
+            "nullable": true,
+            "title": "Path",
+            "type": "string"
+          },
+          "pattern": {
+            "nullable": true,
+            "title": "Pattern",
+            "type": "string"
+          },
+          "projection_revision": {
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "title": "Projection Revision",
+            "type": "integer"
+          },
+          "raw": {
+            "nullable": true,
+            "title": "Raw",
+            "type": "boolean"
+          },
+          "read_only": {
+            "nullable": true,
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "replace_all": {
+            "nullable": true,
+            "title": "Replace All",
+            "type": "boolean"
+          },
+          "repository_root": {
+            "nullable": true,
+            "title": "Repository Root",
+            "type": "string"
+          },
+          "src_path": {
+            "nullable": true,
+            "title": "Src Path",
+            "type": "string"
+          },
+          "stable_read": {
+            "nullable": true,
+            "title": "Stable Read",
+            "type": "boolean"
+          },
+          "strip_memory_staleness": {
+            "nullable": true,
+            "title": "Strip Memory Staleness",
+            "type": "boolean"
+          },
+          "trusted_root": {
+            "enum": [
+              "workspace_memory",
+              "conversation_tmp",
+              "conversation_uploads",
+              "conversation_files",
+              "review_rules",
+              "conversation_research"
+            ],
+            "nullable": true,
+            "title": "FindingArtifactProjectionRequest_trusted_root",
+            "type": "string"
+          },
+          "trusted_root_name": {
+            "nullable": true,
+            "title": "Trusted Root Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "merge_request_id",
+          "projection_revision"
+        ],
+        "title": "FindingArtifactProjectionRequest",
         "type": "object"
       },
       "FindingDisposition": {
@@ -5086,6 +5474,12 @@
             "title": "Last Confirmed Run",
             "type": "string"
           },
+          "last_seen_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Last Seen At",
+            "type": "string"
+          },
           "manually_resolved": {
             "default": false,
             "title": "Manually Resolved",
@@ -5168,10 +5562,12 @@
       "FindingTab": {
         "description": "Action tabs on an App's findings list.",
         "enum": [
+          "active",
           "confirmed",
           "needs_verification",
           "in_progress",
           "fixed",
+          "history",
           "all"
         ],
         "title": "FindingTab",
@@ -5180,9 +5576,19 @@
       "FindingTabCounts": {
         "description": "Findings per action tab under the active non-tab filters.",
         "properties": {
+          "active": {
+            "default": 0,
+            "title": "Active",
+            "type": "integer"
+          },
           "all": {
             "default": 0,
             "title": "All",
+            "type": "integer"
+          },
+          "awaiting_retest": {
+            "default": 0,
+            "title": "Awaiting Retest",
             "type": "integer"
           },
           "confirmed": {
@@ -5198,6 +5604,11 @@
           "fixed": {
             "default": 0,
             "title": "Fixed",
+            "type": "integer"
+          },
+          "history": {
+            "default": 0,
+            "title": "History",
             "type": "integer"
           },
           "in_progress": {
@@ -5235,150 +5646,6 @@
           "kind"
         ],
         "title": "FlushOutput",
-        "type": "object"
-      },
-      "HeadlessRunListItem": {
-        "description": "One recent CLI run; deliberately omits answer and internal failure data.",
-        "properties": {
-          "conversation_id": {
-            "format": "uuid",
-            "nullable": true,
-            "title": "Conversation Id",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "prompt_preview": {
-            "nullable": true,
-            "title": "Prompt Preview",
-            "type": "string"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/AgentRunStatus"
-          },
-          "web_url": {
-            "nullable": true,
-            "title": "Web Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "conversation_id",
-          "status",
-          "prompt_preview",
-          "created_at",
-          "web_url"
-        ],
-        "title": "HeadlessRunListItem",
-        "type": "object"
-      },
-      "HeadlessRunStatus": {
-        "description": "200 response for polling a headless run.\n\n`answer` carries the extracted final assistant text only once the run has\nSUCCEEDED; every other status leaves it null (the CLI keeps polling / reads\n`web_url` for REQUIRED_APPROVAL).",
-        "properties": {
-          "answer": {
-            "nullable": true,
-            "title": "Answer",
-            "type": "string"
-          },
-          "conversation_id": {
-            "format": "uuid",
-            "nullable": true,
-            "title": "Conversation Id",
-            "type": "string"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "end_time": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "End Time",
-            "type": "string"
-          },
-          "failure_kind": {
-            "nullable": true,
-            "title": "Failure Kind",
-            "type": "string"
-          },
-          "message": {
-            "nullable": true,
-            "title": "Message",
-            "type": "string"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          },
-          "start_time": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "Start Time",
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/AgentRunStatus"
-          },
-          "web_url": {
-            "nullable": true,
-            "title": "Web Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "conversation_id",
-          "status",
-          "answer",
-          "message",
-          "failure_kind",
-          "web_url",
-          "created_at",
-          "start_time",
-          "end_time"
-        ],
-        "title": "HeadlessRunStatus",
-        "type": "object"
-      },
-      "HeadlessRunSubmitted": {
-        "description": "202 response for a submitted headless run.",
-        "properties": {
-          "conversation_id": {
-            "format": "uuid",
-            "title": "Conversation Id",
-            "type": "string"
-          },
-          "run_id": {
-            "format": "uuid",
-            "title": "Run Id",
-            "type": "string"
-          },
-          "status": {
-            "$ref": "#/components/schemas/AgentRunStatus"
-          },
-          "web_url": {
-            "title": "Web Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "conversation_id",
-          "status",
-          "web_url"
-        ],
-        "title": "HeadlessRunSubmitted",
         "type": "object"
       },
       "HeartbeatAssignmentRequest": {
@@ -5596,407 +5863,6 @@
         "title": "ImportSectionPublic",
         "type": "object"
       },
-      "IncidentListPublic": {
-        "description": "Paginated list of incidents.",
-        "properties": {
-          "data": {
-            "items": {
-              "$ref": "#/components/schemas/IncidentPublic"
-            },
-            "title": "Data",
-            "type": "array"
-          },
-          "meta": {
-            "$ref": "#/components/schemas/PaginationMeta"
-          },
-          "next_cursor": {
-            "description": "Pass back as `cursor` for the next page. Set only for keyset sorts (queue_priority, severity_open_first, created_at, updated_at) when more rows follow.",
-            "nullable": true,
-            "title": "Next Cursor",
-            "type": "string"
-          },
-          "next_is_closed": {
-            "description": "True when the next row is Resolved or Dismissed, so a client showing those collapsed can stop paging.",
-            "nullable": true,
-            "title": "Next Is Closed",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "data",
-          "meta"
-        ],
-        "title": "IncidentListPublic",
-        "type": "object"
-      },
-      "IncidentPlacePublic": {
-        "description": "Where the incident lives in chat. Read-only.",
-        "properties": {
-          "channel_id": {
-            "title": "Channel Id",
-            "type": "string"
-          },
-          "channel_name": {
-            "nullable": true,
-            "title": "Channel Name",
-            "type": "string"
-          },
-          "channel_url": {
-            "nullable": true,
-            "title": "Channel Url",
-            "type": "string"
-          },
-          "closed_reason": {
-            "nullable": true,
-            "title": "Closed Reason",
-            "type": "string"
-          },
-          "last_post_at": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "Last Post At",
-            "type": "string"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          },
-          "role": {
-            "$ref": "#/components/schemas/PlaceRole"
-          },
-          "thread_url": {
-            "nullable": true,
-            "title": "Thread Url",
-            "type": "string"
-          }
-        },
-        "required": [
-          "provider",
-          "channel_id",
-          "role"
-        ],
-        "title": "IncidentPlacePublic",
-        "type": "object"
-      },
-      "IncidentPublic": {
-        "description": "Full incident response schema.",
-        "properties": {
-          "affected_services": {
-            "items": {
-              "$ref": "#/components/schemas/AffectedService"
-            },
-            "title": "Affected Services",
-            "type": "array"
-          },
-          "child_count": {
-            "default": 0,
-            "title": "Child Count",
-            "type": "integer"
-          },
-          "children_severity_breakdown": {
-            "$ref": "#/components/schemas/ChildrenSeverityBreakdown",
-            "nullable": true
-          },
-          "closed_at": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "Closed At",
-            "type": "string"
-          },
-          "conversation_id": {
-            "format": "uuid",
-            "nullable": true,
-            "title": "Conversation Id",
-            "type": "string"
-          },
-          "correlated_alert_count": {
-            "default": 1,
-            "description": "Alerts merged into this incident, re-fires included",
-            "title": "Correlated Alert Count",
-            "type": "integer"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "declaration_mode": {
-            "$ref": "#/components/schemas/DeclarationMode"
-          },
-          "declaration_reason": {
-            "nullable": true,
-            "title": "Declaration Reason",
-            "type": "string"
-          },
-          "declared_at": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "Declared At",
-            "type": "string"
-          },
-          "dedup_key": {
-            "nullable": true,
-            "title": "Dedup Key",
-            "type": "string"
-          },
-          "description": {
-            "description": "Detailed description",
-            "nullable": true,
-            "title": "Description",
-            "type": "string"
-          },
-          "first_alert_at": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "First Alert At",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "incident_connection_id": {
-            "format": "uuid",
-            "nullable": true,
-            "title": "Incident Connection Id",
-            "type": "string"
-          },
-          "incident_room_id": {
-            "description": "Native Incident Room bound to this incident, absent when On-call never opened one or a responder deleted it",
-            "format": "uuid",
-            "nullable": true,
-            "title": "Incident Room Id",
-            "type": "string"
-          },
-          "investigation_phase": {
-            "$ref": "#/components/schemas/InvestigationPhase"
-          },
-          "is_child": {
-            "default": false,
-            "title": "Is Child",
-            "type": "boolean"
-          },
-          "is_deleted": {
-            "title": "Is Deleted",
-            "type": "boolean"
-          },
-          "last_alert_at": {
-            "description": "When the newest alert arrived; a re-fire moves it, not `updated_at`",
-            "format": "date-time",
-            "nullable": true,
-            "title": "Last Alert At",
-            "type": "string"
-          },
-          "last_webhook_at": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "Last Webhook At",
-            "type": "string"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
-          },
-          "occurred_at": {
-            "format": "date-time",
-            "title": "Occurred At",
-            "type": "string"
-          },
-          "parent_incident_id": {
-            "format": "uuid",
-            "nullable": true,
-            "title": "Parent Incident Id",
-            "type": "string"
-          },
-          "place": {
-            "$ref": "#/components/schemas/IncidentPlacePublic",
-            "nullable": true
-          },
-          "platform_type": {
-            "nullable": true,
-            "title": "Platform Type",
-            "type": "string"
-          },
-          "queue_state": {
-            "$ref": "#/components/schemas/IncidentQueueStatePublic",
-            "nullable": true
-          },
-          "resolved_at": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "Resolved At",
-            "type": "string"
-          },
-          "response_level": {
-            "$ref": "#/components/schemas/ResponseLevel",
-            "nullable": true
-          },
-          "severity": {
-            "$ref": "#/components/schemas/Severity"
-          },
-          "severity_group": {
-            "description": "The stored severity as a level, or `unknown` when it is not one. Set by the incident list; the Severity view groups by it.",
-            "enum": [
-              "critical",
-              "high",
-              "medium",
-              "low",
-              "info",
-              "unknown"
-            ],
-            "nullable": true,
-            "title": "IncidentPublic_severity_group",
-            "type": "string"
-          },
-          "source": {
-            "$ref": "#/components/schemas/IncidentSource"
-          },
-          "status": {
-            "$ref": "#/components/schemas/IncidentStatus"
-          },
-          "title": {
-            "description": "Incident title",
-            "maxLength": 512,
-            "title": "IncidentPublic_title",
-            "type": "string"
-          },
-          "triage_assessed_at": {
-            "format": "date-time",
-            "nullable": true,
-            "title": "Triage Assessed At",
-            "type": "string"
-          },
-          "triage_assessment": {
-            "$ref": "#/components/schemas/TriageAssessment"
-          },
-          "triage_reason": {
-            "nullable": true,
-            "title": "Triage Reason",
-            "type": "string"
-          },
-          "triage_version": {
-            "default": 0,
-            "title": "Triage Version",
-            "type": "integer"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          },
-          "webhook_occurrence_count": {
-            "default": 1,
-            "title": "Webhook Occurrence Count",
-            "type": "integer"
-          },
-          "workspace_id": {
-            "format": "uuid",
-            "title": "Workspace Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title",
-          "status",
-          "id",
-          "workspace_id",
-          "source",
-          "metadata",
-          "affected_services",
-          "created_at",
-          "updated_at",
-          "occurred_at",
-          "is_deleted"
-        ],
-        "title": "IncidentPublic",
-        "type": "object"
-      },
-      "IncidentQueueBucket": {
-        "description": "The five mutually exclusive groups in the Investigation queue.",
-        "enum": [
-          "ai_handling",
-          "needs_decision",
-          "not_started",
-          "resolved",
-          "dismissed"
-        ],
-        "title": "IncidentQueueBucket",
-        "type": "string"
-      },
-      "IncidentQueueReason": {
-        "description": "Why an incident is in its current queue bucket.",
-        "enum": [
-          "no_action_needed",
-          "issue",
-          "inconclusive",
-          "investigating",
-          "verdict_ready",
-          "human_input_required",
-          "on_hold",
-          "investigation_failed",
-          "investigation_cancelled",
-          "result_ready",
-          "queued",
-          "ready_to_investigate",
-          "missing_run",
-          "resolved",
-          "auto_resolved",
-          "false_alarm"
-        ],
-        "title": "IncidentQueueReason",
-        "type": "string"
-      },
-      "IncidentQueueStatePublic": {
-        "description": "The server-owned Investigation queue state for one incident.",
-        "properties": {
-          "bucket": {
-            "$ref": "#/components/schemas/IncidentQueueBucket"
-          },
-          "reason": {
-            "$ref": "#/components/schemas/IncidentQueueReason"
-          },
-          "since_at": {
-            "format": "date-time",
-            "title": "Since At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "bucket",
-          "reason",
-          "since_at"
-        ],
-        "title": "IncidentQueueStatePublic",
-        "type": "object"
-      },
-      "IncidentSource": {
-        "description": "Source of incident creation.",
-        "enum": [
-          "webhook",
-          "manual",
-          "api"
-        ],
-        "title": "IncidentSource",
-        "type": "string"
-      },
-      "IncidentStatus": {
-        "description": "Incident lifecycle status.",
-        "enum": [
-          "OPEN",
-          "ACKNOWLEDGED",
-          "INVESTIGATING",
-          "IDENTIFIED",
-          "ON_HOLD",
-          "NOT_FOUND",
-          "FALSE_ALARM",
-          "RESOLVED",
-          "AUTO_RESOLVED"
-        ],
-        "title": "IncidentStatus",
-        "type": "string"
-      },
       "Intensity": {
         "description": "Per-run probing intensity: safe|aggressive|full|ultra.\n\nConsolidates two legacy flags into one: the dead PentestRun.safe_mode\n(hardcoded True, never varied) and the live App.allow_active_probing\nconsent gate (destructive DELETE/data-changing probing). App carries a\ndefault_intensity that seeds new runs; PentestRun and CyberSchedule each\nfreeze their own chosen intensity at construction (a schedule's frozen\nintensity survives a later change to the App's default).\n\n``ultra`` has the same destructive-probing allowance as ``full`` but also\nturns on the saturation loop: the agent keeps hunting new attack surface in\nfurther passes until one complete pass adds no new finding or surface record (the `cyber-scan-modes-ultra`\ndepth leaf). It is the highest blast radius.",
         "enum": [
@@ -6009,14 +5875,71 @@
         "title": "Intensity",
         "type": "string"
       },
-      "InvestigationPhase": {
-        "enum": [
-          "quiet",
-          "active_response",
-          "retrospective"
+      "InvestigationStopRule": {
+        "discriminator": {
+          "mapping": {
+            "completion": "#/components/schemas/CompletionStopRule",
+            "duration": "#/components/schemas/DurationStopRule"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CompletionStopRule"
+          },
+          {
+            "$ref": "#/components/schemas/DurationStopRule"
+          }
+        ]
+      },
+      "InvestigationTimingPublic": {
+        "properties": {
+          "deadline_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Deadline At",
+            "type": "string"
+          },
+          "duration_hours": {
+            "title": "Duration Hours",
+            "type": "integer"
+          },
+          "elapsed_seconds": {
+            "title": "Elapsed Seconds",
+            "type": "integer"
+          },
+          "remaining_seconds": {
+            "nullable": true,
+            "title": "Remaining Seconds",
+            "type": "integer"
+          },
+          "started_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "stopping",
+              "ended"
+            ],
+            "title": "InvestigationTimingPublic_status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "duration_hours",
+          "started_at",
+          "deadline_at",
+          "remaining_seconds",
+          "elapsed_seconds",
+          "status"
         ],
-        "title": "InvestigationPhase",
-        "type": "string"
+        "title": "InvestigationTimingPublic",
+        "type": "object"
       },
       "IsolationMode": {
         "enum": [
@@ -6129,38 +6052,6 @@
         "title": "LoadConnectionSkillRequest",
         "type": "object"
       },
-      "LoadConnectionToolsRequest": {
-        "properties": {
-          "connection_prefix": {
-            "maxLength": 128,
-            "minLength": 1,
-            "pattern": "^[a-zA-Z0-9_-]+$",
-            "title": "LoadConnectionToolsRequest_connection_prefix",
-            "type": "string"
-          },
-          "conversation_id": {
-            "format": "uuid",
-            "title": "Conversation Id",
-            "type": "string"
-          },
-          "tools": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 20,
-            "minItems": 1,
-            "title": "Tools",
-            "type": "array"
-          }
-        },
-        "required": [
-          "conversation_id",
-          "connection_prefix",
-          "tools"
-        ],
-        "title": "LoadConnectionToolsRequest",
-        "type": "object"
-      },
       "LoadedConnectionContent": {
         "properties": {
           "cloud_root": {
@@ -6210,6 +6101,126 @@
           "tools"
         ],
         "title": "LoadedConnectionContent",
+        "type": "object"
+      },
+      "LocalCheckpointGap": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "finding_path": {
+            "nullable": true,
+            "title": "Finding Path",
+            "type": "string"
+          },
+          "next_action": {
+            "title": "Next Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "next_action"
+        ],
+        "title": "LocalCheckpointGap",
+        "type": "object"
+      },
+      "LocalCheckpointRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "continue_requested": {
+            "default": false,
+            "title": "Continue Requested",
+            "type": "boolean"
+          },
+          "generation": {
+            "minimum": 0,
+            "title": "Generation",
+            "type": "integer"
+          },
+          "handoff": {
+            "maxLength": 16384,
+            "nullable": true,
+            "title": "LocalCheckpointRequest_handoff",
+            "type": "string"
+          },
+          "momentum": {
+            "$ref": "#/components/schemas/PentestMomentumReview",
+            "nullable": true
+          },
+          "verification": {
+            "items": {
+              "$ref": "#/components/schemas/LocalVerificationReceipt"
+            },
+            "maxItems": 500,
+            "title": "Verification",
+            "type": "array"
+          }
+        },
+        "required": [
+          "generation"
+        ],
+        "title": "LocalCheckpointRequest",
+        "type": "object"
+      },
+      "LocalCheckpointResult": {
+        "properties": {
+          "gaps": {
+            "items": {
+              "$ref": "#/components/schemas/LocalCheckpointGap"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "integer"
+          },
+          "handoff": {
+            "nullable": true,
+            "title": "Handoff",
+            "type": "string"
+          },
+          "new_findings": {
+            "title": "New Findings",
+            "type": "integer"
+          },
+          "new_surfaces": {
+            "title": "New Surfaces",
+            "type": "integer"
+          },
+          "next_generation": {
+            "title": "Next Generation",
+            "type": "integer"
+          },
+          "outcome": {
+            "enum": [
+              "continue",
+              "close"
+            ],
+            "title": "LocalCheckpointResult_outcome",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "report_ready": {
+            "title": "Report Ready",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "generation",
+          "next_generation",
+          "outcome",
+          "reason",
+          "report_ready",
+          "new_findings",
+          "new_surfaces"
+        ],
+        "title": "LocalCheckpointResult",
         "type": "object"
       },
       "LocalInputSchema": {
@@ -6272,6 +6283,10 @@
           "app_name": {
             "title": "App Name",
             "type": "string"
+          },
+          "checkpoint": {
+            "$ref": "#/components/schemas/LocalCheckpointResult",
+            "nullable": true
           },
           "conversation_id": {
             "format": "uuid",
@@ -6419,6 +6434,77 @@
           "input_schema"
         ],
         "title": "LocalToolAnnouncement",
+        "type": "object"
+      },
+      "LocalVerificationReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "finding_path": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "LocalVerificationReceipt_finding_path",
+            "type": "string"
+          },
+          "finding_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "LocalVerificationReceipt_finding_sha256",
+            "type": "string"
+          },
+          "producer_conversation_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Producer Conversation Ids",
+            "type": "array"
+          },
+          "report_path": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "LocalVerificationReceipt_report_path",
+            "type": "string"
+          },
+          "report_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "LocalVerificationReceipt_report_sha256",
+            "type": "string"
+          },
+          "review_report_path": {
+            "maxLength": 512,
+            "minLength": 1,
+            "nullable": true,
+            "title": "LocalVerificationReceipt_review_report_path",
+            "type": "string"
+          },
+          "review_report_sha256": {
+            "nullable": true,
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "LocalVerificationReceipt_review_report_sha256",
+            "type": "string"
+          },
+          "reviewer_conversation_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Reviewer Conversation Id",
+            "type": "string"
+          },
+          "verifier_conversation_id": {
+            "format": "uuid",
+            "title": "Verifier Conversation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_path",
+          "finding_sha256",
+          "producer_conversation_ids",
+          "verifier_conversation_id",
+          "report_path",
+          "report_sha256"
+        ],
+        "title": "LocalVerificationReceipt",
         "type": "object"
       },
       "LoupeReadinessCheck": {
@@ -6802,6 +6888,14 @@
           "review_in_progress"
         ],
         "title": "ManualTriggerDisabledReason",
+        "type": "string"
+      },
+      "MatchStrength": {
+        "enum": [
+          "exact",
+          "suffix"
+        ],
+        "title": "MatchStrength",
         "type": "string"
       },
       "MemoryRevisionPolicy": {
@@ -7468,6 +7562,253 @@
         "title": "PendingCloseProposalPublic",
         "type": "object"
       },
+      "PentestMomentumAssessment": {
+        "additionalProperties": false,
+        "properties": {
+          "alternatives_considered": {
+            "description": "Up to three independent leads considered, with the reason to select or defer each.",
+            "items": {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Alternatives Considered",
+            "type": "array"
+          },
+          "completed_experiment_id": {
+            "description": "Stable completed experiment or synthesis ID; reuse the same ID for the same work.",
+            "maxLength": 80,
+            "minLength": 1,
+            "nullable": true,
+            "pattern": "^[a-z][a-z0-9_-]*$",
+            "title": "PentestMomentumAssessment_completed_experiment_id",
+            "type": "string"
+          },
+          "decision_change": {
+            "description": "How the observation changes the investigation; negative results and old-evidence synthesis can qualify.",
+            "maxLength": 500,
+            "minLength": 1,
+            "nullable": true,
+            "title": "PentestMomentumAssessment_decision_change",
+            "type": "string"
+          },
+          "expected_result": {
+            "description": "Expectation recorded before the completed test, or the explicit question for a synthesis.",
+            "maxLength": 500,
+            "minLength": 1,
+            "nullable": true,
+            "title": "PentestMomentumAssessment_expected_result",
+            "type": "string"
+          },
+          "next_experiment_id": {
+            "description": "Stable next experiment ID to record in the run board before execution.",
+            "maxLength": 80,
+            "minLength": 1,
+            "nullable": true,
+            "pattern": "^[a-z][a-z0-9_-]*$",
+            "title": "PentestMomentumAssessment_next_experiment_id",
+            "type": "string"
+          },
+          "observed_result": {
+            "description": "What the completed test actually showed, including controls and uncertainty.",
+            "maxLength": 800,
+            "minLength": 1,
+            "nullable": true,
+            "title": "PentestMomentumAssessment_observed_result",
+            "type": "string"
+          },
+          "progress": {
+            "description": "Agent assessment of useful progress, uncertainty, or stagnation; not a verified backend verdict.",
+            "enum": [
+              "advancing",
+              "exploring",
+              "stalled"
+            ],
+            "title": "PentestMomentumAssessment_progress",
+            "type": "string"
+          },
+          "strategy": {
+            "description": "Agent-selected next direction, or stop when no work is selected.",
+            "enum": [
+              "deepen",
+              "connect",
+              "pivot",
+              "explore",
+              "stop"
+            ],
+            "title": "PentestMomentumAssessment_strategy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "progress",
+          "strategy"
+        ],
+        "title": "PentestMomentumAssessment",
+        "type": "object"
+      },
+      "PentestMomentumLead": {
+        "additionalProperties": false,
+        "properties": {
+          "established_conditions": {
+            "description": "Up to three conditions supported by the referenced evidence.",
+            "items": {
+              "maxLength": 300,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Established Conditions",
+            "type": "array"
+          },
+          "evidence_refs": {
+            "description": "One to three saved evidence references. Format does not prove existence or ownership.",
+            "items": {
+              "maxLength": 300,
+              "minLength": 1,
+              "pattern": "^(artifact|finding|ledger|surface):[^\\s\\r\\n][^\\r\\n]*$",
+              "type": "string"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "hypothesis": {
+            "description": "Unverified explanation to test; not a finding or severity verdict.",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "PentestMomentumLead_hypothesis",
+            "type": "string"
+          },
+          "lead_id": {
+            "description": "Stable open-lead ID from the run board.",
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9_-]*$",
+            "title": "PentestMomentumLead_lead_id",
+            "type": "string"
+          },
+          "missing_condition": {
+            "description": "Unproven condition that the next experiment must resolve.",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "PentestMomentumLead_missing_condition",
+            "type": "string"
+          },
+          "next_test": {
+            "description": "Bounded experiment to distinguish this hypothesis from alternatives.",
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "PentestMomentumLead_next_test",
+            "type": "string"
+          },
+          "related_lead_ids": {
+            "description": "Other lead IDs in this same snapshot whose possible relationship needs testing.",
+            "items": {
+              "maxLength": 80,
+              "minLength": 1,
+              "pattern": "^[a-z][a-z0-9_-]*$",
+              "type": "string"
+            },
+            "maxItems": 2,
+            "title": "Related Lead Ids",
+            "type": "array"
+          },
+          "stop_condition": {
+            "description": "Observation that rejects or completes this lead.",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "PentestMomentumLead_stop_condition",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lead_id",
+          "hypothesis",
+          "evidence_refs",
+          "missing_condition",
+          "next_test",
+          "stop_condition"
+        ],
+        "title": "PentestMomentumLead",
+        "type": "object"
+      },
+      "PentestMomentumReview": {
+        "additionalProperties": false,
+        "properties": {
+          "assessment": {
+            "$ref": "#/components/schemas/PentestMomentumAssessment",
+            "description": "Agent assessment of progress, strategy, predictions and alternatives; checkpoint-only untrusted data.",
+            "nullable": true
+          },
+          "evidence_ref": {
+            "description": "Typed saved evidence reference, never a raw URL or response.",
+            "maxLength": 300,
+            "nullable": true,
+            "pattern": "^(artifact|finding|ledger|surface):[^\\s\\r\\n][^\\r\\n]*$",
+            "title": "PentestMomentumReview_evidence_ref",
+            "type": "string"
+          },
+          "lead_frontier": {
+            "description": "Checkpoint snapshot of up to three open leads, at most 8192 UTF-8 bytes. Omit to preserve saved leads; [] clears; a list replaces. Null is invalid. Agent-selected links are hypotheses, not verified facts.",
+            "items": {
+              "$ref": "#/components/schemas/PentestMomentumLead"
+            },
+            "maxItems": 3,
+            "title": "Lead Frontier",
+            "type": "array"
+          },
+          "lead_id": {
+            "description": "Stable lead identifier from the existing run board.",
+            "maxLength": 120,
+            "minLength": 1,
+            "nullable": true,
+            "title": "PentestMomentumReview_lead_id",
+            "type": "string"
+          },
+          "next_test": {
+            "description": "Distinct bounded experiment and its unmet preconditions.",
+            "maxLength": 600,
+            "minLength": 1,
+            "nullable": true,
+            "title": "PentestMomentumReview_next_test",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Observed progress or the concrete reason no useful independent test remains.",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "PentestMomentumReview_reason",
+            "type": "string"
+          },
+          "status": {
+            "description": "Whether a supported next experiment remains, is blocked, or is exhausted.",
+            "enum": [
+              "supported",
+              "blocked",
+              "exhausted"
+            ],
+            "title": "PentestMomentumReview_status",
+            "type": "string"
+          },
+          "stop_condition": {
+            "description": "Observed result that rejects or completes this experiment.",
+            "maxLength": 300,
+            "minLength": 1,
+            "nullable": true,
+            "title": "PentestMomentumReview_stop_condition",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason"
+        ],
+        "title": "PentestMomentumReview",
+        "type": "object"
+      },
       "PillarId": {
         "enum": [
           "COST_OPTIMIZATION",
@@ -7478,15 +7819,6 @@
           "SUSTAINABILITY"
         ],
         "title": "PillarId",
-        "type": "string"
-      },
-      "PlaceRole": {
-        "enum": [
-          "origin",
-          "channel",
-          "broadcast"
-        ],
-        "title": "PlaceRole",
         "type": "string"
       },
       "PlanCheckPublic": {
@@ -7601,6 +7933,20 @@
         ],
         "title": "PolicyImportPublic",
         "type": "object"
+      },
+      "PortKind": {
+        "enum": [
+          "env",
+          "resource",
+          "iam",
+          "net",
+          "cmd",
+          "signal",
+          "http",
+          "pkg"
+        ],
+        "title": "PortKind",
+        "type": "string"
       },
       "QuickWinClass": {
         "enum": [
@@ -7977,15 +8323,62 @@
           "initialize-links",
           "disk-cleanup",
           "delete-repositories",
+          "delete-owned-repositories",
           "clone-repository",
           "clone-github-repository",
           "clone-bitbucket-repository",
           "clone-azure-devops-repository",
           "clone-aws-codecommit-repository",
+          "clone-repository-owned",
+          "clone-github-repository-owned",
+          "clone-bitbucket-repository-owned",
+          "clone-azure-devops-repository-owned",
+          "clone-aws-codecommit-repository-owned",
           "check-convention-files"
         ],
         "title": "RepositoryAction",
         "type": "string"
+      },
+      "RepositoryCheckoutCleanupManifest": {
+        "additionalProperties": false,
+        "properties": {
+          "repositories": {
+            "items": {
+              "$ref": "#/components/schemas/RepositoryCheckoutDeleteIntent"
+            },
+            "minItems": 1,
+            "title": "Repositories",
+            "type": "array"
+          }
+        },
+        "required": [
+          "repositories"
+        ],
+        "title": "RepositoryCheckoutCleanupManifest",
+        "type": "object"
+      },
+      "RepositoryCheckoutDeleteIntent": {
+        "additionalProperties": false,
+        "properties": {
+          "checkout_generation": {
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "title": "Checkout Generation",
+            "type": "integer"
+          },
+          "repo_name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "RepositoryCheckoutDeleteIntent_repo_name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo_name",
+          "checkout_generation"
+        ],
+        "title": "RepositoryCheckoutDeleteIntent",
+        "type": "object"
       },
       "RepositoryOperation": {
         "additionalProperties": false,
@@ -7997,6 +8390,17 @@
             "nullable": true,
             "title": "Branch",
             "type": "string"
+          },
+          "checkout_generation": {
+            "exclusiveMinimum": true,
+            "minimum": 0,
+            "nullable": true,
+            "title": "Checkout Generation",
+            "type": "integer"
+          },
+          "cleanup_manifest": {
+            "$ref": "#/components/schemas/RepositoryCheckoutCleanupManifest",
+            "nullable": true
           },
           "commit_sha": {
             "nullable": true,
@@ -8226,14 +8630,6 @@
         "title": "RequestAgentCliWriteRequest",
         "type": "object"
       },
-      "ResponseLevel": {
-        "enum": [
-          "page_responders",
-          "track_only"
-        ],
-        "title": "ResponseLevel",
-        "type": "string"
-      },
       "ReviewEffort": {
         "description": "How much reviewer attention a change likely demands, as a triage badge.\n\nA single glance signal next to the verdict: LIGHT changes can be skimmed,\nHEAVY ones deserve a careful pass. Derived from diff size (files + lines) in\n`domain/review_effort.py`, NOT the AI quality `score` \u2014 a small change can be\nlow-quality and a huge one clean, so effort and score are orthogonal axes.\n\nAbsent (NULL on the detail) when no diff-stats were ever recorded, so the\nbadge stays hidden rather than mislabelling an unmeasured MR as LIGHT.",
         "enum": [
@@ -8412,6 +8808,15 @@
       "RunLaunchRequest": {
         "description": "Request body for POST /appsec/apps/{app_id}/runs.\n\nrun_scope narrows the App's scope for this run \u2014 MUST be \u2286 app.scope.\nOmit or pass null for a full-scope run. mode and intensity are\noptional \u2014 when omitted (None), the use case applies the backend default\n(Mode.BLACK / app.default_intensity). The default lives in\nlaunch_run only, not here. scan_mode is optional too \u2014 omitted (None)\ncoalesces to incremental in the use case (the single default source); pass\n\"full\" for a deep whole-worktree sweep (moot for gray/black).\n\nNote an App with NO prior SUCCESS run always runs \"full\": the use case\ncoerces scan_mode on a first run, so an explicit \"incremental\" here is\nhonoured only once a successful run exists to diff against.",
         "properties": {
+          "credit_limit": {
+            "description": "Optional soft credit limit for a manual cloud Deep dive or Fortress run. Testing stops at the first pass checkpoint at or above 90% of it; reporting can exceed it.",
+            "exclusiveMinimum": true,
+            "maximum": 1000000000,
+            "minimum": 0,
+            "nullable": true,
+            "title": "Credit Limit",
+            "type": "integer"
+          },
           "execution_host": {
             "$ref": "#/components/schemas/RunExecutionHost",
             "nullable": true
@@ -8445,6 +8850,18 @@
           },
           "selection": {
             "$ref": "#/components/schemas/SavedSelection",
+            "nullable": true
+          },
+          "stop_rule": {
+            "$ref": "#/components/schemas/InvestigationStopRule",
+            "nullable": true
+          },
+          "team_member_limit": {
+            "$ref": "#/components/schemas/TeamMemberLimit",
+            "nullable": true
+          },
+          "team_pass_limit": {
+            "$ref": "#/components/schemas/TeamPassLimit",
             "nullable": true
           }
         },
@@ -8501,13 +8918,13 @@
             "type": "string"
           },
           "credit_limit": {
-            "description": "Historical per-run credit ceiling. New Runs do not set or enforce this field.",
+            "description": "Soft per-run credit limit set at launch for a Deep dive or Fortress run.",
             "nullable": true,
             "title": "Credit Limit",
             "type": "integer"
           },
           "credit_limit_reached_at": {
-            "description": "Historical timestamp when a saved per-run credit ceiling stopped testing.",
+            "description": "When the pass checkpoint stopped testing at or above 90% of the run credit limit.",
             "format": "date-time",
             "nullable": true,
             "title": "Credit Limit Reached At",
@@ -8536,6 +8953,12 @@
             "nullable": true,
             "title": "Diff Focus",
             "type": "array"
+          },
+          "duration_elapsed_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Duration Elapsed At",
+            "type": "string"
           },
           "execution_host": {
             "$ref": "#/components/schemas/RunExecutionHost"
@@ -8597,6 +9020,22 @@
             "title": "Intensity",
             "type": "string"
           },
+          "investigation": {
+            "$ref": "#/components/schemas/InvestigationTimingPublic",
+            "nullable": true
+          },
+          "investigation_deadline_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Investigation Deadline At",
+            "type": "string"
+          },
+          "investigation_started_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Investigation Started At",
+            "type": "string"
+          },
           "jev_enabled": {
             "default": true,
             "title": "Jev Enabled",
@@ -8628,6 +9067,12 @@
             "title": "Resumed At",
             "type": "string"
           },
+          "run_in_flight": {
+            "description": "Whether this Run is still in flight according to saved server state.",
+            "nullable": true,
+            "title": "Run In Flight",
+            "type": "boolean"
+          },
           "run_scope": {
             "$ref": "#/components/schemas/ScopeSpec"
           },
@@ -8642,10 +9087,20 @@
             "title": "Started At",
             "type": "string"
           },
+          "stop_rule": {
+            "$ref": "#/components/schemas/InvestigationStopRule"
+          },
           "surface_delta": {
             "additionalProperties": true,
             "title": "Surface Delta",
             "type": "object"
+          },
+          "team_member_limit": {
+            "$ref": "#/components/schemas/TeamMemberLimit"
+          },
+          "team_pass_limit": {
+            "$ref": "#/components/schemas/TeamPassLimit",
+            "nullable": true
           }
         },
         "required": [
@@ -9195,53 +9650,6 @@
         "title": "StartWorkerConformanceRequest",
         "type": "object"
       },
-      "SubmitHeadlessRunRequest": {
-        "description": "Body for `POST /cli/runs`.\n\nThe selected custom agent is an identity reference and is independent from\nthe model selection.",
-        "properties": {
-          "conversation_id": {
-            "description": "Optional. Continue this existing conversation (a run is attached to it) instead of creating a new one. Must belong to the authenticated workspace and be a chat-type conversation (HEADLESS or CHAT).",
-            "format": "uuid",
-            "nullable": true,
-            "title": "Conversation Id",
-            "type": "string"
-          },
-          "idempotency_key": {
-            "description": "Optional caller-supplied key (workspace-scoped). A retried submit with the same key returns the original run instead of creating a duplicate. Omit for at-least-once submit.",
-            "maxLength": 255,
-            "nullable": true,
-            "title": "SubmitHeadlessRunRequest_idempotency_key",
-            "type": "string"
-          },
-          "prompt": {
-            "maxLength": 50000,
-            "minLength": 1,
-            "title": "SubmitHeadlessRunRequest_prompt",
-            "type": "string"
-          },
-          "selected_agent_reference": {
-            "description": "Optional custom-agent UUID or alias. It is resolved in the authenticated workspace before the run is reserved.",
-            "nullable": true,
-            "title": "Selected Agent Reference",
-            "type": "string"
-          },
-          "selection": {
-            "$ref": "#/components/schemas/SavedSelection"
-          },
-          "source_conversation_id": {
-            "description": "Optional. The AGENT_CLI conversation whose terminal watches this run. Only for a new run: it cannot be combined with `conversation_id`. Must belong to the authenticated workspace.",
-            "format": "uuid",
-            "nullable": true,
-            "title": "Source Conversation Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "prompt",
-          "selection"
-        ],
-        "title": "SubmitHeadlessRunRequest",
-        "type": "object"
-      },
       "SurfaceAssetTypeCount": {
         "description": "Active surface-item count for one asset type, for the summary chips.",
         "properties": {
@@ -9631,6 +10039,16 @@
         "title": "TargetType",
         "type": "string"
       },
+      "TeamMemberLimit": {
+        "maximum": 100,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "TeamPassLimit": {
+        "maximum": 2147483647,
+        "minimum": 1,
+        "type": "integer"
+      },
       "TicketComplianceStatus": {
         "description": "How well the MR satisfies its linked ticket's acceptance criteria.\n\nOnly meaningful when the review found a linked Jira/Linear ticket and read\nits acceptance criteria (the reviewer already fetches these via the\nreviewing-jira / reviewing-linear skill). Absent (NULL) when no ticket was\nlinked \u2014 the detail's compliance card then hides rather than claiming\ncoverage it never assessed.\n\nStored as its string value in a VARCHAR column, never a native Postgres\nenum, so UPPER()/LOWER() and enum-type migrations (DB-02) never enter the\npicture \u2014 same treatment as the sibling SnapshotFileChangeType. Lives here\n(data/models) rather than in api/schemas so the column can be typed with it\nand the write path stops passing bare strings; api/schemas re-exports it for\nthe response model. The agent-facing tool declares the same value set as an\ninline Literal (the repo prefers inline Literals in model-visible schemas\nover $ref/$defs); a parity test pins the two equal.",
         "enum": [
@@ -9743,16 +10161,60 @@
         "title": "Token",
         "type": "object"
       },
-      "TriageAssessment": {
-        "enum": [
-          "pending",
-          "no_action_needed",
-          "issue",
-          "incident_warranted",
-          "inconclusive"
+      "ToolSearchRequest": {
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 10,
+            "minimum": 1,
+            "nullable": true,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "query": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "ToolSearchRequest_query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "query"
         ],
-        "title": "TriageAssessment",
-        "type": "string"
+        "title": "ToolSearchRequest",
+        "type": "object"
+      },
+      "ToolSearchResponse": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "hit_count": {
+            "title": "Hit Count",
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "query",
+              "names"
+            ],
+            "title": "ToolSearchResponse_mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content",
+          "mode",
+          "hit_count"
+        ],
+        "title": "ToolSearchResponse",
+        "type": "object"
       },
       "TriageState": {
         "description": "Human work-tracking on an open finding \u2014 NOT a finding status.\n\nAnswers \"is a person working this?\", which `FindingStatus` cannot: a finding\nis equally CONFIRMED whether nobody has looked at it or an engineer has been\nfixing it all week. The two axes compose into the UI's triage rail\n(open+NONE = \"needs triage\", open+IN_PROGRESS, open+AWAITING_RETEST,\nresolved = \"verified fixed\"). A human reconfirming a NEEDS_VERIFICATION\nlead reuses AWAITING_RETEST \u2014 it flags the finding for the next scan, no new\nTriageState value is minted for it.\n\nOwnership is strictly split: the agent owns `status` (mirrored from the\napp-memory folder at sync()), a human owns this. A human value can never sit\nin `status` \u2014 sync() rewrites that column from the tree every run and would\ndestroy it. AWAITING_RETEST is a LABEL, not a trigger: it flags the finding\nfor the next scan, it does not launch one.\n\nCleared to NONE by sync() when the agent resolves the finding \u2014 the question\nthis was tracking is settled.",
@@ -9829,6 +10291,14 @@
         ],
         "title": "UserOrganizationMinimal",
         "type": "object"
+      },
+      "Verdict": {
+        "enum": [
+          "broken",
+          "potentially_affected"
+        ],
+        "title": "Verdict",
+        "type": "string"
       },
       "WorkPlanPublic": {
         "description": "A bounded plan: the host's whole to-do list for one run.",
@@ -10633,9 +11103,9 @@
         ]
       }
     },
-    "/api/v1/agent-cli/tools/load": {
+    "/api/v1/agent-cli/tools/search": {
       "post": {
-        "operationId": "agent-cli-load_agent_cli_tools",
+        "operationId": "agent-cli-search_agent_cli_tools",
         "parameters": [
           {
             "in": "query",
@@ -10651,7 +11121,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/LoadConnectionToolsRequest"
+                "$ref": "#/components/schemas/ToolSearchRequest"
               }
             }
           },
@@ -10662,14 +11132,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LoadedConnectionContent"
+                  "$ref": "#/components/schemas/ToolSearchResponse"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Load Agent Cli Tools",
+        "summary": "Search Agent Cli Tools",
         "tags": [
           "agent-cli"
         ]
@@ -11317,7 +11787,7 @@
             "name": "owasp",
             "required": false,
             "schema": {
-              "maxLength": 8,
+              "maxLength": 128,
               "nullable": true,
               "title": "Owasp",
               "type": "string"
@@ -11462,7 +11932,7 @@
             "name": "owasp",
             "required": false,
             "schema": {
-              "maxLength": 8,
+              "maxLength": 128,
               "nullable": true,
               "title": "Owasp",
               "type": "string"
@@ -12093,6 +12563,58 @@
           }
         },
         "summary": "Cancel Run",
+        "tags": [
+          "appsec"
+        ]
+      }
+    },
+    "/api/v1/appsec/runs/{run_id}/checkpoint": {
+      "post": {
+        "operationId": "appsec-checkpoint_local_run_api",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": false,
+            "schema": {
+              "nullable": true,
+              "title": "Workspace Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalCheckpointRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalCheckpointResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Checkpoint Local Run Api",
         "tags": [
           "appsec"
         ]
@@ -12749,149 +13271,6 @@
           }
         },
         "summary": "Read Trace",
-        "tags": [
-          "cli"
-        ]
-      }
-    },
-    "/api/v1/cli/runs": {
-      "get": {
-        "operationId": "cli-list_headless_runs",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 10,
-              "maximum": 50,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "conversation_id",
-            "required": false,
-            "schema": {
-              "format": "uuid",
-              "nullable": true,
-              "title": "Conversation Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "workspace_id",
-            "required": false,
-            "schema": {
-              "nullable": true,
-              "title": "Workspace Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/HeadlessRunListItem"
-                  },
-                  "title": "Response Cli-List Headless Runs",
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List Headless Runs",
-        "tags": [
-          "cli"
-        ]
-      },
-      "post": {
-        "operationId": "cli-submit_headless_run",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "workspace_id",
-            "required": false,
-            "schema": {
-              "nullable": true,
-              "title": "Workspace Id"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SubmitHeadlessRunRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HeadlessRunSubmitted"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Submit Headless Run",
-        "tags": [
-          "cli"
-        ]
-      }
-    },
-    "/api/v1/cli/runs/{run_id}": {
-      "get": {
-        "operationId": "cli-get_headless_run",
-        "parameters": [
-          {
-            "description": "Headless AgentRun id",
-            "in": "path",
-            "name": "run_id",
-            "required": true,
-            "schema": {
-              "description": "Headless AgentRun id",
-              "format": "uuid",
-              "title": "Run Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "workspace_id",
-            "required": false,
-            "schema": {
-              "nullable": true,
-              "title": "Workspace Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HeadlessRunStatus"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get Headless Run",
         "tags": [
           "cli"
         ]
@@ -13934,282 +14313,6 @@
         "tags": [
           "executor-targets",
           "executor-workers"
-        ]
-      }
-    },
-    "/api/v1/incidents/": {
-      "get": {
-        "description": "List incidents with filters and pagination.\n\nBy default, excludes child incidents (include_children=False).",
-        "operationId": "incidents-list_incidents",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "items": {
-                "$ref": "#/components/schemas/IncidentStatus"
-              },
-              "nullable": true,
-              "title": "Status",
-              "type": "array"
-            }
-          },
-          {
-            "in": "query",
-            "name": "bucket",
-            "required": false,
-            "schema": {
-              "items": {
-                "$ref": "#/components/schemas/IncidentQueueBucket"
-              },
-              "nullable": true,
-              "title": "Bucket",
-              "type": "array"
-            }
-          },
-          {
-            "in": "query",
-            "name": "severity",
-            "required": false,
-            "schema": {
-              "items": {
-                "$ref": "#/components/schemas/Severity"
-              },
-              "nullable": true,
-              "title": "Severity",
-              "type": "array"
-            }
-          },
-          {
-            "description": "Also match incidents whose severity is not a known level.",
-            "in": "query",
-            "name": "severity_unknown",
-            "required": false,
-            "schema": {
-              "default": false,
-              "description": "Also match incidents whose severity is not a known level.",
-              "title": "Severity Unknown",
-              "type": "boolean"
-            }
-          },
-          {
-            "description": "Search in title/description",
-            "in": "query",
-            "name": "search",
-            "required": false,
-            "schema": {
-              "description": "Search in title/description",
-              "maxLength": 200,
-              "nullable": true,
-              "title": "Search",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "from",
-            "required": false,
-            "schema": {
-              "format": "date-time",
-              "nullable": true,
-              "title": "From",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "to",
-            "required": false,
-            "schema": {
-              "format": "date-time",
-              "nullable": true,
-              "title": "To",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Page number (1-based)",
-            "in": "query",
-            "name": "page",
-            "required": false,
-            "schema": {
-              "default": 1,
-              "description": "Page number (1-based)",
-              "minimum": 1,
-              "title": "Page",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Maximum records to return",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 25,
-              "description": "Maximum records to return",
-              "maximum": 100,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Sort field. 'queue_priority' orders by investigation queue bucket first (AI handling, Needs decision, Not started, Resolved, Dismissed) and by last activity inside each bucket, so no bucket is starved by paging. 'severity_open_first' orders open incidents Critical to Info, then unknown severity, then Resolved and Dismissed, newest first in each. 'last_activity' orders by the later of the last alert and the last record change, so a re-fire moves an incident up.",
-            "in": "query",
-            "name": "sort_by",
-            "required": false,
-            "schema": {
-              "default": "created_at",
-              "description": "Sort field. 'queue_priority' orders by investigation queue bucket first (AI handling, Needs decision, Not started, Resolved, Dismissed) and by last activity inside each bucket, so no bucket is starved by paging. 'severity_open_first' orders open incidents Critical to Info, then unknown severity, then Resolved and Dismissed, newest first in each. 'last_activity' orders by the later of the last alert and the last record change, so a re-fire moves an incident up.",
-              "title": "Sort By",
-              "type": "string"
-            }
-          },
-          {
-            "description": "`next_cursor` from the previous page. Keyset sorts only; replaces `page`.",
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "description": "`next_cursor` from the previous page. Keyset sorts only; replaces `page`.",
-              "maxLength": 1000,
-              "nullable": true,
-              "title": "Cursor",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Sort order",
-            "in": "query",
-            "name": "sort_order",
-            "required": false,
-            "schema": {
-              "default": "desc",
-              "description": "Sort order",
-              "pattern": "^(asc|desc)$",
-              "title": "Sort Order",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Include child incidents in list",
-            "in": "query",
-            "name": "include_children",
-            "required": false,
-            "schema": {
-              "default": false,
-              "description": "Include child incidents in list",
-              "title": "Include Children",
-              "type": "boolean"
-            }
-          },
-          {
-            "description": "Only incidents with at least one runbook execution whose approval is still pending",
-            "in": "query",
-            "name": "awaiting_approval",
-            "required": false,
-            "schema": {
-              "default": false,
-              "description": "Only incidents with at least one runbook execution whose approval is still pending",
-              "title": "Awaiting Approval",
-              "type": "boolean"
-            }
-          },
-          {
-            "description": "Cap Resolved and Dismissed incidents at the last 30 days. Open incidents are never capped. The investigation queue sets this; history readers leave it off.",
-            "in": "query",
-            "name": "bound_closed_queues",
-            "required": false,
-            "schema": {
-              "default": false,
-              "description": "Cap Resolved and Dismissed incidents at the last 30 days. Open incidents are never capped. The investigation queue sets this; history readers leave it off.",
-              "title": "Bound Closed Queues",
-              "type": "boolean"
-            }
-          },
-          {
-            "description": "Only Resolved and Dismissed incidents closed after this time. Open incidents are never filtered by it.",
-            "in": "query",
-            "name": "closed_since",
-            "required": false,
-            "schema": {
-              "description": "Only Resolved and Dismissed incidents closed after this time. Open incidents are never filtered by it.",
-              "format": "date-time",
-              "nullable": true,
-              "title": "Closed Since",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "workspace_id",
-            "required": false,
-            "schema": {
-              "nullable": true,
-              "title": "Workspace Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IncidentListPublic"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "List incidents",
-        "tags": [
-          "incidents"
-        ]
-      }
-    },
-    "/api/v1/incidents/{incident_id}": {
-      "get": {
-        "description": "Get incident by ID.",
-        "operationId": "incidents-get_incident",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "incident_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Incident Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "workspace_id",
-            "required": false,
-            "schema": {
-              "nullable": true,
-              "title": "Workspace Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/IncidentPublic"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Get incident detail",
-        "tags": [
-          "incidents"
         ]
       }
     },

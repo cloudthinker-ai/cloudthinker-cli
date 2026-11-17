@@ -3,7 +3,7 @@ set -euo pipefail
 
 PKG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUN="${BUN:-$HOME/.bun/bin/bun}"
-ALL_TRIPLES="aarch64-apple-darwin x86_64-apple-darwin aarch64-unknown-linux-gnu x86_64-unknown-linux-gnu"
+ALL_TRIPLES="aarch64-apple-darwin x86_64-apple-darwin aarch64-unknown-linux-gnu x86_64-unknown-linux-gnu aarch64-unknown-linux-musl x86_64-unknown-linux-musl"
 
 usage() {
   cat <<'USAGE'
@@ -16,6 +16,7 @@ build.sh [<version>] [--out <dir>] [--target <triple>] [--host]
 
 Triples: aarch64-apple-darwin x86_64-apple-darwin
          aarch64-unknown-linux-gnu x86_64-unknown-linux-gnu
+         aarch64-unknown-linux-musl x86_64-unknown-linux-musl
 USAGE
 }
 
@@ -25,6 +26,8 @@ bun_target() {
     x86_64-apple-darwin) echo bun-darwin-x64 ;;
     aarch64-unknown-linux-gnu) echo bun-linux-arm64 ;;
     x86_64-unknown-linux-gnu) echo bun-linux-x64 ;;
+    aarch64-unknown-linux-musl) echo bun-linux-arm64-musl ;;
+    x86_64-unknown-linux-musl) echo bun-linux-x64-musl ;;
     *)
       echo "error: unknown target triple '$1'" >&2
       return 1
@@ -130,7 +133,7 @@ for triple in $TRIPLES; do
   dir="$root/cloudthinker-agent"
   mkdir -p "$dir/theme" "$dir/assets" "$dir/export-html/vendor"
 
-  (cd "$PKG_DIR" && "$BUN" build --compile --minify --keep-names --format=esm --no-compile-autoload-bunfig \
+  (cd "$PKG_DIR" && "$BUN" build --compile --bytecode --bytecode-depth=2 --minify --keep-names --format=esm --no-compile-autoload-bunfig \
     --define "__CT_BUILD_ID__=\"$BUILD_ID\"" \
     "--target=$target" src/main.ts --outfile "$dir/cloudthinker-agent")
   chmod 0755 "$dir/cloudthinker-agent"
@@ -153,7 +156,6 @@ for triple in $TRIPLES; do
     writeFileSync(target, script.split(row).join(""), "utf8");
   ' "$PI_ROOT/dist/core/export-html/template.js" "$dir/export-html/template.js"
   cp "$PHOTON" "$dir/"
-  cp -r "$PI_ROOT/docs" "$PI_ROOT/examples" "$dir/"
   cp "$PKG_DIR/CHANGELOG.md" "$dir/"
   mkdir -p "$dir/.agents/skills"
   cp -r "$PKG_DIR/.agents/skills/tour" "$dir/.agents/skills/"
@@ -211,7 +213,7 @@ NOTICE
 		cat "$btw_deps/$license" >> "$dir/NOTICE"
 	done
 
-  node "$PKG_DIR/scripts/validate-assets.ts" "$dir" "$PI_ROOT"
+  node "$PKG_DIR/scripts/validate-assets.ts" "$dir"
   asset="cloudthinker-agent-$triple.tar.gz"
   assets+=("$asset")
   tar -czf "$OUT/$asset" -C "$root" cloudthinker-agent

@@ -17,7 +17,10 @@ tool results also sync, so keep secrets out of their output.
   repair. Save confirmed context or identity references with `cyber config set`.
   Preserve unrelated settings. Ask only for information you cannot establish.
 - Check target reachability, expected authentication, the local runtime and
-  required tools before discovery. Repair setup where possible and record limitations.
+  required tools before discovery. Prove protected access for every required role;
+  doctor checks configured variables, not working login. Record safe identity
+  selectors, revision, purpose, expiry and health. Repair setup where possible
+  and record limitations.
 - `[cyber.context]` holds useful paths or URLs, such as `api_spec` or `notes`.
   `[cyber.auth]` maps roles to environment-variable names. In the project
   config, name a `CYBER_<ROLE>_AUTH` variable, such as `CYBER_OWNER_AUTH`; the
@@ -72,12 +75,18 @@ progress, and completion events. Give it the bound Cyber run id, target, context
 evidence directory, and identity variable names.
 Report its task and progress in plain language.
 
-Choose stages that fit the work: scout, scan, verify candidates independently,
-and assemble the result. The main agent chooses Light, Pro, or Ultra for each
-worker's task. Use parallel workers where useful, with clear
-assignments and bounded work. Give each worker its scope and expected evidence.
-Retry, reassign, or record a limitation when a worker fails. Verification demonstrates
-a violated security rule, beyond reproducing the candidate's response.
+Apply the shared investigation contract included below. Read `--skill cyber-scan`
+for the local Recon, Hunter, Verifier and Critic assignments and structured outputs.
+Start semantic Recon alongside collectors; map authenticated business journeys,
+source architecture and expected access rules. Reconcile both outputs before the
+initial plan and Critic review. Keep coordinator decisions in this session.
+
+Dispatch ready hunt lanes through fresh `agent()` calls in `ct_workflow`. Pipeline
+ready candidates into independent verification while other hunting continues.
+Use `agent(prompt, { schema, receipt: true })` structured results, unique report paths and actual runtime
+execution references; a role label or model-written identifier proves no admission.
+Join and read required reports before adjudication and each pass checkpoint.
+Retry or record a blocker for failed assignments without replacing missing proof.
 
 Request a plan from the available surface. Incorporate discovery results and
 additional surface evidence before refreshing it and checking final coverage.
@@ -123,8 +132,11 @@ in the evidence directory, then upload it with the other evidence.
 ## Finish or recover
 
 Upload evidence with `cloudthinker cyber run evidence <run-id> <paths...>`.
-Check coverage, unresolved candidates, and findings before `cyber run settle`.
-Zero findings can still be a successful run. Confirm the returned run state
+Join required work and use `cyber run checkpoint` with the current generation,
+verification receipts and handoff. Read `--skill cyber-scan` for the checkpoint
+adapter. Follow the returned continue-or-close decision; repair named gaps when
+`report_ready` is false. Generate the final report only after a ready close,
+then upload it before `cyber run settle`. Zero findings can still be a successful run. Confirm the returned run state
 before reporting completion.
 
 Keep drafts, evidence, and workflow files as work progresses. Esc interrupts

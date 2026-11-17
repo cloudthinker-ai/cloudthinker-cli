@@ -39,6 +39,7 @@ enum IntensityArg {
     Safe,
     Aggressive,
     Full,
+    Ultra,
 }
 
 impl From<IntensityArg> for CyberIntensity {
@@ -47,6 +48,7 @@ impl From<IntensityArg> for CyberIntensity {
             IntensityArg::Safe => CyberIntensity::Safe,
             IntensityArg::Aggressive => CyberIntensity::Aggressive,
             IntensityArg::Full => CyberIntensity::Full,
+            IntensityArg::Ultra => CyberIntensity::Ultra,
         }
     }
 }
@@ -202,12 +204,36 @@ struct Cli {
     #[arg(long, env = commands::WORKSPACE_ENV_VAR, global = true)]
     workspace: Option<String>,
 
+    /// Run a command that asks first without asking; required when no terminal can answer, such as in scripts and CI.
+    #[arg(long, short = 'y', global = true)]
+    yes: bool,
+
     /// Agent screen for a bare `cloudthinker`: fullscreen (the default) or regular, which keeps the chat in terminal scrollback.
     #[arg(long, value_name = "MODE", value_parser = ["fullscreen", "regular"])]
     tui_mode: Option<String>,
 
     #[command(subcommand)]
     command: Option<Command>,
+}
+
+#[derive(Debug, Args)]
+struct ApiArgs {
+    /// List every public operation with its command, name, method and scope.
+    #[arg(long, conflicts_with = "args")]
+    list: bool,
+    /// Print the --list table as JSON.
+    #[arg(long, requires = "list")]
+    json: bool,
+    /// Check a public API spec file for command collisions with hand-made commands, then exit.
+    #[arg(long, value_name = "FILE", hide = true, conflicts_with_all = ["list", "args"])]
+    check: Option<std::path::PathBuf>,
+    /// An operation name (resolve.incidents.list) or a method and path, then that operation's arguments.
+    #[arg(
+        trailing_var_arg = true,
+        allow_hyphen_values = true,
+        value_name = "OPERATION|METHOD PATH"
+    )]
+    args: Vec<String>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -258,6 +284,13 @@ enum Command {
     Auth(AuthArgs),
     /// Cyber Apps, domains, runs, and findings; ask the agent to start a pentest.
     Cyber(CyberArgs),
+    /// Call any CloudThinker public API operation by name, or by method and path.
+    #[command(
+        after_help = "Examples:\n  cloudthinker api --list\n  cloudthinker api resolve.incidents.list --status open\n  cloudthinker api GET /v1/workspaces/<workspace-id>/resolve/incidents --query status=open\n  cloudthinker api resolve.incidents.update <incident-id> --set status=resolved --etag <etag>\n\nPublic API commands also run as cloudthinker <module> <resource> <verb>, for example cloudthinker resolve incidents list --all. An operation the server marks for confirmation, such as a delete, asks [y/N] on a terminal; pass --yes to skip the question, and without a terminal it refuses unless --yes is given (exit 2)."
+    )]
+    Api(ApiArgs),
+    #[command(external_subcommand)]
+    Public(Vec<String>),
     /// Run the worker on this machine and manage execution environments.
     Worker(commands::worker::WorkerArgs),
     /// Run the agent on a remote machine over SSH; it keeps running when the connection drops.
@@ -268,7 +301,7 @@ enum Command {
     /// Keep a remote agent running across SSH connections; started by `remote-bridge`.
     #[command(hide = true)]
     RemoteHost(commands::remote::RemoteSideArgs),
-    /// Update `cloudthinker` to the latest GitHub release.
+    /// Update `cloudthinker` to the latest GitHub release, or to the one `--version` names.
     Update(UpdateArgs),
     /// Print a shell completion script.
     #[command(
@@ -302,6 +335,10 @@ struct LoginArgs {
     /// Print the sign-in URL without opening a browser.
     #[arg(long, hide = true)]
     no_browser: bool,
+
+    /// Read a CloudThinker access token (ct_pat_...) from stdin instead of signing in; for CI and scripts.
+    #[arg(long, conflicts_with_all = ["device_auth", "no_browser"])]
+    token: bool,
 }
 
 #[derive(Debug, Args)]
@@ -375,7 +412,7 @@ struct ChatArgs {
 enum ChatSub {
     #[command(
         about = "Inspect persisted conversation messages, tool metadata, failures and usage.",
-        long_about = "Inspect a bounded persisted snapshot of a conversation you can view in the selected workspace. Tool arguments, output and thinking are excluded. Mirrored Agent CLI sessions are unsupported. Completion does not establish tool success; missing usage stays unknown."
+        long_about = "Inspect a bounded persisted snapshot of a conversation you can view in the selected workspace. Tool arguments, output and thinking are excluded, and only the most recent messages are returned, so this is not a complete record. Mirrored Agent CLI sessions are unsupported. Completion does not establish tool success; missing usage stays unknown."
     )]
     Trace {
         #[arg(help = "Conversation UUID, rather than a run UUID.")]
@@ -488,12 +525,14 @@ enum ChatSub {
         #[arg(long)]
         json: bool,
     },
+    #[command(external_subcommand)]
+    Public(Vec<String>),
 }
 
 #[derive(Debug, Args)]
 #[command(
     args_conflicts_with_subcommands = true,
-    after_help = "Examples:\n  cloudthinker review\n  cloudthinker review --base origin/develop\n  cloudthinker review setup\n  cloudthinker review doctor\n  cloudthinker review --json --timeout 300\n  cloudthinker review --base origin/main --fail-on high\n  cloudthinker review status <MR_URL> --json"
+    after_help = "Examples:\n  cloudthinker review\n  cloudthinker review --base origin/develop\n  cloudthinker review setup\n  cloudthinker review doctor\n  cloudthinker review --json --timeout 300\n  cloudthinker review --base origin/main --fail-on high\n  cloudthinker review --no-upload\n  cloudthinker review status <MR_URL> --json"
 )]
 struct ReviewArgs {
     #[command(subcommand)]
@@ -507,13 +546,17 @@ struct ReviewArgs {
     #[arg(long)]
     json: bool,
 
-    /// Stop the local review agent after this many seconds.
+    /// Stop the local review after this many seconds in total, across every part of the diff.
     #[arg(long, default_value_t = DEFAULT_TIMEOUT_SECS, value_parser = clap::value_parser!(u64).range(1..=7200))]
     timeout: u64,
 
     /// Exit 6 when a finding has this severity or a worse one.
     #[arg(long, value_enum, value_name = "SEVERITY")]
     fail_on: Option<commands::review::FailOn>,
+
+    /// Keep the findings on this machine instead of sending them to CloudThinker for the pull request review.
+    #[arg(long)]
+    no_upload: bool,
 }
 
 #[derive(Debug, Args)]
@@ -615,6 +658,22 @@ struct CyberRunArgs {
 
 #[derive(Debug, Subcommand)]
 enum CyberRunSub {
+    #[command(
+        hide = true,
+        about = "Save a joined pass and read continuation or report readiness"
+    )]
+    Checkpoint {
+        #[arg(help = "The local pentest run ID")]
+        run_id: Uuid,
+        #[arg(
+            long,
+            value_name = "FILE",
+            help = "JSON checkpoint request with generation and verification evidence"
+        )]
+        input: std::path::PathBuf,
+        #[arg(long, help = "Print the checkpoint result as JSON")]
+        json: bool,
+    },
     /// Resolve or create an App, check setup, start a local run, and attach this agent session.
     #[command(hide = true)]
     Open {
@@ -785,6 +844,8 @@ enum CyberSub {
         #[arg(long)]
         json: bool,
     },
+    #[command(external_subcommand)]
+    Public(Vec<String>),
 }
 
 #[derive(Debug, Args)]
@@ -988,9 +1049,10 @@ enum ReviewSub {
         #[arg(long)]
         json: bool,
     },
-    /// List a review's findings, worst-severity first.
+    /// List a review's findings, worst-severity first, or read one finding by its ID.
     Findings {
-        /// The GitLab/GitHub merge-request URL.
+        /// The GitLab/GitHub merge-request URL, or a finding ID.
+        #[arg(value_name = "MR_URL|FINDING_ID")]
         mr_url: String,
         /// Print JSON on stdout instead of text.
         #[arg(long)]
@@ -1010,6 +1072,8 @@ enum ReviewSub {
         #[arg(long, value_enum, value_name = "SEVERITY")]
         fail_on: Option<commands::review::FailOn>,
     },
+    #[command(external_subcommand)]
+    Public(Vec<String>),
 }
 
 #[derive(Debug, Args)]
@@ -1180,6 +1244,8 @@ enum WorkspaceSub {
         #[arg(long, help = "Print a JSON array on stdout instead of text.")]
         json: bool,
     },
+    #[command(external_subcommand)]
+    Public(Vec<String>),
 }
 
 #[derive(Debug, Subcommand)]
@@ -1231,9 +1297,6 @@ enum ConnectionsSub {
     Disconnect {
         /// A connection id, alias, or prefix from `connections list`.
         target: String,
-        /// Disconnect without asking; required when no terminal can answer the question.
-        #[arg(long, short = 'y')]
-        yes: bool,
         /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
@@ -1260,6 +1323,10 @@ struct UpdateArgs {
     #[arg(long)]
     force: bool,
 
+    /// Install this release instead of the latest one, for example `0.12.2`; an older release rolls back.
+    #[arg(long, value_name = "VERSION", value_parser = commands::update::parse_version)]
+    version: Option<String>,
+
     /// Print JSON on stdout instead of text.
     #[arg(long)]
     json: bool,
@@ -1267,7 +1334,15 @@ struct UpdateArgs {
 
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
-    let matches = Cli::command().get_matches();
+    let mut command = Cli::command();
+    if std::env::args()
+        .skip(1)
+        .any(|arg| matches!(arg.as_str(), "-h" | "--help" | "help"))
+    {
+        let base_url = resolve_base_url(std::env::var(cloudthinker_client::URL_ENV_VAR).ok());
+        command = commands::public_api::annotate_help(command, &base_url);
+    }
+    let matches = command.get_matches();
     let origin_source = origin_source(&matches);
     let cli = match Cli::from_arg_matches(&matches) {
         Ok(cli) => cli,
@@ -1315,6 +1390,23 @@ fn shows_update_notice(command: &Command) -> bool {
     ) || matches!(command, Command::Auth(args) if !matches!(args.command, AuthSub::Token))
 }
 
+async fn public_command(
+    base_url: &str,
+    workspace: Option<&str>,
+    yes: bool,
+    module: Option<&str>,
+    argv: Vec<String>,
+) -> ExitCode {
+    let root = Cli::command();
+    let hand = match module {
+        Some(name) => root.find_subcommand(name).cloned().unwrap_or(root),
+        None => root,
+    };
+    let argv = module.map(str::to_string).into_iter().chain(argv).collect();
+    let target = commands::public_api::Target::Command(argv, Box::new(hand));
+    commands::public_api::run(base_url, workspace, yes, target).await
+}
+
 async fn dispatch(cli: Cli, origin_source: OriginSource) -> ExitCode {
     if let Some(module) = cli.skill {
         if cli.command.is_some() {
@@ -1331,6 +1423,7 @@ async fn dispatch(cli: Cli, origin_source: OriginSource) -> ExitCode {
     }
     let base_url = resolve_base_url(cli.url);
     let workspace = cli.workspace;
+    let yes = cli.yes;
     let command = match (cli.command, cli.tui_mode) {
         (Some(_), Some(_)) => {
             engine::output::eprintln_error(
@@ -1371,7 +1464,7 @@ async fn dispatch(cli: Cli, origin_source: OriginSource) -> ExitCode {
     } else {
         None
     };
-    let code = run_command(command, &base_url, workspace, origin_source).await;
+    let code = run_command(command, &base_url, workspace, yes, origin_source).await;
     if let Some(notice) = notice {
         notice.finish().await;
     }
@@ -1382,9 +1475,13 @@ async fn run_command(
     command: Command,
     base_url: &str,
     workspace: Option<String>,
+    yes: bool,
     origin_source: OriginSource,
 ) -> ExitCode {
     match command {
+        Command::Login(args) if args.token => {
+            commands::login::run_token(base_url, origin_source == OriginSource::Flag).await
+        }
         Command::Login(args) => {
             commands::login::run(
                 base_url,
@@ -1406,6 +1503,19 @@ async fn run_command(
         Command::Doctor { json } => {
             commands::doctor::run(base_url, origin_source, workspace.as_deref(), json).await
         }
+        Command::Api(ApiArgs {
+            check: Some(path), ..
+        }) => commands::public_api::check(&Cli::command(), &path),
+        Command::Api(args) if args.list => {
+            commands::public_api::list(base_url, workspace.as_deref(), args.json).await
+        }
+        Command::Api(args) => {
+            let target = commands::public_api::Target::Api(args.args);
+            commands::public_api::run(base_url, workspace.as_deref(), yes, target).await
+        }
+        Command::Public(argv) => {
+            public_command(base_url, workspace.as_deref(), yes, None, argv).await
+        }
         Command::Auth(args) => match args.command {
             AuthSub::Token => commands::auth::run_token(base_url, workspace.as_deref()).await,
             AuthSub::Status { json } => commands::auth::run_status(base_url, json),
@@ -1414,6 +1524,9 @@ async fn run_command(
             } => commands::auth::run_switch(base_url, &selection),
         },
         Command::Chat(args) => match args.command {
+            Some(ChatSub::Public(argv)) => {
+                public_command(base_url, workspace.as_deref(), yes, Some("chat"), argv).await
+            }
             Some(ChatSub::Trace {
                 conversation_id,
                 limit,
@@ -1555,6 +1668,9 @@ async fn run_command(
             }
         },
         Command::Workspace(args) => match args.command {
+            WorkspaceSub::Public(argv) => {
+                public_command(base_url, workspace.as_deref(), yes, Some("workspace"), argv).await
+            }
             WorkspaceSub::Ls { json } => {
                 commands::workspace::run_list(base_url, workspace.as_deref(), json).await
             }
@@ -1627,7 +1743,7 @@ async fn run_command(
                     )
                     .await
                 }
-                ConnectionsSub::Disconnect { target, yes, json } => {
+                ConnectionsSub::Disconnect { target, json } => {
                     commands::connections::run_disconnect(base_url, workspace, &target, yes, json)
                         .await
                 }
@@ -1673,8 +1789,12 @@ async fn run_command(
                     json: args.json,
                     timeout_secs: args.timeout,
                     fail_on: args.fail_on,
+                    upload: !args.no_upload,
                 })
                 .await
+            }
+            Some(ReviewSub::Public(argv)) => {
+                public_command(base_url, workspace.as_deref(), yes, Some("review"), argv).await
             }
             Some(ReviewSub::Setup { worker }) => {
                 commands::review::run_setup(base_url, workspace.as_deref(), worker.as_deref()).await
@@ -1700,6 +1820,16 @@ async fn run_command(
             Some(ReviewSub::Status { mr_url, json }) => {
                 commands::review::run_status(base_url, workspace.as_deref(), &mr_url, json).await
             }
+            Some(ReviewSub::Findings { mr_url, .. }) if Uuid::parse_str(&mr_url).is_ok() => {
+                commands::public_api::run_folded(
+                    base_url,
+                    workspace.as_deref(),
+                    yes,
+                    commands::public_api::REVIEW_FINDING,
+                    vec![mr_url],
+                )
+                .await
+            }
             Some(ReviewSub::Findings { mr_url, json }) => {
                 commands::review::run_findings(base_url, workspace.as_deref(), &mr_url, json).await
             }
@@ -1721,6 +1851,9 @@ async fn run_command(
             }
         },
         Command::Cyber(args) => match args.command {
+            CyberSub::Public(argv) => {
+                public_command(base_url, workspace.as_deref(), yes, Some("cyber"), argv).await
+            }
             CyberSub::App(args) => match args.command {
                 CyberAppSub::Ls { json } => {
                     commands::cyber::list_apps(base_url, workspace.as_deref(), json).await
@@ -1820,6 +1953,20 @@ async fn run_command(
                 }
                 CyberRunSub::Cancel { run_id, json } => {
                     commands::cyber::cancel(base_url, workspace.as_deref(), run_id, json).await
+                }
+                CyberRunSub::Checkpoint {
+                    run_id,
+                    input,
+                    json,
+                } => {
+                    commands::cyber::checkpoint(
+                        base_url,
+                        workspace.as_deref(),
+                        run_id,
+                        &input,
+                        json,
+                    )
+                    .await
                 }
                 CyberRunSub::Settle {
                     run_id,
@@ -2022,7 +2169,9 @@ async fn run_command(
         // global `--url` only picks the release channel (the prod origin
         // follows stable, any other origin dev prereleases), and `--workspace`
         // stays ignored.
-        Command::Update(args) => commands::update::run(args.force, args.json, base_url).await,
+        Command::Update(args) => {
+            commands::update::run(args.force, args.version.as_deref(), args.json, base_url).await
+        }
         Command::Agent(args) => {
             commands::agent::run(base_url, workspace.as_deref(), args.args).await
         }

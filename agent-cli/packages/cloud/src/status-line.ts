@@ -97,14 +97,26 @@ export function statusLineFooter(
 	return (_tui, theme, footerData) => ({
 		render(width: number): string[] {
 			const branch = footerData.getGitBranch();
-			const where = theme.fg("dim", `${shortCwd(ctx.cwd)}${branch ? ` (${branch})` : ""}${host ? ` · on ${host}` : ""}`);
-			const first = joinEnds(` ${statusLineText(runtimeStatusState(runtime), theme)}`, `${where} `, width);
+			const full = `${shortCwd(ctx.cwd)}${branch ? ` (${branch})` : ""}${host ? ` · on ${host}` : ""}`;
+			const places = host ? [full, branch ? `(${branch}) · on ${host}` : "", `on ${host}`] : [full];
+			const left = ` ${statusLineText(runtimeStatusState(runtime), theme)}`;
+			const room = width - visibleWidth(left) - 3;
+			const where = theme.fg("dim", full);
+			const fitted = places.find((place) => place && visibleWidth(place) <= room);
+			const squeezed = host ? width - visibleWidth(`on ${host}`) - 3 : 0;
+			const first = fitted !== undefined
+				? joinEnds(left, `${theme.fg("dim", fitted)} `, width)
+				: host && squeezed * 2 >= width
+				? joinEnds(truncateToWidth(left, squeezed), `${theme.fg("dim", `on ${host}`)} `, width)
+				: truncateToWidth(left, width);
 			const others = [...footerData.getExtensionStatuses().entries()]
 				.filter(([key]) => !OWN_STATUS_KEYS.includes(key))
 				.sort(([a], [b]) => a.localeCompare(b))
 				.map(([, text]) => text.replace(/[\r\n\t]+/g, " ").trim())
 				.filter((text) => text.length > 0);
 			const context = contextLabel(ctx);
+			const together = `${where}${theme.fg("dim", " · ")}${theme.fg("dim", context)} `;
+			if (others.length === 0 && context && visibleWidth(left) + 2 + visibleWidth(together) <= width) return [joinEnds(left, together, width)];
 			const second = joinEnds(` ${theme.fg("muted", others.join(" · "))}`, `${theme.fg("dim", context)} `, width);
 			return [first, others.length > 0 || context ? second : ""].filter((line) => line.length > 0);
 		},

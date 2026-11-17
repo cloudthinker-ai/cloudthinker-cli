@@ -13,42 +13,36 @@
 
 // This integration target links the whole crate's dependency set but only needs
 // a few; silence `unused_crate_dependencies` for the bin-only deps.
+use axoupdater as _;
+use axum as _;
 use base64 as _;
 use cap_std as _;
 use chrono as _;
-use flate2 as _;
-use fs2 as _;
-use globset as _;
-#[cfg(unix)]
-use httparse as _;
-use regex as _;
-#[cfg(unix)]
-use rustix as _;
-use sha2 as _;
-use tar as _;
-use tempfile as _;
-use tokio_util as _;
-
-use axoupdater as _;
-use axum as _;
 use clap as _;
 use clap_complete as _;
 use cloudthinker_client as _;
 use console as _;
+use flate2 as _;
+use fs2 as _;
+use globset as _;
+use httparse as _;
 use indicatif as _;
-#[cfg(target_os = "linux")]
 use landlock as _;
-#[cfg(target_os = "linux")]
 use libc as _;
 use open as _;
 use owo_colors as _;
 use rand as _;
-#[cfg(target_os = "linux")]
+use regex as _;
+use rustix as _;
 use seccompiler as _;
 use serde as _;
+use sha2 as _;
+use strsim as _;
 use supports_color as _;
+use tar as _;
+use tempfile as _;
 use tokio as _;
-#[cfg(unix)]
+use tokio_util as _;
 use unicode_width as _;
 use wiremock as _;
 
@@ -219,7 +213,7 @@ fn ca_lr_01_local_agent_reads_checkout_and_prints_findings_without_cloud_transcr
     let requests = api.requests();
     assert_eq!(requests.len(), 1);
     assert!(requests[0].contains("GET /api/v1/cli/whoami "));
-    assert!(!requests[0].contains("/cli/runs"));
+    assert!(!requests[0].contains("/chat/runs"));
     assert!(!requests[0].contains(root.path().to_str().unwrap()));
     assert_eq!(
         index,
@@ -272,16 +266,23 @@ fn ca_lr_03_invalid_local_agent_responses_are_rejected() {
     let root = tempfile::tempdir().unwrap();
     initialize_review_repo(root.path());
     std::fs::write(root.path().join("src.rs"), "fn value() { 2 }\n").unwrap();
+    let api = RecordingApi::start(vec![("200 OK", WHOAMI_BODY.into())]);
+    let (stub, _) = write_local_review_stub("invalid", "not json", "0");
+    let output = run_local_review(root.path(), &api, &stub, &["review", "--json"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let _ = std::fs::remove_dir_all(stub.parent().unwrap());
     for response in [
-        "not json",
         r#"{"findings":[{"severity":"urgent","file":"src.rs","line":1,"title":"t","explanation":"e"}]}"#,
         r#"{"findings":[{"severity":"high","file":"src.rs","line":9,"title":"t","explanation":"e"}]}"#,
     ] {
         let api = RecordingApi::start(vec![("200 OK", WHOAMI_BODY.into())]);
         let (stub, _) = write_local_review_stub("invalid", response, "0");
         let output = run_local_review(root.path(), &api, &stub, &["review", "--json"]);
-        assert_eq!(output.status.code(), Some(1));
-        assert!(output.stdout.is_empty());
+        assert_eq!(output.status.code(), Some(0));
+        let result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(result["findings"].as_array().map(Vec::len), Some(0));
+        assert_eq!(result["dropped_findings"], 1);
         let _ = std::fs::remove_dir_all(stub.parent().unwrap());
     }
 }
@@ -366,6 +367,18 @@ fn ca_lr_08_git_operational_error_uses_job_failed_exit() {
 }
 
 /// A canned HTTP/1.1 server: 202 on submit, a fixed body on status GET.
+fn public_token_reply(request: &str) -> Option<String> {
+    request.starts_with("GET /api/public/v1/token ").then(|| {
+        let body = format!(
+            r#"{{"token_id":"{RUN_ID}","user_id":"{CONV_ID}","client":"cli","scopes":[],"workspace_ids":["{RUN_ID}"],"expires_at":null}}"#
+        );
+        format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+    })
+}
+
 struct MockApi {
     base_url: String,
     stop: Arc<AtomicBool>,
@@ -389,7 +402,7 @@ impl MockApi {
         let stop_thread = stop.clone();
 
         let submit_body = format!(
-            r#"{{"run_id":"{RUN_ID}","conversation_id":"{CONV_ID}","status":"running","web_url":"https://app.example.com/c/{CONV_ID}"}}"#
+            r#"{{"id":"{RUN_ID}","conversation_id":"{CONV_ID}","status":"running","url":"https://app.example.com/c/{CONV_ID}"}}"#
         );
 
         let handle = std::thread::spawn(move || {
@@ -398,6 +411,10 @@ impl MockApi {
                     Ok((mut socket, _)) => {
                         let data = read_request(&mut socket);
                         let request = String::from_utf8_lossy(&data);
+                        if let Some(reply) = public_token_reply(&request) {
+                            let _ = socket.write_all(reply.as_bytes());
+                            continue;
+                        }
                         let first_line = request.lines().next().unwrap_or_default();
                         let (status, body) = if first_line.starts_with("POST") {
                             ("202 Accepted", submit_body.clone())
@@ -463,6 +480,10 @@ impl RecordingApi {
                     Ok((mut socket, _)) => {
                         let data = read_request(&mut socket);
                         let request = String::from_utf8_lossy(&data).into_owned();
+                        if let Some(reply) = public_token_reply(&request) {
+                            let _ = socket.write_all(reply.as_bytes());
+                            continue;
+                        }
                         requests_thread.lock().unwrap().push(request);
                         let (status, body) = responses
                             .pop_front()
@@ -506,12 +527,12 @@ impl Drop for RecordingApi {
 
 fn submitted_body() -> String {
     format!(
-        r#"{{"run_id":"{RUN_ID}","conversation_id":"{CONV_ID}","status":"pending","web_url":"https://app.example.com/c/{CONV_ID}"}}"#
+        r#"{{"id":"{RUN_ID}","conversation_id":"{CONV_ID}","status":"pending","url":"https://app.example.com/c/{CONV_ID}"}}"#
     )
 }
 
 fn status_body(status: &str, answer: &str, failure_kind: &str) -> String {
-    serde_json::json!({"run_id":RUN_ID,"conversation_id":CONV_ID,"status":status,"answer":if answer.is_empty() { None } else { Some(answer) },"message":if status == "failed" { Some("the run failed") } else { None },"failure_kind":if failure_kind.is_empty() { None } else { Some(failure_kind) },"web_url":format!("https://app.example.com/c/{CONV_ID}"),"created_at":"2026-07-20T00:00:00Z","start_time":null,"end_time":null}).to_string()
+    serde_json::json!({"id":RUN_ID,"conversation_id":CONV_ID,"status":status,"answer":if answer.is_empty() { None } else { Some(answer) },"message":if status == "failed" { Some("the run failed") } else { None },"failure_kind":if failure_kind.is_empty() { None } else { Some(failure_kind) },"url":format!("https://app.example.com/c/{CONV_ID}"),"created_at":"2026-07-20T00:00:00Z","started_at":null,"ended_at":null}).to_string()
 }
 
 fn cli(base_url: &str) -> Command {
@@ -1512,8 +1533,12 @@ fn continue_run_id_resolves_then_submits_same_conversation() {
 
     let requests = api.requests();
     assert_eq!(requests.len(), 2);
-    assert!(requests[0].starts_with(&format!("GET /api/v1/cli/runs/{RUN_ID} ")));
-    assert!(requests[1].starts_with("POST /api/v1/cli/runs "));
+    assert!(requests[0].starts_with(&format!(
+        "GET /api/public/v1/workspaces/{RUN_ID}/chat/runs/{RUN_ID} "
+    )));
+    assert!(requests[1].starts_with(&format!(
+        "POST /api/public/v1/workspaces/{RUN_ID}/chat/runs "
+    )));
     assert!(requests[1].contains(&format!(r#""conversation_id":"{CONV_ID}""#)));
 }
 
@@ -1540,7 +1565,9 @@ fn continue_conversation_id_falls_through_404_then_submits_it() {
 
     let requests = api.requests();
     assert_eq!(requests.len(), 2);
-    assert!(requests[0].starts_with(&format!("GET /api/v1/cli/runs/{CONV_ID} ")));
+    assert!(requests[0].starts_with(&format!(
+        "GET /api/public/v1/workspaces/{RUN_ID}/chat/runs/{CONV_ID} "
+    )));
     assert!(requests[1].contains(&format!(r#""conversation_id":"{CONV_ID}""#)));
 }
 
@@ -1583,7 +1610,7 @@ fn ca_cont_8_no_wait_prints_submitted_envelope_without_polling() {
 }
 
 #[test]
-fn ca_cli_selection_submits_default_pro() {
+fn ca_cli_submit_sends_the_public_run_body() {
     let api = RecordingApi::start(vec![("202 Accepted", submitted_body())]);
     cli(&api.base_url)
         .args(["chat", "-p", "hello", "--no-wait", "--json"])
@@ -1592,8 +1619,15 @@ fn ca_cli_selection_submits_default_pro() {
     let requests = api.requests();
     let (_, body) = requests[0].split_once("\r\n\r\n").unwrap();
     let body: serde_json::Value = serde_json::from_str(body).unwrap();
-    assert_eq!(body["selection"]["option_id"], "mode:pro");
-    assert!(body["selection"]["thinking_effort"].is_null());
+    assert_eq!(body, serde_json::json!({"prompt": "hello"}));
+    assert!(requests[0].starts_with(&format!(
+        "POST /api/public/v1/workspaces/{RUN_ID}/chat/runs "
+    )));
+    assert!(
+        requests[0]
+            .to_ascii_lowercase()
+            .contains("idempotency-key: ")
+    );
 }
 
 #[test]
@@ -1612,7 +1646,7 @@ fn ca_cont_9_status_wait_polls_until_terminal() {
 
 fn list_body() -> String {
     format!(
-        r#"[{{"run_id":"{RUN_ID}","conversation_id":"{CONV_ID}","status":"succeeded","prompt_preview":"audit production","created_at":"2026-08-06T10:00:00Z","web_url":"https://app.example.com/c/{CONV_ID}"}}]"#
+        r#"{{"items":[{{"id":"{RUN_ID}","conversation_id":"{CONV_ID}","status":"succeeded","prompt_preview":"audit production","created_at":"2026-08-06T10:00:00Z","url":"https://app.example.com/c/{CONV_ID}"}}],"next_cursor":null}}"#
     )
 }
 
@@ -1644,7 +1678,7 @@ fn chat_ls_json_and_empty_list_exit_zero() {
     let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(value[0]["prompt_preview"], "audit production");
 
-    let empty = MockApi::start("[]".into());
+    let empty = MockApi::start(r#"{"items":[],"next_cursor":null}"#.into());
     cli(&empty.base_url)
         .args(["chat", "ls"])
         .assert()
@@ -2712,12 +2746,16 @@ fn ca_cli_skill_exports_bundled_modules_offline() {
         ("worker", "worker.md"),
         ("remote", "remote.md"),
     ] {
-        let expected = std::fs::read(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("skills/cloudthinker-cli")
-                .join(file),
-        )
-        .unwrap();
+        let skills =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("skills/cloudthinker-cli");
+        let read = |name: &str| std::fs::read_to_string(skills.join(name)).unwrap();
+        let expected = match topic {
+            "cyber" => format!("{}\n{}", read(file), read("cyber-methodology.md")),
+            "cyber-scan" | "cyber-verify" => {
+                format!("{}\n{}", read("cyber-methodology.md"), read(file))
+            }
+            _ => read(file),
+        };
         let mut command = Command::cargo_bin("cloudthinker").unwrap();
         command
             .env("CLOUDTHINKER_URL", "http://127.0.0.1:1")
@@ -3138,7 +3176,7 @@ fn ca_bg_07_the_shim_escalates_to_sigkill_when_the_child_ignores_term() {
 
 fn submit_body() -> String {
     format!(
-        r#"{{"run_id":"{RUN_ID}","conversation_id":"{CONV_ID}","status":"running","web_url":"https://app.example.com/c/{CONV_ID}"}}"#
+        r#"{{"id":"{RUN_ID}","conversation_id":"{CONV_ID}","status":"running","url":"https://app.example.com/c/{CONV_ID}"}}"#
     )
 }
 
@@ -3547,21 +3585,7 @@ fn incident_json(status: &str, resolved_at: Option<&str>) -> serde_json::Value {
 }
 
 fn incident_page(incidents: Vec<serde_json::Value>) -> String {
-    let total = incidents.len();
-    serde_json::json!({
-        "data": incidents,
-        "meta": {
-            "page": 1,
-            "take": 25,
-            "start_index": 0,
-            "end_index": total,
-            "total_items": total,
-            "total_pages": 1,
-            "has_next": false,
-            "has_previous": false
-        }
-    })
-    .to_string()
+    serde_json::json!({"items": incidents, "next_cursor": null}).to_string()
 }
 
 #[test]

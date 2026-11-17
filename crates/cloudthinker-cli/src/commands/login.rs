@@ -1,12 +1,13 @@
 //! `cloudthinker login` — browser PKCE login over a loopback callback.
 
 use std::future::Future;
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Write};
 use std::time::Duration;
 
+use cloudthinker_client::CtResult;
 use cloudthinker_client::{
-    CliConfig, CtClient, Loopback, PkceChallenge, StoredToken, TokenStore, cli_config_path,
-    consent_url, persistent_store, wait_for_device_token,
+    CliConfig, CtClient, Loopback, PkceChallenge, StoredToken, TokenStore, check_personal_token,
+    cli_config_path, consent_url, persistent_store, wait_for_device_token,
 };
 use cloudthinker_client::{URL_ENV_VAR, display_origin, origin_of, other_origin};
 
@@ -31,6 +32,86 @@ pub async fn run(base_url: &str, options: LoginOptions) -> ExitCode {
         remember_url(base_url);
     }
     code
+}
+
+const TOKEN_INPUT_MAX_BYTES: u64 = 4096;
+
+pub async fn run_token(base_url: &str, remember: bool) -> ExitCode {
+    let code = log_in_token(base_url).await;
+    if code == ExitCode::Ok && remember {
+        remember_url(base_url);
+    }
+    code
+}
+
+async fn log_in_token(base_url: &str) -> ExitCode {
+    use std::io::Read;
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        output::eprintln_error(
+            "pipe the token on stdin so it never shows on screen: cloudthinker login --token < token.txt",
+        );
+        return ExitCode::Usage;
+    }
+    let mut input = String::new();
+    if let Err(error) = stdin
+        .lock()
+        .take(TOKEN_INPUT_MAX_BYTES)
+        .read_to_string(&mut input)
+    {
+        output::eprintln_error(&format!("could not read the token from stdin: {error}"));
+        return ExitCode::Usage;
+    }
+    let token = input.trim();
+    if let Err(err) = check_personal_token(token) {
+        return exit::report(&err);
+    }
+    let store = match persistent_store(base_url, None) {
+        Ok(store) => store,
+        Err(err) => return exit::report(&err),
+    };
+    let client = match CtClient::new(base_url, store.clone()) {
+        Ok(client) => client,
+        Err(err) => return exit::report(&err),
+    };
+    let found = match client.token_view(token).await {
+        Ok(found) => found,
+        Err(err) => return exit::report(&err),
+    };
+    for workspace_id in found.workspace_ids.iter().rev() {
+        let stored = StoredToken {
+            access_token: token.to_string(),
+            refresh_token: None,
+            expires_at: found.expires_at,
+            workspace_id: Some(*workspace_id),
+            workspace_name: None,
+        };
+        if let Err(err) = store.save(&stored) {
+            return exit::report(&err);
+        }
+    }
+    let active = found
+        .workspace_ids
+        .first()
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    let others = found.workspace_ids.len().saturating_sub(1);
+    output::progress(&format!(
+        "Logged in with an access token. Active workspace: {active}{}.",
+        if others > 0 {
+            format!("; {others} more saved, switch with cloudthinker auth switch <workspace-id>")
+        } else {
+            String::new()
+        }
+    ));
+    output::progress(&format!(
+        "Scopes: {}",
+        output::terminal_text(&found.scopes.join(", "))
+    ));
+    if let Some(expires_at) = found.expires_at {
+        output::progress(&format!("The token expires at {expires_at}."));
+    }
+    ExitCode::Ok
 }
 
 async fn log_in(base_url: &str, options: LoginOptions) -> ExitCode {
@@ -214,19 +295,24 @@ async fn run_device_login(client: &CtClient, store: &dyn TokenStore, no_browser:
 
     let offer_copy = copy_offered();
     output::progress(&format!(
-        "Open this URL to authorize CloudThinker:\n  {}\n\nEnter this code:\n  {}{}",
-        authorization.verification_uri,
+        "Open this URL to authorize CloudThinker:\n  {}\n\nConfirm that it shows this code:\n  {}\n(or enter it at {})\n\nThe code expires in {}.{}",
+        authorization.verification_uri_complete,
         authorization.user_code,
+        authorization.verification_uri,
+        clock(authorization.expires_in),
         copy_hint(offer_copy)
     ));
     if !no_browser {
-        let _ = open::that(&authorization.verification_uri);
+        let _ = open::that(&authorization.verification_uri_complete);
     }
 
     let waited = offering_copy(
         offer_copy,
-        &authorization.verification_uri,
-        wait_for_device_token(client, &authorization),
+        &authorization.verification_uri_complete,
+        wait_with_status(
+            wait_for_device_token(client, &authorization),
+            authorization.expires_in,
+        ),
     )
     .await;
     let token = match waited {
@@ -235,6 +321,44 @@ async fn run_device_login(client: &CtClient, store: &dyn TokenStore, no_browser:
         Some(Err(err)) => return exit::report(&err),
     };
     finish_login(store, &token)
+}
+
+fn clock(duration: Duration) -> String {
+    let seconds = duration.as_secs();
+    format!("{}:{:02}", seconds / 60, seconds % 60)
+}
+
+async fn wait_with_status(
+    wait: impl Future<Output = CtResult<StoredToken>>,
+    expires_in: Duration,
+) -> CtResult<StoredToken> {
+    if !std::io::stderr().is_terminal() {
+        return wait.await;
+    }
+    tokio::pin!(wait);
+    let started = tokio::time::Instant::now();
+    let mut tick = tokio::time::interval(Duration::from_secs(1));
+    loop {
+        tokio::select! {
+            result = &mut wait => {
+                let mut stderr = std::io::stderr();
+                let _ = write!(stderr, "\r\x1b[2K");
+                let _ = stderr.flush();
+                return result;
+            }
+            _ = tick.tick() => {
+                let elapsed = started.elapsed();
+                let mut stderr = std::io::stderr();
+                let _ = write!(
+                    stderr,
+                    "\r\x1b[2KWaiting for approval: {} elapsed, code expires in {}",
+                    clock(elapsed),
+                    clock(expires_in.saturating_sub(elapsed))
+                );
+                let _ = stderr.flush();
+            }
+        }
+    }
 }
 
 async fn loopback_or_device_login<F, Fut>(

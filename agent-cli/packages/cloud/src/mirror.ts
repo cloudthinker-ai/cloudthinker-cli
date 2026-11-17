@@ -1,53 +1,18 @@
-import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
-
 import type { SessionEntry } from "@earendil-works/pi-coding-agent";
 
 import { singleFlight } from "./async.ts";
 import { CloudThinkerApiError } from "./client.ts";
 import type { CloudThinkerClient, MirrorEntryInput } from "./client.ts";
 import { conversationPathSegment } from "./conversation-id.ts";
-import { outboxPath, rejectedPath } from "./paths.ts";
+import { MirrorOutbox } from "./mirror-outbox.ts";
+import { MAX_PAYLOAD_BYTES, payloadBytes, toMirrorEntry, truncatePayload } from "./mirror-payload.ts";
+
+export { MAX_PAYLOAD_BYTES, payloadBytes, toMirrorEntry, truncatePayload };
 
 export const MAX_ENTRIES_PER_BATCH = 200;
-export const MAX_PAYLOAD_BYTES = 1024 * 1024;
 const MAX_BACKOFF_MS = 60_000;
 const FIRST_BACKOFF_MS = 1_000;
 const ENTRY_PAGE_LIMIT = 500;
-
-export function toMirrorEntry(entry: SessionEntry): MirrorEntryInput {
-	return {
-		entry_id: entry.id,
-		parent_id: entry.parentId ?? null,
-		entry_type: entry.type,
-		payload: entry,
-	};
-}
-
-export function payloadBytes(entry: MirrorEntryInput): number {
-	return Buffer.byteLength(JSON.stringify(entry.payload));
-}
-
-function isScalar(value: unknown): boolean {
-	return (
-		value === null ||
-		typeof value === "string" ||
-		typeof value === "number" ||
-		typeof value === "boolean"
-	);
-}
-
-export function truncatePayload(entry: MirrorEntryInput): MirrorEntryInput {
-	const payload = entry.payload;
-	const kept: Record<string, unknown> = {};
-	if (typeof payload === "object" && payload !== null) {
-		for (const [key, value] of Object.entries(payload)) {
-			if (isScalar(value)) kept[key] = value;
-		}
-	}
-	kept.truncated = true;
-	return { ...entry, payload: kept };
-}
 
 export function isTerminalRejection(error: unknown): boolean {
 	if (!(error instanceof CloudThinkerApiError)) return false;
@@ -90,9 +55,8 @@ export class SessionMirror {
 	private readonly outboxEntries = new Map<string, MirrorEntryInput>();
 	private readonly client: CloudThinkerClient;
 	private readonly onStatus: (status: MirrorStatus) => void;
-	private readonly agentDir: string | undefined;
 	private readonly now: () => number;
-	private outboxOperations: Promise<void> = Promise.resolve();
+	private readonly outbox: MirrorOutbox;
 	readonly flush: (entries: SessionEntry[]) => Promise<void>;
 
 	constructor(
@@ -103,7 +67,7 @@ export class SessionMirror {
 	) {
 		this.client = client;
 		this.onStatus = onStatus;
-		this.agentDir = agentDir;
+		this.outbox = new MirrorOutbox(agentDir);
 		this.now = now;
 		const deliver = singleFlight((request: DeliveryRequest) => this.deliver(request));
 		this.flush = async (entries: SessionEntry[]) => {
@@ -140,7 +104,7 @@ export class SessionMirror {
 			throw error;
 		}
 		if (!this.isCurrentLink(generation, conversationId)) return;
-		const rejected = await this.readRejected(conversationId);
+		const rejected = await this.outbox.readRejected(conversationId);
 		if (!this.isCurrentLink(generation, conversationId)) return;
 		this.acknowledged = acknowledged;
 		this.truncated = new Set();
@@ -245,7 +209,7 @@ export class SessionMirror {
 			} catch (error) {
 				if (isTerminalRejection(error)) {
 					for (const item of chunk) rejectedForDelivery.add(item.entry_id);
-					await this.writeRejected(conversationId, rejectedForDelivery);
+					await this.outbox.writeRejected(conversationId, rejectedForDelivery);
 					if (!this.isCurrentLink(generation, conversationId)) return;
 					this.rejected = new Set(rejectedForDelivery);
 					for (const item of chunk) this.pendingEntryIds.delete(item.entry_id);
@@ -282,32 +246,15 @@ export class SessionMirror {
 		});
 	}
 
-	private async readOutbox(conversationId: string): Promise<MirrorEntryInput[]> {
-		let raw: string;
-		try {
-			raw = await readFile(outboxPath(conversationId, this.agentDir), "utf8");
-		} catch {
-			return [];
-		}
-		const entries: MirrorEntryInput[] = [];
-		for (const line of raw.split("\n")) {
-			if (line.trim().length === 0) continue;
-			try {
-				entries.push(JSON.parse(line) as MirrorEntryInput);
-			} catch {}
-		}
-		return entries;
-	}
-
 	private async stageEntries(
 		conversationId: string,
 		entries: SessionEntry[],
 		generation: number,
 	): Promise<void> {
-		return this.withOutboxOperation(async () => {
+		return this.outbox.withOperation(async () => {
 			if (!this.isCurrentLink(generation, conversationId)) return;
 			if (this.outboxConversationId !== conversationId) {
-				const outbox = await this.readOutbox(conversationId);
+				const outbox = await this.outbox.read(conversationId);
 				if (!this.isCurrentLink(generation, conversationId)) return;
 				this.outboxEntries.clear();
 				for (const entry of outbox) {
@@ -340,7 +287,7 @@ export class SessionMirror {
 				}
 				missing.push(staged);
 			}
-			await this.appendOutboxEntries(conversationId, missing);
+			await this.outbox.append(conversationId, missing);
 			if (!this.isCurrentLink(generation, conversationId)) return;
 			for (const entry of missing) {
 				this.outboxEntries.set(entry.entry_id, entry);
@@ -351,65 +298,15 @@ export class SessionMirror {
 	}
 
 	private async clearOutbox(conversationId: string, generation: number): Promise<void> {
-		await this.withOutboxOperation(async () => {
+		await this.outbox.withOperation(async () => {
 			if (!this.isCurrentLink(generation, conversationId)) return;
 			this.pendingCount = this.pendingEntryIds.size;
 			if (this.pendingCount > 0) {
 				return;
 			}
-			await rm(outboxPath(conversationId, this.agentDir), { force: true });
+			await this.outbox.remove(conversationId);
 			if (this.outboxConversationId === conversationId) this.outboxEntries.clear();
 		});
-	}
-
-	private async appendOutboxEntries(
-		conversationId: string,
-		entries: MirrorEntryInput[],
-	): Promise<void> {
-		if (entries.length === 0) return;
-		const path = outboxPath(conversationId, this.agentDir);
-		await mkdir(dirname(path), { recursive: true });
-		const lines = entries.map((entry) => JSON.stringify(entry)).join("\n");
-		await appendFile(
-			path,
-			`\n${lines}\n`,
-			"utf8",
-		);
-	}
-
-	private async withOutboxOperation<T>(operation: () => Promise<T>): Promise<T> {
-		const previous = this.outboxOperations;
-		let release!: () => void;
-		this.outboxOperations = new Promise<void>((resolve) => {
-			release = resolve;
-		});
-		await previous;
-		try {
-			return await operation();
-		} finally {
-			release();
-		}
-	}
-
-	private async readRejected(conversationId: string): Promise<Set<string>> {
-		try {
-			const parsed: unknown = JSON.parse(
-				await readFile(rejectedPath(conversationId, this.agentDir), "utf8"),
-			);
-			if (Array.isArray(parsed)) {
-				return new Set(parsed.filter((item): item is string => typeof item === "string"));
-			}
-		} catch {}
-		return new Set();
-	}
-
-	private async writeRejected(
-		conversationId: string,
-		rejected: Set<string>,
-	): Promise<void> {
-		const path = rejectedPath(conversationId, this.agentDir);
-		await mkdir(dirname(path), { recursive: true });
-		await writeFile(path, JSON.stringify([...rejected]), "utf8");
 	}
 }
 

@@ -1,0 +1,204 @@
+{
+  "measured_at": "2026-11-16",
+  "host": "Linux x86_64, shared box, load average 85-100",
+  "window_seconds": 10.0,
+  "warmup_seconds": 8.0,
+  "arms": {
+    "0.10.0": {
+      "binary_sha256": "934a4c950eb12a6f582cfcc9e4eaa7bad46513413a2ec201c8c7d12ec48757ea",
+      "env": {},
+      "median": {
+        "wakeups_per_second": 152.9804530473113,
+        "cpu_percent": 0.89740312275005,
+        "rss_mib": 104.09375,
+        "threads": 15,
+        "repaint_bytes_per_second": 0.0
+      },
+      "trials": [
+        {
+          "wakeups_per_second": 134.07425466755814,
+          "cpu_percent": 0.796875213477314,
+          "rss_mib": 104.171875,
+          "threads": 14,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 153.93612478715332,
+          "cpu_percent": 0.9989365657829545,
+          "rss_mib": 103.2890625,
+          "threads": 15,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 120.30575515953352,
+          "cpu_percent": 0.8985492086604159,
+          "rss_mib": 103.62890625,
+          "threads": 15,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 152.9804530473113,
+          "cpu_percent": 0.8969537963686001,
+          "rss_mib": 104.66796875,
+          "threads": 15,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 182.87081412484338,
+          "cpu_percent": 0.89740312275005,
+          "rss_mib": 104.09375,
+          "threads": 15,
+          "repaint_bytes_per_second": 0.0
+        }
+      ]
+    },
+    "0.10.0 + gc markers 1": {
+      "binary_sha256": "934a4c950eb12a6f582cfcc9e4eaa7bad46513413a2ec201c8c7d12ec48757ea",
+      "env": {
+        "BUN_JSC_numberOfGCMarkers": "1"
+      },
+      "median": {
+        "wakeups_per_second": 15.694769176803748,
+        "cpu_percent": 0.699766778583606,
+        "rss_mib": 102.09375,
+        "threads": 8,
+        "repaint_bytes_per_second": 0.0
+      },
+      "trials": [
+        {
+          "wakeups_per_second": 40.25014444854316,
+          "cpu_percent": 0.7990103116336118,
+          "rss_mib": 102.63671875,
+          "threads": 8,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 16.7685468394654,
+          "cpu_percent": 0.6986894516443912,
+          "rss_mib": 102.421875,
+          "threads": 8,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 11.592423223556885,
+          "cpu_percent": 0.799477463693579,
+          "rss_mib": 102.09375,
+          "threads": 8,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 9.89867953283021,
+          "cpu_percent": 0.5999199716866789,
+          "rss_mib": 101.42578125,
+          "threads": 8,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 15.694769176803748,
+          "cpu_percent": 0.699766778583606,
+          "rss_mib": 97.9609375,
+          "threads": 9,
+          "repaint_bytes_per_second": 0.0
+        }
+      ]
+    },
+    "develop": {
+      "binary_sha256": "2b35f4d2944320ec8e7b99c0630022d300f76158c52551ebf47a1a3f80de912f",
+      "env": {},
+      "median": {
+        "wakeups_per_second": 153.17832082529807,
+        "cpu_percent": 0.9952781855083448,
+        "rss_mib": 104.9765625,
+        "threads": 15,
+        "repaint_bytes_per_second": 0.0
+      },
+      "trials": [
+        {
+          "wakeups_per_second": 188.7047439723822,
+          "cpu_percent": 0.9952781855083448,
+          "rss_mib": 104.40234375,
+          "threads": 15,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 153.17832082529807,
+          "cpu_percent": 1.1959270331187888,
+          "rss_mib": 105.10546875,
+          "threads": 15,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 119.48946805433533,
+          "cpu_percent": 0.8961710104075136,
+          "rss_mib": 104.86328125,
+          "threads": 17,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 158.7096745826282,
+          "cpu_percent": 0.9981740539787947,
+          "rss_mib": 104.9765625,
+          "threads": 15,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 140.16773385876178,
+          "cpu_percent": 0.8965953125293938,
+          "rss_mib": 105.375,
+          "threads": 15,
+          "repaint_bytes_per_second": 0.0
+        }
+      ]
+    },
+    "develop + gc markers 1": {
+      "binary_sha256": "2b35f4d2944320ec8e7b99c0630022d300f76158c52551ebf47a1a3f80de912f",
+      "env": {
+        "BUN_JSC_numberOfGCMarkers": "1"
+      },
+      "median": {
+        "wakeups_per_second": 19.95325250624244,
+        "cpu_percent": 0.698141232052477,
+        "rss_mib": 104.76953125,
+        "threads": 8,
+        "repaint_bytes_per_second": 0.0
+      },
+      "trials": [
+        {
+          "wakeups_per_second": 11.84416270148162,
+          "cpu_percent": 0.5971846740242839,
+          "rss_mib": 103.6171875,
+          "threads": 8,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 13.164451982769542,
+          "cpu_percent": 0.5983841810349797,
+          "rss_mib": 105.42578125,
+          "threads": 8,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 20.54529911468716,
+          "cpu_percent": 0.698141232052477,
+          "rss_mib": 104.86328125,
+          "threads": 8,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 25.838127301985075,
+          "cpu_percent": 0.698327764918515,
+          "rss_mib": 104.27734375,
+          "threads": 8,
+          "repaint_bytes_per_second": 0.0
+        },
+        {
+          "wakeups_per_second": 19.95325250624244,
+          "cpu_percent": 0.7981301002496972,
+          "rss_mib": 104.76953125,
+          "threads": 8,
+          "repaint_bytes_per_second": 0.0
+        }
+      ]
+    }
+  }
+}

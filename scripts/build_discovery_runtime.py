@@ -12,25 +12,24 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI_ROOT = REPO_ROOT / "cli"
-EXECUTOR_SCRIPTS = (
-    REPO_ROOT
-    / "executor/app/skills/public/cyber/scan/scripts"
-)
+EXECUTOR_SCRIPTS = REPO_ROOT / "executor/app/skills/public/cyber/scan/scripts"
 RUNTIME_SOURCE = CLI_ROOT / "crates/cloudthinker-cli/runtime/__main__.py"
 RUNTIME_ASSET = CLI_ROOT / "crates/cloudthinker-cli/runtime/cyber-discovery.pyz"
 BACKEND_PACKAGE = REPO_ROOT / "backend/app/features/cyber/domain/discovery_contract"
 SCHEMA_SOURCE = EXECUTOR_SCRIPTS / "cyber_discovery_schema.py"
 LIMITS_SOURCE = EXECUTOR_SCRIPTS / "cyber_discovery_limits.py"
 LOCKFILE = REPO_ROOT / "executor/uv.lock"
+METHODOLOGY_SOURCE = EXECUTOR_SCRIPTS.parent / "investigation.md"
+METHODOLOGY_ASSET = (
+    CLI_ROOT / "crates/cloudthinker-cli/skills/cloudthinker-cli/cyber-methodology.md"
+)
 COMMON_MODULES = (
     "cyber_auth.py",
     "cyber_response.py",
     "cyber_routes.py",
     "cyber_scope.py",
-    "cyber_source_routes.py",
     "cyber_discovery_limits.py",
     "cyber_discovery_schema.py",
     "http_methods.py",
@@ -54,18 +53,18 @@ BACKEND_INIT = (
     ")\n"
     "\n"
     "__all__ = [\n"
-    "    \"COLLECTORS\",\n"
-    "    \"COLLECTOR_COUNT_FIELDS\",\n"
-    "    \"COLLECTOR_RESULT_KEYS\",\n"
-    "    \"COLLECTOR_STATES\",\n"
-    "    \"COUNT_FIELDS\",\n"
-    "    \"MODEL_DIGEST_TOKEN_LIMIT\",\n"
-    "    \"OVERALL_STATES\",\n"
-    "    \"REPORT_KEYS\",\n"
-    "    \"VERSION\",\n"
-    "    \"DiscoveryReportValidationError\",\n"
-    "    \"validate_report\",\n"
-    "    \"validate_report_gate\",\n"
+    '    "COLLECTORS",\n'
+    '    "COLLECTOR_COUNT_FIELDS",\n'
+    '    "COLLECTOR_RESULT_KEYS",\n'
+    '    "COLLECTOR_STATES",\n'
+    '    "COUNT_FIELDS",\n'
+    '    "MODEL_DIGEST_TOKEN_LIMIT",\n'
+    '    "OVERALL_STATES",\n'
+    '    "REPORT_KEYS",\n'
+    '    "VERSION",\n'
+    '    "DiscoveryReportValidationError",\n'
+    '    "validate_report",\n'
+    '    "validate_report_gate",\n'
     "]\n"
 )
 SCHEMA_IMPORT = "from cyber_discovery_limits import MODEL_DIGEST_TOKEN_LIMIT"
@@ -179,18 +178,20 @@ def _runtime_sources() -> dict[str, bytes]:
         path = EXECUTOR_SCRIPTS / name
         sources[name] = path.read_bytes()
     sources["cyber_state/__init__.py"] = b""
-    sources["cyber_state/shared.py"] = (
-        EXECUTOR_SCRIPTS / "cyber_state/shared.py"
-    ).read_bytes()
+    sources["cyber_state/shared.py"] = (EXECUTOR_SCRIPTS / "cyber_state/shared.py").read_bytes()
     while True:
         modules = {
             filename.removesuffix(".py").removesuffix("/__init__").replace("/", ".")
             for filename in sources
         }
-        imports = set().union(*(
-            _local_imports(source, filename.removesuffix(".py").removesuffix("/__init__").replace("/", "."))
-            for filename, source in sources.items()
-        ))
+        imports = set().union(
+            *(
+                _local_imports(
+                    source, filename.removesuffix(".py").removesuffix("/__init__").replace("/", ".")
+                )
+                for filename, source in sources.items()
+            )
+        )
         added = False
         for module in sorted(imports - modules):
             module_path = EXECUTOR_SCRIPTS.joinpath(*module.split("."))
@@ -283,14 +284,11 @@ def _package_bytes(*, refresh_pyyaml: bool) -> bytes:
             for name, data in sorted(files.items())
             if name.endswith(".py")
         },
-        "members": {
-            name: hashlib.sha256(data).hexdigest()
-            for name, data in sorted(files.items())
-        },
+        "members": {name: hashlib.sha256(data).hexdigest() for name, data in sorted(files.items())},
     }
-    files["vendor/runtime.json"] = json.dumps(
-        manifest, sort_keys=True, separators=(",", ":")
-    ).encode() + b"\n"
+    files["vendor/runtime.json"] = (
+        json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+    )
     return _zip_bytes(files)
 
 
@@ -298,8 +296,7 @@ def _schema_version() -> int:
     tree = ast.parse(SCHEMA_SOURCE.read_text(), filename=str(SCHEMA_SOURCE))
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == "VERSION"
-            for target in node.targets
+            isinstance(target, ast.Name) and target.id == "VERSION" for target in node.targets
         ):
             return ast.literal_eval(node.value)
     raise ValueError("discovery schema VERSION is missing")
@@ -308,11 +305,15 @@ def _schema_version() -> int:
 def _standalone_asset_valid() -> bool:
     if not RUNTIME_ASSET.is_file():
         return False
-    version, _, digest, _ = _load_pyyaml_lock() if LOCKFILE.is_file() else (
-        "6.0.3",
-        "",
-        "d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f",
-        0,
+    version, _, digest, _ = (
+        _load_pyyaml_lock()
+        if LOCKFILE.is_file()
+        else (
+            "6.0.3",
+            "",
+            "d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f",
+            0,
+        )
     )
     with zipfile.ZipFile(RUNTIME_ASSET) as archive:
         names = set(archive.namelist())
@@ -399,6 +400,7 @@ def main(argv: list[str] | None = None) -> int:
         outputs = {
             RUNTIME_ASSET: archive,
             **_backend_files(),
+            METHODOLOGY_ASSET: METHODOLOGY_SOURCE.read_bytes(),
         }
         return _write_or_check(outputs, check=args.check)
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as exc:

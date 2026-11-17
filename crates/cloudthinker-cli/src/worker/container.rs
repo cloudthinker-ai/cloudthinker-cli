@@ -381,8 +381,10 @@ pub fn remove_argv(containers: &[&str]) -> Vec<String> {
     argv
 }
 
-pub fn network_remove_argv(network: &str) -> Vec<String> {
-    strings(&["network", "rm", network])
+pub fn network_remove_argv(networks: &[&str]) -> Vec<String> {
+    let mut argv = strings(&["network", "rm"]);
+    argv.extend(networks.iter().map(|name| (*name).to_owned()));
+    argv
 }
 
 pub fn labelled_containers_argv(label: &str) -> Vec<String> {
@@ -621,8 +623,9 @@ impl Containers {
             }
         }
         if let Ok(ids) = admin(runtime, &labelled_networks_argv(&self.label)).await {
-            for id in ids.split_whitespace() {
-                let _ = admin(runtime, &network_remove_argv(id)).await;
+            let ids: Vec<&str> = ids.split_whitespace().collect();
+            if !ids.is_empty() {
+                let _ = admin(runtime, &network_remove_argv(&ids)).await;
             }
         }
     }
@@ -694,7 +697,7 @@ impl Containers {
             &remove_argv(&[names.session.as_str(), names.proxy.as_str()]),
         )
         .await;
-        let _ = admin(runtime, &network_remove_argv(&names.network)).await;
+        let _ = admin(runtime, &network_remove_argv(&[names.network.as_str()])).await;
     }
 }
 

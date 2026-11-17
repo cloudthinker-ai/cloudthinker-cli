@@ -28,6 +28,8 @@ pub use conversation_search::emit_conversation_search;
 mod doctor;
 pub use doctor::emit_doctor;
 mod policy;
+mod public_api;
+pub use public_api::{emit_public_body, emit_public_operations};
 mod trace;
 pub use trace::emit_trace;
 mod worker_console;
@@ -907,6 +909,22 @@ fn run_brief_lines(brief: &CyberRunBrief) -> Vec<String> {
             terminal_text(&workspace.workspace_root)
         ));
     }
+    if let Some(checkpoint) = &brief.checkpoint {
+        lines.push(format!(
+            "checkpoint: {} / {}; next generation {}; report ready {}",
+            checkpoint.generation,
+            checkpoint.outcome,
+            checkpoint.next_generation,
+            checkpoint.report_ready
+        ));
+        for gap in &checkpoint.gaps {
+            lines.push(format!(
+                "gap: {}: {}",
+                terminal_text(&gap.code),
+                terminal_text(&gap.next_action)
+            ));
+        }
+    }
     lines.push("status:   ready; bound to this CloudThinker session".to_string());
     lines
 }
@@ -1328,6 +1346,7 @@ pub fn emit_cloud(result: &cloudthinker_client::CloudResult, json: bool) -> Resu
             format!("cloud root: {}", value.cloud_root),
             value.content.clone(),
         ],
+        CloudResult::ToolSearch(value) => vec![value.content.clone()],
         CloudResult::Read {
             conversation_id,
             execution,
@@ -1626,6 +1645,7 @@ mod tests {
     #[test]
     fn cyber_run_brief_includes_the_local_workspace_path_without_terminal_controls() {
         let brief = CyberRunBrief {
+            checkpoint: None,
             run_id: Uuid::from_u128(1),
             app_id: Uuid::from_u128(2),
             app_name: "local app".into(),

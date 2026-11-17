@@ -18,7 +18,8 @@ import type { AgentRecord, ViewerMarkdownMode } from "../types.ts";
 import { getLifetimeCost, getLifetimeTotal } from "../usage.ts";
 import { type AgentActivity, formatCost, type Theme } from "./agent-widget.ts";
 import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./conversation-viewer.ts";
-import { getSubagentHost, type HostTask } from "../host.ts";
+import { magnitude } from "./magnitude.ts";
+import { getSubagentHost, hostTickMs, type HostTask } from "../host.ts";
 
 /** Widget key for the below-editor fleet list. */
 const FLEET_KEY = "fleet";
@@ -78,11 +79,7 @@ export function formatFleetElapsed(ms: number): string {
 
 /** `↓ 13.1k tokens` — down-arrow prefix, compact magnitude, plural "tokens". */
 export function formatFleetTokens(count: number): string {
-  let compact: string;
-  if (count >= 1_000_000) compact = `${(count / 1_000_000).toFixed(1)}M`;
-  else if (count >= 1_000) compact = `${(count / 1_000).toFixed(1)}k`;
-  else compact = `${count}`;
-  return `↓ ${compact} tokens`;
+  return `↓ ${magnitude(count)} tokens`;
 }
 
 /**
@@ -180,7 +177,7 @@ export class FleetList {
 
   /** Ensure the re-render timer is running (called when an agent spawns). */
   ensureTimer(): void {
-    if (!this.timer) this.timer = setInterval(() => this.update(), TICK_MS);
+    if (!this.timer) this.timer = setInterval(() => this.update(), Math.max(TICK_MS, hostTickMs()));
   }
 
   /**

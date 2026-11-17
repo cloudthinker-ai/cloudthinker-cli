@@ -26,6 +26,7 @@ import { AGENT_HELP, checkSurface } from "./surface.ts";
 import bundledSubagents from "./subagents.ts";
 import { bundledThemePaths, themeArgs } from "./theme.ts";
 import { savedTuiMode, tuiModeArgs } from "./tui-mode.ts";
+import { registerRewind } from "./rewind.ts";
 import { registerVerbosity } from "./verbosity.ts";
 
 markStartup("agent.modules");
@@ -34,6 +35,7 @@ process.env.PI_CODING_AGENT = "true";
 process.env.AI_AGENT = "pi";
 process.env.PI_SKIP_VERSION_CHECK = "1";
 process.env.PI_TELEMETRY = "0";
+delete process.env.BUN_JSC_numberOfGCMarkers;
 
 const rawArgs = process.argv.slice(2);
 const localReview = isLocalReview(rawArgs);
@@ -69,6 +71,7 @@ await main([...themes, ...tuiMode, ...modelScopeArgs(argv), ...argv], {
 		{ name: "cloudthinker", factory: (pi) => cloudthinker(pi, { localReview, changelogPath }) },
 		{ name: "background", factory: (pi) => { registerBackgroundCommands(pi); } },
 		{ name: "verbosity", factory: (pi) => { registerVerbosity(pi); } },
+		{ name: "rewind", factory: (pi) => { registerRewind(pi); } },
 		{ name: "scroll-pill", factory: (pi) => { registerScrollPill(pi); } },
 		{ name: "notify", factory: (pi) => { registerTurnNotify(pi); } },
 		{ name: "remote", factory: (pi) => { registerRemoteDetach(pi); } },

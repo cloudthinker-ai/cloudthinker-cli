@@ -44,17 +44,18 @@ enum CloudCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Load the current schemas of a Connection's tools.
-    LoadTools {
+    /// Search the tools your Connections offer. Plain words rank matching
+    /// tools; exact tool names (SDK tools as `prefix.tool`) return full schemas.
+    ToolSearch {
         /// The session ID that `cloud session create` printed.
         #[arg(long)]
         session: Uuid,
-        /// The Connection prefix that `cloud connections` lists.
+        /// Words to search for, or exact tool names. Joined with spaces.
+        #[arg(required = true, num_args = 1..)]
+        query: Vec<String>,
+        /// Most results to return.
         #[arg(long)]
-        connection: String,
-        /// An exact tool name from the Connection's roster. May be repeated.
-        #[arg(long, required = true)]
-        tool: Vec<String>,
+        limit: Option<i64>,
         /// Print JSON on stdout instead of text.
         #[arg(long)]
         json: bool,
@@ -186,13 +187,15 @@ async fn dispatch(
             client.cloud_load_skill(session, &connection, name).await,
             json,
         ),
-        CloudCommand::LoadTools {
+        CloudCommand::ToolSearch {
             session,
-            connection,
-            tool,
+            query,
+            limit,
             json,
         } => (
-            client.cloud_load_tools(session, &connection, tool).await,
+            client
+                .cloud_tool_search(session, query.join(" "), limit)
+                .await,
             json,
         ),
         CloudCommand::Exec(args) => {

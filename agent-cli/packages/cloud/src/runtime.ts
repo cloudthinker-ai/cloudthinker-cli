@@ -129,6 +129,7 @@ export class CloudThinkerRuntime {
 			this.disabledCloudTools = [];
 		}
 		this.cloudEnabled = enabled;
+		this.header.set({ cloudEnabled: enabled });
 		if (!enabled && this.linkFailure) {
 			this.cancelRetry();
 			this.linkFailure = undefined;

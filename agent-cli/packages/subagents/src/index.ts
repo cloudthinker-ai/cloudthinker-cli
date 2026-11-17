@@ -1,4 +1,4 @@
-import { getSubagentHost } from "./host.ts";
+import { getSubagentHost, hostTickMs } from "./host.ts";
 /**
  * pi-agents — A pi extension providing Claude Code-style autonomous sub-agents.
  *
@@ -1491,43 +1491,29 @@ Notes:
 Available agent types and the tools they have access to:
 ${buildTypeListText()}
 
-Custom agents can be defined in .pi/agents/<name>.md (project) or ${getAgentDir()}/agents/<name>.md (global) — they are picked up automatically. Project-level agents override global ones. Creating a .md file with the same name as a default agent overrides it.
+Custom agents: .pi/agents/<name>.md (project) or ${getAgentDir()}/agents/<name>.md (global); a project file overrides a global one, and a file named like a default agent overrides it. Pick the type with subagent_type.
 
-When using the Agent tool, specify a subagent_type parameter to select which agent type to use.
-
-## When not to use
-
-If the target is already known, use a direct tool — \`read\` for a known path, \`grep\`/\`find\` for a specific symbol or string. Reserve this tool for open-ended questions that span the codebase, or tasks that match an available agent type.
+Use a direct tool (\`read\`, \`grep\`, \`find\`) when the target is already known; reserve this tool for open-ended questions that span the codebase, or tasks that match an agent type.
 
 ## Usage notes
 
-- Always include a short (3-5 word) description summarizing what the agent will do (shown in UI).
-- When you launch multiple agents for independent work, send them in a single message with multiple tool uses so they run concurrently. If the user specifies that they want you to run agents "in parallel", you MUST send a single message with multiple Agent tool use content blocks.
-- When the agent is done, it returns a single message back to you. The result is not visible to the user — to show the user, send a text message with a concise summary.
-- Trust but verify: an agent's summary describes what it intended to do, not necessarily what it did. When an agent writes or edits code, check the actual changes before reporting the work as done.
-- Agents run in the background by default. When an agent runs in the background, you will be automatically notified when it completes — do NOT sleep, poll, or proactively check on its progress. Continue with other work or respond to the user instead.
-- **Foreground vs background**: Pass \`run_in_background: false\` only when your very next action depends on the agent's result and nothing else could usefully happen while it runs — e.g., a research agent whose finding gates the edit you're about to make. Otherwise let it run in the background (the default) — this includes fire-and-forget work, independent investigations, and anything where the user might hand you something else in the meantime. Wanting the result "next" is not enough on its own.
-- **Don't race**: after launching a background agent, you know nothing about its results. Never fabricate or predict them in any format — not as prose, summary, or structured output. The completion notification arrives in a later turn; it is never something you write yourself. If the user asks before it lands, say the agent is still running — give status, not a guess.
-- Use resume with an agent ID to continue a previous agent's work. A new (non-resume) Agent call starts a fresh agent with no memory of prior runs, so the prompt must be self-contained.
-- Use steer_subagent to send mid-run messages to a running background agent.
-- Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, etc.), since it is not aware of the user's intent.
-- If an agent's description says it should be used proactively, try to use it without the user having to ask for it first.
+- Include a short (3-5 word) description (shown in UI).
+- To run agents in parallel, send multiple Agent tool uses in one message.
+- The agent returns one message back. It is not shown to the user, so summarize it for them. Trust but verify: a summary describes intent, not outcome, so check an agent's actual code changes before reporting the work as done.
+- Agents run in the background by default and you are notified on completion; do NOT sleep, poll, or check on progress. Pass \`run_in_background: false\` only when your very next action depends on the result and nothing else could usefully happen meanwhile.
+- Never fabricate or predict a pending agent's results in any format; the completion notification arrives in a later turn and is never something you write yourself. If the user asks first, say it is still running.
+- Use resume with an agent ID to continue an agent's work; a new Agent call has no memory of prior runs, so its prompt must be self-contained. Use steer_subagent to send mid-run messages.
+- Say whether you expect the agent to write code or only research; it does not know the user's intent.
+- If an agent's description says to use it proactively, do so without waiting to be asked.
 - Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").
 - Use thinking to control extended thinking level.
 - Use inherit_context if the agent needs the parent conversation history.${isolationGuideline}${scheduleGuideline}
 
 ## Writing the prompt
 
-Brief the agent like a smart colleague who just walked into the room — it hasn't seen this conversation, doesn't know what you've tried, doesn't understand why this task matters.
-- Explain what you're trying to accomplish and why.
-- Describe what you've already learned or ruled out.
-- Give enough context about the surrounding problem that the agent can make judgment calls rather than just following a narrow instruction.
-- If you need a short response, say so ("report in under 200 words").
-- Lookups: hand over the exact command. Investigations: hand over the question — prescribed steps become dead weight when the premise is wrong.
+Brief the agent like a colleague who just walked into the room: state what you are trying to accomplish and why, what you already learned or ruled out, and enough context for judgment calls. Say so if you need a short response. For lookups hand over the exact command; for investigations hand over the question, since prescribed steps become dead weight when the premise is wrong. Terse command-style prompts produce shallow work.
 
-Terse command-style prompts produce shallow, generic work.
-
-**Never delegate understanding.** Don't write "based on your findings, fix the bug" or "based on the research, implement it." Those phrases push synthesis onto the agent instead of doing it yourself. Write prompts that prove you understood: include file paths, line numbers, what specifically to change.`;
+**Never delegate understanding.** Do not write "based on your findings, fix the bug"; prove you understood with file paths, line numbers, and what specifically to change.`;
 
   // `toolDescriptionMode: "custom"` — user-authored description with live
   // dynamic parts. Project file wins over global; missing/empty falls back to
@@ -1588,8 +1574,6 @@ Terse command-style prompts produce shallow, generic work.
     promptGuidelines: [
       "Use Agent with specialized agents when the task matches an agent type's description. Subagents are valuable for parallelizing independent queries or for protecting the main context window from excessive results, but should not be used excessively when not needed. Importantly, avoid duplicating work that subagents are already doing — if you delegate research to a subagent, do not also perform the same searches yourself.",
       "For broad codebase exploration or research, spawn Agent with an appropriate subagent_type (e.g. Explore). Otherwise use direct tools (read, grep, find) when the target is already known.",
-      "When an agent runs in the background, you will be notified on completion — do not poll or sleep waiting for it. Continue with other work instead.",
-      "Trust but verify: an agent's summary describes intent, not outcome. When an agent writes or edits code, check the actual changes before reporting work as done.",
     ],
     parameters: Type.Object({
       prompt: Type.String({
@@ -2198,11 +2182,10 @@ Terse command-style prompts produce shallow, generic work.
         }
       };
 
-      // Animate spinner at ~80ms (smooth rotation through 10 braille frames)
       const spinnerInterval = setInterval(() => {
         spinnerFrame++;
         streamUpdate();
-      }, 80);
+      }, hostTickMs());
 
       streamUpdate();
 
@@ -2433,8 +2416,6 @@ Terse command-style prompts produce shallow, generic work.
     promptSnippet: "Run a deterministic script that orchestrates many subagents",
     promptGuidelines: [
       "Use ct_workflow when the number of agents depends on something discovered at runtime, when work flows through stages, or when findings should be independently verified. Use Agent for one delegated task or a handful you can name up front.",
-      "Prefer `pipeline` over `parallel` — a barrier costs wall-clock whenever the stages are unevenly sized.",
-      "A workflow runs in the background and notifies you when it finishes — do not poll or sleep waiting for it.",
     ],
     parameters: Type.Object({
       script: Type.Optional(

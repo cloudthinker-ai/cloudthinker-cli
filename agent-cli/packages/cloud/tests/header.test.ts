@@ -14,10 +14,12 @@ import {
 	type HeaderStyler,
 	buildHints,
 	formatHeaderText,
+	introCadence,
 	remoteHost,
 	SessionHeader,
 } from "../src/header.ts";
-import { LOGO_WIDTH, renderLogo } from "../src/logo.ts";
+import { LOGO_WIDTH, MARK_WIDTH, renderLogo, renderMark } from "../src/logo.ts";
+import { startupHeroVisible } from "../src/startup-presentation.ts";
 import { hostVersionsFrom, normalizeRepositoryUrl } from "../src/versions.ts";
 
 const plain: HeaderStyler = {
@@ -34,10 +36,10 @@ function lines(state: HeaderState): string[] {
 	return formatHeaderText(state, versions, plain, { compact: "", expanded: "" }, false, 60).split("\n");
 }
 
-test("the product line names the host version and credits pi and its author", () => {
+test("the compact session identity names the product and host version", () => {
 	const header = lines({ link: "linking" }).join("\n");
 	assert.match(header, /CloudThinker v0\.4\.0/);
-	assert.match(header, /built on pi v0\.85\.1 by Mario Zechner \(MIT\)/);
+	assert.doesNotMatch(header, /built on pi/);
 });
 
 test("before the session exists the second line reads as linking", () => {
@@ -77,13 +79,14 @@ test("a session that could not be created says the cloud tools are gone", () => 
 	assert.equal(lines({ link: "unavailable" })[1], UNLINKED_LINE);
 });
 
-test("the compact form ends on its one hint line and the expanded form on the full key list", () => {
+test("the compact form stays lean and expansion keeps key access within the viewport", () => {
 	const hints = { compact: "compact hints", expanded: "expanded hints" };
 	const collapsed = formatHeaderText({ link: "linking" }, versions, plain, hints, false);
-	assert.ok(collapsed.endsWith("built on pi v0.85.1 by Mario Zechner (MIT)\ncompact hints"));
+	assert.doesNotMatch(collapsed, /compact hints|built on pi/);
 	const expanded = formatHeaderText({ link: "linking" }, versions, plain, hints, true);
-	assert.ok(expanded.endsWith("expanded hints"));
-	assert.ok(!expanded.includes("compact hints"));
+	assert.ok(expanded.includes("expanded hints") || expanded.includes("compact hints"));
+	if (expanded.includes("compact hints")) assert.ok(expanded.includes("this machine · [C] sandbox · /skill:tour"));
+	assert.match(expanded, /built on pi v0.85.1 by Mario Zechner \(MIT\)/);
 });
 
 test("the header never repeats pi's own onboarding sentence", () => {
@@ -127,13 +130,25 @@ test("the live header responds to resizing without losing identity or failure st
 	const theme = plain as Theme;
 	const component = header.factory({ requestRender() {} } as unknown as TUI, theme);
 	header.set({ link: "linked", workspaceName: "Workspace", userEmail: "person@example.com", webUrl: "https://example.com/session", autoMode: false });
+	const launchScreen = component.render(80).map(stripVTControlCharacters);
+	assert.equal(startupHeroVisible(), true);
+	assert.equal(launchScreen.length, 16);
+	assert.ok(launchScreen.slice(0, 13).every((row) => visibleWidth(row) <= 80));
+	const monochromeLogo = renderLogo(plain, true, false, true);
+	const indent = Math.floor((80 - LOGO_WIDTH) / 2);
+	assert.equal(launchScreen[0]!.slice(indent, indent + LOGO_WIDTH), monochromeLogo[0]);
+	assert.match(launchScreen.join("\n"), /CloudThinker/);
+	assert.match(launchScreen.join("\n"), /CloudThinker v0\.4\.0/);
+	assert.match(launchScreen.join("\n"), /person@example\.com/);
+	header.setPresentation("session");
+	assert.equal(startupHeroVisible(), false);
 	for (const width of [120, 80, 60, 32, 80]) {
 		const rows = component.render(width);
 		assert.ok(rows.every((row) => visibleWidth(row) <= width));
 		const text = stripVTControlCharacters(rows.join("\n"));
 		assert.match(text, /CloudThinker/);
 		assert.match(text, /person@example.com/);
-		assert.equal(/[▀▄█]/.test(text), width >= 78);
+		assert.equal(text.includes(renderMark(plain, true, true)[0]!.trim()), width >= 64);
 	}
 	component.setExpanded(true);
 	assert.match(stripVTControlCharacters(component.render(80).join("\n")), /https:\/\/example.com\/session/);
@@ -144,33 +159,34 @@ test("the live header responds to resizing without losing identity or failure st
 test("monochrome logo preserves its silhouette without escape sequences", () => {
 	const mono = renderLogo(plain, true);
 	assert.deepEqual(mono, mono.map(stripVTControlCharacters));
-	assert.ok(mono.some((row) => /[█]/.test(row)));
+	assert.ok(mono.some((row) => /[\u2801-\u28ff]/.test(row)));
 	assert.ok(mono.every((row) => visibleWidth(row) <= LOGO_WIDTH));
 	assert.ok(mono.some((row) => visibleWidth(row) === LOGO_WIDTH));
 });
 
-test("the logo colors its rows with the brand gradient in truecolor", (t) => {
+test("the logo keeps its lit Ice shading and white star rim in truecolor", (t) => {
 	const previous = process.env.NO_COLOR;
 	t.after(() => { if (previous === undefined) delete process.env.NO_COLOR; else process.env.NO_COLOR = previous; });
 	delete process.env.NO_COLOR;
 	const rows = renderLogo(plain);
-	assert.equal(rows.length, 12);
-	assert.ok(rows[0]!.startsWith("\u001b[38;2;142;197;235m"));
-	assert.ok(rows[rows.length - 1]!.startsWith("\u001b[38;2;43;181;168m"));
+	assert.equal(rows.length, 13);
+	assert.ok(rows.join("\n").includes("\u001b[38;2;255;255;255m"));
+	assert.ok(new Set(rows.join("").match(/\u001b\[38;2;[\d;]+m/g)).size >= 12);
 	for (const row of rows) assert.ok(row.endsWith("\u001b[39m"));
 	assert.deepEqual(rows.map(stripVTControlCharacters), renderLogo(plain, true));
 	const header = formatHeaderText({ link: "linking" }, versions, plain,
-		{ compact: "", expanded: "" }, false, 80);
-	assert.ok(header.includes("\u001b[38;2;142;197;235m"));
+		{ compact: "", expanded: "" }, false, 80, undefined, "launch");
+	assert.doesNotMatch(header, /\u001b/);
 });
 
-test("a light theme darkens the gradient so every row stays readable", async () => {
+test("a light theme darkens every Ice color to stay readable", async () => {
 	const { getThemeByName } = await import(new URL("./modes/interactive/theme/theme.js", import.meta.resolve("@earendil-works/pi-coding-agent")).href);
 	initTheme("dark");
 	const light = getThemeByName("light")!;
 	const rows = renderLogo(light);
-	assert.ok(rows[0]!.startsWith("\u001b[38;2;26;111;158m"));
-	assert.ok(rows[rows.length - 1]!.startsWith("\u001b[38;2;0;120;111m"));
+	const stops = [...rows.join("").matchAll(/\u001b\[38;2;(\d+);(\d+);(\d+)m/g)]
+		.map((match) => [Number(match[1]), Number(match[2]), Number(match[3])] as const);
+	assert.ok(stops.length > 0);
 	const luminance = (color: readonly [number, number, number]) => {
 		const channel = (value: number) => {
 			const c = value / 255;
@@ -182,7 +198,7 @@ test("a light theme darkens the gradient so every row stays readable", async () 
 		const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
 		return (hi! + 0.05) / (lo! + 0.05);
 	};
-	for (const stop of [[26, 111, 158], [0, 120, 111]] as const) {
+	for (const stop of stops) {
 		assert.ok(ratio(stop, [245, 245, 245]) >= 3, `${stop} below 3:1 on #f5f5f5`);
 		assert.ok(ratio(stop, [255, 255, 255]) >= 3, `${stop} below 3:1 on #ffffff`);
 	}
@@ -194,35 +210,37 @@ test("NO_COLOR bypasses logo styling at the header boundary", (t) => {
 	process.env.NO_COLOR = "1";
 	const styler: HeaderStyler = { ...plain, fg: (_color, text) => `\u001b[31m${text}\u001b[39m` };
 	const header = formatHeaderText({ link: "linking" }, versions, styler,
-		{ compact: "", expanded: "" }, false, 80);
+		{ compact: "", expanded: "" }, false, 80, undefined, "launch");
 	const rows = header.split("\n");
-	assert.equal(rows[0]!.trimEnd(), renderLogo(plain, true)[0]!.trimEnd());
-	assert.ok(rows.slice(0, renderLogo(plain, true).length).every((row) => !row.includes("\u001b")));
+	const monochrome = renderLogo(plain, true, false, true);
+	const indent = Math.floor((80 - LOGO_WIDTH) / 2);
+	assert.deepEqual(rows.slice(0, monochrome.length).map((row) => stripVTControlCharacters(row).slice(indent, indent + LOGO_WIDTH)), monochrome);
+	assert.ok(rows.slice(0, monochrome.length).every((row) => !row.includes("\u001b")));
 });
 
-test("an unknown palette color falls back to the dark stops instead of crashing", () => {
+test("an unknown palette color falls back to the dark Ice palette instead of crashing", () => {
 	const ansiTheme: HeaderStyler = {
 		...plain,
 		getFgAnsi: (color) => color === "text" ? "\u001b[38;5;5m" : "",
 	};
 	const rows = renderLogo(ansiTheme);
-	assert.ok(rows[0]!.startsWith("\u001b[38;2;142;197;235m"));
+	assert.ok(rows.join("\n").includes("\u001b[38;2;255;255;255m"));
 	assert.deepEqual(rows.map(stripVTControlCharacters), renderLogo(plain, true));
 });
 
-test("the wide header stacks the gradient wordmark above the identity lines", (t) => {
+test("the session outline sits beside the identity lines", (t) => {
 	const previous = process.env.NO_COLOR;
 	t.after(() => { if (previous === undefined) delete process.env.NO_COLOR; else process.env.NO_COLOR = previous; });
 	delete process.env.NO_COLOR;
 	const header = formatHeaderText(
 		{ link: "linked", workspaceName: "acme-prod", userEmail: "dev@acme.io", webUrl: "https://app.cloudthinker.io/chat/c-1" },
-		versions, plain, { compact: "", expanded: "" }, false, 80);
+		versions, plain, { compact: "", expanded: "" }, false, 80, undefined, "session");
 	const rows = header.split("\n");
-	const colored = renderLogo(plain);
-	assert.deepEqual(rows.slice(0, colored.length), colored);
-	assert.equal(rows[colored.length], "");
-	assert.match(stripVTControlCharacters(rows[colored.length + 1]!), /^CloudThinker v/);
-	assert.equal(stripVTControlCharacters(rows[colored.length + 2]!).trimEnd(), "acme-prod (cloud)");
+	assert.equal(stripVTControlCharacters(rows[0]!).slice(0, MARK_WIDTH), renderMark(plain, true, true)[0]);
+	assert.match(stripVTControlCharacters(rows[0]!), /^.{16} CloudThinker v/);
+	assert.match(stripVTControlCharacters(rows[1]!), /acme-prod \(cloud\)/);
+	assert.match(stripVTControlCharacters(rows[2]!), /dev@acme\.io/);
+	assert.match(stripVTControlCharacters(rows[3]!), /\/open · view session in browser/);
 });
 
 test("CA-AWARE-12: header identity text cannot carry terminal control sequences", () => {
@@ -258,4 +276,14 @@ test("under cloudthinker remote the key line names detach and quit, and a local 
 	assert.equal(remoteHost({}), undefined);
 	assert.equal(remoteHost({ CLOUDTHINKER_REMOTE: "0" }), undefined);
 	assert.equal(remoteHost({ CLOUDTHINKER_REMOTE: "1" }), hostname());
+});
+
+test("the intro is reduced over SSH and cloudthinker remote, and full locally or when motion is forced", () => {
+	const full = { stride: 1, intervalMs: 50, veil: true };
+	const reduced = { stride: 4, intervalMs: 100, veil: false };
+	assert.deepEqual(introCadence({}), full);
+	assert.deepEqual(introCadence({ SSH_CONNECTION: "10.0.0.2 51000 10.0.0.1 22" }), reduced);
+	assert.deepEqual(introCadence({ SSH_TTY: "/dev/pts/3" }), reduced);
+	assert.deepEqual(introCadence({ CLOUDTHINKER_REMOTE: "1" }), reduced);
+	assert.deepEqual(introCadence({ SSH_TTY: "/dev/pts/3", CLOUDTHINKER_CLI_MOTION: "1" }), full);
 });

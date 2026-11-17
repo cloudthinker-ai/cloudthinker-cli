@@ -417,6 +417,7 @@ pub fn activity(payload: &api::Payload) -> WorkerActivity {
             | api::FileEndpoint::Edit
             | api::FileEndpoint::WriteBinary
             | api::FileEndpoint::Rename
+            | api::FileEndpoint::ProjectFinding
             | api::FileEndpoint::WriteBatch
             | api::FileEndpoint::WriteAtomicBatch => WorkerActivity::FileEdit,
             api::FileEndpoint::Read

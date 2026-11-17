@@ -28,6 +28,8 @@ expected=(
   cloudthinker-cli-x86_64-apple-darwin.tar.xz
   cloudthinker-cli-aarch64-unknown-linux-gnu.tar.xz
   cloudthinker-cli-x86_64-unknown-linux-gnu.tar.xz
+  cloudthinker-cli-aarch64-unknown-linux-musl.tar.xz
+  cloudthinker-cli-x86_64-unknown-linux-musl.tar.xz
   cloudthinker-cli-x86_64-pc-windows-msvc.zip
   cloudthinker-cli-installer.sh
   cloudthinker-cli-installer.ps1
@@ -40,6 +42,10 @@ expected=(
   cloudthinker-agent-aarch64-unknown-linux-gnu.tar.gz.sha256
   cloudthinker-agent-x86_64-unknown-linux-gnu.tar.gz
   cloudthinker-agent-x86_64-unknown-linux-gnu.tar.gz.sha256
+  cloudthinker-agent-aarch64-unknown-linux-musl.tar.gz
+  cloudthinker-agent-aarch64-unknown-linux-musl.tar.gz.sha256
+  cloudthinker-agent-x86_64-unknown-linux-musl.tar.gz
+  cloudthinker-agent-x86_64-unknown-linux-musl.tar.gz.sha256
   cloudthinker-agent-sha256.sum
 )
 missing=0

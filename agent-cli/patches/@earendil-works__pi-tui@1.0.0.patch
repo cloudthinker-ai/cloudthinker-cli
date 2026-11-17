@@ -180,3 +180,21 @@ index 28709ba4553d4fd3620040d5d23cf7e37b5bd77b..5835034e34a9aaba6365a6e1fb23397c
          if (nextTokenType && nextTokenType !== "space") {
              lines.push(""); // Add spacing after table
          }
+diff --git a/dist/tui.js b/dist/tui.js
+index 9f8123fb0931b983d042bca493de5a8093f9482f..e51d1d08e4f5b29a35d2538798fb98deb2512c34 100644
+--- a/dist/tui.js
++++ b/dist/tui.js
+@@ -1008,11 +1008,11 @@ export class TuiBase extends Container {
+         return result;
+     }
+     applyLineResets(lines) {
+-        const reset = SEGMENT_RESET;
+         for (let i = 0; i < lines.length; i++) {
+             const line = lines[i];
+             if (!isImageLine(line)) {
+-                lines[i] = normalizeTerminalOutput(line) + reset;
++                const normalized = normalizeTerminalOutput(line);
++                lines[i] = normalized.includes("\x1b]8;") ? normalized + SEGMENT_RESET : normalized.includes("\x1b") ? normalized + "\x1b[0m" : normalized;
+             }
+         }
+         return lines;

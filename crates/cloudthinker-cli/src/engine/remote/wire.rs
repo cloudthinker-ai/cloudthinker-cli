@@ -1,11 +1,15 @@
 use std::fmt;
 
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{
+    AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt,
+};
 
 pub const PROTOCOL_VERSION: u16 = 1;
 pub const MAX_PAYLOAD: usize = 16 * 1024 * 1024;
 pub const OUTPUT_CHUNK: usize = 64 * 1024;
 pub const MAX_UPLOAD: usize = MAX_PAYLOAD - 4096;
+pub const LINK_START: &str = "cloudthinker-remote-link-v1";
+pub const BANNER_LIMIT: usize = 64 * 1024;
 
 const HELLO: u8 = 1;
 const WELCOME: u8 = 2;
@@ -125,6 +129,7 @@ pub enum WireError {
     TooLarge(usize),
     UnknownKind(u8),
     Malformed(&'static str),
+    Banner,
 }
 
 impl fmt::Display for WireError {
@@ -137,6 +142,11 @@ impl fmt::Display for WireError {
                 "unknown frame kind {kind}; update cloudthinker on both machines"
             ),
             Self::Malformed(what) => write!(f, "malformed {what} frame"),
+            Self::Banner => write!(
+                f,
+                "the remote login printed more than {} KiB before cloudthinker started; remove the output from ~/.bashrc, ~/.profile or the login message on that machine",
+                BANNER_LIMIT / 1024
+            ),
         }
     }
 }
@@ -387,6 +397,29 @@ impl Frame {
         Ok(frame)
     }
 }
+pub async fn skip_banner<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<bool, WireError> {
+    let mut marker = LINK_START.as_bytes().to_vec();
+    marker.push(b'\n');
+    let mut seen = 0usize;
+    let mut line = Vec::new();
+    while seen < BANNER_LIMIT {
+        line.clear();
+        let left = u64::try_from(BANNER_LIMIT - seen).unwrap_or(u64::MAX);
+        let read = (&mut *reader)
+            .take(left)
+            .read_until(b'\n', &mut line)
+            .await?;
+        if read == 0 {
+            return Ok(false);
+        }
+        if line.ends_with(&marker) {
+            return Ok(true);
+        }
+        seen += read;
+    }
+    Err(WireError::Banner)
+}
+
 pub async fn read_frame<R: AsyncRead + Unpin>(reader: &mut R) -> Result<Option<Frame>, WireError> {
     let mut header = [0u8; 5];
     let mut filled = 0;

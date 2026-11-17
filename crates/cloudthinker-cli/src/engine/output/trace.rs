@@ -3,6 +3,9 @@ use cloudthinker_client::ConversationTrace;
 
 use super::{emit_json, terminal_lines, terminal_text, write_line};
 
+const TRACE_EXCLUDED: [&str; 3] = ["tool arguments", "tool output", "thinking"];
+const TRACE_FULL_RECORD: &str = "Open the conversation in the browser for the full record. Save tool output yourself, for example with tee.";
+
 pub fn emit_trace(trace: &ConversationTrace, json: bool) -> Result<(), String> {
     if json {
         return emit_json(trace);
@@ -103,17 +106,32 @@ pub fn emit_trace(trace: &ConversationTrace, json: bool) -> Result<(), String> {
         }
     }
     write_line(&mut out, "Tool completion does not establish success.")?;
+    if trace.truncation.has_older_messages {
+        write_line(
+            &mut out,
+            &format!(
+                "Capped: only the most recent {} messages are shown; older messages are not.",
+                trace.truncation.message_limit
+            ),
+        )?;
+    }
     if trace.truncation.truncated {
         write_line(
             &mut out,
             &format!(
-                "Truncated: older messages={}, messages omitted for bytes={}, tools omitted={}, text fields clipped={}. Open the conversation in the browser for more.",
-                trace.truncation.has_older_messages,
+                "Truncated: messages omitted for bytes={}, tools omitted={}, text fields clipped={}.",
                 trace.truncation.messages_omitted_for_bytes,
                 trace.truncation.tools_omitted,
                 trace.truncation.text_fields_truncated
             ),
         )?;
     }
+    write_line(
+        &mut out,
+        &format!(
+            "Excluded: {}. This is not a complete record. {TRACE_FULL_RECORD}",
+            TRACE_EXCLUDED.join(", ")
+        ),
+    )?;
     Ok(())
 }

@@ -91,6 +91,7 @@ mod tests {
             device_code: "device-code".into(),
             user_code: "BCDF-GHJK".into(),
             verification_uri: "https://app.cloudthinker.io/auth/cli".into(),
+            verification_uri_complete: "https://app.cloudthinker.io/auth/cli?code=BCDF-GHJK".into(),
             expires_in: Duration::from_secs(expires_in),
             interval: Duration::from_secs(interval),
         }

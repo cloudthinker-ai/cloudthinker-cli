@@ -1,14 +1,13 @@
-use std::num::NonZeroU64;
-
 use chrono::{DateTime, Utc};
-use cloudthinker_api::types as api;
-use serde::Serialize;
+use cloudthinker_spec::Method;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::CtClient;
+use super::public::QueryValue;
 use crate::error::{CtError, CtResult};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum IncidentStatus {
     #[serde(rename = "OPEN")]
     Open,
@@ -38,6 +37,20 @@ impl IncidentStatus {
         )
     }
 
+    fn wire(self) -> &'static str {
+        match self {
+            Self::Open => "OPEN",
+            Self::Acknowledged => "ACKNOWLEDGED",
+            Self::Investigating => "INVESTIGATING",
+            Self::Identified => "IDENTIFIED",
+            Self::OnHold => "ON_HOLD",
+            Self::NotFound => "NOT_FOUND",
+            Self::FalseAlarm => "FALSE_ALARM",
+            Self::Resolved => "RESOLVED",
+            Self::AutoResolved => "AUTO_RESOLVED",
+        }
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Open => "open",
@@ -53,38 +66,6 @@ impl IncidentStatus {
     }
 }
 
-impl From<api::IncidentStatus> for IncidentStatus {
-    fn from(status: api::IncidentStatus) -> Self {
-        match status {
-            api::IncidentStatus::Open => Self::Open,
-            api::IncidentStatus::Acknowledged => Self::Acknowledged,
-            api::IncidentStatus::Investigating => Self::Investigating,
-            api::IncidentStatus::Identified => Self::Identified,
-            api::IncidentStatus::OnHold => Self::OnHold,
-            api::IncidentStatus::NotFound => Self::NotFound,
-            api::IncidentStatus::FalseAlarm => Self::FalseAlarm,
-            api::IncidentStatus::Resolved => Self::Resolved,
-            api::IncidentStatus::AutoResolved => Self::AutoResolved,
-        }
-    }
-}
-
-impl From<IncidentStatus> for api::IncidentStatus {
-    fn from(status: IncidentStatus) -> Self {
-        match status {
-            IncidentStatus::Open => Self::Open,
-            IncidentStatus::Acknowledged => Self::Acknowledged,
-            IncidentStatus::Investigating => Self::Investigating,
-            IncidentStatus::Identified => Self::Identified,
-            IncidentStatus::OnHold => Self::OnHold,
-            IncidentStatus::NotFound => Self::NotFound,
-            IncidentStatus::FalseAlarm => Self::FalseAlarm,
-            IncidentStatus::Resolved => Self::Resolved,
-            IncidentStatus::AutoResolved => Self::AutoResolved,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct IncidentView {
     pub id: Uuid,
@@ -96,17 +77,29 @@ pub struct IncidentView {
     pub resolved_at: Option<DateTime<Utc>>,
 }
 
-impl From<api::IncidentPublic> for IncidentView {
-    fn from(incident: api::IncidentPublic) -> Self {
-        let status = IncidentStatus::from(incident.status);
+#[derive(Deserialize)]
+struct PublicIncident {
+    id: Uuid,
+    title: String,
+    severity: String,
+    status: IncidentStatus,
+    created_at: DateTime<Utc>,
+    resolved_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize)]
+struct PublicIncidentPage {
+    items: Vec<PublicIncident>,
+}
+
+impl From<PublicIncident> for IncidentView {
+    fn from(incident: PublicIncident) -> Self {
         Self {
             id: incident.id,
-            title: incident.title.to_string(),
-            severity: incident
-                .severity
-                .map_or_else(|| "-".to_string(), |severity| severity.to_string()),
-            status,
-            terminal: status.is_terminal(),
+            title: incident.title,
+            severity: incident.severity,
+            terminal: incident.status.is_terminal(),
+            status: incident.status,
             created_at: incident.created_at,
             resolved_at: incident.resolved_at,
         }
@@ -119,41 +112,34 @@ impl CtClient {
         status: Option<IncidentStatus>,
         limit: u64,
     ) -> CtResult<Vec<IncidentView>> {
-        let limit = NonZeroU64::new(limit)
-            .ok_or_else(|| CtError::Usage("--limit must be between 1 and 100".into()))?;
-        let statuses: Option<Vec<api::IncidentStatus>> = status.map(|s| vec![s.into()]);
-        let page = self
-            .authed(async |c: cloudthinker_api::Client| {
-                c.incidents_list_incidents(
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(limit),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    statuses.as_ref(),
-                    None,
-                    None,
-                )
-                .await
-            })
+        if !(1..=100).contains(&limit) {
+            return Err(CtError::Usage("--limit must be between 1 and 100".into()));
+        }
+        let mut query = vec![QueryValue {
+            name: "limit".into(),
+            value: limit.to_string(),
+        }];
+        if let Some(status) = status {
+            query.push(QueryValue {
+                name: "status".into(),
+                value: status.wire().into(),
+            });
+        }
+        let page: PublicIncidentPage = self
+            .public_json(Method::Get, "/resolve/incidents", &query, None, None)
             .await?;
-        Ok(page.data.into_iter().map(IncidentView::from).collect())
+        Ok(page.items.into_iter().map(IncidentView::from).collect())
     }
 
     pub async fn get_incident(&self, incident_id: Uuid) -> CtResult<IncidentView> {
-        let incident = self
-            .authed(async |c: cloudthinker_api::Client| {
-                c.incidents_get_incident(&incident_id, None).await
-            })
+        let incident: PublicIncident = self
+            .public_json(
+                Method::Get,
+                &format!("/resolve/incidents/{incident_id}"),
+                &[],
+                None,
+                None,
+            )
             .await?;
         Ok(IncidentView::from(incident))
     }

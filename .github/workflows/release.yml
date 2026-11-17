@@ -16,6 +16,7 @@
 #
 # * checks for a Git Tag that looks like a release
 # * builds artifacts with dist (archives, installers, hashes)
+# * installs and starts the Linux builds on common distros (smoke-linux)
 # * passes those artifacts between jobs via actions/cache (run-scoped keys)
 # * on success, uploads the artifacts to a GitHub Release
 #
@@ -260,6 +261,18 @@ jobs:
           key: dist-local-aarch64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
+      - name: Fetch local artifacts (x86_64-unknown-linux-musl)
+        uses: actions/cache/restore@v4
+        with:
+          key: dist-local-x86_64-unknown-linux-musl-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/distrib
+          enableCrossOsArchive: true
+      - name: Fetch local artifacts (aarch64-unknown-linux-musl)
+        uses: actions/cache/restore@v4
+        with:
+          key: dist-local-aarch64-unknown-linux-musl-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/distrib
+          enableCrossOsArchive: true
       - name: Fetch local artifacts (x86_64-apple-darwin)
         uses: actions/cache/restore@v4
         with:
@@ -313,17 +326,79 @@ jobs:
           path: target/distrib
           enableCrossOsArchive: true
           overwrite: true
+  # HAND-MAINTAINED addition: install every Linux build on the distros users
+  # run (old glibc, Amazon Linux, Alpine) with the real shell installer, then
+  # let the CLI install and start the agent it picks. A failure blocks host,
+  # so no release ships a build that cannot start there. Images are pulled
+  # by tag, so a broken upstream image shows up here as a failed install.
+  smoke-linux:
+    needs:
+      - plan
+      - build-local-artifacts
+      - build-global-artifacts
+    if: ${{ needs.build-local-artifacts.result == 'success' && needs.build-global-artifacts.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ["ubuntu-22.04", "ubuntu-24.04-arm"]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Fetch x86_64 gnu artifacts
+        uses: actions/cache/restore@v4
+        with:
+          key: dist-local-x86_64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/distrib
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - name: Fetch aarch64 gnu artifacts
+        uses: actions/cache/restore@v4
+        with:
+          key: dist-local-aarch64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/distrib
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - name: Fetch x86_64 musl artifacts
+        uses: actions/cache/restore@v4
+        with:
+          key: dist-local-x86_64-unknown-linux-musl-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/distrib
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - name: Fetch aarch64 musl artifacts
+        uses: actions/cache/restore@v4
+        with:
+          key: dist-local-aarch64-unknown-linux-musl-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/distrib
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - name: Fetch global artifacts
+        uses: actions/cache/restore@v4
+        with:
+          key: dist-global-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/distrib
+          enableCrossOsArchive: true
+          fail-on-cache-miss: true
+      - name: Install and start on each distro
+        run: |
+          bash scripts/smoke_linux.sh target/distrib \
+            ubuntu:24.04 ubuntu:20.04 debian:12 rockylinux:8 \
+            amazonlinux:2 amazonlinux:2023 alpine:3.20
+
   # Determines if we should publish/announce
   host:
     needs:
       - plan
       - build-local-artifacts
       - build-global-artifacts
+      - smoke-linux
     # Only run if plan, local and global didn't fail (skipped is fine).
     # HAND-MAINTAINED divergence from dist's template: also run on pull_request
     # so a build-only run exercises the host path; the Create GitHub Release
     # step below stays gated on publishing, so a PR run can never publish.
-    if: ${{ always() && needs.plan.result == 'success' && (needs.plan.outputs.publishing == 'true' || github.event.pull_request) && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
+    if: ${{ always() && needs.plan.result == 'success' && (needs.plan.outputs.publishing == 'true' || github.event.pull_request) && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') && (needs.smoke-linux.result == 'skipped' || needs.smoke-linux.result == 'success') }}
     # Publication: uploads assets and creates the GitHub Release.
     permissions:
       contents: write
@@ -374,6 +449,18 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           key: dist-local-aarch64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/distrib
+          enableCrossOsArchive: true
+      - name: Fetch local artifacts (x86_64-unknown-linux-musl)
+        uses: actions/cache/restore@v4
+        with:
+          key: dist-local-x86_64-unknown-linux-musl-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/distrib
+          enableCrossOsArchive: true
+      - name: Fetch local artifacts (aarch64-unknown-linux-musl)
+        uses: actions/cache/restore@v4
+        with:
+          key: dist-local-aarch64-unknown-linux-musl-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch local artifacts (x86_64-apple-darwin)

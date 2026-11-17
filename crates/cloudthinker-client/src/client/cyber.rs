@@ -142,6 +142,7 @@ pub enum CyberIntensity {
     Safe,
     Aggressive,
     Full,
+    Ultra,
 }
 
 impl CyberIntensity {
@@ -150,6 +151,7 @@ impl CyberIntensity {
             CyberIntensity::Safe => cloudthinker_api::types::Intensity::Safe,
             CyberIntensity::Aggressive => cloudthinker_api::types::Intensity::Aggressive,
             CyberIntensity::Full => cloudthinker_api::types::Intensity::Full,
+            CyberIntensity::Ultra => cloudthinker_api::types::Intensity::Ultra,
         }
     }
 }
@@ -396,6 +398,7 @@ pub struct CyberRunBrief {
     pub targets: Vec<CyberDiscoveryTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub local_workspace: Option<LocalCyberWorkspace>,
+    pub checkpoint: Option<cloudthinker_api::types::LocalCheckpointResult>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -428,6 +431,7 @@ impl From<cloudthinker_api::types::CyberDiscoveryTargetPublic> for CyberDiscover
 impl CyberRunBrief {
     fn from_api(api: cloudthinker_api::types::LocalRunBriefPublic) -> Self {
         Self {
+            checkpoint: api.checkpoint,
             run_id: api.run_id,
             app_id: api.app_id,
             app_name: api.app_name,
@@ -815,6 +819,7 @@ impl CtClient {
         run_scope: Option<cloudthinker_api::types::ScopeSpec>,
     ) -> CtResult<CyberRun> {
         let body = cloudthinker_api::types::RunLaunchRequest {
+            credit_limit: None,
             execution_host: Some(cloudthinker_api::types::RunExecutionHost::Local),
             intensity: intensity.map(CyberIntensity::into_api),
             jev_enabled: None,
@@ -823,6 +828,9 @@ impl CtClient {
             run_scope,
             scan_mode: None,
             selection: None,
+            stop_rule: None,
+            team_member_limit: None,
+            team_pass_limit: None,
         };
         let run = self
             .authed(async |c: cloudthinker_api::Client| {
@@ -1098,6 +1106,26 @@ impl CtClient {
             })
             .await?;
         Ok(CyberRunBrief::from_api(brief))
+    }
+
+    pub async fn cyber_checkpoint(
+        &self,
+        run_id: Uuid,
+        input: &str,
+    ) -> CtResult<cloudthinker_api::types::LocalCheckpointResult> {
+        let body: cloudthinker_api::types::LocalCheckpointRequest = serde_json::from_str(input)
+            .map_err(|_| {
+                CtError::Usage(
+                    "Invalid checkpoint JSON. Read the checkpoint request schema and retry."
+                        .to_string(),
+                )
+            })?;
+        self.authed(async |client: cloudthinker_api::Client| {
+            client
+                .appsec_checkpoint_local_run_api(&run_id, None, &body)
+                .await
+        })
+        .await
     }
 
     /// Upload one batch of text evidence into the run's durable app-memory

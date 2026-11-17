@@ -196,7 +196,9 @@ pub fn deliverables(dir: &Dir) -> Result<Value, &'static str> {
 
 pub fn execute(dir: &Dir, operation: &api::FileOperation) -> Result<Value, &'static str> {
     use api::FileEndpoint as E;
-    let r = &operation.request;
+    let api::Request::FileRequest(r) = &operation.request else {
+        return Err("UNSUPPORTED_ENDPOINT");
+    };
     if r.trusted_root.is_some() || r.create_if_absent.unwrap_or(false) {
         return Err("TRUSTED_ROOT_REJECTED");
     }
@@ -233,7 +235,9 @@ pub fn execute(dir: &Dir, operation: &api::FileOperation) -> Result<Value, &'sta
         E::Conventions | E::ConventionChains => {
             json!({"convention_files":conventions(dir,path,r)?})
         }
-        E::WriteBatch | E::WriteAtomicBatch => return Err("UNSUPPORTED_ENDPOINT"),
+        E::WriteBatch | E::WriteAtomicBatch | E::ProjectFinding => {
+            return Err("UNSUPPORTED_ENDPOINT");
+        }
     };
     let mut result = result;
     if let Some(fields) = result.as_object_mut()
