@@ -1,6 +1,7 @@
 import { type Static, Type } from "typebox";
 
-import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { AgentToolResult, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
 
 import {
 	CloudThinkerApiError,
@@ -74,6 +75,15 @@ const description = [
 	`A single read-only lookup uses ${CT_SANDBOX_READ}; a single state-changing command uses ${CT_SANDBOX_WRITE}.`,
 	`If approval is required, this returns a link; call ${CT_RUN_STATUS} later with the run_id to read the answer.`,
 ].join("\n");
+
+export function renderRunResult(result: AgentToolResult<RunState>, options: { expanded?: boolean }, theme: Theme): Component {
+	return summaryComponent(
+		theme,
+		result.details ? askSummary(result.details, theme) : "failed",
+		resultBody(result),
+		options.expanded,
+	);
+}
 
 export function renderRun(state: RunState): string {
 	const lines = [`run_id: ${state.run_id}`, `status: ${state.status}`];
@@ -342,11 +352,6 @@ export function registerAsk(runtime: CloudThinkerRuntime): void {
 		renderCall: (params: Static<typeof parameters>, theme, context) =>
 			callComponent(callLine(theme, CT_ASK, firstLine(params.prompt ?? ""))),
 		renderResult: (result, options, theme) =>
-			summaryComponent(
-				theme,
-				result.details ? askSummary(result.details, theme) : "failed",
-				resultBody(result),
-				options.expanded,
-			),
+			renderRunResult(result, options, theme),
 	});
 }

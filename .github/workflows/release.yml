@@ -4,7 +4,7 @@
 # permission scoping, inter-job transport via
 # actions/cache instead of GitHub Actions artifact storage, which hit a stale
 # quota error in 2026-09 — APT-1002, and build jobs plus host running on
-# pull_request so a build-only run can prove the pipeline; the Create GitHub
+# pull_request and on pushes to main so a build-only run can prove the pipeline; the Create GitHub
 # Release step stays gated on publishing). Re-apply changes by hand.
 # allow-dirty = ["ci"] in dist-workspace.toml keeps dist's consistency check
 # from rejecting this file.
@@ -56,6 +56,8 @@ permissions:
 on:
   pull_request:
   push:
+    branches:
+      - main
     tags:
       - '**[0-9]+.[0-9]+.[0-9]+*'
 
@@ -68,13 +70,13 @@ jobs:
       contents: write
     outputs:
       val: ${{ steps.plan.outputs.manifest }}
-      tag: ${{ !github.event.pull_request && github.ref_name || '' }}
-      tag-flag: ${{ !github.event.pull_request && format('--tag={0}', github.ref_name) || '' }}
-      publishing: ${{ !github.event.pull_request }}
+      tag: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+      tag-flag: ${{ startsWith(github.ref, 'refs/tags/') && format('--tag={0}', github.ref_name) || '' }}
+      publishing: ${{ startsWith(github.ref, 'refs/tags/') }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           submodules: recursive
@@ -90,7 +92,7 @@ jobs:
       # but also really annoying to build CI around when it needs secrets to work right.)
       - id: plan
         run: |
-          dist ${{ (!github.event.pull_request && format('host --steps=create --tag={0}', github.ref_name)) || 'plan' }} --output-format=json > plan-dist-manifest.json
+          dist ${{ (startsWith(github.ref, 'refs/tags/') && format('host --steps=create --tag={0}', github.ref_name)) || 'plan' }} --output-format=json > plan-dist-manifest.json
           echo "dist ran successfully"
           cat plan-dist-manifest.json
           echo "manifest=$(jq -c "." plan-dist-manifest.json)" >> "$GITHUB_OUTPUT"
@@ -99,15 +101,12 @@ jobs:
       # blocked in this org (APT-1002). enableCrossOsArchive is required: the
       # windows build job restores this ubuntu-saved entry, and without it the
       # cache version hash would differ between the two platforms.
-      # overwrite: true keeps a re-run of the same attempt (Re-run failed
-      # jobs) from failing on the already-reserved key.
       - name: "Cache dist-manifest.json"
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: plan-dist-manifest.json
           enableCrossOsArchive: true
-          overwrite: true
 
   # Build and packages all the platform-specific things
   build-local-artifacts:
@@ -116,10 +115,10 @@ jobs:
     needs:
       - plan
     # HAND-MAINTAINED divergence from dist's template: run the build jobs on
-    # pull_request too (publishing stays off), so a build-only run can prove
+    # pull_request and main pushes too (publishing stays off), so a build-only run can prove
     # the pipeline without cutting a release. dist's pr_run_mode defaults to
     # "plan", which skips them.
-    if: ${{ fromJson(needs.plan.outputs.val).ci.github.artifacts_matrix.include != null && (needs.plan.outputs.publishing == 'true' || github.event.pull_request) }}
+    if: ${{ fromJson(needs.plan.outputs.val).ci.github.artifacts_matrix.include != null }}
     strategy:
       fail-fast: false
       # Target platforms/runners are computed by dist in create-release.
@@ -144,7 +143,7 @@ jobs:
       - name: enable windows longpaths
         run: |
           git config --global core.longpaths true
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           submodules: recursive
@@ -163,7 +162,7 @@ jobs:
       # string must equal the plan job's save path: it feeds the cache
       # version hash on both sides.
       - name: Fetch plan manifest
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: plan-dist-manifest.json
@@ -195,15 +194,13 @@ jobs:
       # (APT-1002). enableCrossOsArchive is required: this entry is saved on
       # windows for one target and restored on ubuntu. The path string must
       # equal the restore path in the global and host jobs: it feeds the
-      # cache version hash on both sides. overwrite: true keeps a re-run of
-      # the same attempt from failing on the already-reserved key.
+      # cache version hash on both sides.
       - name: "Cache artifacts"
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-${{ join(matrix.targets, '-') }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
-          overwrite: true
 
   # Build and package all the platform-agnostic(ish) things
   build-global-artifacts:
@@ -217,7 +214,7 @@ jobs:
     env:
       BUILD_MANIFEST_NAME: target/distrib/global-dist-manifest.json
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           submodules: recursive
@@ -234,7 +231,7 @@ jobs:
       # (a lost local manifest would corrupt the global build's unified
       # sha256.sum, which reads checksum values from the local manifests).
       - name: Fetch plan manifest
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: plan-dist-manifest.json
@@ -250,43 +247,43 @@ jobs:
       # the expected set from the plan manifest, so a target added to the
       # config cannot be silently skipped.
       - name: Fetch local artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-x86_64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch local artifacts (aarch64-unknown-linux-gnu)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-aarch64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch local artifacts (x86_64-unknown-linux-musl)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-x86_64-unknown-linux-musl-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch local artifacts (aarch64-unknown-linux-musl)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-aarch64-unknown-linux-musl-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch local artifacts (x86_64-apple-darwin)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-x86_64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch local artifacts (aarch64-apple-darwin)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-aarch64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch local artifacts (x86_64-pc-windows-msvc)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-x86_64-pc-windows-msvc-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
@@ -317,15 +314,13 @@ jobs:
       # Hand the global artifacts and manifest to the host job via the Actions
       # cache service (run-scoped key) instead of artifact storage (APT-1002).
       # The path string must equal the host job's restore path: it feeds the
-      # cache version hash on both sides. overwrite: true keeps a re-run of
-      # the same attempt from failing on the already-reserved key.
+      # cache version hash on both sides.
       - name: "Cache artifacts"
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-global-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
-          overwrite: true
   # HAND-MAINTAINED addition: install every Linux build on the distros users
   # run (old glibc, Amazon Linux, Alpine) with the real shell installer, then
   # let the CLI install and start the agent it picks. A failure blocks host,
@@ -343,39 +338,39 @@ jobs:
         runner: ["ubuntu-22.04", "ubuntu-24.04-arm"]
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Fetch x86_64 gnu artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-x86_64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
           fail-on-cache-miss: true
       - name: Fetch aarch64 gnu artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-aarch64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
           fail-on-cache-miss: true
       - name: Fetch x86_64 musl artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-x86_64-unknown-linux-musl-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
           fail-on-cache-miss: true
       - name: Fetch aarch64 musl artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-aarch64-unknown-linux-musl-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
           fail-on-cache-miss: true
       - name: Fetch global artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-global-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
@@ -396,9 +391,9 @@ jobs:
       - smoke-linux
     # Only run if plan, local and global didn't fail (skipped is fine).
     # HAND-MAINTAINED divergence from dist's template: also run on pull_request
-    # so a build-only run exercises the host path; the Create GitHub Release
+    # and main pushes so a build-only run exercises the host path; the Create GitHub Release
     # step below stays gated on publishing, so a PR run can never publish.
-    if: ${{ always() && needs.plan.result == 'success' && (needs.plan.outputs.publishing == 'true' || github.event.pull_request) && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') && (needs.smoke-linux.result == 'skipped' || needs.smoke-linux.result == 'success') }}
+    if: ${{ always() && needs.plan.result == 'success' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') && (needs.smoke-linux.result == 'skipped' || needs.smoke-linux.result == 'success') }}
     # Publication: uploads assets and creates the GitHub Release.
     permissions:
       contents: write
@@ -408,7 +403,7 @@ jobs:
     outputs:
       val: ${{ steps.host.outputs.manifest }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           submodules: recursive
@@ -424,7 +419,7 @@ jobs:
       # a missing artifact instead of a cache miss. The host step and the gh
       # release create below need the complete set.
       - name: Fetch plan manifest
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: plan-dist-manifest.json
@@ -440,49 +435,49 @@ jobs:
       # the expected set from the plan manifest, so a target added to the
       # config cannot be silently skipped.
       - name: Fetch local artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-x86_64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch local artifacts (aarch64-unknown-linux-gnu)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-aarch64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch local artifacts (x86_64-unknown-linux-musl)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-x86_64-unknown-linux-musl-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch local artifacts (aarch64-unknown-linux-musl)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-aarch64-unknown-linux-musl-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch local artifacts (x86_64-apple-darwin)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-x86_64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch local artifacts (aarch64-apple-darwin)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-aarch64-apple-darwin-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch local artifacts (x86_64-pc-windows-msvc)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-x86_64-pc-windows-msvc-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
       - name: Fetch global artifacts
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-global-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
@@ -571,9 +566,9 @@ jobs:
         # equivalent; the gate keeps them all off on PR runs.
         if: ${{ needs.plan.outputs.publishing == 'true' }}
         env:
-          PRERELEASE_FLAG: "${{ fromJson(steps.host.outputs.manifest).announcement_is_prerelease && '--prerelease' || '' }}"
-          ANNOUNCEMENT_TITLE: "${{ fromJson(steps.host.outputs.manifest).announcement_title }}"
-          ANNOUNCEMENT_BODY: "${{ fromJson(steps.host.outputs.manifest).announcement_github_body }}"
+          PRERELEASE_FLAG: "${{ fromJson(steps.host.outputs.manifest || '{}').announcement_is_prerelease && '--prerelease' || '' }}"
+          ANNOUNCEMENT_TITLE: "${{ fromJson(steps.host.outputs.manifest || '{}').announcement_title }}"
+          ANNOUNCEMENT_BODY: "${{ fromJson(steps.host.outputs.manifest || '{}').announcement_github_body }}"
           RELEASE_COMMIT: "${{ github.sha }}"
         run: |
           # Write and read notes from a file to avoid quoting breaking things
@@ -593,7 +588,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           submodules: recursive
@@ -612,18 +607,18 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Fetch local artifacts (x86_64-unknown-linux-gnu)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-x86_64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib
           enableCrossOsArchive: true
           fail-on-cache-miss: true
       - name: Fetch local artifacts (aarch64-unknown-linux-gnu)
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: dist-local-aarch64-unknown-linux-gnu-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/distrib

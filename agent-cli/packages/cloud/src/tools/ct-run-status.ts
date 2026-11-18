@@ -2,9 +2,9 @@ import { type Static, Type } from "typebox";
 
 import type { RunState } from "../client.ts";
 import type { CloudThinkerRuntime } from "../runtime.ts";
-import { approveRunInTerminal, askSummary, renderRun } from "./ct-ask.ts";
+import { approveRunInTerminal, renderRun, renderRunResult } from "./ct-ask.ts";
 import { CT_ASK, CT_RUN_STATUS } from "./names.ts";
-import { callComponent, callLine, resultBody, summaryComponent } from "./render.ts";
+import { callComponent, callLine } from "./render.ts";
 import { text } from "./shared.ts";
 
 const parameters = Type.Object({
@@ -50,11 +50,6 @@ export function registerRunStatus(runtime: CloudThinkerRuntime): void {
 		renderCall: (params: Static<typeof parameters>, theme, context) =>
 			callComponent(callLine(theme, CT_RUN_STATUS, params.run_id ?? "")),
 		renderResult: (result, options, theme) =>
-			summaryComponent(
-				theme,
-				result.details ? askSummary(result.details, theme) : "failed",
-				resultBody(result),
-				options.expanded,
-			),
+			renderRunResult(result, options, theme),
 	});
 }

@@ -1,5 +1,6 @@
 import { InteractiveMode } from "@earendil-works/pi-coding-agent";
 
+import { SUBCOMMANDS } from "@cloudthinker/cloud/src/commands.ts";
 import { PRODUCT_NAME } from "@cloudthinker/cloud/src/header.ts";
 
 import { BUILTIN_SLASH_COMMANDS } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/slash-commands.js";
@@ -37,13 +38,10 @@ const REMOVED_REPLACEMENTS: ReadonlyMap<string, string> = new Map([
 export const THINKING_STATUS =
 	"/thinking is disabled: the agent mode you pick with /model carries its own thinking level.";
 export const SCOPED_MODELS_STATUS = "/scoped-models is disabled: /model lists your CloudThinker Agent modes.";
-export const CLOUD_COMMANDS = [
-	{ name: "share", description: "Copy this conversation's CloudThinker link" },
-	{ name: "login", description: "Sign in to CloudThinker" },
-	{ name: "logout", description: "Sign out of CloudThinker" },
-	{ name: "changelog", description: "Show what's new in this CloudThinker Agent" },
-	{ name: "bug", description: "Report a bug on the CloudThinker CLI GitHub" },
-] as const;
+const CLOUD_COMMAND_NAMES = ["share", "login", "logout", "changelog", "bug"] as const;
+export const CLOUD_COMMANDS = SUBCOMMANDS.filter(({ name }: { name: string }) =>
+	(CLOUD_COMMAND_NAMES as readonly string[]).includes(name),
+) as readonly { name: string; description: string }[];
 export const COPY_DESCRIPTION = "Copy the last answer, or its code block N (/copy 2)";
 export const SESSION_COMMAND = "/session";
 export const SESSION_REPLACEMENT = `/${PRODUCT_NAME}:session`;

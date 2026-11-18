@@ -38,8 +38,12 @@ export function relativeArgs(args: any, cwd: unknown): any {
 	return copy ?? args;
 }
 
+function toolArgPath(args: any): string | undefined {
+	return typeof args?.file_path === "string" ? args.file_path : typeof args?.path === "string" ? args.path : undefined;
+}
+
 export function changeLine(toolName: string, args: any, theme: any, context: any): string {
-	const path = renderToolPath(typeof args?.file_path === "string" ? args.file_path : typeof args?.path === "string" ? args.path : "", theme, context.cwd);
+	const path = renderToolPath(toolArgPath(args) ?? "", theme, context.cwd);
 	const head = `${theme.fg("toolTitle", theme.bold(toolName))} ${path}`;
 	if (toolName === "write") {
 		const count = typeof args?.content === "string" ? args.content.replace(/\n$/, "").split("\n").length : 0;
@@ -74,7 +78,7 @@ function detailedView(toolName: string, args: any, theme: any, context: any, tag
 	const diff = context.state?.callComponent?.preview?.diff;
 	const source = toolName === "edit" ? diff : args?.content;
 	if (typeof source !== "string") return undefined;
-	const path = typeof args?.file_path === "string" ? args.file_path : typeof args?.path === "string" ? args.path : undefined;
+	const path = toolArgPath(args);
 	const key = `${String(context.toolCallId)}:${context.expanded ? "full" : "preview"}`;
 	let cached = diffViews.get(key);
 	if (cached?.source !== source || cached.theme !== theme) {

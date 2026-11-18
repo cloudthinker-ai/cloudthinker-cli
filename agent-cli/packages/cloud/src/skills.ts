@@ -158,17 +158,8 @@ async function recoverAbandonedStages(root: string, indexPath: string): Promise<
 		}
 		const backup = join(recoveryStage, "old");
 		const stagedSkill = join(recoveryStage, "new");
-		const hasBackup = await access(backup).then(() => true, () => false);
-		const targetName = await readFile(join(recoveryStage, "target.json"), "utf8").then(
-			(raw) => {
-				try {
-					return JSON.parse(raw) as unknown;
-				} catch {
-					return undefined;
-				}
-			},
-			() => undefined,
-		);
+		const hasBackup = await exists(backup);
+		const targetName = await readJson(join(recoveryStage, "target.json"));
 		if (typeof targetName !== "string") {
 			if (!hasBackup) await rm(recoveryStage, { recursive: true, force: true }).catch(() => {});
 			continue;
@@ -182,18 +173,9 @@ async function recoverAbandonedStages(root: string, indexPath: string): Promise<
 		}
 		let preserveStage = false;
 		if (hasBackup) {
-			const targetExists = await access(target).then(() => true, () => false);
+			const targetExists = await exists(target);
 			if (!targetExists) {
-				const revision = await readFile(join(recoveryStage, "revision.json"), "utf8").then(
-					(raw) => {
-						try {
-							return JSON.parse(raw) as unknown;
-						} catch {
-							return undefined;
-						}
-					},
-					() => undefined,
-				);
+				const revision = await readJson(join(recoveryStage, "revision.json"));
 				try {
 					if (typeof revision === "string") {
 						await writeIndex(indexPath, {
@@ -212,7 +194,7 @@ async function recoverAbandonedStages(root: string, indexPath: string): Promise<
 					preserveStage = true;
 				}
 			} else {
-				const hasNew = await access(stagedSkill).then(() => true, () => false);
+				const hasNew = await exists(stagedSkill);
 				const hasActiveSkill = await hasSkillFile(root, targetName);
 				preserveStage = hasNew || !hasActiveSkill;
 			}
@@ -220,6 +202,23 @@ async function recoverAbandonedStages(root: string, indexPath: string): Promise<
 		if (!preserveStage) await rm(recoveryStage, { recursive: true, force: true }).catch(() => {});
 	}
 	return recovered;
+}
+
+async function exists(path: string): Promise<boolean> {
+	try {
+		await access(path);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+async function readJson(path: string): Promise<unknown> {
+	try {
+		return JSON.parse(await readFile(path, "utf8")) as unknown;
+	} catch {
+		return undefined;
+	}
 }
 
 export async function readIndex(path: string): Promise<SkillIndex> {

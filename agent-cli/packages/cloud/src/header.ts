@@ -10,7 +10,7 @@ import { INTRO_FRAMES, introArtRows, MARK_HEIGHT, MARK_WIDTH, renderIntroVeil, r
 import { introDue, recordIntro } from "./settings.ts";
 import { setStartupHeroVisible, startupDetailRows, startupHeroVisible, startupDetailsRevision, startupDiagnosticRows } from "./startup-presentation.ts";
 import { PI_AUTHOR, PI_LICENSE, type HostVersions } from "./versions.ts";
-import { reducedMotion } from "./motion.ts";
+import { reducedMotion, remoteSession } from "./motion.ts";
 
 declare module "@earendil-works/pi-tui" {
 	interface Keybindings {
@@ -39,8 +39,7 @@ export interface HeaderState {
 export const REMOTE_DETACH_KEY = "ctrl+z";
 
 export function remoteHost(env: Readonly<Record<string, string | undefined>> = process.env): string | undefined {
-	const remote = env.CLOUDTHINKER_REMOTE === "1" || [env.SSH_CONNECTION, env.SSH_CLIENT, env.SSH_TTY, env.MOSH_CONNECTION].some(Boolean);
-	return remote ? hostname() : undefined;
+	return remoteSession(env) ? hostname() : undefined;
 }
 
 export type IntroCadence = { readonly stride: number; readonly intervalMs: number; readonly veil: boolean };
@@ -79,6 +78,10 @@ export interface HeaderStyler {
 export interface HeaderHints {
 	compact: string;
 	expanded: string;
+}
+
+function piCredit(versions: HostVersions): string {
+	return `built on pi v${versions.pi} by ${PI_AUTHOR} (${PI_LICENSE})`;
 }
 
 function formatSessionLine(state: HeaderState, styler: HeaderStyler): string {
@@ -196,7 +199,7 @@ export function formatHeaderText(
 		));
 		lines.push(centerLine(styler.fg(state.link === "unavailable" ? "error" : "muted", status), width));
 		if (versions.pi && rowCount >= logo.length + 2 + 7 + startupDiagnosticRows() + 1) {
-			lines.push(centerLine(styler.fg("dim", `built on pi v${versions.pi} by ${PI_AUTHOR} (${PI_LICENSE})`), width));
+			lines.push(centerLine(styler.fg("dim", piCredit(versions)), width));
 		}
 	} else if (width >= 64) {
 		const mark = renderMark(styler, environment.monochrome, environment.ascii, launch ? undefined : motionStep);
@@ -208,7 +211,7 @@ export function formatHeaderText(
 			state.webUrl ? styler.fg("muted", "/open · view session in browser") : "",
 		].join("\n");
 		const sessionIdentity = expanded
-			? [...identity, ...(versions.pi ? [styler.fg("muted", `built on pi v${versions.pi} by ${PI_AUTHOR} (${PI_LICENSE})`)] : [])].join("\n")
+			? [...identity, ...(versions.pi ? [styler.fg("muted", piCredit(versions))] : [])].join("\n")
 			: compactIdentity;
 		const details = new Text(sessionIdentity, 0, 0).render(detailWidth);
 		for (let row = 0; row < Math.max(mark.length, details.length); row++) {
@@ -221,7 +224,7 @@ export function formatHeaderText(
 		if (state.webUrl) lines.push(styler.fg("muted", "/open · view session in browser"));
 	}
 	if (expanded && versions.pi && width < 64) {
-		lines.push(styler.fg("muted", `built on pi v${versions.pi} by ${PI_AUTHOR} (${PI_LICENSE})`));
+		lines.push(styler.fg("muted", piCredit(versions)));
 	}
 	if (expanded && state.webUrl) lines.push(styler.fg("muted", sanitizeTerminalText(state.webUrl)));
 	if (launch) return lines.join("\n");

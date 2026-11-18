@@ -28,12 +28,20 @@ import { formatClock, tasksPane } from "./tasks-pane.ts";
 
 type DefaultResourceLoaderOptions = ConstructorParameters<typeof DefaultResourceLoader>[0];
 
-export const resolveCloudMode: SubagentHost["resolveModel"] = (input, registry) => {
-	const modes = (registry.getAll?.() ?? registry.getAvailable?.() ?? [])
+function cloudModes<T extends { provider: string; id: string }>(registry: { getAll?: () => T[]; getAvailable?: () => T[] }): T[] {
+	return (registry.getAll?.() ?? registry.getAvailable?.() ?? [])
 		.filter((model) => model.provider === PROVIDER_ID);
+}
+
+function modeChoices(modes: { provider: string; id: string }[]): string[] {
+	return modes.map((model) => `${PROVIDER_ID}/${model.id}`);
+}
+
+export const resolveCloudMode: SubagentHost["resolveModel"] = (input, registry) => {
+	const modes = cloudModes(registry);
 	const id = input.startsWith(`${PROVIDER_ID}/`) ? input.slice(PROVIDER_ID.length + 1) : input;
 	const found = modes.find((model) => model.id === id);
-	return found ?? `Choose a CloudThinker Agent mode: ${modes.map((model) => `${PROVIDER_ID}/${model.id}`).join(", ") || "unavailable; check authentication and restart"}.`;
+	return found ?? `Choose a CloudThinker Agent mode: ${modeChoices(modes).join(", ") || "unavailable; check authentication and restart"}.`;
 };
 
 function requireCloudMode(model: Pick<NonNullable<CreateAgentSessionOptions["model"]>, "provider" | "id"> | undefined, ctx: ExtensionContext) {
@@ -192,7 +200,7 @@ export const subagentHost: SubagentHost = {
 	loaderOptions: childLoaderOptions,
 	createSession: createCloudChild,
 	conversationId: (session) => findLinkedSession(session.sessionManager.getEntries())?.conversation_id,
-	modelChoices: (ctx) => ctx.modelRegistry.getAll().filter((model) => model.provider === PROVIDER_ID).map((model) => `${PROVIDER_ID}/${model.id}`),
+	modelChoices: (ctx) => modeChoices(cloudModes(ctx.modelRegistry)),
 	taskRows: (rows, active) => tasksPane.setGroup("Agents", rows, active),
 	tasks: () => tasksPane.commands.map((task) => ({ id: task.id, label: task.command, stats: formatClock(Date.now() - task.startedAt) })),
 	openTask: (id, ui) => tasksPane.open(id, ui),
@@ -226,7 +234,7 @@ export default function bundledSubagents(pi: ExtensionAPI): ReturnType<typeof su
 		delete agent.thinking;
 	}
 	pi.on("before_agent_start", (event, ctx) => ({
-		systemPrompt: `${event.systemPrompt}\n\n${subagentGuidance(ctx.modelRegistry.getAll().filter((model) => model.provider === PROVIDER_ID))}`,
+		systemPrompt: `${event.systemPrompt}\n\n${subagentGuidance(cloudModes(ctx.modelRegistry))}`,
 	}));
 	tasksPane.managed = true;
 	return subagents(new Proxy(pi, {
