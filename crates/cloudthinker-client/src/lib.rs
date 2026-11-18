@@ -12,6 +12,7 @@ mod cloud;
 pub use cloud::{CloudExecutionInput, CloudOutcome, CloudResult};
 pub mod cyber_run_guard;
 mod discovery;
+pub mod doctor;
 mod error;
 mod outposts;
 pub use outposts::OutpostStatus;
@@ -78,7 +79,8 @@ pub use client::{
 };
 pub use client::{ConversationTrace, TRACE_MAX_MESSAGES};
 pub use client::{
-    DoctorCause, DoctorCheck, DoctorCoverage, DoctorReport, DoctorStatus, OriginSource, diagnose,
+    ConnectionEvidence, Diagnosis, DoctorCoverage, DoctorWire, DoctorWireCheck, OriginSource,
+    ServerCheck, ServerEvidence, diagnose,
 };
 pub use client::{
     LocalReviewContext, LocalReviewContextRequest, LocalReviewFindingIn, LocalReviewSeverity,

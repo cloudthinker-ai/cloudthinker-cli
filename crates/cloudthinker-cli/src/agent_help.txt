@@ -12,6 +12,8 @@ Options:
   -n, --name <name>         Name this session
   --model <mode>            Agent mode: light, pro, or ultra
   --list-models             List the agent modes your workspace offers
+  --add-dir <path>          Let the agent read and edit this extra folder (repeat for more)
+  --max-turns <n>           With -p, stop after n model turns and exit with an error
   --tools <names>           Allow only these local tools (comma-separated)
   --exclude-tools <names>   Turn off these local tools (comma-separated)
   --tui-mode <mode>         fullscreen (default) or regular

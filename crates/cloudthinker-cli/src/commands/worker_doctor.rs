@@ -2,14 +2,16 @@ use std::path::Path;
 use std::process::Command;
 
 use cloudthinker_client::auth::worker_store::{WORKER_TOKEN_ENV, WorkerStore};
+use cloudthinker_client::doctor::{Area, Check, Fix, Report, Status};
 use cloudthinker_client::worker_api::{ProbeFailure, WorkerClient, probe_origin};
-use cloudthinker_client::{CtError, UpdateCache, origin_of, update_cache_path};
+use cloudthinker_client::{CtError, UpdateCache, display_origin, origin_of, update_cache_path};
 use serde::Serialize;
 use uuid::Uuid;
 
 use super::worker::DoctorArgs;
 use super::worker_service;
-use crate::engine::{exit::ExitCode, output};
+use crate::engine::exit::{self, ExitCode};
+use crate::engine::output;
 use crate::worker::container::{self, Detection, Runtime};
 use crate::worker::sandbox::{self, SandboxContext, Support};
 use crate::worker::worktree::WORKTREES_DIR;
@@ -21,86 +23,85 @@ const MIN_GIT: (u32, u32) = (2, 38);
 const STATE_SCAN_LIMIT: usize = 2000;
 const EXPIRY_WARN_DAYS: i64 = 7;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum Status {
-    Pass,
-    Warn,
-    Fail,
-    Skipped,
+fn row(id: &'static str, status: Status, detail: impl Into<String>) -> Check {
+    let label = match id {
+        "cli_version" => "CLI",
+        "https" => "HTTPS",
+        "clock_skew" => "Clock",
+        "credential" => "Credential",
+        "workdir" => "Folder",
+        "state_dir" => "State",
+        "service" => "Service",
+        "git" => "Git",
+        "sandbox" => "Sandbox",
+        "container" => "Container",
+        other => other,
+    };
+    Check::new(Area::Worker, id, status, detail).label(label)
 }
 
-impl Status {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Pass => "ok",
-            Self::Warn => "WARN",
-            Self::Fail => "FAIL",
-            Self::Skipped => "skip",
-        }
-    }
+fn pass(id: &'static str, detail: impl Into<String>) -> Check {
+    row(id, Status::Pass, detail)
 }
 
-#[derive(Debug, Serialize)]
-struct Check {
+fn skipped(id: &'static str, detail: impl Into<String>) -> Check {
+    row(id, Status::Skipped, detail)
+}
+
+#[derive(Serialize)]
+struct WireCheck {
     id: &'static str,
-    status: Status,
+    status: &'static str,
     detail: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     fix: Option<String>,
 }
 
-impl Check {
-    fn new(id: &'static str, status: Status, detail: impl Into<String>) -> Self {
-        Self {
-            id,
-            status,
-            detail: detail.into(),
-            fix: None,
-        }
-    }
-
-    fn pass(id: &'static str, detail: impl Into<String>) -> Self {
-        Self::new(id, Status::Pass, detail)
-    }
-
-    fn skipped(id: &'static str, detail: impl Into<String>) -> Self {
-        Self::new(id, Status::Skipped, detail)
-    }
-
-    fn with_fix(mut self, fix: impl Into<String>) -> Self {
-        self.fix = Some(fix.into());
-        self
-    }
-}
-
-#[derive(Debug, Serialize)]
-struct Report {
+#[derive(Serialize)]
+struct Wire {
     cli_version: &'static str,
     ok: bool,
-    checks: Vec<Check>,
+    checks: Vec<WireCheck>,
+}
+
+fn wire(report: Report) -> Wire {
+    Wire {
+        cli_version: CLI_VERSION,
+        ok: report
+            .checks
+            .iter()
+            .all(|check| check.status != Status::Fail),
+        checks: report
+            .checks
+            .into_iter()
+            .map(|check| WireCheck {
+                id: check.id,
+                status: match check.status {
+                    Status::Pass => "pass",
+                    Status::Warn => "warn",
+                    Status::Fail | Status::Unknown => "fail",
+                    Status::Skipped => "skipped",
+                },
+                fix: check.fix_text(),
+                detail: check.summary,
+            })
+            .collect(),
+    }
 }
 
 pub async fn run(base_url: &str, args: DoctorArgs) -> ExitCode {
-    let checks = collect(base_url, &args).await;
-    let ok = checks.iter().all(|check| check.status != Status::Fail);
-    let report = Report {
-        cli_version: CLI_VERSION,
-        ok,
-        checks,
-    };
-    let printed = if args.json() {
-        output::emit_json(&report)
-    } else {
-        output::print_lines(&render(&report))
-    };
-    match printed {
+    let mut report = Report::new("worker doctor", CLI_VERSION);
+    report.server = origin_of(base_url)
+        .ok()
+        .map(|origin| display_origin(&origin).to_string());
+    report.checks = collect(base_url, &args).await;
+    let code = exit::for_doctor(report.outcome());
+    match output::emit_doctor(report, args.json(), wire) {
+        Ok(()) => code,
         Err(error) => {
             output::eprintln_error(&error);
             ExitCode::JobFailed
         }
-        Ok(()) if ok => ExitCode::Ok,
-        Ok(()) => ExitCode::JobFailed,
     }
 }
 
@@ -130,13 +131,15 @@ fn version_check() -> Check {
         .and_then(|cache| cache.latest_version);
     let note = "The server publishes no minimum or recommended version yet.";
     match latest {
-        Some(latest) if numeric_version(&latest) > numeric_version(CLI_VERSION) => Check::new(
+        Some(latest) if numeric_version(&latest) > numeric_version(CLI_VERSION) => row(
             "cli_version",
             Status::Warn,
             format!("CLI {CLI_VERSION}; {latest} is available."),
         )
-        .with_fix("Run `cloudthinker update`, then restart the worker."),
-        _ => Check::pass("cli_version", format!("CLI {CLI_VERSION}. {note}")),
+        .fix(Fix::Step(
+            "Run `cloudthinker update`, then restart the worker.".into(),
+        )),
+        _ => pass("cli_version", format!("CLI {CLI_VERSION}. {note}")),
     }
 }
 
@@ -165,13 +168,14 @@ fn env_note() -> String {
 }
 
 async fn network_checks(base_url: &str) -> (Check, Check) {
-    let skipped_skew = |why: &str| Check::skipped("clock_skew", format!("Not measured: {why}."));
+    let skipped_skew = |why: &str| skipped("clock_skew", format!("Not measured: {why}."));
     let origin = match origin_of(base_url) {
         Ok(origin) => origin,
         Err(error) => {
             return (
-                Check::new("https", Status::Fail, error.to_string())
-                    .with_fix("Pass a full URL such as https://app.cloudthinker.io with --url."),
+                row("https", Status::Fail, error.to_string()).fix(Fix::Step(
+                    "Pass a full URL such as https://app.cloudthinker.io with --url.".into(),
+                )),
                 skipped_skew("the server URL is invalid"),
             );
         }
@@ -181,8 +185,8 @@ async fn network_checks(base_url: &str) -> (Check, Check) {
         || origin.starts_with("http://[::1]");
     if !origin.starts_with("https://") && !loopback {
         return (
-            Check::new("https", Status::Fail, "The server URL does not use HTTPS.")
-                .with_fix("Use an https:// URL with --url."),
+            row("https", Status::Fail, "The server URL does not use HTTPS.")
+                .fix(Fix::Step("Use an https:// URL with --url.".into())),
             skipped_skew("the server URL does not use HTTPS"),
         );
     }
@@ -195,10 +199,11 @@ async fn network_checks(base_url: &str) -> (Check, Check) {
                 env_note()
             );
             let network = if probe.status >= 500 {
-                Check::new("https", Status::Warn, reached)
-                    .with_fix("Wait a few minutes and run the check again; the server is failing.")
+                row("https", Status::Warn, reached).fix(Fix::Step(
+                    "Wait a few minutes and run the check again; the server is failing.".into(),
+                ))
             } else {
-                Check::pass("https", reached)
+                pass("https", reached)
             };
             (network, skew_check(probe.skew))
         }
@@ -232,12 +237,12 @@ fn probe_failure_check(failure: ProbeFailure, origin: &str) -> Check {
             "Check the network and the --url value.",
         ),
     };
-    Check::new("https", Status::Fail, format!("{detail} ({origin})")).with_fix(fix)
+    row("https", Status::Fail, format!("{detail} ({origin})")).fix(Fix::Step(fix.into()))
 }
 
 fn skew_check(skew: Option<chrono::Duration>) -> Check {
     let Some(skew) = skew else {
-        return Check::skipped("clock_skew", "The server sent no Date header.");
+        return skipped("clock_skew", "The server sent no Date header.");
     };
     let seconds = skew.num_seconds();
     let direction = if seconds >= 0 { "behind" } else { "ahead of" };
@@ -247,11 +252,11 @@ fn skew_check(skew: Option<chrono::Duration>) -> Check {
     );
     let fix = "Turn on network time sync, for example `sudo timedatectl set-ntp true`.";
     if seconds.abs() > SKEW_FAIL_SECONDS {
-        Check::new("clock_skew", Status::Fail, detail).with_fix(fix)
+        row("clock_skew", Status::Fail, detail).fix(Fix::Step(fix.into()))
     } else if seconds.abs() > SKEW_WARN_SECONDS {
-        Check::new("clock_skew", Status::Warn, detail).with_fix(fix)
+        row("clock_skew", Status::Warn, detail).fix(Fix::Step(fix.into()))
     } else {
-        Check::pass("clock_skew", detail)
+        pass("clock_skew", detail)
     }
 }
 
@@ -297,17 +302,18 @@ async fn credential_check(base_url: &str, credential: &StoredCredential, reachab
     let token = match credential {
         StoredCredential::Found { token, .. } => token,
         StoredCredential::Missing(detail) => {
-            return Check::new("credential", Status::Fail, detail.clone()).with_fix(
-                "Run `cloudthinker worker outpost create <name>`, or pass --outpost to pick one.",
-            );
+            return row("credential", Status::Fail, detail.clone()).fix(Fix::Step(
+                "Run `cloudthinker worker outpost create <name>`, or pass --outpost to pick one."
+                    .into(),
+            ));
         }
     };
     if !reachable {
-        return Check::skipped("credential", "Not checked: the server is unreachable.");
+        return skipped("credential", "Not checked: the server is unreachable.");
     }
     let client = match WorkerClient::new(base_url, token, CLI_VERSION) {
         Ok(client) => client,
-        Err(error) => return Check::new("credential", Status::Fail, error.to_string()),
+        Err(error) => return row("credential", Status::Fail, error.to_string()),
     };
     match client.credential_status().await {
         Ok(status) => {
@@ -318,23 +324,21 @@ async fn credential_check(base_url: &str, credential: &StoredCredential, reachab
                 expires_at.format("%Y-%m-%d")
             );
             if days < EXPIRY_WARN_DAYS {
-                Check::new("credential", Status::Warn, detail).with_fix(
-                    "Start the worker to renew it, or ask an admin for a new registration reference.",
-                )
+                row("credential", Status::Warn, detail).fix(Fix::Step(
+                    "Start the worker to renew it, or ask an admin for a new registration reference.".into()))
             } else {
-                Check::pass("credential", detail)
+                pass("credential", detail)
             }
         }
-        Err(CtError::Auth(_)) => Check::new(
+        Err(CtError::Auth(_)) => row(
             "credential",
             Status::Fail,
             "The server rejected the credential: it is expired or revoked.",
         )
-        .with_fix(
-            "Ask a workspace admin for a new registration reference, then run `cloudthinker worker start --register <reference> --workdir <folder>`.",
-        ),
-        Err(error) => Check::new("credential", Status::Fail, error.to_string())
-            .with_fix("Run the check again when the network is stable."),
+        .fix(Fix::Step(
+            "Ask a workspace admin for a new registration reference, then run `cloudthinker worker start --register <reference> --workdir <folder>`.".into())),
+        Err(error) => row("credential", Status::Fail, error.to_string())
+            .fix(Fix::Step("Run the check again when the network is stable.".into())),
     }
 }
 
@@ -344,52 +348,55 @@ fn workdir_check(base_url: &str, workdir: &Path) -> Check {
     let path = match workdir.canonicalize() {
         Ok(path) if path.is_dir() => path,
         _ => {
-            return Check::new(
+            return row(
                 "workdir",
                 Status::Fail,
                 format!("{} is not an existing directory.", workdir.display()),
             )
-            .with_fix("Pass an existing folder with --workdir.");
+            .fix(Fix::Step("Pass an existing folder with --workdir.".into()));
         }
     };
     if access(&path, Access::READ_OK | Access::WRITE_OK | Access::EXEC_OK).is_err() {
-        return Check::new(
+        return row(
             "workdir",
             Status::Fail,
             "This user cannot read, write, and enter the folder.",
         )
-        .with_fix("Run `chmod u+rwx` on the folder, or serve a folder you own.");
+        .fix(Fix::Step(
+            "Run `chmod u+rwx` on the folder, or serve a folder you own.".into(),
+        ));
     }
     let Ok(state_root) = WorkerStore::default_state_root(base_url) else {
-        return Check::pass("workdir", "The folder is readable and writable.");
+        return pass("workdir", "The folder is readable and writable.");
     };
     match WorkdirIdentity::saved(&path, &state_root) {
-        Ok(SavedIdentity::Matches) => Check::pass(
+        Ok(SavedIdentity::Matches) => pass(
             "workdir",
             "The folder is readable and writable, and matches its saved identity.",
         ),
-        Ok(SavedIdentity::Absent) => Check::pass(
+        Ok(SavedIdentity::Absent) => pass(
             "workdir",
             "The folder is readable and writable. The worker saves its identity at first start.",
         ),
-        Ok(SavedIdentity::Replaced) => Check::new(
+        Ok(SavedIdentity::Replaced) => row(
             "workdir",
             Status::Fail,
             "The folder was replaced since a worker last served it.",
         )
-        .with_fix(
-            "Run `cloudthinker worker start` once with --reset-folder to serve the new folder.",
-        ),
-        Err(error) => Check::new("workdir", Status::Fail, error.to_string()),
+        .fix(Fix::Step(
+            "Run `cloudthinker worker start` once with --reset-folder to serve the new folder."
+                .into(),
+        )),
+        Err(error) => row("workdir", Status::Fail, error.to_string()),
     }
 }
 
 fn state_dir_check(base_url: &str) -> Check {
     let Ok(root) = WorkerStore::default_state_root(base_url) else {
-        return Check::skipped("state_dir", "The worker state directory is unavailable.");
+        return skipped("state_dir", "The worker state directory is unavailable.");
     };
     if !root.is_dir() {
-        return Check::skipped(
+        return skipped(
             "state_dir",
             "No worker state yet; the worker creates it with safe modes.",
         );
@@ -398,12 +405,12 @@ fn state_dir_check(base_url: &str) -> Check {
     let mut seen = 0;
     scan_state(&root, &root, &mut loose, &mut seen);
     if loose.is_empty() {
-        return Check::pass(
+        return pass(
             "state_dir",
             "State directories are 0700 and files are 0600.",
         );
     }
-    Check::new(
+    row(
         "state_dir",
         Status::Fail,
         format!(
@@ -412,7 +419,10 @@ fn state_dir_check(base_url: &str) -> Check {
             loose[0]
         ),
     )
-    .with_fix(format!("Run `chmod -R go-rwx {}`.", root.display()))
+    .fix(Fix::Step(format!(
+        "Run `chmod -R go-rwx {}`.",
+        root.display()
+    )))
 }
 
 fn scan_state(root: &Path, dir: &Path, loose: &mut Vec<String>, seen: &mut usize) {
@@ -449,22 +459,24 @@ fn scan_state(root: &Path, dir: &Path, loose: &mut Vec<String>, seen: &mut usize
 
 fn service_check(base_url: &str, credential: &StoredCredential, workdir: &Path) -> Check {
     let StoredCredential::Found { target_id, .. } = credential else {
-        return Check::skipped("service", "Not checked: no outpost credential.");
+        return skipped("service", "Not checked: no outpost credential.");
     };
     let health = match worker_service::health(base_url, *target_id, workdir) {
         Ok(health) => health,
         Err(error) => {
-            return Check::skipped("service", format!("Not checked: {error}."));
+            return skipped("service", format!("Not checked: {error}."));
         }
     };
     match health.state {
-        "absent" => Check::skipped(
+        "absent" => skipped(
             "service",
             "No service is installed. The worker stops when its terminal closes.",
         )
-        .with_fix("Run `cloudthinker worker service install` to keep it running."),
+        .fix(Fix::Step(
+            "Run `cloudthinker worker service install` to keep it running.".into(),
+        )),
         "active" => match health.linger {
-            Some(false) => Check::new(
+            Some(false) => row(
                 "service",
                 Status::Warn,
                 format!(
@@ -472,25 +484,27 @@ fn service_check(base_url: &str, credential: &StoredCredential, workdir: &Path) 
                     health.manager
                 ),
             )
-            .with_fix("Run `sudo loginctl enable-linger $USER`."),
-            _ => Check::pass(
+            .fix(Fix::Step("Run `sudo loginctl enable-linger $USER`.".into())),
+            _ => pass(
                 "service",
                 format!("The {} service is active.", health.manager),
             ),
         },
-        state => Check::new(
+        state => row(
             "service",
             Status::Warn,
             format!("The {} service is {state}.", health.manager),
         )
-        .with_fix("Run `cloudthinker worker service start`, then `worker service status`."),
+        .fix(Fix::Step(
+            "Run `cloudthinker worker service start`, then `worker service status`.".into(),
+        )),
     }
 }
 
 fn git_check() -> Check {
     let fix = "Install git 2.38 or newer. Worktree mode needs it.";
     let Ok(output) = Command::new("git").arg("--version").output() else {
-        return Check::new("git", Status::Warn, "git is not installed.").with_fix(fix);
+        return row("git", Status::Warn, "git is not installed.").fix(Fix::Step(fix.into()));
     };
     let text = String::from_utf8_lossy(&output.stdout).trim().to_owned();
     let version = text
@@ -504,9 +518,9 @@ fn git_check() -> Check {
         })
         .unwrap_or((0, 0));
     if version >= MIN_GIT {
-        Check::pass("git", text)
+        pass("git", text)
     } else {
-        Check::new("git", Status::Warn, format!("{text} is too old.")).with_fix(fix)
+        row("git", Status::Warn, format!("{text} is too old.")).fix(Fix::Step(fix.into()))
     }
 }
 
@@ -522,11 +536,11 @@ async fn sandbox_support(base_url: &str, workdir: &Path) -> Support {
 
 fn sandbox_check(support: Support) -> Check {
     match support {
-        Support::Ready => Check::pass(
+        Support::Ready => pass(
             "sandbox",
             "Sandbox (Loupe): Landlock and the UNIX socket filter are enforced, so Loupe can run merge-request code here.",
         ),
-        Support::Unavailable(reason) => Check::new(
+        Support::Unavailable(reason) => row(
             "sandbox",
             Status::Warn,
             format!(
@@ -534,9 +548,8 @@ fn sandbox_check(support: Support) -> Check {
                 reason.trim_end_matches('.')
             ),
         )
-        .with_fix(
-            "Serve a project folder, not your home folder, from Linux 6.2 or newer with Landlock enabled (`landlock` in /sys/kernel/security/lsm). macOS and Windows cannot run Loupe.",
-        ),
+        .fix(Fix::Step(
+            "Serve a project folder, not your home folder, from Linux 6.2 or newer with Landlock enabled (`landlock` in /sys/kernel/security/lsm). macOS and Windows cannot run Loupe.".into())),
     }
 }
 
@@ -544,14 +557,13 @@ async fn container_check(detection: Detection) -> Check {
     let runtime = match detection {
         Detection::Ready(runtime) => runtime,
         Detection::Unavailable(reason) => {
-            return Check::new(
+            return row(
                 "container",
                 Status::Warn,
                 format!("Container isolation: unavailable, {reason}."),
             )
-            .with_fix(
-                "Install Docker and start it, then restart the worker. Only Workers set to container isolation need it.",
-            );
+            .fix(Fix::Step(
+                "Install Docker and start it, then restart the worker. Only Workers set to container isolation need it.".into()));
         }
     };
     let mut missing = Vec::new();
@@ -579,7 +591,7 @@ async fn container_check(detection: Detection) -> Check {
         runtime.version.clone()
     };
     if missing.is_empty() {
-        return Check::pass(
+        return pass(
             "container",
             format!("Container isolation: {version}, daemon reachable, images present."),
         );
@@ -589,7 +601,7 @@ async fn container_check(detection: Detection) -> Check {
         .map(|image| format!("`{} pull {image}`", container::RUNTIME))
         .collect::<Vec<_>>()
         .join(", ");
-    Check::new(
+    row(
         "container",
         Status::Warn,
         format!(
@@ -597,29 +609,7 @@ async fn container_check(detection: Detection) -> Check {
             missing.join(", ")
         ),
     )
-    .with_fix(format!("To download them now, run {pulls}."))
-}
-
-fn render(report: &Report) -> Vec<String> {
-    let mut lines = Vec::new();
-    for check in &report.checks {
-        lines.push(format!(
-            "{:<5} {:<18} {}",
-            check.status.label(),
-            check.id,
-            check.detail
-        ));
-        if let Some(fix) = &check.fix {
-            lines.push(format!("{:<5} {:<18} fix: {fix}", "", ""));
-        }
-    }
-    lines.push(if report.ok {
-        "All required checks passed.".to_owned()
-    } else {
-        "Some checks failed. Apply each fix, then run `cloudthinker worker doctor` again."
-            .to_owned()
-    });
-    lines
+    .fix(Fix::Step(format!("To download them now, run {pulls}.")))
 }
 
 #[cfg(test)]
@@ -666,25 +656,5 @@ mod tests {
         let (mut loose, mut seen) = (Vec::new(), 0);
         scan_state(root, root, &mut loose, &mut seen);
         assert_eq!(loose, vec!["outpost/worktrees/record.json".to_owned()]);
-    }
-
-    #[test]
-    fn report_lists_every_check_with_a_fix_for_each_problem() {
-        let report = Report {
-            cli_version: CLI_VERSION,
-            ok: false,
-            checks: vec![
-                Check::pass("git", "git version 2.43.0"),
-                Check::new("clock_skew", Status::Fail, "45 s").with_fix("Sync the clock."),
-            ],
-        };
-        let value = serde_json::to_value(&report).unwrap();
-        assert_eq!(value["ok"], false);
-        assert_eq!(value["checks"][0]["status"], "pass");
-        assert!(value["checks"][0].get("fix").is_none());
-        assert_eq!(value["checks"][1]["fix"], "Sync the clock.");
-        let text = render(&report).join("\n");
-        assert!(text.contains("fix: Sync the clock."));
-        assert!(text.contains("Some checks failed"));
     }
 }

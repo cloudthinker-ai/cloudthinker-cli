@@ -61,7 +61,8 @@ pub use cyber::{
 #[cfg(test)]
 use cyber::{observation_batches, validate_observation_ids};
 pub use doctor::{
-    DoctorCause, DoctorCheck, DoctorCoverage, DoctorReport, DoctorStatus, OriginSource, diagnose,
+    ConnectionEvidence, Diagnosis, DoctorCoverage, DoctorWire, DoctorWireCheck, OriginSource,
+    ServerCheck, ServerEvidence, diagnose,
 };
 pub use incidents::{IncidentStatus, IncidentView};
 pub use memory::{CyberMemoryContextSource, CyberMemoryFile, CyberMemorySnapshot};

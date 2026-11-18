@@ -1,235 +1,166 @@
-use cloudthinker_client::{DoctorCheck, DoctorReport, DoctorStatus, OriginSource, display_origin};
+use cloudthinker_client::doctor::{Area, Check, Fix, Report, Status};
 use owo_colors::{AnsiColors, OwoColorize};
 use serde::Serialize;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use super::worker_console::plural;
-use super::{emit_json, print_lines, terminal_text, truncate};
-use crate::engine::exit::ExitCode;
+use super::{emit_json, print_lines, terminal_text};
 
-const NAME_WIDTH: usize = 32;
-const MARK_GUTTER: usize = "  ? ".len();
-const LABEL_GAP: &str = "  ";
+const WIDTH: usize = 80;
 
-#[derive(Serialize)]
-struct DoctorEnvelope {
-    #[serde(flatten)]
-    report: DoctorReport,
-    exit_code: u8,
+fn columns(text: &str) -> usize {
+    text.width()
 }
 
-pub fn emit_doctor(
-    mut report: DoctorReport,
-    exit_code: ExitCode,
-    json: bool,
-) -> Result<(), String> {
-    report.cli_version = terminal_text(&report.cli_version);
-    report.origin = report.origin.as_deref().map(terminal_text);
-    for check in &mut report.checks {
-        check.summary = terminal_text(&check.summary);
-        check.action = check.action.as_deref().map(terminal_text);
-        check.connection_name = check.connection_name.as_deref().map(terminal_text);
+fn fit(text: &str, room: usize) -> String {
+    if columns(text) <= room {
+        return text.to_string();
     }
+    let mut used = 0;
+    let mut kept = String::new();
+    for character in text.chars() {
+        let size = character.width().unwrap_or(0);
+        if used + size + 1 > room {
+            break;
+        }
+        used += size;
+        kept.push(character);
+    }
+    format!("{}…", kept.trim_end())
+}
+
+pub fn emit_doctor<E, W: Serialize>(
+    mut report: Report<E>,
+    json: bool,
+    wire: impl FnOnce(Report<E>) -> W,
+) -> Result<(), String> {
+    report.map_text(terminal_text);
     if json {
-        return emit_json(&DoctorEnvelope {
-            report,
-            exit_code: exit_code as u8,
-        });
+        return emit_json(&wire(report));
     }
     let color = supports_color::on(supports_color::Stream::Stdout).is_some();
     print_lines(&doctor_lines(&report, color))
 }
 
-fn doctor_lines(report: &DoctorReport, color: bool) -> Vec<String> {
+fn doctor_lines<E>(report: &Report<E>, color: bool) -> Vec<String> {
     let paint = Paint(color);
-    let (connections, checks): (Vec<&DoctorCheck>, Vec<&DoctorCheck>) = report
+    let mut rows: Vec<&Check<E>> = report
         .checks
         .iter()
-        .partition(|check| check.connection_id.is_some());
-    let label_width = checks
-        .iter()
-        .map(|check| label(check.id).chars().count())
-        .max()
-        .unwrap_or(0);
-    let indent = " ".repeat(MARK_GUTTER + label_width + LABEL_GAP.len());
-    let mut last_skip: Option<&str> = None;
-    let mut lines = Vec::new();
-    for check in &checks {
-        let http = check
-            .http_status
-            .map_or_else(String::new, |status| format!(" (HTTP {status})"));
-        let repeated_skip =
-            check.status == DoctorStatus::Skipped && last_skip == Some(check.summary.as_str());
-        last_skip = (check.status == DoctorStatus::Skipped).then_some(check.summary.as_str());
-        let value = if check.id == "configuration" && check.status == DoctorStatus::Healthy {
-            format!(
-                "{} {}",
-                report
-                    .origin
-                    .as_deref()
-                    .map_or(check.summary.as_str(), display_origin),
-                paint.dim(source_label(report.origin_source))
-            )
-        } else if repeated_skip {
-            paint.dim("Skipped for the same reason")
-        } else {
-            check.summary.clone()
-        };
-        lines.push(format!(
-            "  {} {}{LABEL_GAP}{value}{}",
-            paint.mark(check.status),
-            paint.dim_unless(
-                check.status != DoctorStatus::Skipped,
-                &format!("{:<label_width$}", label(check.id))
-            ),
-            paint.dim(&http),
-        ));
-        if let Some(action) = &check.action {
-            lines.push(format!("{indent}{} {action}", paint.arrow()));
-        }
-        if check.id == "connections" {
-            lines.extend(connection_lines(&connections, &indent, paint));
-        }
-    }
-    lines.push(String::new());
-    lines.push(verdict(report, &checks, paint));
-    if report.connections.checked > 0 {
-        lines.push(
-            paint.dim("Connections show their last recorded test. Doctor starts no new tests."),
+        .filter(|check| matches!(check.status, Status::Fail | Status::Unknown | Status::Warn))
+        .filter(|check| check.subject.is_some() || !has_items(report, check.area))
+        .collect();
+    rows.sort_by_key(|check| check.status);
+    if rows.is_empty() {
+        let line = fit(
+            &format!("{} · {} · all checks passed", report.title, report.version),
+            WIDTH - 2,
         );
+        return vec![format!("{} {line}", paint.mark(Status::Pass))];
     }
-    lines
-}
-
-fn connection_lines(connections: &[&DoctorCheck], indent: &str, paint: Paint) -> Vec<String> {
-    let mut problems: Vec<&DoctorCheck> = connections
-        .iter()
-        .copied()
-        .filter(|check| check.status != DoctorStatus::Healthy)
-        .collect();
-    problems.sort_by(|a, b| {
-        (severity(a.status), a.connection_name.as_deref())
-            .cmp(&(severity(b.status), b.connection_name.as_deref()))
-    });
-    let names: Vec<String> = problems
-        .iter()
-        .map(|check| {
-            truncate(
-                check.connection_name.as_deref().unwrap_or("Connection"),
-                NAME_WIDTH,
-            )
-        })
-        .collect();
-    let width = names
-        .iter()
-        .map(|name| name.chars().count())
-        .max()
-        .unwrap_or(0);
-    let mut lines = Vec::new();
-    for (check, name) in problems.iter().zip(&names) {
-        let recorded = match (check.connection_status, check.test_phase) {
-            (Some(status), Some(phase)) => paint.dim(&format!(
-                " (status {status}, test {})",
-                phase.replace('_', " ")
-            )),
-            _ => String::new(),
-        };
-        let pad = width - name.chars().count();
+    let mut header = format!("{} · {}", report.title, report.version);
+    if let Some(server) = &report.server {
+        header.push_str(&format!(" · {server}"));
+    }
+    let mut lines = vec![paint.bold(&fit(&header, WIDTH))];
+    let mut healthy = healthy_names(report);
+    if let Some(tally) = &report.tally {
+        healthy.push(tally.clone());
+    }
+    if !healthy.is_empty() {
         lines.push(format!(
-            "{indent}{} {name}{} {}{recorded}",
-            paint.mark(check.status),
-            " ".repeat(pad),
-            check.summary,
+            "{} {}",
+            paint.mark(Status::Pass),
+            healthy.join(" · ")
         ));
     }
-    let mut actions: Vec<&str> = problems
+    let names: Vec<String> = rows
         .iter()
-        .filter_map(|check| check.action.as_deref())
+        .map(|check| fit(check.subject.as_deref().unwrap_or(check.label), 24))
         .collect();
-    actions.sort_unstable();
-    actions.dedup();
-    lines.extend(
-        actions
-            .into_iter()
-            .map(|action| format!("{indent}{} {action}", paint.arrow())),
-    );
+    let width = names.iter().map(|name| columns(name)).max().unwrap_or(0);
+    for (check, name) in rows.iter().zip(names) {
+        let head = format!(
+            "{} {name}{}  ",
+            paint.mark(check.status),
+            " ".repeat(width - columns(&name))
+        );
+        let fix = check
+            .fix
+            .as_ref()
+            .and_then(Fix::command)
+            .map(|command| format!(" · {command}"))
+            .unwrap_or_default();
+        let lead = width + 4;
+        let room = WIDTH.saturating_sub(lead + columns(&fix));
+        let fix = fit(&fix, WIDTH.saturating_sub(lead));
+        lines.push(format!(
+            "{head}{}{}",
+            fit(&check.summary, room),
+            paint.dim(&fix)
+        ));
+    }
     lines
 }
 
-fn verdict(report: &DoctorReport, checks: &[&DoctorCheck], paint: Paint) -> String {
-    let count = |wanted: &[DoctorStatus]| {
-        checks
-            .iter()
-            .filter(|check| wanted.contains(&check.status))
-            .count()
-    };
-    let problems = count(&[DoctorStatus::Error, DoctorStatus::Unknown]);
-    let warnings = count(&[DoctorStatus::Warn]);
-    let skipped = match count(&[DoctorStatus::Skipped]) {
-        0 => String::new(),
-        n => format!(" {} skipped.", plural(n, "check", "checks")),
-    };
-    match report.overall {
-        DoctorStatus::Healthy | DoctorStatus::Skipped if skipped.is_empty() => {
-            paint.bold("All checks passed.")
+fn has_items<E>(report: &Report<E>, area: Area) -> bool {
+    report
+        .checks
+        .iter()
+        .any(|check| check.area == area && check.subject.is_some())
+}
+
+fn healthy_names<E>(report: &Report<E>) -> Vec<String> {
+    let checks: Vec<&Check<E>> = report
+        .checks
+        .iter()
+        .filter(|check| check.subject.is_none() && check.status != Status::Skipped)
+        .collect();
+    let mut areas: Vec<Area> = Vec::new();
+    for check in &checks {
+        if !areas.contains(&check.area) {
+            areas.push(check.area);
         }
-        DoctorStatus::Healthy | DoctorStatus::Skipped => {
-            paint.bold(&format!("All checks that ran passed.{skipped}"))
+    }
+    if areas.len() < 2 {
+        let mut names: Vec<String> = Vec::new();
+        for check in &checks {
+            let clean = checks
+                .iter()
+                .filter(|other| other.label == check.label)
+                .all(|other| other.status == Status::Pass);
+            if clean && !names.iter().any(|name| name == check.label) {
+                names.push(check.label.to_string());
+            }
         }
-        DoctorStatus::Warn => paint.bold(&format!(
-            "Passed with {}.{skipped}",
-            plural(warnings, "warning", "warnings")
-        )),
-        DoctorStatus::Error | DoctorStatus::Unknown => paint.bold(&format!(
-            "{} attention. Apply each fix, then run `cloudthinker doctor` again.",
-            plural(problems, "check needs", "checks need")
-        )),
+        return names;
     }
-}
-
-fn label(id: &str) -> &str {
-    match id {
-        "cli" => "CLI",
-        "configuration" => "Server",
-        "credentials" => "Login",
-        "api" => "API",
-        "identity" => "Account",
-        "workspace" => "Workspace",
-        "connections" => "Connections",
-        "release" => "Release",
-        other => other,
-    }
-}
-
-fn source_label(source: OriginSource) -> &'static str {
-    match source {
-        OriginSource::Flag => "(from --url)",
-        OriginSource::Environment => "(from CLOUDTHINKER_URL)",
-        OriginSource::Saved => "(saved by login)",
-        OriginSource::BuiltIn => "(default)",
-    }
-}
-
-fn severity(status: DoctorStatus) -> u8 {
-    match status {
-        DoctorStatus::Error => 0,
-        DoctorStatus::Unknown => 1,
-        DoctorStatus::Warn => 2,
-        DoctorStatus::Skipped => 3,
-        DoctorStatus::Healthy => 4,
-    }
+    areas
+        .into_iter()
+        .filter(|area| report.tally.is_none() || *area != Area::Connections)
+        .filter(|area| {
+            checks
+                .iter()
+                .filter(|check| check.area == *area)
+                .all(|check| check.status == Status::Pass)
+                && !report.checks.iter().any(|check| {
+                    check.area == *area && check.subject.is_some() && check.status != Status::Pass
+                })
+        })
+        .map(|area| area.label().to_string())
+        .collect()
 }
 
 #[derive(Clone, Copy)]
 struct Paint(bool);
 
 impl Paint {
-    fn mark(self, status: DoctorStatus) -> String {
+    fn mark(self, status: Status) -> String {
         let (symbol, color) = match status {
-            DoctorStatus::Healthy => ("✓", AnsiColors::Green),
-            DoctorStatus::Warn => ("!", AnsiColors::Yellow),
-            DoctorStatus::Error => ("✗", AnsiColors::Red),
-            DoctorStatus::Unknown => ("?", AnsiColors::Yellow),
-            DoctorStatus::Skipped => ("-", AnsiColors::BrightBlack),
+            Status::Pass => ("✓", AnsiColors::Green),
+            Status::Warn => ("!", AnsiColors::Yellow),
+            Status::Fail => ("✗", AnsiColors::Red),
+            Status::Unknown => ("?", AnsiColors::Yellow),
+            Status::Skipped => ("-", AnsiColors::BrightBlack),
         };
         if self.0 {
             symbol.color(color).bold().to_string()
@@ -238,20 +169,8 @@ impl Paint {
         }
     }
 
-    fn arrow(self) -> String {
-        if self.0 {
-            "→".cyan().to_string()
-        } else {
-            "→".to_string()
-        }
-    }
-
     fn dim(self, text: &str) -> String {
-        self.dim_unless(false, text)
-    }
-
-    fn dim_unless(self, keep: bool, text: &str) -> String {
-        if self.0 && !keep && !text.is_empty() {
+        if self.0 {
             text.dimmed().to_string()
         } else {
             text.to_string()

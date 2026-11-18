@@ -77,7 +77,7 @@ enum Outcome {
 
 /// Which release track this installation follows.
 #[derive(Clone, Copy)]
-enum Channel {
+pub(crate) enum Channel {
     /// The production origin: GitHub `releases/latest` only.
     Stable,
     /// Any other origin: the newest release, prereleases included.
@@ -85,7 +85,7 @@ enum Channel {
 }
 
 impl Channel {
-    fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Channel::Stable => "stable",
             Channel::Dev => "dev",
@@ -98,7 +98,7 @@ impl Channel {
 /// whoever points the CLI at a non-prod backend is testing against it. An
 /// origin that fails to parse is not a deliberate dev choice, so it fails
 /// closed to stable.
-fn channel_of(base_url: &str) -> Channel {
+pub(crate) fn channel_of(base_url: &str) -> Channel {
     match (
         cloudthinker_client::origin_of(base_url),
         cloudthinker_client::origin_of(crate::DEFAULT_BASE_URL),
@@ -449,22 +449,42 @@ fn installed_binary_path() -> Option<PathBuf> {
     )
 }
 
-async fn latest_release(channel: Channel) -> Option<String> {
+pub(crate) enum ReleaseLookup {
+    NoReceipt,
+    Unreachable,
+    Latest(Option<String>),
+}
+
+pub(crate) async fn lookup_latest(channel: Channel) -> ReleaseLookup {
     let mut updater = AxoUpdater::new_for(APP_NAME);
-    updater.set_client(cloudthinker_client::https_client().ok()?);
-    updater.load_receipt().ok()?;
-    if !matches!(updater.check_receipt_is_for_this_executable(), Ok(true)) {
-        return None;
+    let Ok(client) = cloudthinker_client::https_client() else {
+        return ReleaseLookup::Unreachable;
+    };
+    updater.set_client(client);
+    if updater.load_receipt().is_err()
+        || !matches!(updater.check_receipt_is_for_this_executable(), Ok(true))
+    {
+        return ReleaseLookup::NoReceipt;
     }
     updater.configure_version_specifier(request_for(channel));
-    Some(
-        updater
-            .query_new_version()
-            .await
-            .ok()
-            .flatten()?
-            .to_string(),
-    )
+    match updater.query_new_version().await {
+        Ok(latest) => ReleaseLookup::Latest(latest.map(ToString::to_string)),
+        Err(_) => ReleaseLookup::Unreachable,
+    }
+}
+
+pub(crate) fn is_newer(latest: &str) -> bool {
+    Version::parse(latest)
+        .ok()
+        .and_then(|latest| newer_than_running(&latest))
+        .is_some()
+}
+
+async fn latest_release(channel: Channel) -> Option<String> {
+    match lookup_latest(channel).await {
+        ReleaseLookup::Latest(latest) => latest,
+        ReleaseLookup::NoReceipt | ReleaseLookup::Unreachable => None,
+    }
 }
 
 /// The release worth offering, given the latest one the source carries.

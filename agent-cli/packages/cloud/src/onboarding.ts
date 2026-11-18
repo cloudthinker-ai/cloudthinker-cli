@@ -12,6 +12,12 @@ export function bundledTourPath(packageDir: string = getPackageDir()): string {
 	return fileURLToPath(new URL("../../agent/.agents/skills/tour/SKILL.md", import.meta.url));
 }
 
+export function bundledDoctorPath(packageDir: string = getPackageDir()): string {
+	const bundled = join(packageDir, ".agents", "skills", "doctor", "SKILL.md");
+	if (existsSync(bundled)) return bundled;
+	return fileURLToPath(new URL("../../agent/.agents/skills/doctor/SKILL.md", import.meta.url));
+}
+
 export function bundledReviewSetupPath(
 	packageDir: string = getPackageDir(),
 	moduleUrl: string = import.meta.url,

@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use cloudthinker_client::doctor::{Area, Cause, Check, Fix, Report, Status};
 use cloudthinker_client::{
     CtClient, CtError, LocalReviewContext, LocalReviewContextRequest, LocalReviewFindingIn,
     LocalReviewSeverity, LocalReviewUpload, LoupeReadiness, LoupeReadinessCheckName,
@@ -192,72 +193,88 @@ pub async fn run_doctor(options: DoctorOptions<'_>) -> ExitCode {
         },
         prerequisites,
     };
-    let printed = if options.json {
-        output::emit_json(&report)
+    let checks = doctor_checks(&report);
+    let code = exit::for_doctor(checks.outcome());
+    match output::emit_doctor(checks, options.json, move |_| report) {
+        Ok(()) => code,
+        Err(error) => {
+            output::eprintln_error(&error);
+            ExitCode::JobFailed
+        }
+    }
+}
+
+fn doctor_checks(report: &DoctorReport) -> Report {
+    let readiness = &report.prerequisites;
+    let mut checks = Report::new("review doctor", env!("CARGO_PKG_VERSION"));
+    checks.server = readiness.repository.clone();
+    let state = match &readiness.detail {
+        Some(detail) => format!("{}: {detail}", state_label(readiness.state)),
+        None => state_label(readiness.state).to_string(),
+    };
+    checks.push(if matches!(readiness.state, LoupeReadinessState::Ready) {
+        Check::new(Area::Review, "prerequisites", Status::Pass, state).label("Worker")
     } else {
-        let mut lines = vec![format!(
-            "Loupe prerequisites: {}",
-            state_label(report.prerequisites.state)
-        )];
-        if let Some(repository) = &report.prerequisites.repository {
-            lines.push(format!("Repository: {repository}"));
+        Check::new(Area::Review, "prerequisites", Status::Fail, state)
+            .label("Worker")
+            .cause(Cause::Failure)
+            .fix(Fix::Run("cloudthinker review setup".into()))
+    });
+    for check in &readiness.checks {
+        let detail = check
+            .detail
+            .as_ref()
+            .map(|detail| format!(" ({detail})"))
+            .unwrap_or_default();
+        let (status, result) = if check.passed {
+            (Status::Pass, "passed")
+        } else if check.required {
+            (Status::Warn, "needs setup")
+        } else {
+            (Status::Skipped, "optional, missing")
+        };
+        checks.push(
+            Check::new(
+                Area::Review,
+                "prerequisite",
+                status,
+                format!("{result}{detail}"),
+            )
+            .label(check_name(check.name)),
+        );
+    }
+    let setup = match &readiness.observed {
+        Some(observed)
+            if matches!(observed.state, cloudthinker_client::LoupeSetupState::Full)
+                && observed.enabled
+                && observed.generation.is_some()
+                && !observed.check_pending =>
+        {
+            Check::new(Area::Review, "setup", Status::Pass, "Full and enabled")
         }
-        if let Some(detail) = &report.prerequisites.detail {
-            lines.push(detail.to_owned());
-        }
-        for check in &report.prerequisites.checks {
-            let result = if check.passed {
-                "passed"
-            } else if check.required {
-                "needs setup"
-            } else {
-                "optional, missing"
-            };
-            let detail = check
-                .detail
-                .as_ref()
-                .map(|detail| format!(" ({detail})"))
-                .unwrap_or_default();
-            lines.push(format!("{}: {result}{detail}", check_name(check.name)));
-        }
-        if let Some(observed) = &report.prerequisites.observed {
-            lines.push(format!("Setup: {}", setup_state_label(observed.state)));
-            lines.push(format!(
-                "Enabled: {}",
-                if observed.enabled { "yes" } else { "no" }
-            ));
-            if let Some(checked_at) = &observed.checked_at {
-                lines.push(format!(
-                    "Observed at: {} UTC",
-                    checked_at
-                        .with_timezone(&chrono::Utc)
-                        .format("%Y-%m-%d %H:%M")
-                ));
+        Some(observed) => {
+            let mut summary = format!("Setup {}", setup_state_label(observed.state));
+            if !observed.enabled {
+                summary.push_str(", not enabled");
             }
             if observed.check_pending {
-                lines.push("A new setup check is in progress.".to_owned());
+                summary.push_str("; a new setup check is in progress");
             }
-            lines.push(observed.detail.to_owned());
+            Check::new(Area::Review, "setup", Status::Fail, summary)
+                .cause(Cause::Failure)
+                .fix(Fix::Run("cloudthinker review setup".into()))
         }
-        lines.push(report.coverage.to_owned());
-        output::print_lines(&lines)
+        None => Check::new(
+            Area::Review,
+            "setup",
+            Status::Fail,
+            "Not checked: app startup, sign-in, and browser journeys were not verified",
+        )
+        .cause(Cause::Failure)
+        .fix(Fix::Run("cloudthinker review setup".into())),
     };
-    if let Err(error) = printed {
-        output::eprintln_error(&error);
-        return ExitCode::JobFailed;
-    }
-    if matches!(report.prerequisites.state, LoupeReadinessState::Ready)
-        && report.prerequisites.observed.as_ref().is_some_and(|view| {
-            matches!(view.state, cloudthinker_client::LoupeSetupState::Full)
-                && view.enabled
-                && view.generation.is_some()
-                && !view.check_pending
-        })
-    {
-        ExitCode::Ok
-    } else {
-        ExitCode::JobFailed
-    }
+    checks.push(setup.label("Setup"));
+    checks
 }
 
 pub struct LocalReviewOptions<'a> {

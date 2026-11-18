@@ -1,3 +1,10 @@
+## [0.13.1]
+
+- `cloudthinker agent --help` lists `--add-dir` and `--max-turns`.
+- `cloudthinker doctor` now also checks the agent, its skills, the newest release on your update channel, terminal support, AGENTS.md or CLAUDE.md in this folder, and where CloudThinker is installed, with the steps to remove it.
+- `doctor`, `worker doctor`, `cyber doctor` and `review doctor` print one line when all is well, and otherwise one row per problem with its fix.
+- This release also ships every change listed under 0.13.0, which was never published as a stable release.
+
 ## [0.13.0]
 
 - Add commands for every CloudThinker public API operation, read from the public API spec: `cloudthinker <module> <resource> <verb>` and `cloudthinker api`.

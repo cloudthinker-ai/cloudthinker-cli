@@ -270,8 +270,8 @@ enum Command {
         json: bool,
     },
     #[command(
-        about = "Diagnose CLI credentials, live identity, API access, and Connection status",
-        long_about = "Read the server address and its source, the selected credential source, the signed-in account and workspace, API reachability, and up to 20 recorded Connection test snapshots. No provider test, retry, repair, browser, login, or model is started.\n\nStored credentials may refresh through the normal guarded authentication flow. Doctor does not inspect or migrate legacy keyring logins. If compatible file credentials are absent, run cloudthinker whoami to inspect or migrate an older login before signing in again. Workspace selection never changes the active login.\n\nRequests use a 3-second timeout, credential locks wait up to 1 second, and Connection reads share a 15-second budget with concurrency 4. Network work is budgeted to finish within 70 seconds; local filesystem stalls are outside this bound. A recorded success can come from persisted Connection status and is not a fresh provider test. Release freshness and server version compatibility are not checked. A CLOUDTHINKER_URL that differs from the default saved by login --url warns.\n\nStatuses: healthy, warn, error, skipped, unknown. Pending tests and no installed Connections warn without failing. Unknown phases or omitted snapshots fail with exit 1. Exits retain the CLI contract: 0 success/warnings, 1 failed/incomplete checks or transport errors, 2 invalid selection/request, 3 authentication/permission, 4 an explicit diagnostic deadline, 130 interrupted Connection reads."
+        about = "Diagnose this machine: login, API access, Connections, the agent, releases, terminal, and install paths",
+        long_about = "Read the server address and its source, the selected credential source, the signed-in account and workspace, API reachability, and up to 20 recorded Connection test snapshots. Also read the installed agent version, the skills the agent will load, the newest release on your update channel (stable on app.cloudthinker.io, dev elsewhere; skipped when offline), what your terminal supports from its environment, AGENTS.md or CLAUDE.md in this folder, and every install path with the steps to remove CloudThinker. No provider test, retry, repair, browser, login, or model is started.\n\nStored credentials may refresh through the normal guarded authentication flow. Doctor does not inspect or migrate legacy keyring logins. If compatible file credentials are absent, run cloudthinker whoami to inspect or migrate an older login before signing in again. Workspace selection never changes the active login.\n\nRequests use a 3-second timeout, credential locks wait up to 1 second, and Connection reads share a 15-second budget with concurrency 4. Network work is budgeted to finish within 70 seconds; local filesystem stalls are outside this bound. A recorded success can come from persisted Connection status and is not a fresh provider test. Server version compatibility is not checked. A CLOUDTHINKER_URL that differs from the default saved by login --url warns.\n\nStatuses: healthy, warn, error, skipped, unknown. Pending tests and no installed Connections warn without failing. Unknown phases or omitted snapshots fail with exit 1. Exits retain the CLI contract: 0 success/warnings, 1 failed/incomplete checks or transport errors, 2 invalid selection/request, 3 authentication/permission, 4 an explicit diagnostic deadline, 130 interrupted Connection reads."
     )]
     Doctor {
         #[arg(
@@ -2205,6 +2205,19 @@ mod tests {
         let mut missing = Vec::new();
         walk(&Cli::command(), "", &mut missing);
         assert!(missing.is_empty(), "add help text for: {missing:#?}");
+    }
+
+    #[test]
+    fn no_uninstall_command_and_doctor_stays_listed() {
+        let tree = Cli::command();
+        let found: Vec<&str> = tree
+            .get_subcommands()
+            .flat_map(|sub| std::iter::once(sub.get_name()).chain(sub.get_all_aliases()))
+            .filter(|name| name.contains("uninstall") || *name == "remove")
+            .collect();
+        assert!(found.is_empty(), "top-level uninstall commands: {found:?}");
+        let doctor = tree.find_subcommand("doctor").expect("doctor");
+        assert!(!doctor.is_hide_set());
     }
 
     #[test]

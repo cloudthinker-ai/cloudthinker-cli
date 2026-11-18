@@ -30,13 +30,15 @@ import { linkLazily, refreshConnections, refreshIdentity, restoreModels, startLo
 import { discoverSkillPaths, hasSkillIndex, refreshSkills } from "./skills.ts";
 import { statusLineFooter } from "./status-line.ts";
 import { markStartup } from "./timing.ts";
-import { bundledReviewSetupPath, bundledTourPath } from "./onboarding.ts";
+import { bundledDoctorPath, bundledReviewSetupPath, bundledTourPath } from "./onboarding.ts";
 import { registerCommandTools } from "./tools/command-tools.ts";
 import { registerAsk } from "./tools/ct-ask.ts";
 import { registerSandboxRead } from "./tools/ct-sandbox-read.ts";
 import { registerSandboxWrite } from "./tools/ct-sandbox-write.ts";
 import { registerLocalApproval } from "./local-approval.ts";
 import { registerRunStatus } from "./tools/ct-run-status.ts";
+import { registerConfig } from "./tools/ct-config.ts";
+import { registerDoctor } from "./doctor.ts";
 import { registerReadTaskOutput } from "./tools/read-task-output.ts";
 import { registerLocalReviewBoundary } from "./tools/local-review-boundary.ts";
 import { CONNECTION_MENTIONS_ENTRY, mentionContext, resolveConnectionMentions, setConnectionSource } from "./connection-mentions.ts";
@@ -93,6 +95,8 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 		registerReadTaskOutput(runtime);
 		registerAsk(runtime);
 		registerRunStatus(runtime);
+		registerConfig(pi);
+		registerDoctor(pi);
 		registerCommands(runtime, { changelogPath: options.changelogPath });
 	}
 	registerContinuation(pi);
@@ -219,7 +223,7 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 	});
 
 	pi.on("resources_discover", async () => ({
-		skillPaths: localReview ? [] : [bundledTourPath(), bundledReviewSetupPath(), ...await discoverSkillPaths(workspaceId())],
+		skillPaths: localReview ? [] : [bundledTourPath(), bundledDoctorPath(), bundledReviewSetupPath(), ...await discoverSkillPaths(workspaceId())],
 	}));
 
 	pi.on("tool_result", (event) => {

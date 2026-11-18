@@ -55,7 +55,10 @@ The list is a point-in-time snapshot read page by page. A workspace created or d
 ## Recovery
 
 Use `cloudthinker doctor` for a read-only diagnosis of credential selection, live
-identity, workspace, API reachability, and recorded Connection tests. Use
+identity, workspace, API reachability, recorded Connection tests, the agent
+bundle, loaded skills, the newest release on the update channel, terminal
+support, project instruction files, and install paths. The Install check's fix
+holds the removal steps; there is no uninstall command. Use
 `doctor --json` only for a program that consumes the report. It never starts
 login, repairs, or Connection tests; normal stored-token refresh can still save
 rotated credentials. Keep the intended `--url` and `--workspace` on this call.
@@ -64,7 +67,8 @@ Missing compatible file credentials leave legacy keyring logins uninspected.
 Follow doctor's host-aware `whoami` command before requesting a new login.
 Skipped or unknown Connection evidence is not a healthy result. Pending tests
 and an authenticated empty inventory are warnings. Snapshot success does not
-prove a fresh provider request, and no release compatibility check is implied.
+prove a fresh provider request. The release check is skipped offline and does
+not check server compatibility.
 
 Exit 3 means authentication is unavailable or rejected. Check the intended identity and login before retrying. Do not loop on rejected credentials. Use `cloudthinker login --help` for supported options. Run the login command that the error names: it carries `--url` for a non-default host.
 

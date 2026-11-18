@@ -8,7 +8,7 @@ const REQUIRED = [
 	"theme/cloudthinker-dark.json", "theme/cloudthinker-light.json",
 	"assets/clankolas.png", "export-html/template.html", "export-html/template.css",
 	"export-html/template.js", "export-html/vendor/marked.min.js",
-	"export-html/vendor/highlight.min.js", ".agents/skills/tour/SKILL.md", ".agents/skills/review-setup/SKILL.md",
+	"export-html/vendor/highlight.min.js", ".agents/skills/tour/SKILL.md", ".agents/skills/doctor/SKILL.md", ".agents/skills/review-setup/SKILL.md",
 ];
 
 export function assetFiles(root: string, prefix = ""): string[] {

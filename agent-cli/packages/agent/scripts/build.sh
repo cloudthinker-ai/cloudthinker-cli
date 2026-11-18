@@ -159,6 +159,7 @@ for triple in $TRIPLES; do
   cp "$PKG_DIR/CHANGELOG.md" "$dir/"
   mkdir -p "$dir/.agents/skills"
   cp -r "$PKG_DIR/.agents/skills/tour" "$dir/.agents/skills/"
+  cp -r "$PKG_DIR/.agents/skills/doctor" "$dir/.agents/skills/"
   mkdir -p "$dir/.agents/skills/review-setup"
   cp "$REVIEW_SETUP" "$dir/.agents/skills/review-setup/SKILL.md"
   cmp -s "$REVIEW_SETUP" "$dir/.agents/skills/review-setup/SKILL.md"

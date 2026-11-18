@@ -5599,3 +5599,637 @@ fn ca_cli_43_disconnect_without_one_match_sends_no_delete() {
 
     assert_eq!(api.methods("DELETE"), 0);
 }
+
+fn doctor_home() -> tempfile::TempDir {
+    tempfile::tempdir().unwrap()
+}
+
+fn doctor_cli(base_url: &str, home: &std::path::Path) -> Command {
+    let mut cmd = cli(base_url);
+    cmd.env("HOME", home)
+        .env("XDG_CONFIG_HOME", home)
+        .env("CLOUDTHINKER_CONFIG_DIR", home.join("config"))
+        .env("AXOUPDATER_CONFIG_PATH", home.join("receipt"))
+        .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent")
+        .env("TERM", "xterm-kitty")
+        .env_remove("TERM_PROGRAM")
+        .env_remove("CLOUDTHINKER_CODING_AGENT_DIR")
+        .env_remove("CLOUDTHINKER_OUTPOST_ID")
+        .env_remove("CLOUDTHINKER_WORKER_TOKEN")
+        .current_dir(home)
+        .timeout(Duration::from_secs(90));
+    cmd
+}
+
+fn doctor_json(cmd: &mut Command) -> (Option<i32>, serde_json::Value, String) {
+    let output = cmd.output().unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let value = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|error| panic!("stdout is not JSON ({error}); stderr: {stderr}"));
+    (output.status.code(), value, stderr)
+}
+
+fn object_keys(value: &serde_json::Value) -> Vec<&str> {
+    let mut keys: Vec<&str> = value
+        .as_object()
+        .unwrap_or_else(|| panic!("not an object: {value}"))
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    keys
+}
+
+const TOP_DOCTOR_KEYS: [&str; 9] = [
+    "checks",
+    "cli_version",
+    "connections",
+    "exit_code",
+    "origin",
+    "origin_source",
+    "overall",
+    "user_id",
+    "workspace_id",
+];
+const TOP_DOCTOR_CHECK_KEYS: [&str; 12] = [
+    "action",
+    "area",
+    "cause",
+    "connection_id",
+    "connection_name",
+    "connection_status",
+    "http_status",
+    "id",
+    "kind",
+    "status",
+    "summary",
+    "test_phase",
+];
+const TOP_DOCTOR_IDS: [&str; 8] = [
+    "cli",
+    "configuration",
+    "credentials",
+    "api",
+    "identity",
+    "workspace",
+    "connections",
+    "release",
+];
+
+fn assert_top_doctor_contract(report: &serde_json::Value, exit: i32) {
+    assert_eq!(object_keys(report), TOP_DOCTOR_KEYS);
+    assert_eq!(
+        object_keys(&report["connections"]),
+        ["checked", "installed", "omitted"]
+    );
+    assert_eq!(report["exit_code"], exit);
+    assert_eq!(report["cli_version"], env!("CARGO_PKG_VERSION"));
+    assert!(
+        ["healthy", "warn", "error", "skipped", "unknown"]
+            .contains(&report["overall"].as_str().unwrap())
+    );
+    let checks = report["checks"].as_array().unwrap();
+    for check in checks {
+        assert_eq!(object_keys(check), TOP_DOCTOR_CHECK_KEYS, "{check}");
+        assert!(
+            ["healthy", "warn", "error", "skipped", "unknown"]
+                .contains(&check["status"].as_str().unwrap()),
+            "{check}"
+        );
+        assert!(
+            check["cause"].is_null()
+                || ["usage", "auth", "deadline", "failure", "interrupted"]
+                    .contains(&check["cause"].as_str().unwrap()),
+            "{check}"
+        );
+    }
+    let ids: Vec<&str> = checks
+        .iter()
+        .filter(|check| check["connection_id"].is_null())
+        .map(|check| check["id"].as_str().unwrap())
+        .collect();
+    let mut wanted = TOP_DOCTOR_IDS.iter().peekable();
+    for id in &ids {
+        if wanted.peek() == Some(&id) {
+            wanted.next();
+        }
+    }
+    assert!(wanted.peek().is_none(), "ids out of order: {ids:?}");
+}
+
+fn top_check<'a>(report: &'a serde_json::Value, id: &str) -> &'a serde_json::Value {
+    report["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["id"] == id && check["connection_id"].is_null())
+        .unwrap_or_else(|| panic!("no {id} check in {report}"))
+}
+
+fn doctor_routes(builtin: &[serde_json::Value], mcp: &[serde_json::Value]) -> Vec<Route> {
+    let mut routes = workspace_routes(builtin, mcp);
+    routes.push((
+        "GET /api/v1/utils/health-check/".into(),
+        "200 OK",
+        "true".into(),
+    ));
+    routes.push((
+        "GET /api/v1/cli/whoami".into(),
+        "200 OK",
+        WHOAMI_BODY.into(),
+    ));
+    routes
+}
+
+#[test]
+fn doctor_contract_no_connections_warns_and_exits_zero() {
+    let api = RoutedApi::start(doctor_routes(&[], &[]));
+    let home = doctor_home();
+
+    let (code, report, stderr) =
+        doctor_json(doctor_cli(&api.base_url, home.path()).args(["doctor", "--json"]));
+
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_top_doctor_contract(&report, 0);
+    assert_eq!(report["overall"], "warn");
+    assert_eq!(report["origin"], api.base_url);
+    assert_eq!(report["origin_source"], "environment");
+    assert_eq!(report["user_id"], CONV_ID);
+    assert_eq!(report["workspace_id"], RUN_ID);
+    assert_eq!(
+        report["connections"],
+        serde_json::json!({"installed": 0, "checked": 0, "omitted": 0})
+    );
+    assert_eq!(top_check(&report, "api")["status"], "healthy");
+    assert_eq!(top_check(&report, "api")["http_status"], 200);
+    assert_eq!(top_check(&report, "identity")["status"], "healthy");
+    assert_eq!(
+        top_check(&report, "connections"),
+        &serde_json::json!({
+            "id": "connections", "area": "connections", "status": "warn",
+            "summary": "None installed in this workspace",
+            "action": "Add a Connection in the app when your task needs one.",
+            "cause": null, "connection_id": null, "connection_name": null, "kind": null,
+            "connection_status": null, "test_phase": null, "http_status": null
+        })
+    );
+}
+
+#[test]
+fn doctor_contract_failed_connection_test_exits_one_with_connection_rows() {
+    let api = RoutedApi::start({
+        let mut routes = doctor_routes(
+            &[builtin_row(AWS_ID, "aws", Some("aws-prod"), true)],
+            &[mcp_row("connected", "")],
+        );
+        routes.push((
+            builtin_test_route(AWS_ID),
+            "200 OK",
+            test_status("succeeded", None),
+        ));
+        routes.push((
+            format!("GET /api/v1/mcp-connection/{MCP_ID}/test-status"),
+            "200 OK",
+            test_status("failed", Some("bad token")),
+        ));
+        routes
+    });
+    let home = doctor_home();
+
+    let (code, report, stderr) =
+        doctor_json(doctor_cli(&api.base_url, home.path()).args(["doctor", "--json"]));
+
+    assert_eq!(code, Some(1), "{stderr}");
+    assert_top_doctor_contract(&report, 1);
+    assert_eq!(report["overall"], "error");
+    assert_eq!(
+        report["connections"],
+        serde_json::json!({"installed": 2, "checked": 2, "omitted": 0})
+    );
+    let rows: Vec<&serde_json::Value> = report["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|check| !check["connection_id"].is_null())
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            &serde_json::json!({
+                "id": "connection", "area": "connections", "status": "healthy",
+                "summary": "Connected; last test passed", "action": null, "cause": null,
+                "connection_id": AWS_ID, "connection_name": "aws account", "kind": "builtin",
+                "connection_status": "connected", "test_phase": "succeeded", "http_status": null
+            }),
+            &serde_json::json!({
+                "id": "connection", "area": "connections", "status": "error",
+                "summary": "Last test failed, timed out, or was cancelled",
+                "action": "Open the Connection in the app and run its test again.",
+                "cause": "failure",
+                "connection_id": MCP_ID, "connection_name": "Docs MCP", "kind": "mcp",
+                "connection_status": "connected", "test_phase": "failed", "http_status": null
+            }),
+        ]
+    );
+    assert_eq!(top_check(&report, "connections")["status"], "error");
+    assert_eq!(
+        top_check(&report, "connections")["summary"],
+        "1 of 2 connected and passing"
+    );
+}
+
+#[test]
+fn doctor_contract_unreachable_server_exits_one() {
+    let home = doctor_home();
+
+    let (code, report, stderr) =
+        doctor_json(doctor_cli("http://127.0.0.1:1", home.path()).args(["doctor", "--json"]));
+
+    assert_eq!(code, Some(1), "{stderr}");
+    assert_top_doctor_contract(&report, 1);
+    assert_eq!(top_check(&report, "credentials")["status"], "healthy");
+    assert_eq!(top_check(&report, "api")["status"], "unknown");
+    assert_eq!(top_check(&report, "api")["cause"], "failure");
+    assert_eq!(top_check(&report, "identity")["status"], "error");
+    assert_eq!(top_check(&report, "workspace")["status"], "skipped");
+}
+
+#[test]
+fn doctor_contract_workspace_with_environment_token_exits_two() {
+    let api = RoutedApi::start(doctor_routes(&[], &[]));
+    let home = doctor_home();
+
+    let (code, report, stderr) = doctor_json(doctor_cli(&api.base_url, home.path()).args([
+        "--workspace",
+        "Production",
+        "doctor",
+        "--json",
+    ]));
+
+    assert_eq!(code, Some(2), "{stderr}");
+    assert_top_doctor_contract(&report, 2);
+    assert_eq!(top_check(&report, "credentials")["cause"], "usage");
+    assert_eq!(top_check(&report, "api")["status"], "skipped");
+}
+
+#[test]
+fn doctor_contract_rejected_credential_exits_three() {
+    let api = RoutedApi::start(vec![
+        (
+            "GET /api/v1/utils/health-check/".into(),
+            "200 OK",
+            "true".into(),
+        ),
+        (
+            "GET /api/v1/cli/whoami".into(),
+            "401 Unauthorized",
+            "{}".into(),
+        ),
+    ]);
+    let home = doctor_home();
+
+    let (code, report, stderr) =
+        doctor_json(doctor_cli(&api.base_url, home.path()).args(["doctor", "--json"]));
+
+    assert_eq!(code, Some(3), "{stderr}");
+    assert_top_doctor_contract(&report, 3);
+    assert_eq!(top_check(&report, "identity")["status"], "error");
+    assert_eq!(top_check(&report, "identity")["cause"], "auth");
+    assert!(top_check(&report, "identity")["http_status"].is_null());
+}
+
+#[cfg(unix)]
+#[test]
+fn doctor_contract_worker_doctor_json_shape_and_failure_exit() {
+    let home = doctor_home();
+    let workdir = home.path().join("served");
+    std::fs::create_dir_all(&workdir).unwrap();
+
+    let (code, report, stderr) = doctor_json(doctor_cli("http://127.0.0.1:1", home.path()).args([
+        "worker",
+        "doctor",
+        "--json",
+        "--workdir",
+        workdir.to_str().unwrap(),
+    ]));
+
+    assert_eq!(code, Some(1), "{stderr}");
+    assert_eq!(object_keys(&report), ["checks", "cli_version", "ok"]);
+    assert_eq!(report["cli_version"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(report["ok"], false);
+    let checks = report["checks"].as_array().unwrap();
+    let ids: Vec<&str> = checks
+        .iter()
+        .map(|check| check["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "cli_version",
+            "https",
+            "clock_skew",
+            "credential",
+            "workdir",
+            "state_dir",
+            "service",
+            "git",
+            "sandbox",
+            "container"
+        ]
+    );
+    for check in checks {
+        let keys = object_keys(check);
+        assert!(
+            keys == ["detail", "id", "status"] || keys == ["detail", "fix", "id", "status"],
+            "{check}"
+        );
+        assert!(
+            ["pass", "warn", "fail", "skipped"].contains(&check["status"].as_str().unwrap()),
+            "{check}"
+        );
+    }
+    assert_eq!(checks[1]["status"], "fail");
+    assert!(checks[1]["fix"].is_string());
+    assert_eq!(checks[2]["status"], "skipped");
+    assert!(checks[2].get("fix").is_none());
+    assert_eq!(checks[3]["status"], "fail");
+    assert_eq!(checks[4]["status"], "pass");
+}
+
+#[test]
+fn doctor_contract_cyber_doctor_json_shape_exits_zero_with_missing_tools() {
+    let home = doctor_home();
+
+    let (code, report, stderr) = doctor_json(
+        doctor_cli("http://127.0.0.1:1", home.path()).args(["cyber", "doctor", "--json"]),
+    );
+
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(
+        object_keys(&report),
+        [
+            "bola_ready",
+            "config",
+            "config_file",
+            "context",
+            "floor",
+            "identities",
+            "mode",
+            "mode_reason",
+            "platform",
+            "toolpack"
+        ]
+    );
+    assert_eq!(report["bola_ready"], false);
+    assert_eq!(report["identities"], serde_json::json!([]));
+    assert_eq!(report["context"], serde_json::json!([]));
+    assert!(report["mode"].is_string() && report["mode_reason"].is_string());
+    assert!(report["config_file"].is_string());
+    assert!(report["config"].is_object());
+    let floor = report["floor"].as_array().unwrap();
+    let names: Vec<&str> = floor
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["curl", "python3 >= 3.10", "discovery runtime"]);
+    for tool in floor {
+        assert_eq!(object_keys(tool), ["name", "present"]);
+        assert!(tool["present"].is_boolean());
+    }
+    let toolpack = report["toolpack"].as_array().unwrap();
+    assert!(!toolpack.is_empty());
+    for tool in toolpack {
+        assert_eq!(object_keys(tool), ["name", "path", "status", "version"]);
+        assert!(tool["path"].is_null());
+        assert!(
+            ["missing", "unsupported"].contains(&tool["status"].as_str().unwrap()),
+            "{tool}"
+        );
+    }
+}
+
+const LOUPE_CHECK: &str = "POST /api/v1/code-review/setup/loupe-target/check";
+const LOUPE_TARGET: &str = "dddddddd-0000-4000-8000-000000000001";
+
+fn loupe_readiness(state: &str, observed: Option<serde_json::Value>) -> String {
+    serde_json::json!({
+        "state": state,
+        "target_id": LOUPE_TARGET,
+        "repository": "group/app",
+        "detail": null,
+        "checks": [
+            {"name": "node", "passed": true, "required": true, "detail": "v22"},
+            {"name": "chromium", "passed": state == "ready", "required": true, "detail": null}
+        ],
+        "observed": observed
+    })
+    .to_string()
+}
+
+fn loupe_observation() -> serde_json::Value {
+    serde_json::json!({
+        "state": "full",
+        "provider": "gitlab",
+        "repository": "group/app",
+        "target_id": LOUPE_TARGET,
+        "connection_id": AWS_ID,
+        "checked_at": "2026-11-01T00:00:00Z",
+        "generation": GITHUB_ID,
+        "check_pending": false,
+        "has_saved_observations": true,
+        "enabled": true,
+        "partial_accepted": false,
+        "detail": "Saved sign-in and base page checked."
+    })
+}
+
+fn assert_review_doctor_contract(report: &serde_json::Value) {
+    assert_eq!(
+        object_keys(report),
+        ["coverage", "loupe_readiness", "prerequisites"]
+    );
+    assert_eq!(
+        object_keys(&report["prerequisites"]),
+        [
+            "checks",
+            "detail",
+            "observed",
+            "repository",
+            "state",
+            "target_id"
+        ]
+    );
+    for check in report["prerequisites"]["checks"].as_array().unwrap() {
+        assert_eq!(object_keys(check), ["detail", "name", "passed", "required"]);
+    }
+}
+
+#[test]
+fn doctor_contract_review_doctor_needs_setup_exits_one() {
+    let api = RoutedApi::start(vec![(
+        LOUPE_CHECK.into(),
+        "200 OK",
+        loupe_readiness("needs_setup", None),
+    )]);
+    let home = doctor_home();
+
+    let (code, report, stderr) =
+        doctor_json(doctor_cli(&api.base_url, home.path()).args(["review", "doctor", "--json"]));
+
+    assert_eq!(code, Some(1), "{stderr}");
+    assert_review_doctor_contract(&report);
+    assert_eq!(report["loupe_readiness"], "not_checked");
+    assert_eq!(report["prerequisites"]["state"], "needs_setup");
+    assert_eq!(report["prerequisites"]["observed"], serde_json::Value::Null);
+    assert_eq!(
+        report["coverage"],
+        "These are prerequisite checks only. App startup, sign-in, browser journeys, and base comparison were not verified."
+    );
+}
+
+#[test]
+fn doctor_contract_review_doctor_ready_and_full_exits_zero() {
+    let api = RoutedApi::start(vec![(
+        LOUPE_CHECK.into(),
+        "200 OK",
+        loupe_readiness("ready", Some(loupe_observation())),
+    )]);
+    let home = doctor_home();
+
+    let (code, report, stderr) =
+        doctor_json(doctor_cli(&api.base_url, home.path()).args(["review", "doctor", "--json"]));
+
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_review_doctor_contract(&report);
+    assert_eq!(report["loupe_readiness"], "full");
+    assert_eq!(
+        object_keys(&report["prerequisites"]["observed"]),
+        [
+            "check_pending",
+            "checked_at",
+            "connection_id",
+            "detail",
+            "enabled",
+            "generation",
+            "has_saved_observations",
+            "partial_accepted",
+            "provider",
+            "repository",
+            "state",
+            "target_id"
+        ]
+    );
+    assert_eq!(
+        report["coverage"],
+        "Stored setup observations; app journeys were not rechecked by this command."
+    );
+}
+
+#[test]
+fn doctor_contract_review_doctor_usage_and_auth_exits() {
+    let home = doctor_home();
+    let output = doctor_cli("http://127.0.0.1:1", home.path())
+        .args(["review", "doctor", "--json", "--connection", AWS_ID])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+
+    let api = RoutedApi::start(vec![(LOUPE_CHECK.into(), "401 Unauthorized", "{}".into())]);
+    let output = doctor_cli(&api.base_url, home.path())
+        .args(["review", "doctor", "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stdout.is_empty());
+}
+
+fn doctor_text(cmd: &mut Command) -> (Option<i32>, String) {
+    let output = cmd.output().unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    for line in stdout.lines() {
+        assert!(line.chars().count() <= 80, "wider than 80 columns: {line}");
+    }
+    (output.status.code(), stdout)
+}
+
+fn install_fake_agent(home: &std::path::Path) {
+    let dir = home
+        .join(".cloudthinker/agent/bin")
+        .join(env!("CARGO_PKG_VERSION"))
+        .join("cloudthinker-agent");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("cloudthinker-agent"), b"agent").unwrap();
+}
+
+#[test]
+fn doctor_text_all_healthy_is_one_line() {
+    let api = RoutedApi::start({
+        let mut routes = doctor_routes(&[builtin_row(AWS_ID, "aws", Some("aws-prod"), true)], &[]);
+        routes.push((
+            builtin_test_route(AWS_ID),
+            "200 OK",
+            test_status("succeeded", None),
+        ));
+        routes
+    });
+    let home = doctor_home();
+    install_fake_agent(home.path());
+
+    let (code, text) = doctor_text(doctor_cli(&api.base_url, home.path()).arg("doctor"));
+
+    assert_eq!(code, Some(0));
+    assert_eq!(
+        text,
+        format!(
+            "✓ doctor · {} · all checks passed\n",
+            env!("CARGO_PKG_VERSION")
+        )
+    );
+}
+
+#[test]
+fn doctor_text_names_healthy_areas_and_one_row_per_warning() {
+    let api = RoutedApi::start(doctor_routes(&[], &[]));
+    let home = doctor_home();
+
+    let (code, text) = doctor_text(doctor_cli(&api.base_url, home.path()).arg("doctor"));
+
+    assert_eq!(code, Some(0));
+    assert_eq!(
+        text,
+        format!(
+            "doctor · {} · {}\n\
+             ✓ Install · Sign-in · Network · Terminal · Project\n\
+             ! Connections  None installed in this workspace\n\
+             ! Agent        Not installed yet · cloudthinker agent\n",
+            env!("CARGO_PKG_VERSION"),
+            api.base_url
+        )
+    );
+}
+
+#[test]
+fn doctor_text_signed_out_names_the_login_command() {
+    let api = RoutedApi::start(doctor_routes(&[], &[]));
+    let home = doctor_home();
+    install_fake_agent(home.path());
+
+    let (code, text) = doctor_text(
+        doctor_cli(&api.base_url, home.path())
+            .env_remove("CLOUDTHINKER_TOKEN")
+            .arg("doctor"),
+    );
+
+    assert_eq!(code, Some(3));
+    assert_eq!(
+        text,
+        format!(
+            "doctor · {} · {base}\n\
+             ✓ Install · Network · Agent · Terminal · Project\n\
+             ✗ Login  not signed in · cloudthinker login --url {base}\n",
+            env!("CARGO_PKG_VERSION"),
+            base = api.base_url
+        )
+    );
+}

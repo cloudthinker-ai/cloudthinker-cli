@@ -81,7 +81,7 @@ export function renderRunResult(result: AgentToolResult<RunState>, options: { ex
 		theme,
 		result.details ? askSummary(result.details, theme) : "failed",
 		resultBody(result),
-		options.expanded,
+		options.expanded ?? false,
 	);
 }
 

@@ -19,7 +19,10 @@ import { applyGuard } from "./guard.ts";
 import { registerIdentity } from "./identity.ts";
 import { isLocalReview, withoutLocalReviewFlag } from "./local-review-mode.ts";
 import { modelScopeArgs } from "./models.ts";
-import { registerTurnNotify } from "./notify.ts";
+import { registerNotifications } from "./notify.ts";
+import { applyNotifySettingGuard } from "./notify-setting.ts";
+import { extractAddDirs, registerAddDirs } from "./add-dir.ts";
+import { extractMaxTurns, registerMaxTurns } from "./max-turns.ts";
 import { registerRemoteDetach } from "./remote-leave.ts";
 import { registerScrollPill } from "./scroll-pill.ts";
 import { AGENT_HELP, checkSurface } from "./surface.ts";
@@ -39,8 +42,7 @@ delete process.env.BUN_JSC_numberOfGCMarkers;
 
 const rawArgs = process.argv.slice(2);
 const localReview = isLocalReview(rawArgs);
-const argv = withoutLocalReviewFlag(rawArgs);
-const surface = checkSurface(argv);
+const surface = checkSurface(withoutLocalReviewFlag(rawArgs));
 if (surface.kind === "help") {
 	process.stdout.write(AGENT_HELP);
 	process.exit(0);
@@ -50,7 +52,16 @@ if (surface.kind === "refuse") {
 	process.exit(2);
 }
 
+const addDirs = extractAddDirs(withoutLocalReviewFlag(rawArgs), process.cwd());
+if (addDirs.error !== undefined) {
+	process.stderr.write(`${addDirs.error}\n`);
+	process.exit(2);
+}
+const turnLimit = extractMaxTurns(addDirs.rest);
+const argv = turnLimit.rest;
+
 applyGuard();
+applyNotifySettingGuard();
 markStartup("agent.guard");
 
 const sourceChangelog = fileURLToPath(new URL("../CHANGELOG.md", import.meta.url));
@@ -73,7 +84,9 @@ await main([...themes, ...tuiMode, ...modelScopeArgs(argv), ...argv], {
 		{ name: "verbosity", factory: (pi) => { registerVerbosity(pi); } },
 		{ name: "rewind", factory: (pi) => { registerRewind(pi); } },
 		{ name: "scroll-pill", factory: (pi) => { registerScrollPill(pi); } },
-		{ name: "notify", factory: (pi) => { registerTurnNotify(pi); } },
+		{ name: "notify", factory: (pi) => { registerNotifications(pi); } },
+		{ name: "add-dir", factory: (pi) => { registerAddDirs(pi, addDirs.dirs, getAgentDir()); } },
+		{ name: "max-turns", factory: (pi) => { registerMaxTurns(pi, turnLimit.limit); } },
 		{ name: "remote", factory: (pi) => { registerRemoteDetach(pi); } },
 		...(localReview ? [] : [
 			{ name: "subagents", factory: bundledSubagents },

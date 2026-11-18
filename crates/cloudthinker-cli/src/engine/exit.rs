@@ -5,6 +5,7 @@
 //! auditable in one place.
 
 use cloudthinker_client::CtError;
+use cloudthinker_client::doctor::Outcome;
 
 /// Stable CLI exit codes (documented in `wiki/concepts/cli`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,6 +30,17 @@ pub enum ExitCode {
 impl ExitCode {
     pub fn process(self) -> std::process::ExitCode {
         std::process::ExitCode::from(self as u8)
+    }
+}
+
+pub fn for_doctor(outcome: Outcome) -> ExitCode {
+    match outcome {
+        Outcome::Ok => ExitCode::Ok,
+        Outcome::Failed => ExitCode::JobFailed,
+        Outcome::Usage => ExitCode::Usage,
+        Outcome::Auth => ExitCode::Auth,
+        Outcome::Deadline => ExitCode::Timeout,
+        Outcome::Interrupted => ExitCode::Interrupted,
     }
 }
 

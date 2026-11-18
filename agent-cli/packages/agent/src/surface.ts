@@ -14,6 +14,8 @@ Options:
   -n, --name <name>         Name this session
   --model <mode>            Agent mode: light, pro, or ultra
   --list-models             List the agent modes your workspace offers
+  --add-dir <path>          Let the agent read and edit this extra folder (repeat for more)
+  --max-turns <n>           With -p, stop after n model turns and exit with an error
   --tools <names>           Allow only these local tools (comma-separated)
   --exclude-tools <names>   Turn off these local tools (comma-separated)
   --tui-mode <mode>         fullscreen (default) or regular
@@ -39,6 +41,9 @@ export const NO_SESSION_REFUSAL = "cloudthinker agent always keeps a session; --
 export const MODEL_REFUSAL = "cloudthinker agent runs CloudThinker Agent modes only: pick one with --model light, pro, or ultra (--list-models shows them)";
 export const THINKING_REFUSAL = "--thinking is not available: each agent mode carries its own reasoning, so pick a mode with --model light, pro, or ultra";
 export const PRINT_NEEDS_PROMPT = "-p needs a prompt: cloudthinker agent -p \"your question\", or pipe one in: echo \"your question\" | cloudthinker agent -p";
+export const MAX_TURNS_VALUE = "--max-turns takes a whole number of 1 or more: cloudthinker agent -p \"your question\" --max-turns 5";
+export const MAX_TURNS_NEEDS_PRINT = "--max-turns works only with -p: cloudthinker agent -p \"your question\" --max-turns 5";
+export const ADD_DIR_VALUE = "--add-dir needs a folder: cloudthinker agent --add-dir ../other-repo";
 export const UPDATE_REFUSAL = "`cloudthinker agent update` is not a command: run `cloudthinker update` to update the CLI and its agent";
 
 const VALUE_FLAGS = new Set(["--session", "--name", "-n", "--tools", "-t", "--exclude-tools", "-xt", "--tui-mode"]);
@@ -86,6 +91,7 @@ export function checkSurface(argv: readonly string[], stdinIsTTY: boolean | unde
 		return { kind: "refuse", message: `\`${first}\` is not a cloudthinker agent command. To ask it as a prompt, run: cloudthinker agent -p "${first} ..."` };
 	}
 	let print = false;
+	let maxTurns = false;
 	let prompt = separator !== -1 && separator < argv.length - 1;
 	for (let index = 0; index < flags.length; index += 1) {
 		const arg = flags[index] as string;
@@ -98,6 +104,13 @@ export function checkSurface(argv: readonly string[], stdinIsTTY: boolean | unde
 			}
 		} else if (arg === "--model") {
 			if (next === undefined || !cloudModel(next)) return { kind: "refuse", message: MODEL_REFUSAL };
+			index += 1;
+		} else if (arg === "--max-turns") {
+			if (next === undefined || !/^[1-9][0-9]*$/.test(next)) return { kind: "refuse", message: MAX_TURNS_VALUE };
+			maxTurns = true;
+			index += 1;
+		} else if (arg === "--add-dir") {
+			if (next === undefined || next.startsWith("-")) return { kind: "refuse", message: ADD_DIR_VALUE };
 			index += 1;
 		} else if (arg === "--models") {
 			if (next === undefined || !cloudModelScope(next)) return { kind: "refuse", message: MODEL_REFUSAL };
@@ -125,6 +138,7 @@ export function checkSurface(argv: readonly string[], stdinIsTTY: boolean | unde
 			prompt = true;
 		}
 	}
+	if (maxTurns && !print) return { kind: "refuse", message: MAX_TURNS_NEEDS_PRINT };
 	if (print && !prompt && stdinIsTTY) return { kind: "refuse", message: PRINT_NEEDS_PROMPT };
 	return { kind: "run" };
 }

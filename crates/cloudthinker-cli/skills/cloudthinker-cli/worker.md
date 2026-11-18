@@ -197,8 +197,9 @@ to the server (it names `HTTPS_PROXY` and a custom CA bundle when set), clock sk
 (warning over 10 seconds, failure over 30, because leases last 60 seconds), the
 stored credential, the served folder and its saved identity, the state directory
 modes (`0700` and `0600`), the service unit and Linux lingering, the `git`
-version, and the container runtime and images for container isolation. Each
-problem prints one fix, and the exit code is 1 when any check fails.
+version, and the container runtime and images for container isolation. Text
+output is one line when all checks pass; otherwise each problem gets one row with
+its fix. The exit code is 1 when any check fails.
 
 Concurrency limits assignments. Each assignment admits four operations and the
 process executes at most 16 operations at once. File reads and uploads allow

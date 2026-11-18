@@ -11,11 +11,13 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use cloudthinker_client::doctor::{Area, Cause, Check, Fix, Report, Status};
 use cloudthinker_client::{install_tool, installed_tool_binary, tools_bin_root};
 use serde::{Deserialize, Serialize};
 
 use super::cyber_config;
-use crate::engine::{exit::ExitCode, output};
+use crate::engine::exit::{self, ExitCode};
+use crate::engine::output;
 
 /// The pinned manifest. A tool or a platform is a data row here, never code.
 const MANIFEST_JSON: &str = include_str!("toolpack.json");
@@ -126,19 +128,15 @@ pub async fn doctor(fix: bool, json: bool) -> ExitCode {
         fix_failed = fix_toolpack(&manifest, &bin_root, platform.as_deref()).await;
     }
 
-    let report = build_report(&manifest, &bin_root, platform);
-    let result = if json {
-        output::emit_json(&report)
-    } else {
-        render(&report)
-    };
-    match result {
+    let state = build_report(&manifest, &bin_root, platform);
+    let report = checks(&state, fix_failed);
+    let code = exit::for_doctor(report.outcome());
+    match output::emit_doctor(report, json, move |_| state) {
+        Ok(()) => code,
         Err(error) => {
             output::eprintln_error(&error);
             ExitCode::JobFailed
         }
-        Ok(()) if fix_failed => ExitCode::JobFailed,
-        Ok(()) => ExitCode::Ok,
     }
 }
 
@@ -252,64 +250,123 @@ fn context_resolves(source: &str) -> bool {
     Path::new(source).exists()
 }
 
-fn render(report: &DoctorReport) -> Result<(), String> {
-    let mut lines = Vec::new();
-    lines.push(format!(
-        "platform  {}",
-        report.platform.as_deref().unwrap_or("unsupported")
+fn row(id: &'static str, label: &'static str, status: Status, summary: impl Into<String>) -> Check {
+    Check::new(Area::Cyber, id, status, summary).label(label)
+}
+
+fn checks(state: &DoctorReport, fix_failed: bool) -> Report {
+    let mut report = Report::new("cyber doctor", env!("CARGO_PKG_VERSION"));
+    report.push(match &state.platform {
+        Some(platform) => row("platform", "Platform", Status::Pass, platform.clone()),
+        None => row(
+            "platform",
+            "Platform",
+            Status::Warn,
+            "No toolpack build for this platform",
+        ),
+    });
+    report.push(row(
+        "config",
+        "Config",
+        Status::Pass,
+        state.config_file.clone(),
     ));
-    lines.push(format!("config    {}", report.config_file));
-    for (key, value) in &report.config {
-        lines.push(format!("config    {key} = {value}"));
-    }
-    lines.push(format!(
-        "mode      {} ({})",
-        report.mode, report.mode_reason
+    report.push(row(
+        "mode",
+        "Mode",
+        Status::Pass,
+        format!("{} ({})", state.mode, state.mode_reason),
     ));
-    if report.identities.is_empty() {
-        lines.push("auth      none configured".to_string());
+    for identity in &state.identities {
+        report.push(if identity.set {
+            row(
+                "auth",
+                "Auth",
+                Status::Pass,
+                format!("{} from {}", identity.role, identity.env),
+            )
+        } else {
+            row(
+                "auth",
+                "Auth",
+                Status::Warn,
+                format!("{} is not set for {}", identity.env, identity.role),
+            )
+            .fix(Fix::Step(format!("Set {} in your shell.", identity.env)))
+        });
     }
-    for identity in &report.identities {
-        let state = if identity.set { "set" } else { "MISSING" };
-        lines.push(format!(
-            "auth      {}  {}  {state}",
-            identity.role, identity.env
-        ));
+    if !state.bola_ready {
+        report.push(
+            row(
+                "authz",
+                "Authz",
+                Status::Warn,
+                format!(
+                    "Fewer than {} identities; an authorization test (BOLA) needs two roles",
+                    cyber_config::BOLA_MIN_IDENTITIES
+                ),
+            )
+            .fix(Fix::Run(
+                "cloudthinker cyber config set auth.<role> <ENV_VAR>".into(),
+            )),
+        );
     }
-    if !report.bola_ready {
-        lines.push(format!(
-            "authz     fewer than {} identities; an authorization test (BOLA) needs two roles",
-            cyber_config::BOLA_MIN_IDENTITIES
-        ));
+    for item in &state.context {
+        report.push(if item.resolves {
+            row(
+                "context",
+                "Context",
+                Status::Pass,
+                format!("{} {}", item.label, item.source),
+            )
+        } else {
+            row(
+                "context",
+                "Context",
+                Status::Warn,
+                format!("{} {} not found", item.label, item.source),
+            )
+        });
     }
-    if report.context.is_empty() {
-        lines.push("context   none configured".to_string());
+    for tool in &state.floor {
+        report.push(if tool.present {
+            row("floor", "Tools", Status::Pass, tool.name.clone())
+        } else {
+            row(
+                "floor",
+                "Tools",
+                Status::Warn,
+                format!("{} not found", tool.name),
+            )
+        });
     }
-    for item in &report.context {
-        let state = if item.resolves { "ok" } else { "UNRESOLVED" };
-        lines.push(format!(
-            "context   {}  {}  {state}",
-            item.label, item.source
-        ));
+    for tool in &state.toolpack {
+        let name = format!("{} {}", tool.name, tool.version);
+        report.push(match tool.status {
+            ToolStatus::Present => row("toolpack", "Toolpack", Status::Pass, name),
+            ToolStatus::Missing | ToolStatus::Outdated => row(
+                "toolpack",
+                "Toolpack",
+                Status::Warn,
+                format!("{name} {}", tool.status.label()),
+            )
+            .fix(Fix::Run("cloudthinker cyber doctor --fix".into())),
+            ToolStatus::Unsupported => row(
+                "toolpack",
+                "Toolpack",
+                Status::Skipped,
+                format!("{name}: no build for this platform"),
+            ),
+        });
     }
-    for tool in &report.floor {
-        let state = if tool.present { "present" } else { "ABSENT" };
-        lines.push(format!("floor     {}  {state}", tool.name));
+    if fix_failed {
+        report.push(
+            row("fix", "Fix", Status::Fail, "Some tools did not install")
+                .cause(Cause::Failure)
+                .fix(Fix::Run("cloudthinker cyber doctor --fix".into())),
+        );
     }
-    for tool in &report.toolpack {
-        let hint = match tool.status {
-            ToolStatus::Present => tool.path.clone().unwrap_or_default(),
-            ToolStatus::Missing | ToolStatus::Outdated => "run `cyber doctor --fix`".to_string(),
-            ToolStatus::Unsupported => "no build for this platform".to_string(),
-        };
-        lines.push(format!(
-            "toolpack  {} {}  {}  {hint}",
-            tool.name,
-            tool.version,
-            tool.status.label()
-        ));
-    }
-    output::print_lines(&lines)
+    report
 }
 
 fn parse_manifest() -> Result<Manifest, String> {

@@ -1,3 +1,9 @@
+## [0.13.1]
+
+- The agent can now read and change a short list of your agent settings, such as Cloud on at start, tool output and diff style. Each change shows the old and new value and waits for your approval, even in Auto mode, and the agent can undo its last change. The tool does not expose login, keys or the server address. A change applies after you restart the agent.
+- New `/doctor` command: it runs `cloudthinker doctor`, shows one line when all is well or one row per problem, and the agent explains each problem and offers the fix. It works with Cloud off.
+- Send a notification only while the terminal window is known to be in the background, as a bell plus OSC 9, OSC 99 (kitty) or OSC 777 (foot, rxvt), and follow `/settings` → Notifications.
+
 ## [0.13.0]
 
 - `cloudthinker review` names its purpose (`X-CloudThinker-Purpose: review`) on every model call, so the review runs on the workspace's Code Review model instead of the chat model.

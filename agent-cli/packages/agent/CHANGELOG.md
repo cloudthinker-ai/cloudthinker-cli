@@ -1,3 +1,9 @@
+## [0.13.1]
+
+- The agent bundle now ships the `doctor` skill that `/doctor` loads to explain a problem and offer its fix.
+- Get a bell and a desktop notification when a turn ends or an approval waits while the terminal window is in the background; `/settings` → Notifications turns it off. Terminals that do not report focus get none.
+- Add `--add-dir <path>` to work in extra folders in one session (their AGENTS.md or CLAUDE.md load too) and `--max-turns <n>` to stop a headless `-p` run after n model turns with exit code 1.
+
 ## [0.13.0]
 
 - Expose linked worker execution receipts to pentest workflows and preserve them when completed work is replayed.

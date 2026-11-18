@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
-import { AGENT_HELP, MODEL_REFUSAL, NO_SESSION_REFUSAL, PRINT_NEEDS_PROMPT, THINKING_REFUSAL, UPDATE_REFUSAL, checkSurface } from "../src/surface.ts";
+import { ADD_DIR_VALUE, AGENT_HELP, MAX_TURNS_NEEDS_PRINT, MAX_TURNS_VALUE, MODEL_REFUSAL, NO_SESSION_REFUSAL, PRINT_NEEDS_PROMPT, THINKING_REFUSAL, UPDATE_REFUSAL, checkSurface } from "../src/surface.ts";
 
 test("the wrapper's local review argv still runs", () => {
 	const review = ["--models", "cloudthinker/*", "--tools", "read,grep,find,ls", "--no-extensions", "--no-skills", "--no-context-files", "--session-dir", "/tmp/review", "--print", "-p", "Review this checkout"];
@@ -45,4 +45,16 @@ test("the wrapper prints the same help without starting the agent", () => {
 	const copy = copies.find((url) => existsSync(url));
 	assert.ok(copy, "the wrapper's agent_help.txt is missing");
 	assert.equal(readFileSync(copy, "utf8"), AGENT_HELP);
+});
+
+test("--add-dir repeats, --max-turns runs with -p, and --max-turns without -p or with a bad number is a usage error", () => {
+	assert.deepEqual(checkSurface(["--add-dir", "../a", "--add-dir", "../b", "hi"], true), { kind: "run" });
+	assert.deepEqual(checkSurface(["-p", "hi", "--max-turns", "5"], true), { kind: "run" });
+	assert.deepEqual(checkSurface(["--max-turns", "5", "-p", "hi", "--mode", "json"], true), { kind: "run" });
+	assert.deepEqual(checkSurface(["--max-turns", "5", "hi"], true), { kind: "refuse", message: MAX_TURNS_NEEDS_PRINT });
+	assert.deepEqual(checkSurface(["--max-turns", "5"], true), { kind: "refuse", message: MAX_TURNS_NEEDS_PRINT });
+	for (const bad of ["0", "-1", "two", "1.5"]) assert.deepEqual(checkSurface(["-p", "hi", "--max-turns", bad], true), { kind: "refuse", message: MAX_TURNS_VALUE });
+	assert.deepEqual(checkSurface(["-p", "hi", "--max-turns"], true), { kind: "refuse", message: MAX_TURNS_VALUE });
+	assert.deepEqual(checkSurface(["--add-dir"], true), { kind: "refuse", message: ADD_DIR_VALUE });
+	assert.ok(AGENT_HELP.includes("--add-dir <path>") && AGENT_HELP.includes("--max-turns <n>"));
 });
