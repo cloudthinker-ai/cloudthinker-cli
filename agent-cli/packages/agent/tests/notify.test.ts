@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { type Terminal, TuiAltScreen } from "@earendil-works/pi-tui";
 
 import {
 	FOCUS_REPORTING_OFF,
@@ -15,7 +16,7 @@ import {
 	terminalNotify,
 } from "@cloudthinker/cloud/src/notify.ts";
 
-import { registerNotifications } from "../src/notify.ts";
+import { applyFocusTracking, registerNotifications } from "../src/notify.ts";
 
 const IN = "\x1b[I";
 const OUT = "\x1b[O";
@@ -147,4 +148,40 @@ test("a TUI turn end notifies once, a stray end does not, and a non-terminal out
 	assert.deepEqual(piped.output.written, []);
 	assert.equal(piped.listeners.length, 0);
 	reset();
+});
+
+test("in fullscreen a focus report typed into pi-tui's terminal reaches the notifier, so a turn that ends while the window is away notifies", () => {
+	reset();
+	applyFocusTracking();
+	let type: (data: string) => void = () => {};
+	const terminal: Terminal = {
+		start(onInput) { type = onInput; }, stop() {}, drainInput: async () => {}, write() {},
+		columns: 40, rows: 10, kittyProtocolActive: false,
+		moveBy() {}, hideCursor() {}, showCursor() {}, clearLine() {}, clearFromCursor() {}, clearScreen() {}, setTitle() {}, setProgress() {},
+	};
+	const screen = new TuiAltScreen(terminal, false, undefined, { mouse: true });
+	const handlers = new Map<string, Handler>();
+	const pi = { on: (event: string, handler: Handler) => { handlers.set(event, handler); } } as unknown as Pick<ExtensionAPI, "on">;
+	const tty = capture(true);
+	registerNotifications(pi, () => 0, (text) => terminalNotify(text, { TERM: "xterm-256color", TERM_PROGRAM: "ghostty" }, tty), tty);
+	const ctx = { mode: "tui", hasUI: true, ui: { onTerminalInput: (listener: (data: string) => { consume?: boolean } | undefined) => screen.addInputListener(listener) }, cwd: process.cwd(), isProjectTrusted: () => false };
+	const emit = (name: string) => handlers.get(name)?.({ type: name, messages: [] }, ctx);
+	screen.start();
+	try {
+		emit("session_start");
+		type(OUT);
+		assert.equal(terminalFocus(), "unfocused");
+		emit("agent_start");
+		emit("agent_end");
+		assert.deepEqual(tty.written, [FOCUS_REPORTING_ON, "\x07\x1b]9;CloudThinker: done after 0s\x07"]);
+		type(IN);
+		assert.equal(terminalFocus(), "focused");
+		emit("agent_start");
+		emit("agent_end");
+		assert.equal(tty.written.length, 2);
+	} finally {
+		emit("session_shutdown");
+		screen.stop();
+		reset();
+	}
 });

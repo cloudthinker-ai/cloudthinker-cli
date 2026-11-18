@@ -6,7 +6,7 @@ import { takeFlagValues } from "./argv.ts";
 export const MAX_TURNS_FLAG = "--max-turns";
 
 export function maxTurnsLine(limit: number): string {
-	return `Stopped at --max-turns ${limit}: the agent had not finished.`;
+	return `Stopped after ${limit} model ${limit === 1 ? "turn" : "turns"} (--max-turns ${limit}).`;
 }
 
 export function extractMaxTurns(argv: readonly string[]): { limit: number | undefined; rest: string[] } {
@@ -32,7 +32,8 @@ export function registerMaxTurns(pi: Pick<ExtensionAPI, "on">, limit: number | u
 		ctx.abort();
 	});
 	pi.on("message_end", (event) => {
-		if (!stopped || event.message.role !== "assistant" || event.message.stopReason !== "aborted") return undefined;
-		return { message: { ...event.message, errorMessage: maxTurnsLine(limit) } };
+		if (!stopped || event.message.role !== "assistant") return undefined;
+		if (event.message.stopReason !== "aborted" && event.message.stopReason !== "error") return undefined;
+		return { message: { ...event.message, stopReason: "aborted", errorMessage: maxTurnsLine(limit) } };
 	});
 }

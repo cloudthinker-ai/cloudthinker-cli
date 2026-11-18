@@ -14,6 +14,7 @@ import { applyCompletionRows } from "./background/index.ts";
 import { applyPromptSearchKey } from "./prompt-search.ts";
 import { applyCodeBlockNumbers, COPY_USAGE, copyCodeBlock, copyCommandIndex, type CopyHost } from "./code-blocks.ts";
 import { applyMermaidUi } from "./mermaid.ts";
+import { applyFocusTracking } from "./notify.ts";
 import { applyCloudModelGuidance, applyCloudOnlyModels } from "./models.ts";
 import { applyQueuedMessagesUi } from "./queue-ui.ts";
 import { applyRemoteAttach } from "./remote-attach.ts";
@@ -208,6 +209,7 @@ export function applyGuard(): void {
 	applyMentionHighlight();
 	applyEditorSelection();
 	applyTerminalCopyNote();
+	applyFocusTracking();
 	applyMarkdownCopy();
 	applyCompletionRows();
 	applyToolGroups();

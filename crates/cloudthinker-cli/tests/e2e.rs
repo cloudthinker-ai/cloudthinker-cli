@@ -6209,6 +6209,35 @@ fn doctor_text_names_healthy_areas_and_one_row_per_warning() {
     );
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn doctor_text_keeps_the_summary_readable_beside_a_long_fix() {
+    let home = doctor_home();
+    let empty = home.path().join("empty-path");
+    std::fs::create_dir_all(&empty).unwrap();
+
+    let (code, text) = doctor_text(
+        doctor_cli("http://127.0.0.1:1", home.path())
+            .env("PATH", &empty)
+            .args(["cyber", "doctor"]),
+    );
+
+    assert_eq!(code, Some(0));
+    assert_eq!(
+        text,
+        format!(
+            "cyber doctor · {}\n\
+             ✓ Platform · Config · Mode\n\
+             ! Authz     Fewer than 2 identities; an authorization t… · cloudthinker cyber c…\n\
+             ! Tools     curl not found\n\
+             ! Tools     python3 >= 3.10 not found\n\
+             ! Toolpack  httpx 1.6.10 missing · cloudthinker cyber doctor --fix\n\
+             ! Toolpack  katana 1.7.0 missing · cloudthinker cyber doctor --fix\n",
+            env!("CARGO_PKG_VERSION")
+        )
+    );
+}
+
 #[test]
 fn doctor_text_signed_out_names_the_login_command() {
     let api = RoutedApi::start(doctor_routes(&[], &[]));

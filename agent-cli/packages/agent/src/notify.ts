@@ -1,4 +1,5 @@
 import { SettingsManager, getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { TuiAltScreen } from "@earendil-works/pi-tui";
 
 import {
 	FOCUS_REPORTING_OFF,
@@ -20,6 +21,23 @@ export function turnDoneText(elapsedMs: number): string {
 export function configuredNotifications(cwd: string, projectTrusted: boolean): boolean {
 	const settings = SettingsManager.create(cwd, getAgentDir(), { projectTrusted });
 	return readSetting(settings, NOTIFY_SETTING, (value): value is boolean => typeof value === "boolean", true);
+}
+
+interface FocusScreen {
+	handleViewportInput(data: string): unknown;
+}
+
+export function applyFocusTracking(): void {
+	const screen = TuiAltScreen.prototype as unknown as FocusScreen;
+	const { handleViewportInput } = screen;
+	if (typeof handleViewportInput !== "function") {
+		throw new Error("pi-tui's fullscreen no longer reads focus reports in handleViewportInput, so a turn-end notification cannot know the window is away");
+	}
+	screen.handleViewportInput = function (data) {
+		const next = focusEvent(data);
+		if (next !== undefined) setTerminalFocus(next);
+		return handleViewportInput.call(this, data);
+	};
 }
 
 interface FocusOutput {

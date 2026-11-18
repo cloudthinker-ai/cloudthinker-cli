@@ -6,6 +6,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use super::{emit_json, print_lines, terminal_text};
 
 const WIDTH: usize = 80;
+const MIN_FIX: usize = 24;
 
 fn columns(text: &str) -> usize {
     text.width()
@@ -26,6 +27,19 @@ fn fit(text: &str, room: usize) -> String {
         kept.push(character);
     }
     format!("{}…", kept.trim_end())
+}
+
+fn fit_row(summary: &str, fix: &str, room: usize) -> (String, String) {
+    let summary_width = columns(summary);
+    let fix_width = columns(fix);
+    if summary_width + fix_width <= room {
+        return (summary.to_string(), fix.to_string());
+    }
+    let fix = fit(
+        fix,
+        fix_width.min(room.saturating_sub(summary_width).max(MIN_FIX)),
+    );
+    (fit(summary, room.saturating_sub(columns(&fix))), fix)
 }
 
 pub fn emit_doctor<E, W: Serialize>(
@@ -90,14 +104,8 @@ fn doctor_lines<E>(report: &Report<E>, color: bool) -> Vec<String> {
             .and_then(Fix::command)
             .map(|command| format!(" · {command}"))
             .unwrap_or_default();
-        let lead = width + 4;
-        let room = WIDTH.saturating_sub(lead + columns(&fix));
-        let fix = fit(&fix, WIDTH.saturating_sub(lead));
-        lines.push(format!(
-            "{head}{}{}",
-            fit(&check.summary, room),
-            paint.dim(&fix)
-        ));
+        let (summary, fix) = fit_row(&check.summary, &fix, WIDTH.saturating_sub(width + 4));
+        lines.push(format!("{head}{summary}{}", paint.dim(&fix)));
     }
     lines
 }

@@ -44,11 +44,11 @@ function reply(content: Part[], stopReason: "stop" | "toolUse") {
 }
 
 function stream(message: ReturnType<typeof reply>, aborted: boolean) {
-	const final = aborted ? { ...message, content: [], stopReason: "aborted" } : message;
+	const final = aborted ? { ...message, content: [], stopReason: "error", errorMessage: "The operation was aborted." } : message;
 	return {
 		async *[Symbol.asyncIterator]() {
 			yield { type: "start", partial: { ...final, content: [] } };
-			yield aborted ? { type: "error", reason: "aborted", error: final } : { type: "done", reason: message.stopReason, message };
+			yield aborted ? { type: "error", reason: "error", error: final } : { type: "done", reason: message.stopReason, message };
 		},
 		result: async () => final,
 	};
@@ -143,7 +143,7 @@ test("a text run that would continue past the cap stops, names the cap on stderr
 	const result = await headlessRun("text", 2, 10);
 	assert.equal(result.calls, 2);
 	assert.equal(result.exitCode, 1);
-	assert.equal(result.stderr, `${maxTurnsLine(2)}\n`);
+	assert.equal(result.stderr, "Stopped after 2 model turns (--max-turns 2).\n");
 });
 
 test("a json run emits a max_turns event, names the cap on stderr, and exits 1", { timeout: 10_000 }, async () => {
