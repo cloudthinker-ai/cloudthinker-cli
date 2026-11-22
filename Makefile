@@ -15,7 +15,7 @@ BUILD := $(CLI_DIR)/.gen
 # Nightly rustfmt: progenitor emits unstable fmt options that stable rustfmt panics on.
 NIGHTLY_RUSTFMT := $(shell rustup which rustfmt --toolchain nightly)
 
-.PHONY: gen check fmt clippy test clean-gen release-sync check-release changelog discovery-runtime discovery-runtime-check
+.PHONY: gen check fmt clippy test clean-gen release-sync check-release changelog discovery-runtime-check
 
 gen:
 	@mkdir -p $(BUILD) $(CLI_DIR)/openapi
@@ -73,9 +73,6 @@ clean-gen:
 # account with push access. See scripts/release-sync.sh.
 release-sync: discovery-runtime-check
 	bash $(CLI_DIR)/scripts/release-sync.sh
-
-discovery-runtime:
-	python3 $(CLI_DIR)/scripts/build_discovery_runtime.py
 
 discovery-runtime-check:
 	python3 $(CLI_DIR)/scripts/build_discovery_runtime.py --check

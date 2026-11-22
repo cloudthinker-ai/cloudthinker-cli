@@ -81,15 +81,8 @@ export class SessionMirror {
 	async link(conversationId: string): Promise<void> {
 		conversationPathSegment(conversationId);
 		if (this.conversationId !== conversationId) {
-			this.acknowledged.clear();
-			this.truncated.clear();
-			this.rejected.clear();
-			this.pendingEntryIds.clear();
-			this.outboxEntries.clear();
-			this.outboxConversationId = undefined;
-			this.pendingCount = 0;
-			this.backoffMs = 0;
-			this.nextAttemptAt = 0;
+			this.clearPending();
+			this.clearBackoff();
 		}
 		const generation = ++this.linkGeneration;
 		this.conversationId = conversationId;
@@ -116,23 +109,15 @@ export class SessionMirror {
 		}
 		this.pendingCount = this.pendingEntryIds.size;
 		this.linked = true;
-		this.backoffMs = 0;
-		this.nextAttemptAt = 0;
+		this.clearBackoff();
 	}
 
 	unlink(): void {
 		this.linkGeneration += 1;
 		this.conversationId = undefined;
 		this.linked = false;
-		this.acknowledged = new Set();
-		this.truncated = new Set();
-		this.rejected = new Set();
-		this.backoffMs = 0;
-		this.nextAttemptAt = 0;
-		this.pendingCount = 0;
-		this.pendingEntryIds.clear();
-		this.outboxEntries.clear();
-		this.outboxConversationId = undefined;
+		this.clearPending();
+		this.clearBackoff();
 		this.report(false);
 	}
 
@@ -193,8 +178,7 @@ export class SessionMirror {
 		if (outstanding.length === 0) {
 			await this.clearOutbox(conversationId, generation);
 			if (!this.isCurrentLink(generation, conversationId)) return;
-			this.backoffMs = 0;
-			this.nextAttemptAt = 0;
+			this.clearBackoff();
 			this.report(false);
 			return;
 		}
@@ -232,9 +216,23 @@ export class SessionMirror {
 		await this.clearOutbox(conversationId, generation);
 		if (!this.isCurrentLink(generation, conversationId)) return;
 		this.pendingCount = this.pendingEntryIds.size;
+		this.clearBackoff();
+		this.report(false);
+	}
+
+	private clearPending(): void {
+		this.acknowledged.clear();
+		this.truncated.clear();
+		this.rejected.clear();
+		this.pendingEntryIds.clear();
+		this.outboxEntries.clear();
+		this.outboxConversationId = undefined;
+		this.pendingCount = 0;
+	}
+
+	private clearBackoff(): void {
 		this.backoffMs = 0;
 		this.nextAttemptAt = 0;
-		this.report(false);
 	}
 
 	private report(retryingAfterFailure: boolean): void {

@@ -1,3 +1,7 @@
+## [0.13.2]
+
+- Internal: shared row, header, mirror and transcript helpers; no behavior change.
+
 ## [0.13.1]
 
 - The agent bundle now ships the `doctor` skill that `/doctor` loads to explain a problem and offer its fix.

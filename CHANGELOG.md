@@ -1,3 +1,8 @@
+## [0.13.2]
+
+- This is the first stable release since 0.12.2. It also ships every change listed under 0.13.1 and 0.13.0, which were never published as stable releases. The main additions: a command for every CloudThinker public API operation and `cloudthinker api`, `cloudthinker login --token` for CI and scripts, `cloudthinker doctor` checks with a fix for each problem, and `cloudthinker review` findings shared with the pull request review.
+- Refresh generated API models: Apps can be listed by archived state and built-in connections by prefix.
+
 ## [0.13.1]
 
 - `cloudthinker agent --help` lists `--add-dir` and `--max-turns`.

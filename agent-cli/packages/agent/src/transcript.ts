@@ -23,6 +23,10 @@ export const TRANSCRIPT_TITLE = "Transcript";
 export const EMPTY_TRANSCRIPT = "Nothing in this session yet.";
 export const MAX_RESULT_LINES = 400;
 
+function moreLines(hidden: number): string {
+	return `… ${hidden} more lines (press e to read everything in your editor)`;
+}
+
 export type BlockKind = "user" | "thinking" | "assistant" | "call" | "result" | "error" | "shell" | "note";
 
 export type BlockView = { command: string; prompt: string } | { hunks: Hunk[]; lead: string; path?: string; wholeFile?: boolean };
@@ -51,7 +55,7 @@ function capped(text: string): string {
 	const lines = text.split("\n");
 	if (lines.length <= MAX_RESULT_LINES) return text;
 	const hidden = lines.length - MAX_RESULT_LINES;
-	return [...lines.slice(0, MAX_RESULT_LINES), `… ${hidden} more lines (press e to read everything in your editor)`].join("\n");
+	return [...lines.slice(0, MAX_RESULT_LINES), moreLines(hidden)].join("\n");
 }
 
 function argumentsText(args: unknown): string {
@@ -165,7 +169,7 @@ function windowed(block: TranscriptBlock, line: number): { block: TranscriptBloc
 	const body = [
 		...(start > 0 ? [`… ${start} earlier lines`] : []),
 		...lines.slice(start, end),
-		...(end < lines.length ? [`… ${lines.length - end} more lines (press e to read everything in your editor)`] : []),
+		...(end < lines.length ? [moreLines(lines.length - end)] : []),
 	].join("\n");
 	return { block: { kind: block.kind, title: block.title, body, full: block.full, firstLine: start > 0 ? start - 1 : 0 }, start, end };
 }
@@ -207,7 +211,7 @@ export function renderBlocks(blocks: readonly TranscriptBlock[], theme: Theme, w
 			const shown = rendered.slice(0, MAX_RESULT_LINES);
 			const hidden = rendered.length - shown.length + Math.max(0, commandLines.length - MAX_RESULT_LINES);
 			lines.push(...shown.map((line) => `   ${line}`));
-			if (hidden > 0) lines.push(`   ${theme.fg("muted", `… ${hidden} more lines (press e to read everything in your editor)`)}`);
+			if (hidden > 0) lines.push(`   ${theme.fg("muted", moreLines(hidden))}`);
 			lines.push("");
 			continue;
 		}
@@ -226,7 +230,7 @@ export function renderBlocks(blocks: readonly TranscriptBlock[], theme: Theme, w
 			const hidden = rendered.length - shown.length + taken.hidden;
 			if (block.view.lead) lines.push("");
 			lines.push(...shown.map((line) => `   ${line}`));
-			if (hidden > 0) lines.push(`   ${theme.fg("muted", `… ${hidden} more lines (press e to read everything in your editor)`)}`);
+			if (hidden > 0) lines.push(`   ${theme.fg("muted", moreLines(hidden))}`);
 		}
 		lines.push("");
 	}

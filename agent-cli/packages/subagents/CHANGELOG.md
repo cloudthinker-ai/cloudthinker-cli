@@ -1,3 +1,7 @@
+## [0.13.2]
+
+- Internal: shared row, header, mirror and transcript helpers; no behavior change.
+
 ## [0.13.0]
 
 - Expose linked worker execution receipts to pentest workflows and preserve them when completed work is replayed.

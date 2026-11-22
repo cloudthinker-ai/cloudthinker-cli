@@ -393,7 +393,7 @@ impl CtClient {
     pub async fn list_connections(&self) -> CtResult<Connections> {
         let (builtin, mcp) = tokio::try_join!(
             self.authed(async |c: cloudthinker_api::Client| {
-                c.builtin_connection_get_builtin_connections(None, None)
+                c.builtin_connection_get_builtin_connections(None, None, None)
                     .await
             }),
             self.authed(async |c: cloudthinker_api::Client| {

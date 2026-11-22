@@ -16428,6 +16428,35 @@ pub mod types {
     ///    "title"
     ///  ],
     ///  "properties": {
+    ///    "accept_note": {
+    ///      "title": "Accept Note",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "accept_owner": {
+    ///      "title": "Accept Owner",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "accept_reason": {
+    ///      "title": "Accept Reason",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "accepted_at": {
+    ///      "title": "Accepted At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
     ///    "affected_surfaces": {
     ///      "title": "Affected Surfaces",
     ///      "default": [],
@@ -16542,6 +16571,14 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "review_by": {
+    ///      "title": "Review By",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date"
+    ///    },
     ///    "run_change": {
     ///      "$ref": "#/components/schemas/ItemRunChange"
     ///    },
@@ -16564,6 +16601,14 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct FindingPublic {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub accept_note: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub accept_owner: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub accept_reason: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub accepted_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub affected_surfaces: ::std::vec::Vec<SurfaceItemPublic>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -16593,6 +16638,8 @@ pub mod types {
         pub manually_resolved: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub owasp: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub review_by: ::std::option::Option<::chrono::naive::NaiveDate>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub run_change: ::std::option::Option<ItemRunChange>,
         pub severity: Severity,
@@ -16813,6 +16860,7 @@ pub mod types {
     ///    "fixed",
     ///    "dismissed",
     ///    "needs_verification",
+    ///    "accepted",
     ///    "open",
     ///    "resolved"
     ///  ]
@@ -16840,6 +16888,8 @@ pub mod types {
         Dismissed,
         #[serde(rename = "needs_verification")]
         NeedsVerification,
+        #[serde(rename = "accepted")]
+        Accepted,
         #[serde(rename = "open")]
         Open,
         #[serde(rename = "resolved")]
@@ -16853,6 +16903,7 @@ pub mod types {
                 Self::Fixed => f.write_str("fixed"),
                 Self::Dismissed => f.write_str("dismissed"),
                 Self::NeedsVerification => f.write_str("needs_verification"),
+                Self::Accepted => f.write_str("accepted"),
                 Self::Open => f.write_str("open"),
                 Self::Resolved => f.write_str("resolved"),
             }
@@ -16867,6 +16918,7 @@ pub mod types {
                 "fixed" => Ok(Self::Fixed),
                 "dismissed" => Ok(Self::Dismissed),
                 "needs_verification" => Ok(Self::NeedsVerification),
+                "accepted" => Ok(Self::Accepted),
                 "open" => Ok(Self::Open),
                 "resolved" => Ok(Self::Resolved),
                 _ => Err("invalid value".into()),
@@ -16914,6 +16966,7 @@ pub mod types {
     ///    "needs_verification",
     ///    "in_progress",
     ///    "fixed",
+    ///    "accepted",
     ///    "history",
     ///    "all"
     ///  ]
@@ -16943,6 +16996,8 @@ pub mod types {
         InProgress,
         #[serde(rename = "fixed")]
         Fixed,
+        #[serde(rename = "accepted")]
+        Accepted,
         #[serde(rename = "history")]
         History,
         #[serde(rename = "all")]
@@ -16957,6 +17012,7 @@ pub mod types {
                 Self::NeedsVerification => f.write_str("needs_verification"),
                 Self::InProgress => f.write_str("in_progress"),
                 Self::Fixed => f.write_str("fixed"),
+                Self::Accepted => f.write_str("accepted"),
                 Self::History => f.write_str("history"),
                 Self::All => f.write_str("all"),
             }
@@ -16972,6 +17028,7 @@ pub mod types {
                 "needs_verification" => Ok(Self::NeedsVerification),
                 "in_progress" => Ok(Self::InProgress),
                 "fixed" => Ok(Self::Fixed),
+                "accepted" => Ok(Self::Accepted),
                 "history" => Ok(Self::History),
                 "all" => Ok(Self::All),
                 _ => Err("invalid value".into()),
@@ -17015,6 +17072,11 @@ pub mod types {
     /// filters.",
     ///  "type": "object",
     ///  "properties": {
+    ///    "accepted": {
+    ///      "title": "Accepted",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
     ///    "active": {
     ///      "title": "Active",
     ///      "default": 0,
@@ -17067,6 +17129,8 @@ pub mod types {
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct FindingTabCounts {
         #[serde(default)]
+        pub accepted: i64,
+        #[serde(default)]
         pub active: i64,
         #[serde(default)]
         pub all: i64,
@@ -17089,6 +17153,7 @@ pub mod types {
     impl ::std::default::Default for FindingTabCounts {
         fn default() -> Self {
             Self {
+                accepted: Default::default(),
                 active: Default::default(),
                 all: Default::default(),
                 awaiting_retest: Default::default(),
@@ -37511,6 +37576,7 @@ impl Client {
     ///Sends a `GET` request to `/api/v1/appsec/apps/`
     pub async fn appsec_list_apps<'a>(
         &'a self,
+        archived: Option<bool>,
         sort: Option<types::AppListSort>,
         workspace_id: Option<&'a ::serde_json::Value>,
     ) -> Result<ResponseValue<types::AppListResponse>, Error<()>> {
@@ -37528,6 +37594,7 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new("archived", &archived))
             .query(&progenitor_client::QueryParam::new("sort", &sort))
             .query(&progenitor_client::QueryParam::new(
                 "workspace_id",
@@ -38922,10 +38989,12 @@ impl Client {
     ///Sends a `GET` request to `/api/v1/builtin-connection`
     ///
     ///Arguments:
+    /// - `prefix`: Return only rows with one of these connection prefixes
     /// - `search`: Filter builtin connections by name (case-insensitive)
     /// - `workspace_id`
     pub async fn builtin_connection_get_builtin_connections<'a>(
         &'a self,
+        prefix: Option<&'a ::std::vec::Vec<::std::string::String>>,
         search: Option<&'a str>,
         workspace_id: Option<&'a ::serde_json::Value>,
     ) -> Result<ResponseValue<types::BuiltinConnectionsPublic>, Error<()>> {
@@ -38943,6 +39012,7 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new("prefix", &prefix))
             .query(&progenitor_client::QueryParam::new("search", &search))
             .query(&progenitor_client::QueryParam::new(
                 "workspace_id",

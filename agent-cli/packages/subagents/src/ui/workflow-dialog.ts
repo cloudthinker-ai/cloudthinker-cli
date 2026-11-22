@@ -76,6 +76,7 @@ import {
   type WorkflowCardSegment,
   type WorkflowCardTask,
 } from "./workflow-card.ts";
+import { windowRange } from "./window.ts";
 
 /** Fallback width when the caller does not know the terminal's. */
 const DEFAULT_WIDTH = 80;
@@ -426,16 +427,6 @@ function rightAlign(left: WorkflowCardLine, right: WorkflowCardLine, width: numb
   const clampedLeft = clampLine(left, Math.max(0, width - rightWidth - 1));
   const gap = Math.max(1, width - lineWidth(clampedLeft) - rightWidth);
   return clampLine([...clampedLeft, { text: " ".repeat(gap) }, ...right], width);
-}
-
-/**
- * Window a list around its selection, so a 200-agent fan-out still shows the
- * row you are on. Mirrors `fleet-list.ts`'s arithmetic.
- */
-function windowRange(selected: number, total: number, max: number): { start: number; end: number } {
-  const visible = Math.min(max, total);
-  const start = selected < visible ? 0 : selected - visible + 1;
-  return { start, end: start + visible };
 }
 
 /* ------------------------------------------------------------------------- *

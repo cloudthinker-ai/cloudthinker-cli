@@ -101,6 +101,15 @@ function formatSessionLine(state: HeaderState, styler: HeaderStyler): string {
 	return parts.join(styler.fg("muted", " · "));
 }
 
+function identitySlots(state: HeaderState, styler: HeaderStyler, title: string): { title: string; session: string; email?: string; webUrl?: string } {
+	return {
+		title,
+		session: formatSessionLine(state, styler),
+		email: state.userEmail ? styler.fg("muted", sanitizeTerminalText(state.userEmail)) : undefined,
+		webUrl: state.webUrl ? styler.fg("muted", "/open · view session in browser") : undefined,
+	};
+}
+
 function centerLine(value: string, width: number): string {
 	const visible = visibleWidth(value);
 	return `${" ".repeat(Math.max(0, Math.floor((width - visible) / 2)))}${value}`;
@@ -160,14 +169,8 @@ export function formatHeaderText(
 	presentation: HeaderPresentation = "session",
 ): string {
 	const title = `${styler.bold(styler.fg("accent", "CloudThinker"))}${styler.fg("muted", ` v${versions.host}`)}`;
-	const identity = [title];
-	if (state.link === "linked") {
-		identity.push(formatSessionLine(state, styler));
-		if (state.userEmail) identity.push(styler.fg("muted", sanitizeTerminalText(state.userEmail)));
-		if (state.webUrl) identity.push(styler.fg("muted", "/open · view session in browser"));
-	} else {
-		identity.push(formatSessionLine(state, styler));
-	}
+	const slots = identitySlots(state, styler, title);
+	const identity = [slots.title, slots.session, ...(slots.email ? [slots.email] : []), ...(slots.webUrl ? [slots.webUrl] : [])];
 	const lines: string[] = [];
 	const environment = terminalEnvironment();
 	const rowCount = process.stdout.rows ?? 24;
@@ -204,12 +207,7 @@ export function formatHeaderText(
 	} else if (width >= 64) {
 		const mark = renderMark(styler, environment.monochrome, environment.ascii, launch ? undefined : motionStep);
 		const detailWidth = Math.max(1, width - MARK_WIDTH - 1);
-		const compactIdentity = [
-			title,
-			formatSessionLine(state, styler),
-			state.userEmail ? styler.fg("muted", sanitizeTerminalText(state.userEmail)) : "",
-			state.webUrl ? styler.fg("muted", "/open · view session in browser") : "",
-		].join("\n");
+		const compactIdentity = [slots.title, slots.session, slots.email ?? "", slots.webUrl ?? ""].join("\n");
 		const sessionIdentity = expanded
 			? [...identity, ...(versions.pi ? [styler.fg("muted", piCredit(versions))] : [])].join("\n")
 			: compactIdentity;
@@ -219,9 +217,7 @@ export function formatHeaderText(
 		}
 	} else {
 		setStartupHeroVisible(false);
-		lines.push(title, formatSessionLine(state, styler));
-		if (state.userEmail) lines.push(styler.fg("muted", sanitizeTerminalText(state.userEmail)));
-		if (state.webUrl) lines.push(styler.fg("muted", "/open · view session in browser"));
+		lines.push(...identity);
 	}
 	if (expanded && versions.pi && width < 64) {
 		lines.push(styler.fg("muted", piCredit(versions)));

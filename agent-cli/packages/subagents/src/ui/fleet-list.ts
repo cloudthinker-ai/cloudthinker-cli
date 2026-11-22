@@ -19,6 +19,7 @@ import { getLifetimeCost, getLifetimeTotal } from "../usage.ts";
 import { type AgentActivity, formatCost, type Theme } from "./agent-widget.ts";
 import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./conversation-viewer.ts";
 import { magnitude } from "./magnitude.ts";
+import { windowRange } from "./window.ts";
 import { getSubagentHost, hostTickMs, type HostTask } from "../host.ts";
 
 /** Widget key for the below-editor fleet list. */
@@ -503,13 +504,11 @@ export class FleetList {
     lines.push(truncateToWidth(`  ${this.bullet(0, sel, theme)} main`, width));
 
     // Window the rows so the selected one stays visible.
-    const visible = Math.min(MAX_AGENT_ROWS, rows.length);
-    const selRow = Math.max(0, sel - 1);
-    const start = selRow < visible ? 0 : selRow - visible + 1;
-    const hiddenBelow = rows.length - (start + visible);
+    const { start, end } = windowRange(Math.max(0, sel - 1), rows.length, MAX_AGENT_ROWS);
+    const hiddenBelow = rows.length - end;
 
-    if (start > 0) lines.push(rightAlign("", theme.fg("dim", `↑ ${start} more`), width));
-    for (let a = start; a < start + visible; a++) {
+    if (start > 0) lines.push(this.dimTrailer(`↑ ${start} more`, width, theme));
+    for (let a = start; a < end; a++) {
       const row = rows[a];
       lines.push(
         row!.kind === "workflow" ?
@@ -518,21 +517,32 @@ export class FleetList {
         : this.renderAgentRow(a + 1, sel, row!.record, width, theme),
       );
     }
-    if (hiddenBelow > 0) lines.push(rightAlign("", theme.fg("dim", `↓ ${hiddenBelow} more`), width));
+    if (hiddenBelow > 0) lines.push(this.dimTrailer(`↓ ${hiddenBelow} more`, width, theme));
 
     return lines;
   }
 
   private renderTaskRow(rosterIndex: number, sel: number, task: HostTask, width: number, theme: Theme): string {
     const selected = rosterIndex === sel;
-    const kind = theme.fg(selected ? "text" : "muted", "command");
     const label = selected ? theme.fg("text", task.label) : task.label;
-    const left = `  ${this.bullet(rosterIndex, sel, theme)} ${kind}  ${label}`;
-    return rightAlign(left, selected ? theme.fg("text", task.stats) : theme.fg("dim", task.stats), width);
+    return this.rowTail(rosterIndex, sel, this.leftCell(rosterIndex, sel, "command", label, theme), task.stats, width, theme);
   }
 
   private bullet(rosterIndex: number, sel: number, theme: Theme): string {
     return rosterIndex === sel ? theme.fg("accent", "●") : theme.fg("dim", "○");
+  }
+
+  private leftCell(rosterIndex: number, sel: number, kind: string, label: string, theme: Theme): string {
+    const selected = rosterIndex === sel;
+    return `  ${this.bullet(rosterIndex, sel, theme)} ${theme.fg(selected ? "text" : "muted", kind)}  ${label}`;
+  }
+
+  private rowTail(rosterIndex: number, sel: number, left: string, stats: string, width: number, theme: Theme): string {
+    return rightAlign(left, rosterIndex === sel ? theme.fg("text", stats) : theme.fg("dim", stats), width);
+  }
+
+  private dimTrailer(text: string, width: number, theme: Theme): string {
+    return rightAlign("", theme.fg("dim", text), width);
   }
 
   /**
@@ -548,14 +558,13 @@ export class FleetList {
     theme: Theme,
   ): string {
     const selected = rosterIndex === sel;
-    const kind = theme.fg(selected ? "text" : "muted", "workflow");
     const name = selected ? theme.fg("text", workflow.name) : workflow.name;
-    const left = `  ${this.bullet(rosterIndex, sel, theme)} ${kind}  ${name}`;
+    const left = this.leftCell(rosterIndex, sel, "workflow", name, theme);
     // Frozen once the run settles, exactly as an agent's clock is.
     const elapsed = (workflow.completedAt ?? Date.now()) - workflow.startedAt;
     const agents = `${workflow.doneCount}/${workflow.totalCount} agent${workflow.totalCount === 1 ? "" : "s"}`;
     const stats = `${agents} · ${formatFleetElapsed(elapsed)} · ${formatFleetTokens(workflow.tokens)}`;
-    return rightAlign(left, selected ? theme.fg("text", stats) : theme.fg("dim", stats), width);
+    return this.rowTail(rosterIndex, sel, left, stats, width, theme);
   }
 
   private renderAgentRow(rosterIndex: number, sel: number, record: AgentRecord, width: number, theme: Theme): string {
@@ -576,7 +585,6 @@ export class FleetList {
     const elapsedMs = (record.completedAt ?? Date.now()) - record.startedAt; // freezes once finished
     const cost = this.showCost() ? formatCost(getLifetimeCost(record.lifetimeUsage)) : "";
     const stats = `${formatFleetElapsed(elapsedMs)} · ${formatFleetTokens(tokens)}${cost ? ` · ${cost}` : ""}`;
-    const right = selected ? theme.fg("text", stats) : theme.fg("dim", stats);
-    return rightAlign(left, right, width);
+    return this.rowTail(rosterIndex, sel, left, stats, width, theme);
   }
 }

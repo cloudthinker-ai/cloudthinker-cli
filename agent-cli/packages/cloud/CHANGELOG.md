@@ -1,3 +1,7 @@
+## [0.13.2]
+
+- Internal: shared row, header, mirror and transcript helpers; no behavior change.
+
 ## [0.13.1]
 
 - The agent can now read and change a short list of your agent settings, such as Cloud on at start, tool output and diff style. Each change shows the old and new value and waits for your approval, even in Auto mode, and the agent can undo its last change. The tool does not expose login, keys or the server address. A change applies after you restart the agent.

@@ -5387,6 +5387,27 @@
       "FindingPublic": {
         "description": "Response shape for a single Finding \u2014 only client-rendered fields.\n\nNEVER includes: signature (internal dedup key), raw finding_metadata (the\nFE reads the derived owasp/cwe/cve fields instead), or any raw internal\ncolumn not rendered by the FE.\n\nTwo orthogonal axes, both rendered by the FE's triage rail:\n- status \u2014 agent-owned, the 4-state model\n  (confirmed/needs_verification/fixed/dismissed).\n- triage_state \u2014 human-owned work tracking on an OPEN or NEEDS_VERIFICATION\n  finding.\n\n`manually_resolved` splits the one status the two axes share. A RESOLVED\nfinding is either a scan's PoC-replay proof or a human's own verdict, and\nonly the second one a human may undo \u2014 so the FE cannot decide whether to\noffer Reopen without it. It is a derived bool, not the raw\n`manually_resolved_by` UUID, because the FE renders the choice, not the\nactor.",
         "properties": {
+          "accept_note": {
+            "nullable": true,
+            "title": "Accept Note",
+            "type": "string"
+          },
+          "accept_owner": {
+            "nullable": true,
+            "title": "Accept Owner",
+            "type": "string"
+          },
+          "accept_reason": {
+            "nullable": true,
+            "title": "Accept Reason",
+            "type": "string"
+          },
+          "accepted_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Accepted At",
+            "type": "string"
+          },
           "affected_surfaces": {
             "default": [],
             "items": {
@@ -5490,6 +5511,12 @@
             "title": "Owasp",
             "type": "string"
           },
+          "review_by": {
+            "format": "date",
+            "nullable": true,
+            "title": "Review By",
+            "type": "string"
+          },
           "run_change": {
             "$ref": "#/components/schemas/ItemRunChange",
             "nullable": true
@@ -5553,6 +5580,7 @@
           "fixed",
           "dismissed",
           "needs_verification",
+          "accepted",
           "open",
           "resolved"
         ],
@@ -5567,6 +5595,7 @@
           "needs_verification",
           "in_progress",
           "fixed",
+          "accepted",
           "history",
           "all"
         ],
@@ -5576,6 +5605,11 @@
       "FindingTabCounts": {
         "description": "Findings per action tab under the active non-tab filters.",
         "properties": {
+          "accepted": {
+            "default": 0,
+            "title": "Accepted",
+            "type": "integer"
+          },
           "active": {
             "default": 0,
             "title": "Active",
@@ -11384,6 +11418,16 @@
           },
           {
             "in": "query",
+            "name": "archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Archived",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "workspace_id",
             "required": false,
             "schema": {
@@ -12978,6 +13022,21 @@
               "nullable": true,
               "title": "Search",
               "type": "string"
+            }
+          },
+          {
+            "description": "Return only rows with one of these connection prefixes",
+            "in": "query",
+            "name": "prefix",
+            "required": false,
+            "schema": {
+              "description": "Return only rows with one of these connection prefixes",
+              "items": {
+                "type": "string"
+              },
+              "nullable": true,
+              "title": "Prefix",
+              "type": "array"
             }
           },
           {
