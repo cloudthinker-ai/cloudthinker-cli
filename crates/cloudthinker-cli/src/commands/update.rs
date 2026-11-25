@@ -1,29 +1,16 @@
-//! `cloudthinker update` — self-update from GitHub releases.
-//!
-//! Deliberate exception to the "no reqwest in commands" rule: all network
-//! (GitHub releases API, installer download) lives inside the `axoupdater`
-//! crate — the same org as cargo-dist, and the crate cargo-dist itself uses
-//! for its updater binary. The command only wires receipt → run → render.
-//!
-//! An update re-runs the cargo-dist installer for the new release (the same
-//! model as `pi update` re-invoking its package manager), so the running
-//! binary is replaced by the installer, never by this process.
-
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use axoupdater::{AxoUpdater, AxoupdateError, UpdateRequest, Version};
+use axoupdater::Version;
 use cloudthinker_client::UpdateCache;
+use cloudthinker_client::cli_release::{
+    CliUpdateError, CliUpdater, GHE_BASE_ENV, GITHUB_BASE_ENV, UpdateTarget,
+};
 use serde::Serialize;
 
 use crate::engine::exit::ExitCode;
 use crate::engine::output;
-
-/// The cargo-dist app name. The install receipt filename, the release assets,
-/// and the GitHub repo all key off it — keep in lockstep with
-/// `cli/dist-workspace.toml` and the released assets.
-const APP_NAME: &str = "cloudthinker-cli";
 
 /// Opt out of the start-up release check entirely.
 const UPDATE_CHECK_OPT_OUT: &str = "CLOUDTHINKER_NO_UPDATE_CHECK";
@@ -72,6 +59,7 @@ enum Outcome {
     AlreadyAt(String),
     NoSuchRelease(String),
     Refused(String),
+    RateLimited,
     Failed(String),
 }
 
@@ -108,9 +96,6 @@ pub(crate) fn channel_of(base_url: &str) -> Channel {
     }
 }
 
-/// axoupdater owns the release math; the channel only picks its strategy.
-/// Both strategies key on the release source the receipt names, so the origin
-/// never touches the network — it only selects.
 /// Accepts `0.12.2` or `v0.12.2` and keeps the bare semver the release tags use.
 pub fn parse_version(raw: &str) -> Result<String, String> {
     let bare = raw.trim().trim_start_matches('v');
@@ -119,49 +104,37 @@ pub fn parse_version(raw: &str) -> Result<String, String> {
         .map_err(|_| format!("`{raw}` is not a release version; use one like 0.12.2"))
 }
 
-fn request_for(channel: Channel) -> UpdateRequest {
+fn request_for(channel: Channel) -> UpdateTarget<'static> {
     match channel {
-        Channel::Stable => UpdateRequest::Latest,
-        Channel::Dev => UpdateRequest::LatestMaybePrerelease,
+        Channel::Stable => UpdateTarget::Stable,
+        Channel::Dev => UpdateTarget::Dev,
     }
 }
 
 async fn install(force: bool, channel: Channel, pinned: Option<&str>) -> Outcome {
-    let mut updater = AxoUpdater::new_for(APP_NAME);
-    match cloudthinker_client::https_client() {
-        Ok(client) => updater.set_client(client),
-        Err(err) => return Outcome::Failed(err.to_string()),
-    };
-    if let Err(err) = updater.load_receipt() {
-        // No receipt: the binary was not installed by a cargo-dist installer
-        // (copied in place, or installed by a future package manager). Refuse
-        // rather than guess where to write a replacement (pi's stance).
-        return Outcome::Refused(err.to_string());
-    }
-    // axoupdater treats an exe/receipt mismatch as "no update needed" — a
-    // silent lie for a binary that came from somewhere else. Surface it.
-    if !matches!(updater.check_receipt_is_for_this_executable(), Ok(true)) {
-        return Outcome::Refused("the running binary does not match the install receipt".into());
-    }
-    updater.configure_version_specifier(match pinned {
-        Some(version) => UpdateRequest::SpecificVersion(version.to_string()),
+    let target = match pinned {
+        Some(version) => UpdateTarget::Version(version),
         None => request_for(channel),
-    });
-    updater.disable_installer_output();
-    if force {
-        updater.always_update(true);
-    }
-    match updater.run().await {
+    };
+    let result = match CliUpdater::load() {
+        Ok(updater) => updater.install(target, force).await,
+        Err(error) => Err(error),
+    };
+    match result {
         Ok(Some(result)) => Outcome::Updated {
-            old: result.old_version.as_ref().map(ToString::to_string),
-            new: result.new_version.to_string(),
+            old: result.old_version,
+            new: result.new_version,
         },
         Ok(None) => match pinned {
-            Some(version) => Outcome::AlreadyAt(version.to_string()),
+            Some(version) => Outcome::AlreadyAt(version.to_owned()),
             None => Outcome::Current,
         },
-        Err(AxoupdateError::VersionNotFound { version, .. }) => Outcome::NoSuchRelease(version),
-        Err(err) => Outcome::Failed(err.to_string()),
+        Err(CliUpdateError::NoSuchRelease(version)) => Outcome::NoSuchRelease(version),
+        Err(CliUpdateError::RateLimited) => Outcome::RateLimited,
+        Err(error @ (CliUpdateError::NoReceipt(_) | CliUpdateError::ReceiptMismatch)) => {
+            Outcome::Refused(error.to_string())
+        }
+        Err(error) => Outcome::Failed(error.to_string()),
     }
 }
 
@@ -224,6 +197,12 @@ fn render(outcome: &Outcome, json: bool) -> ExitCode {
             output::eprintln_error(&format!("pick a version from {RELEASES_URL}"));
             return ExitCode::Usage;
         }
+        Outcome::RateLimited => {
+            output::eprintln_error(
+                "GitHub is limiting update checks from your network. Run: curl -fsSL https://cloudthinker.io/install.sh | sh",
+            );
+            return ExitCode::JobFailed;
+        }
         Outcome::Failed(err) => {
             output::eprintln_error(&format!("update failed: {err}"));
             output::eprintln_error(&format!(
@@ -259,7 +238,11 @@ fn warn_on_env_overrides() {
             "the install receipt is read from a non-default location",
         ),
         (
-            "CLOUDTHINKER_CLI_INSTALLER_GHE_BASE_URL",
+            GHE_BASE_ENV,
+            "releases and installers are fetched from a non-default GitHub base",
+        ),
+        (
+            GITHUB_BASE_ENV,
             "releases and installers are fetched from a non-default GitHub base",
         ),
     ] {
@@ -456,19 +439,15 @@ pub(crate) enum ReleaseLookup {
 }
 
 pub(crate) async fn lookup_latest(channel: Channel) -> ReleaseLookup {
-    let mut updater = AxoUpdater::new_for(APP_NAME);
-    let Ok(client) = cloudthinker_client::https_client() else {
-        return ReleaseLookup::Unreachable;
+    let updater = match CliUpdater::load() {
+        Ok(updater) => updater,
+        Err(CliUpdateError::NoReceipt(_) | CliUpdateError::ReceiptMismatch) => {
+            return ReleaseLookup::NoReceipt;
+        }
+        Err(_) => return ReleaseLookup::Unreachable,
     };
-    updater.set_client(client);
-    if updater.load_receipt().is_err()
-        || !matches!(updater.check_receipt_is_for_this_executable(), Ok(true))
-    {
-        return ReleaseLookup::NoReceipt;
-    }
-    updater.configure_version_specifier(request_for(channel));
-    match updater.query_new_version().await {
-        Ok(latest) => ReleaseLookup::Latest(latest.map(ToString::to_string)),
+    match updater.latest(request_for(channel)).await {
+        Ok(latest) => ReleaseLookup::Latest(latest),
         Err(_) => ReleaseLookup::Unreachable,
     }
 }
@@ -538,9 +517,9 @@ fn ask(channel: Channel, version: &str) -> Answer {
 mod tests {
     use super::{
         Answer, Channel, PendingCheck, RUNNING_VERSION, UPDATE_CHECK_BUDGET, answer_of, channel_of,
-        newer_than, newer_than_running, offer_line, offerable, request_for,
+        newer_than, newer_than_running, offer_line, offerable,
     };
-    use axoupdater::{UpdateRequest, Version};
+    use axoupdater::Version;
     use cloudthinker_client::UpdateCache;
 
     #[test]
@@ -619,18 +598,6 @@ mod tests {
     fn an_unparseable_origin_fails_closed_to_stable() {
         assert!(matches!(channel_of("not a url"), Channel::Stable));
         assert!(matches!(channel_of(""), Channel::Stable));
-    }
-
-    #[test]
-    fn channels_map_to_axoupdater_strategies() {
-        assert!(matches!(
-            request_for(Channel::Stable),
-            UpdateRequest::Latest
-        ));
-        assert!(matches!(
-            request_for(Channel::Dev),
-            UpdateRequest::LatestMaybePrerelease
-        ));
     }
 
     #[test]

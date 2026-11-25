@@ -7,6 +7,7 @@
 mod agent_release;
 pub mod auth;
 mod cli_config;
+pub mod cli_release;
 mod client;
 mod cloud;
 pub use cloud::{CloudExecutionInput, CloudOutcome, CloudResult};

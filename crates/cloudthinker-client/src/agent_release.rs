@@ -636,7 +636,7 @@ pub(crate) async fn download(
     max_bytes: u64,
     install_error: fn(String) -> CtError,
 ) -> CtResult<Vec<u8>> {
-    let mut response = http
+    let response = http
         .get(url)
         .send()
         .await
@@ -648,6 +648,15 @@ pub(crate) async fn download(
             status.as_u16()
         )));
     }
+    read_download(response, url, max_bytes, install_error).await
+}
+
+pub(crate) async fn read_download(
+    mut response: reqwest::Response,
+    url: &str,
+    max_bytes: u64,
+    install_error: fn(String) -> CtError,
+) -> CtResult<Vec<u8>> {
     if response.content_length().is_some_and(|len| len > max_bytes) {
         return Err(oversized_error(url, max_bytes, install_error));
     }

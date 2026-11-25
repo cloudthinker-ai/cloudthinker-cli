@@ -64,6 +64,9 @@ line that names it. It checks at most every 20 hours.
 Answer `s` to skip that version until a newer one ships. Set
 `CLOUDTHINKER_NO_UPDATE_CHECK=1` to turn off the offer.
 
+If GitHub limits update checks from your network, run
+`curl -fsSL https://cloudthinker.io/install.sh | sh` to install the latest stable release.
+
 Run `cloudthinker update --version 0.12.2` to install one release from the
 releases page. An older version rolls back. To stay on it, skip the offer
 with `s` or set `CLOUDTHINKER_NO_UPDATE_CHECK=1`.

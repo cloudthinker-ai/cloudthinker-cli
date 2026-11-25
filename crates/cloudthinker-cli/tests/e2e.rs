@@ -2074,12 +2074,13 @@ impl Drop for MockReleases {
 
 /// Spawn the real binary with the axoupdater test hooks pointed at the mock.
 fn update_cli(receipt_dir: &std::path::Path, releases: &MockReleases, marker: &str) -> Command {
+    update_cli_at(receipt_dir, &releases.base_url, marker)
+}
+
+fn update_cli_at(receipt_dir: &std::path::Path, release_base: &str, marker: &str) -> Command {
     let mut cmd = Command::cargo_bin("cloudthinker").unwrap();
     cmd.env("AXOUPDATER_CONFIG_PATH", receipt_dir)
-        .env(
-            "CLOUDTHINKER_CLI_INSTALLER_GHE_BASE_URL",
-            &releases.base_url,
-        )
+        .env("CLOUDTHINKER_CLI_INSTALLER_GHE_BASE_URL", release_base)
         .env("CT_UPDATE_TEST_MARKER", marker)
         .env("HOME", fresh_home("update"))
         .env_remove("CLOUDTHINKER_URL")
@@ -2103,6 +2104,140 @@ fn marker_path(name: &str) -> String {
         .to_str()
         .unwrap()
         .to_string()
+}
+
+const PUBLIC_RELEASE_PATH: &str = "/cloudthinker-ai/cloudthinker-cli/releases";
+
+async fn limit_release_api(server: &wiremock::MockServer, status: u16, requests: u64) {
+    wiremock::Mock::given(wiremock::matchers::path_regex("^/api/v3/repos/"))
+        .respond_with(wiremock::ResponseTemplate::new(status))
+        .expect(requests)
+        .mount(server)
+        .await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn ca_up_19_the_installer_link_works_when_the_release_api_is_limited() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let server = MockServer::start().await;
+    limit_release_api(&server, 403, 0).await;
+    let installer = format!("{PUBLIC_RELEASE_PATH}/download/v0.2.0/{UPDATE_APP}-installer.sh");
+    Mock::given(method("HEAD"))
+        .and(path(format!(
+            "{PUBLIC_RELEASE_PATH}/latest/download/{UPDATE_APP}-installer.sh"
+        )))
+        .respond_with(ResponseTemplate::new(302).insert_header("Location", installer.as_str()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(installer))
+        .respond_with(ResponseTemplate::new(200).set_body_string(marker_installer_script()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let temp = tempfile::tempdir().unwrap();
+    let marker = temp.path().join("installed");
+    let receipt_dir = write_receipt("up19", "0.1.0", &real_install_prefix());
+    update_cli_at(&receipt_dir, &server.uri(), marker.to_str().unwrap())
+        .env("GITHUB_TOKEN", "fixture-token")
+        .args(["update", "--json"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("0.2.0"));
+    assert!(marker.is_file());
+    for request in server.received_requests().await.unwrap() {
+        assert!(!request.headers.contains_key("authorization"));
+    }
+}
+
+#[tokio::test]
+async fn ca_up_20_rate_limits_show_one_recovery_command() {
+    for status in [403, 429] {
+        let server = wiremock::MockServer::start().await;
+        limit_release_api(&server, status, 2).await;
+        let receipt_dir = write_receipt("up20", "0.1.0", &real_install_prefix());
+        let result = update_cli_at(&receipt_dir, &server.uri(), "")
+            .args(["update", "--json"])
+            .assert()
+            .code(1)
+            .stdout("");
+        let stderr = String::from_utf8_lossy(&result.get_output().stderr);
+        let lines: Vec<_> = stderr
+            .lines()
+            .filter(|line| !line.contains("environment variable"))
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                "error: GitHub is limiting update checks from your network. Run: curl -fsSL https://cloudthinker.io/install.sh | sh"
+            ]
+        );
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn ca_up_21_startup_and_update_find_the_same_prerelease_without_the_api() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let api = MockApi::start(WHOAMI_BODY.into());
+    let server = MockServer::start().await;
+    limit_release_api(&server, 403, 0).await;
+    let tag = newer_tag();
+    let version = format!("{}-dev.1", tag.trim_start_matches('v'));
+    let feed = format!(
+        "<feed xmlns=\"http://www.w3.org/2005/Atom\"><entry><id>tag:github.com,2008:Repository/1/v{version}</id></entry><entry><id>tag:github.com,2008:Repository/1/v{RUNNING_VERSION}</id></entry></feed>"
+    );
+    Mock::given(method("GET"))
+        .and(path(format!("{PUBLIC_RELEASE_PATH}.atom")))
+        .respond_with(ResponseTemplate::new(200).set_body_string(feed))
+        .expect(2)
+        .mount(&server)
+        .await;
+    let installer = format!("{PUBLIC_RELEASE_PATH}/download/v{version}/{UPDATE_APP}-installer.sh");
+    Mock::given(method("HEAD"))
+        .and(path(installer.as_str()))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(2)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(installer))
+        .respond_with(ResponseTemplate::new(200).set_body_string(marker_installer_script()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let receipt_dir = write_receipt("up21", RUNNING_VERSION, &real_install_prefix());
+    let home = tempfile::tempdir().unwrap();
+    let output = binary_on_a_tty(
+        &assert_cmd::cargo::cargo_bin("cloudthinker"),
+        &["agent"],
+        b"n\n",
+        &api,
+        &server.uri(),
+        &receipt_dir,
+        home.path(),
+    );
+    assert!(output.contains("argv: "));
+    assert_eq!(read_cache(home.path())["latest_version"], version.as_str());
+
+    let marker = home.path().join("installed");
+    update_cli_at(&receipt_dir, &server.uri(), marker.to_str().unwrap())
+        .env("CLOUDTHINKER_URL", &api.base_url)
+        .arg("update")
+        .assert()
+        .success()
+        .stdout(format!(
+            "Updated cloudthinker from {RUNNING_VERSION} to {version}\n"
+        ));
+    assert!(marker.is_file());
 }
 
 // CA-UP-1: an update is available → the installer runs and the outcome line
@@ -2506,7 +2641,7 @@ fn agent_on_a_tty_answering(
         &["agent"],
         answer,
         api,
-        releases,
+        &releases.base_url,
         receipt_dir,
         home,
     )
@@ -2556,7 +2691,7 @@ fn binary_on_a_tty(
     args: &[&str],
     answer: &[u8],
     api: &MockApi,
-    releases: &MockReleases,
+    release_base: &str,
     receipt_dir: &std::path::Path,
     home: &std::path::Path,
 ) -> String {
@@ -2579,10 +2714,7 @@ fn binary_on_a_tty(
     cmd.env("CLOUDTHINKER_URL", &api.base_url);
     cmd.env("CLOUDTHINKER_AGENT_BIN", &stub);
     cmd.env("AXOUPDATER_CONFIG_PATH", receipt_dir);
-    cmd.env(
-        "CLOUDTHINKER_CLI_INSTALLER_GHE_BASE_URL",
-        &releases.base_url,
-    );
+    cmd.env("CLOUDTHINKER_CLI_INSTALLER_GHE_BASE_URL", release_base);
     cmd.env("NO_COLOR", "1");
     cmd.env("HOME", home);
     cmd.env_remove("CLOUDTHINKER_NO_UPDATE_CHECK");
@@ -2670,7 +2802,7 @@ fn agent_help_prints_without_a_release_offer_or_the_agent() {
         &["agent", "--help"],
         b"n\n",
         &api,
-        &releases,
+        &releases.base_url,
         &receipt_dir,
         &home,
     );
@@ -2745,7 +2877,7 @@ fn ca_up_11_an_accepted_offer_continues_in_the_installed_binary() {
         &["agent", "--", "--resume"],
         b"y\n",
         &api,
-        &releases,
+        &releases.base_url,
         &receipt_dir,
         &home,
     );
@@ -3620,7 +3752,7 @@ fn a_command_on_a_terminal_names_a_newer_release_after_its_output() {
         &["whoami"],
         b"",
         &api,
-        &releases,
+        &releases.base_url,
         &receipt_dir,
         &home,
     );

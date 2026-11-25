@@ -1,3 +1,7 @@
+## [0.13.5]
+
+- Run `cloudthinker update` even when GitHub limits update checks from a shared network.
+
 ## [0.13.4]
 
 - The CLI uses the same workspace permissions as web Chat when it reads from your Cloudflare Connection.
