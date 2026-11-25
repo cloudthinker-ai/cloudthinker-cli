@@ -1,6 +1,6 @@
 import type { CloudThinkerRuntime } from "./runtime.ts";
 import { MEMORY_DIR, SANDBOX_HOME } from "./memory.ts";
-import { CT_ASK, CT_SANDBOX_READ, CT_SANDBOX_WRITE, CT_RUN_STATUS } from "./tools/names.ts";
+import { CT_ASK, CT_SANDBOX_READ, CT_SANDBOX_WRITE, CT_RUN_STATUS, LOAD_SKILL, TOOL_SEARCH } from "./tools/names.ts";
 
 export const AUTO_MODE_LINE =
 	"Workspace approval mode: Auto. A write runs at once when the workspace rule allows it and pauses otherwise.";
@@ -25,8 +25,12 @@ export function guardedConnectionsXml(xml: string): string {
 	return `${wrapped[1]}${neutralizeBlockTags(wrapped[2] ?? "")}${wrapped[3]}`;
 }
 
-export const CONNECTION_SKILLS_DIR = `${SANDBOX_HOME}/_skills/connections`;
-export const CONNECTION_SKILL_LINE = `A \`skill:\` line inside a Connection names that Connection's guide, a SKILL.md on the workspace machine. Before your first command on a Connection, read its guide with ${CT_SANDBOX_READ} and an empty connection_list (\`cat ${CONNECTION_SKILLS_DIR}/*/<skill>/SKILL.md\`), then follow it: its scripts run on the workspace machine through ${CT_SANDBOX_READ} with that Connection, so do not write your own script for what the guide already provides.`;
+export const CONNECTION_SKILL_LINE = [
+	`Read the relevant advertised Connection guides with ${LOAD_SKILL} and use their scripts when available.`,
+	`For an SDK Connection with no named guides, call ${LOAD_SKILL} with just its connection_prefix to get its tool policy.`,
+	`Use ${TOOL_SEARCH} to find SDK tools by task or to load schemas by exact name (prefix.tool).`,
+	"Import a Connection tool from @connections/<prefix> in a TypeScript script and run it with Bun on the workspace machine. Pass the family prefix in connection_list and the instance alias in the SDK call when the Connection lists multiple instances.",
+].join(" ");
 
 const CYBER_OPERATING_GUIDANCE = "For Cyber work, read `cloudthinker --skill cyber`, use `ct_workflow` for staged execution, and bind each run to this session's conversation id.";
 export const FINISH_GUIDANCE = "Finish the task before you end your turn. When you say you will take a step, take it in the same reply with a tool call. End your turn only when the work is done and checked, or when you need the user's decision; then name the concrete blocker or question.";
@@ -64,8 +68,8 @@ export function buildPromptBlock(runtime: CloudThinkerRuntime): string {
 		lines.push(guardedConnectionsXml(runtime.connections.xml), CONNECTION_SKILL_LINE);
 	}
 	lines.push(
-		`For anything that needs one of those, call ${CT_SANDBOX_READ} with connection_list drawn ONLY from that list; it runs on the workspace machine and returns stdout.`,
-		`For ONE state-changing cloud command, call ${CT_SANDBOX_WRITE}; the workspace runs it at once or pauses it for a human to approve, in this terminal or in the browser. That approval is the confirmation, so do not ask for one in chat first.`,
+		`For anything that needs one of those, use its tool policy to choose a workspace command. Skip disabled tools. For a read-only command that needs no approval, call ${CT_SANDBOX_READ} with connection_list drawn ONLY from that list.`,
+		`For ONE state-changing cloud command or a Connection tool marked approval-required, call ${CT_SANDBOX_WRITE}. The workspace applies its approval rules and may pause for a decision in the terminal or browser. Use that approval prompt for confirmation.`,
 	);
 	if (runtime.autoMode) lines.push(approvalModeLine(runtime.autoMode.enabled));
 	lines.push(`Use ${CT_SANDBOX_READ} for bounded cloud investigations.`);
@@ -73,7 +77,7 @@ export function buildPromptBlock(runtime: CloudThinkerRuntime): string {
 		`Call ${CT_ASK} for workspace memory or several dependent steps; delegated work runs on the workspace machine, human approval is required when requested, and ${CT_RUN_STATUS} resumes a paused run.`,
 	);
 	lines.push(
-		`A workspace skill written for the workspace machine may name tools or paths that do not exist on this machine; run any step of it that needs a Connection through ${CT_SANDBOX_READ}.`,
+		`A workspace skill may name tools or paths that only exist on the workspace machine. Run those steps there using the read and write rules above.`,
 		"When asked who you are or what you can reach, answer with these two environments and that Connection list.",
 	);
 	if (runtime.session) {

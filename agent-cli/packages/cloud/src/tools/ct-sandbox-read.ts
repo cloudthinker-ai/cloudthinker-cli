@@ -71,8 +71,8 @@ const description = [
 	"",
 	"connection_list must name only prefixes from the connected list in the system prompt. Any other prefix is rejected.",
 	"",
-	"Read-only means read-only: describe, list, get, logs, query, and their equivalents.",
-	`Anything that changes cloud state (create, delete, apply, scale, restart, rotate, put, tag) belongs in ${CT_SANDBOX_WRITE}, which the workspace approves.`,
+	"Use this for reads such as describe, list, get, logs, and query when the Connection allows them without approval. Skip disabled tools.",
+	`Use ${CT_SANDBOX_WRITE} for any change to cloud state or any Connection tool marked approval-required.`,
 ].join("\n");
 
 export function renderExecution(result: ExecutionResult): string {
@@ -96,7 +96,7 @@ export function registerSandboxRead(runtime: CloudThinkerRuntime): void {
 		promptSnippet:
 			"Run a read-only command on the workspace machine in the cloud, with a Connection's credential when the command needs one",
 		promptGuidelines: [
-			`Reach a workspace Connection only through ${CT_SANDBOX_READ}. Your machine holds no cloud credentials, so a local aws, kubectl, gcloud, or gh command cannot reach the user's cloud.`,
+			`Read from a workspace Connection through ${CT_SANDBOX_READ}. Your machine holds no cloud credentials, so a local aws, kubectl, gcloud, or gh command cannot reach the user's cloud.`,
 			"Never ask the user to paste a cloud credential.",
 		],
 		parameters,

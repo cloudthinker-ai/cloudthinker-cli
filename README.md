@@ -207,6 +207,10 @@ cloudthinker --workspace Production agent          # the CLI's own options come 
 cloudthinker agent -- --url http://localhost:3000  # after `--`, every argument goes to the agent
 ```
 
+When `agent -p` shows an approval in your terminal, review the action and
+press `y` to approve or `n` to decline. Press Enter and follow the link to
+decide in your browser.
+
 The agent receives every argument after `agent` without change. On the first
 run, the CLI downloads the agent build for your platform from the same GitHub
 release as the binary. On Linux, that is the musl build when the system has no
@@ -311,6 +315,11 @@ few seconds, the CLI says so on stderr; pipe a snapshot such as `tail -n 200 app
 not `tail -f`. Input past the limit stops the read at once with an error. On a
 terminal a spinner shows the run status while you wait. Ctrl-C stops the wait
 and prints the command that resumes it; the run continues on the server.
+
+If a run asks to take an action, review it and enter `y` to approve or `n` to
+decline. Chat keeps waiting for the answer. Press Enter and follow the link to
+decide in your browser. For browser-only requests, piped input, or `--json`, the command exits
+with code 5. Open the run in your browser to decide.
 
 Continue a thread with a run UUID or a conversation UUID. After each finished
 run, the CLI prints `continue_with=<conversation_id>` on stderr:

@@ -63,10 +63,10 @@ pub use client::{
     LoupeReadinessCheckName, LoupeReadinessState, LoupeSetupConversation, LoupeSetupObservation,
     LoupeSetupScope, LoupeSetupState, Observation, Partition, PlanCheck, ProbeOutcome,
     RecommendationStatus, RecommendationView, ReviewFinding, ReviewSeverityCounts, ReviewStatus,
-    ReviewVerdict, ReviewView, RunListItem, RunStatus, RunView, SettleResult, Shard, SubmittedRun,
-    Surface, WorkPlan, WorkspaceView, Workspaces, display_origin, explicit_url, login_command,
-    origin_of, other_origin, persistent_store, resolve_store, valid_setup_web_url,
-    validate_connect_prefix,
+    ReviewVerdict, ReviewView, RunApproval, RunApprovalDecision, RunListItem, RunPendingApproval,
+    RunStatus, RunView, SettleResult, Shard, SubmittedRun, Surface, WorkPlan, WorkspaceView,
+    Workspaces, display_origin, explicit_url, login_command, origin_of, other_origin,
+    persistent_store, resolve_store, valid_setup_web_url, validate_connect_prefix,
 };
 pub use client::{
     BodyField, BodyInput, JsonDocument, PublicCall, PublicReply, PublicSpec, QueryValue,

@@ -8,7 +8,6 @@ import {
 	MENTION_GUIDANCE,
 	AUTO_MODE_LINE,
 	CONNECTION_SKILL_LINE,
-	CONNECTION_SKILLS_DIR,
 	MANUAL_MODE_LINE,
 	appendPromptBlock,
 	buildPromptBlock,
@@ -16,7 +15,7 @@ import {
 import { CloudThinkerRuntime } from "../src/runtime.ts";
 import { hostVersionsFrom } from "../src/versions.ts";
 import { MEMORY_DIR } from "../src/memory.ts";
-import { CT_ASK, CT_SANDBOX_READ, CT_RUN_STATUS } from "../src/tools/names.ts";
+import { CT_ASK, CT_SANDBOX_READ, CT_RUN_STATUS, LOAD_SKILL, TOOL_SEARCH } from "../src/tools/names.ts";
 
 function runtime(overrides: Partial<CloudThinkerRuntime> = {}): CloudThinkerRuntime {
 	const built = new CloudThinkerRuntime(
@@ -92,11 +91,11 @@ test("the Connection detail follows the prefix line verbatim, and an empty xml a
 
 test("the approval mode line follows the write sentence and names Auto or Manual", () => {
 	const manual = buildPromptBlock(withPrefixes(["aws"]));
-	assert.ok(manual.includes(`do not ask for one in chat first.\n${MANUAL_MODE_LINE}\nUse ${CT_SANDBOX_READ} for bounded`));
+	assert.ok(manual.includes(`Use that approval prompt for confirmation.\n${MANUAL_MODE_LINE}\nUse ${CT_SANDBOX_READ} for bounded`));
 	assert.ok(!manual.includes(AUTO_MODE_LINE));
 
 	const block = buildPromptBlock(runtime({ autoMode: { enabled: true, canEdit: false } }));
-	assert.ok(block.includes(`do not ask for one in chat first.\n${AUTO_MODE_LINE}\nUse ${CT_SANDBOX_READ} for bounded`));
+	assert.ok(block.includes(`Use that approval prompt for confirmation.\n${AUTO_MODE_LINE}\nUse ${CT_SANDBOX_READ} for bounded`));
 	assert.ok(!block.includes(MANUAL_MODE_LINE));
 	assert.equal(block.split("Workspace approval mode:").length, 2);
 });
@@ -136,12 +135,12 @@ test("the block routes Cyber work to its skill and provides the session binding"
 	assert.ok(!block.includes("Never probe with curl"));
 });
 
-test("a Connection's skill line comes with the workspace-machine path to read the guide from", () => {
+test("a Connection's skill line points to the guide and tool search", () => {
 	const xml = '<connections_context>\n<connection prefix="grafana">\n  skill: monitoring-grafana (available) — Use when alerts fire.\n</connection>\n</connections_context>';
 	const block = buildPromptBlock(withPrefixes(["grafana"], xml));
 	assert.ok(block.includes(`${xml}\n${CONNECTION_SKILL_LINE}`));
-	assert.ok(CONNECTION_SKILL_LINE.includes(`cat ${CONNECTION_SKILLS_DIR}/*/<skill>/SKILL.md`));
-	assert.ok(CONNECTION_SKILL_LINE.includes("empty connection_list"));
+	assert.ok(CONNECTION_SKILL_LINE.includes(LOAD_SKILL));
+	assert.ok(CONNECTION_SKILL_LINE.includes(TOOL_SEARCH));
 	assert.ok(!buildPromptBlock(withPrefixes(["grafana"])).includes(CONNECTION_SKILL_LINE));
 });
 

@@ -3,7 +3,7 @@
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::auth::store::{StoredToken, TokenStore};
+use crate::auth::store::{CredentialSource, StoredToken, TokenStore};
 use crate::error::CtResult;
 
 /// In-memory `TokenStore` double. Tracks save calls and supports simulating an
@@ -38,6 +38,14 @@ impl MockTokenStore {
 }
 
 impl TokenStore for MockTokenStore {
+    fn source(&self) -> CredentialSource {
+        if self.refresh_enabled {
+            CredentialSource::Stored
+        } else {
+            CredentialSource::Environment
+        }
+    }
+
     fn load(&self) -> CtResult<Option<StoredToken>> {
         Ok(self.inner.lock().expect("mock lock").clone())
     }

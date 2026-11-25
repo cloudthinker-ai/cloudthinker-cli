@@ -302,6 +302,22 @@ export interface ConnectionsContext {
 	connections?: ConnectionEntry[];
 }
 
+interface ConnectionContent {
+	content: string;
+}
+
+interface ToolSearchRequest {
+	conversation_id: string;
+	query: string;
+	limit?: number;
+}
+
+interface LoadConnectionSkillRequest {
+	conversation_id: string;
+	connection_prefix: string;
+	skill_names?: string[];
+}
+
 export interface WorkspaceAutoMode {
 	enabled: boolean;
 }
@@ -607,6 +623,28 @@ export class CloudThinkerClient {
 			method: "GET",
 			path: "/agent-cli/connections",
 			timeoutMs: 15_000,
+		});
+	}
+
+	searchConnectionTools(body: ToolSearchRequest, signal?: AbortSignal): Promise<ConnectionContent> {
+		conversationPathSegment(body.conversation_id);
+		return this.json({
+			method: "POST",
+			path: "/agent-cli/tools/search",
+			body,
+			timeoutMs: DEFAULT_TIMEOUT_MS,
+			signal,
+		});
+	}
+
+	loadConnectionSkill(body: LoadConnectionSkillRequest, signal?: AbortSignal): Promise<ConnectionContent> {
+		conversationPathSegment(body.conversation_id);
+		return this.json({
+			method: "POST",
+			path: "/agent-cli/skills/load",
+			body,
+			timeoutMs: DEFAULT_TIMEOUT_MS,
+			signal,
 		});
 	}
 

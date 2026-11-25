@@ -7,7 +7,8 @@ import { CloudThinkerClient, TokenSource } from "../src/client.ts";
 import { hostVersionsFrom } from "../src/versions.ts";
 import { CloudThinkerRuntime } from "../src/runtime.ts";
 import { registerCommandTools } from "../src/tools/command-tools.ts";
-import { CLOUD_TOOLS, CT_ASK } from "../src/tools/names.ts";
+import { registerConnectionDiscovery } from "../src/tools/connection-discovery.ts";
+import { CLOUD_TOOLS, CT_ASK, LOAD_SKILL, TOOL_SEARCH } from "../src/tools/names.ts";
 import { type Route, startFakeServer } from "./helpers.ts";
 
 async function harness(route: Route) {
@@ -83,6 +84,44 @@ test("a backend without the tools route keeps the hand-written tools only", asyn
 	try {
 		assert.deepEqual(await registerCommandTools(h.runtime), []);
 		assert.equal(h.tools.size, 0);
+	} finally {
+		await h.server.close();
+	}
+});
+
+test("Connection discovery loads a tool and its policy without running either", async () => {
+	const schema = '<tool_schema name="cloudflare.docs">Search Cloudflare documentation.</tool_schema>';
+	const policy = "no-approval tools: docs\napproval-required tools: execute";
+	const h = await harness((request) => {
+		if (request.method !== "POST") return undefined;
+		if (request.path === "/api/v1/agent-cli/tools/search") {
+			return { body: { content: schema, mode: "names", hit_count: 1 } };
+		}
+		if (request.path === "/api/v1/agent-cli/skills/load") {
+			return { body: { content: policy, roster_only: true } };
+		}
+		return undefined;
+	});
+	try {
+		registerConnectionDiscovery(h.runtime);
+		const search = h.tools.get(TOOL_SEARCH)!;
+		const load = h.tools.get(LOAD_SKILL)!;
+		const found = await search.execute("search", { query: "cloudflare.docs" }, undefined, undefined, undefined as never);
+		const loaded = await load.execute("load", { connection_prefix: "cloudflare" }, undefined, undefined, undefined as never);
+		assert.deepEqual(found.content, [{ type: "text", text: schema }]);
+		assert.deepEqual(loaded.content, [{ type: "text", text: policy }]);
+
+		h.runtime.setCloudEnabled(false, false);
+		assert.ok(!h.active().includes(TOOL_SEARCH));
+		assert.ok(!h.active().includes(LOAD_SKILL));
+		await assert.rejects(
+			load.execute("off", { connection_prefix: "cloudflare" }, undefined, undefined, undefined as never),
+			/Cloud is off/,
+		);
+		assert.deepEqual(h.server.requests.map(({ method, path, body }) => ({ method, path, body })), [
+			{ method: "POST", path: "/api/v1/agent-cli/tools/search", body: { conversation_id: "c-1", query: "cloudflare.docs" } },
+			{ method: "POST", path: "/api/v1/agent-cli/skills/load", body: { conversation_id: "c-1", connection_prefix: "cloudflare" } },
+		]);
 	} finally {
 		await h.server.close();
 	}

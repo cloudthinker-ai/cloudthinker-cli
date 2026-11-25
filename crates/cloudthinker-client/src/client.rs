@@ -8,15 +8,16 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use cloudthinker_api::{ClientInfo, Error as ApiError, ResponseValue};
 use cloudthinker_spec::Method;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::auth::refresh::RefreshCoordinator;
 use crate::auth::store::{
-    CredentialProvenance, EnvTokenStore, FileStore, StoredToken, TOKEN_ENV_VAR, TokenStore,
-    WorkspaceSelector, acquire_credential_lock,
+    CredentialProvenance, CredentialSource, EnvTokenStore, FileStore, StoredToken, TOKEN_ENV_VAR,
+    TokenStore, WorkspaceSelector, acquire_credential_lock,
 };
 use crate::error::{CtError, CtResult, to_ct_error};
 use crate::retry::classify;
@@ -152,7 +153,7 @@ impl RunStatus {
 }
 
 /// Result of `POST /cli/runs`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct SubmittedRun {
     pub run_id: Uuid,
     pub conversation_id: Uuid,
@@ -161,7 +162,7 @@ pub struct SubmittedRun {
 }
 
 /// One recent headless run returned by `GET /cli/runs`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RunListItem {
     pub run_id: Uuid,
     pub conversation_id: Option<Uuid>,
@@ -193,6 +194,22 @@ struct PublicRunCreate<'a> {
     agent: Option<&'a str>,
 }
 
+#[derive(Serialize)]
+struct SessionRunCreate<'a> {
+    prompt: &'a str,
+    selection: cloudthinker_api::types::SavedSelection,
+    selected_agent_reference: Option<&'a str>,
+    conversation_id: Option<Uuid>,
+    idempotency_key: String,
+}
+
+#[derive(Serialize)]
+struct SessionRunListQuery {
+    limit: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    conversation_id: Option<Uuid>,
+}
+
 #[derive(Deserialize)]
 struct PublicRun {
     id: Uuid,
@@ -220,7 +237,7 @@ struct PublicRunPage {
 }
 
 /// A polled view of a run (`GET /cli/runs/{id}`).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct RunView {
     pub run_id: Uuid,
     pub conversation_id: Option<Uuid>,
@@ -243,6 +260,41 @@ impl From<PublicRun> for RunView {
             web_url: run.url,
         }
     }
+}
+
+/// The approval currently shown for a parked chat run.
+#[derive(Debug, Deserialize)]
+pub struct RunApproval {
+    pub status: RunStatus,
+    pub pending: Option<RunPendingApproval>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RunPendingApproval {
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub reason: String,
+    pub arguments: String,
+    pub decidable: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunApprovalDecision {
+    Approve,
+    Decline,
+}
+
+#[derive(Serialize)]
+struct RunDecisionRequest<'a> {
+    tool_call_id: &'a str,
+    decision: RunApprovalDecision,
+}
+
+#[derive(Deserialize)]
+struct RunDecisionReceipt {
+    run_id: Uuid,
+    decision: RunApprovalDecision,
 }
 
 /// The authenticated client. Cheap to clone-share via `Arc`.
@@ -381,6 +433,31 @@ impl CtClient {
         if agent.is_some_and(str::is_empty) {
             return Err(CtError::Usage("--agent must not be empty".into()));
         }
+        // The session route uses the signed-in workspace and accepts older
+        // saved logins without a separate public API binding.
+        if self.store.source() == CredentialSource::Stored {
+            let idempotency_key = idempotency_key
+                .map(public::check_idempotency_key)
+                .transpose()?
+                .unwrap_or_else(|| Uuid::new_v4().to_string());
+            let body = SessionRunCreate {
+                prompt,
+                selection: cloudthinker_api::types::SavedSelection {
+                    option_id: "mode:pro".parse().map_err(|error| {
+                        CtError::Protocol(format!("invalid default selection: {error}"))
+                    })?,
+                    thinking_effort: None,
+                },
+                selected_agent_reference: agent,
+                conversation_id,
+                idempotency_key,
+            };
+            return self
+                .authed(async |c: cloudthinker_api::Client| {
+                    session_run_reply(c.client().post(run_session_url(&c)).json(&body)).await
+                })
+                .await;
+        }
         let body = serde_json::to_vec(&PublicRunCreate {
             prompt,
             conversation_id,
@@ -427,6 +504,17 @@ impl CtClient {
         if !(1..=50).contains(&limit) {
             return Err(CtError::Usage("--limit must be between 1 and 50".into()));
         }
+        if self.store.source() == CredentialSource::Stored {
+            let query = SessionRunListQuery {
+                limit,
+                conversation_id,
+            };
+            return self
+                .authed(async |c: cloudthinker_api::Client| {
+                    session_run_reply(c.client().get(run_session_url(&c)).query(&query)).await
+                })
+                .await;
+        }
         let mut query = vec![QueryValue {
             name: "limit".into(),
             value: limit.to_string(),
@@ -445,6 +533,14 @@ impl CtClient {
 
     /// Poll one run's current status.
     pub async fn get_run(&self, run_id: Uuid) -> CtResult<RunView> {
+        if self.store.source() == CredentialSource::Stored {
+            return self
+                .authed(async |c: cloudthinker_api::Client| {
+                    session_run_reply(c.client().get(format!("{}/{run_id}", run_session_url(&c))))
+                        .await
+                })
+                .await;
+        }
         let run: PublicRun = self
             .public_json(
                 Method::Get,
@@ -455,6 +551,66 @@ impl CtClient {
             )
             .await?;
         Ok(RunView::from(run))
+    }
+
+    /// Read the exact request the user would decide.
+    pub async fn get_run_approval(&self, run_id: Uuid) -> CtResult<RunApproval> {
+        self.authed(async |c: cloudthinker_api::Client| {
+            let response = c
+                .client()
+                .get(format!(
+                    "{}/api/v1/agent-cli/runs/{run_id}/approval",
+                    c.baseurl()
+                ))
+                .header(reqwest::header::ACCEPT, "application/json")
+                .send()
+                .await
+                .map_err(ApiError::CommunicationError)?;
+            match response.status().as_u16() {
+                200 => ResponseValue::from_response(response).await,
+                _ => Err(ApiError::UnexpectedResponse(response)),
+            }
+        })
+        .await
+    }
+
+    /// Decide only the tool call that the user saw. The run resumes asynchronously.
+    pub async fn decide_run_approval(
+        &self,
+        run_id: Uuid,
+        tool_call_id: &str,
+        decision: RunApprovalDecision,
+    ) -> CtResult<()> {
+        let body = RunDecisionRequest {
+            tool_call_id,
+            decision,
+        };
+        let receipt: RunDecisionReceipt = self
+            .authed(async |c: cloudthinker_api::Client| {
+                let response = c
+                    .client()
+                    .post(format!(
+                        "{}/api/v1/agent-cli/runs/{run_id}/decision",
+                        c.baseurl()
+                    ))
+                    .header(reqwest::header::ACCEPT, "application/json")
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(ApiError::CommunicationError)?;
+                match response.status().as_u16() {
+                    202 => ResponseValue::from_response(response).await,
+                    _ => Err(ApiError::UnexpectedResponse(response)),
+                }
+            })
+            .await?;
+        if receipt.run_id == run_id && receipt.decision == decision {
+            Ok(())
+        } else {
+            Err(CtError::Protocol(
+                "approval receipt does not match the decision".into(),
+            ))
+        }
     }
 
     /// Resolve the live account and workspace carried by this credential.
@@ -857,6 +1013,29 @@ fn verification_uri_with_code(verification_uri: &str, user_code: &str) -> CtResu
     Ok(url.into())
 }
 
+fn run_session_url(client: &cloudthinker_api::Client) -> String {
+    format!("{}/api/v1/cli/runs", client.baseurl())
+}
+
+#[expect(
+    clippy::result_large_err,
+    reason = "Reuses the generated client's response error so the shared auth retry can inspect 401 responses"
+)]
+async fn session_run_reply<T: DeserializeOwned>(
+    request: reqwest::RequestBuilder,
+) -> Result<ResponseValue<T>, ApiError<()>> {
+    let response = request
+        .header(reqwest::header::ACCEPT, "application/json")
+        .send()
+        .await
+        .map_err(ApiError::CommunicationError)?;
+    if response.status().is_success() {
+        ResponseValue::from_response(response).await
+    } else {
+        Err(ApiError::UnexpectedResponse(response))
+    }
+}
+
 /// A 401 surfacing here (rather than being cured by refresh) means the user
 /// must log in again.
 fn reclassify(err: CtError, base_url: &str) -> CtError {
@@ -1092,13 +1271,13 @@ mod tests {
 
     fn run_status_json(status: &str, answer: Option<&str>) -> serde_json::Value {
         serde_json::json!({
-            "id": "11111111-1111-4111-8111-111111111111",
+            "run_id": "11111111-1111-4111-8111-111111111111",
             "conversation_id": "22222222-2222-4222-8222-222222222222",
             "status": status,
             "answer": answer,
             "message": null,
             "failure_kind": null,
-            "url": "https://app.example.com/c/22222222-2222-4222-8222-222222222222",
+            "web_url": "https://app.example.com/c/22222222-2222-4222-8222-222222222222",
             "created_at": "2026-07-20T00:00:00Z",
             "started_at": null,
             "ended_at": null,
@@ -1586,9 +1765,7 @@ mod tests {
     async fn ca_cli_14_submit_secret_gate_422_returns_detail() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path(
-                "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs",
-            ))
+            .and(path("/api/v1/cli/runs"))
             .respond_with(ResponseTemplate::new(422).set_body_json(serde_json::json!({
                 "detail": "prompt contains a secret"
             })))
@@ -1621,9 +1798,7 @@ mod tests {
     async fn ca_cli_14_malformed_success_body_is_protocol_error() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path(
-                "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs",
-            ))
+            .and(path("/api/v1/cli/runs"))
             .respond_with(ResponseTemplate::new(202).set_body_string("not json at all"))
             .mount(&server)
             .await;
@@ -1787,7 +1962,7 @@ mod tests {
         // First GET 401 (once), then 200 succeeded.
         Mock::given(method("GET"))
             .and(path(
-                "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs/33333333-3333-4333-8333-333333333333",
+                "/api/v1/cli/runs/33333333-3333-4333-8333-333333333333",
             ))
             .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
                 "detail": "Authentication required."
@@ -1798,7 +1973,7 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path(
-                "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs/33333333-3333-4333-8333-333333333333",
+                "/api/v1/cli/runs/33333333-3333-4333-8333-333333333333",
             ))
             .respond_with(
                 ResponseTemplate::new(200)
@@ -1831,7 +2006,7 @@ mod tests {
         use crate::auth::store::TokenStore;
 
         let server = MockServer::start().await;
-        let run_path = "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs/33333333-3333-4333-8333-333333333333";
+        let run_path = "/api/v1/cli/runs/33333333-3333-4333-8333-333333333333";
         Mock::given(method("GET"))
             .and(path(run_path))
             .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
@@ -1870,7 +2045,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path(
-                "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs/33333333-3333-4333-8333-333333333333",
+                "/api/v1/cli/runs/33333333-3333-4333-8333-333333333333",
             ))
             .respond_with(
                 ResponseTemplate::new(200)
@@ -1896,7 +2071,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path(
-                "/api/public/v1/workspaces/00000000-0000-0000-0000-000000000001/chat/runs/44444444-4444-4444-8444-444444444444",
+                "/api/v1/cli/runs/44444444-4444-4444-8444-444444444444",
             ))
             .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
                 "detail": "Run not found"

@@ -13,9 +13,9 @@ use cloudthinker_client::{
     CliIdentity, CoverageReport, CoverageStatus, CyberApp, CyberDomain, CyberExecutionHost,
     CyberExport, CyberFinding, CyberRun, CyberRunBrief, CyberRunResult, CyberSessionEntry,
     EvidenceReceipt, IncidentView, OutpostStatus, Partition, RecommendationView, ReviewFinding,
-    ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView, RunListItem, RunStatus, RunView,
-    SettleResult, StoredWorkspace, SubmittedRun, Surface, WorkPlan,
-    worker_types::ExecutorChoicePublic,
+    ReviewSeverityCounts, ReviewStatus, ReviewVerdict, ReviewView, RunApprovalDecision,
+    RunListItem, RunPendingApproval, RunStatus, RunView, SettleResult, StoredWorkspace,
+    SubmittedRun, Surface, WorkPlan, worker_types::ExecutorChoicePublic,
 };
 use owo_colors::{AnsiColors, OwoColorize};
 use serde::Serialize;
@@ -1085,6 +1085,41 @@ fn review_verdict_label(verdict: ReviewVerdict) -> &'static str {
 /// Progress note to stderr (skipped in `--json` mode by the caller).
 pub fn progress(message: &str) {
     eprintln!("{}", terminal_lines(message));
+}
+
+pub fn prompt_run_approval(
+    approval: &RunPendingApproval,
+) -> io::Result<Option<RunApprovalDecision>> {
+    progress(&format!(
+        "Review this action before you decide ({})",
+        terminal_text(&approval.tool_name)
+    ));
+    if !approval.reason.is_empty() {
+        progress(&approval.reason);
+    }
+    if !approval.arguments.is_empty() {
+        progress(&approval.arguments);
+    }
+    let mut stderr = io::stderr().lock();
+    write!(
+        stderr,
+        "Approve [y], decline [n], or press Enter to use your browser: "
+    )?;
+    stderr.flush()?;
+    drop(stderr);
+
+    let mut answer = String::new();
+    io::stdin().read_line(&mut answer)?;
+    let answer = answer.trim();
+    Ok(
+        if answer.eq_ignore_ascii_case("y") || answer.eq_ignore_ascii_case("yes") {
+            Some(RunApprovalDecision::Approve)
+        } else if answer.eq_ignore_ascii_case("n") || answer.eq_ignore_ascii_case("no") {
+            Some(RunApprovalDecision::Decline)
+        } else {
+            None
+        },
+    )
 }
 
 const STEP_TICK: std::time::Duration = std::time::Duration::from_millis(80);

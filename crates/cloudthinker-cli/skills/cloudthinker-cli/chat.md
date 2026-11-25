@@ -12,6 +12,8 @@ State the target, desired outcome, constraints, and what evidence would demonstr
 
 Save the returned `run_id`, `conversation_id`, `status`, and `web_url`. `--no-wait` acknowledges submission, not completion. For a short task, omit `--no-wait` to wait for the answer; `--json` preserves the structured output. Without `--json`, stdout carries only the final answer while progress and continuation hints go to stderr.
 
+When a person runs `chat -p` in a terminal, they can review many actions there. Enter `y` to approve or `n` to decline and keep waiting. Press Enter to decide in the browser. For requests that need the browser, share the run link.
+
 ## Follow the existing run
 
 ```bash

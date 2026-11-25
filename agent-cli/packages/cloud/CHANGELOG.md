@@ -1,3 +1,8 @@
+## [0.13.4]
+
+- Find Connection tools and read their guides from the terminal.
+- Approve or decline a Connection write from an interactive `cloudthinker agent -p` terminal, or follow the browser link to decide there.
+
 ## [0.13.3]
 
 - Internal cleanup: shared helpers replace duplicated code; no behaviour change.

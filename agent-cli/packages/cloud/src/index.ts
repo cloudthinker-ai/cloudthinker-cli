@@ -32,6 +32,7 @@ import { statusLineFooter } from "./status-line.ts";
 import { markStartup } from "./timing.ts";
 import { bundledDoctorPath, bundledReviewSetupPath, bundledTourPath } from "./onboarding.ts";
 import { registerCommandTools } from "./tools/command-tools.ts";
+import { registerConnectionDiscovery } from "./tools/connection-discovery.ts";
 import { registerAsk } from "./tools/ct-ask.ts";
 import { registerSandboxRead } from "./tools/ct-sandbox-read.ts";
 import { registerSandboxWrite } from "./tools/ct-sandbox-write.ts";
@@ -91,6 +92,7 @@ export default async function cloudthinker(pi: ExtensionAPI, options: CloudThink
 	if (!localReview) {
 		registerSandboxRead(runtime);
 		registerSandboxWrite(runtime);
+		registerConnectionDiscovery(runtime);
 		registerLocalApproval(pi, () => runtime.autoMode);
 		registerReadTaskOutput(runtime);
 		registerAsk(runtime);

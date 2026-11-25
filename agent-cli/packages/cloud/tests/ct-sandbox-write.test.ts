@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { PassThrough } from "node:stream";
 import test from "node:test";
 import { stripVTControlCharacters } from "node:util";
 
@@ -349,6 +350,66 @@ const executed: WriteOutcome = {
 	write: write("executed", { verdict: "allow", verdict_reason: "classifier_allow", return_code: 0 }),
 	execution: { status: "completed", return_code: 0, stdout: "tagged", stderr: "" },
 };
+
+test("agent print mode sends a decision once and leaves browser approvals pending", async (t) => {
+	const approverMessage = "Ask Alex to approve this write in the browser.";
+	const cases = [
+		{ input: "y\n", allowed: true, status: "executed", calls: ["request", "approve:w-1", "run:w-1"] },
+		{ input: "n\n", allowed: true, status: "declined", calls: ["request", "decline:w-1"] },
+		{ input: "\n", allowed: true, status: "required_approval", calls: ["request"] },
+		{ input: "y\n", allowed: false, status: "required_approval", calls: ["request", "approve:w-1"] },
+	] as const;
+	const stdin = Object.assign(new PassThrough(), { isTTY: true });
+	const stdout = Object.assign(new PassThrough(), { isTTY: true });
+	const stderr = Object.assign(new PassThrough(), { isTTY: true });
+	t.mock.getter(process, "stdin", () => stdin as unknown as typeof process.stdin);
+	t.mock.getter(process, "stdout", () => stdout as unknown as typeof process.stdout);
+	t.mock.getter(process, "stderr", () => stderr as unknown as typeof process.stderr);
+	const pendingWrite = write("required_approval", { script: "printf first\nprintf last" });
+	let terminalText = "";
+	stderr.on("data", (chunk: Buffer) => {
+		terminalText += chunk.toString();
+	});
+
+	for (const scenario of cases) {
+		const calls: string[] = [];
+		const { tool, ctx } = registered({
+			requestWrite: async () => {
+				calls.push("request");
+				return { write: pendingWrite, execution: null };
+			},
+			decideWrite: async (writeId, answer) => {
+				calls.push(`${answer.decision}:${writeId}`);
+				if (!scenario.allowed) {
+					throw new CloudThinkerApiError(403, approverMessage, { code: "AGENT_CLI_APPROVER_REQUIRED" });
+				}
+				return write(answer.decision === "approve" ? "approved" : "declined");
+			},
+			getWrite: async () => {
+				throw new Error("interactive print approval must not poll the browser");
+			},
+			runWrite: async (writeId) => {
+				calls.push(`run:${writeId}`);
+				return executed;
+			},
+		});
+		// The terminal returns a line after showing the prompt.
+		stderr.once("data", () => setImmediate(() => stdin.write(scenario.input)));
+		const result = await tool.execute(
+			"call-1",
+			{ script: pendingWrite.script, reasoning: pendingWrite.reasoning },
+			undefined,
+			undefined,
+			{ ...ctx, mode: "print" },
+		);
+		assert.equal((result.details as WriteOutcome).write.status, scenario.status);
+		assert.deepEqual(calls, scenario.calls);
+	}
+	assert.match(terminalText, /printf first\n  printf last/);
+	assert.match(terminalText, /Browser: http:\/\/web/);
+	assert.match(terminalText, /Approve \[y\], decline \[n\]/);
+	assert.match(terminalText, /Ask Alex to approve this write in the browser\. http:\/\/web/);
+});
 
 test("a write the workspace allows runs on the first call and returns executed", async () => {
 	const calls: string[] = [];

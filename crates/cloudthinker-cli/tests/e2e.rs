@@ -1504,15 +1504,128 @@ fn ca_cli_11_failed_run_exits_1() {
 // CA-CLI-12: REQUIRED_APPROVAL exits 5 with the approval URL on stderr.
 #[test]
 fn ca_cli_12_required_approval_exits_5() {
-    let api = MockApi::start(status_body("required_approval", "", ""));
+    let api = RecordingApi::start(vec![
+        ("202 Accepted", submitted_body()),
+        ("200 OK", status_body("required_approval", "", "")),
+    ]);
     cli(&api.base_url)
         .args(["chat", "-p", "hello"])
         .assert()
         .code(5)
-        .stderr(predicates::str::contains("Approve"))
+        .stdout("")
+        .stderr(predicates::str::contains("Open the run in your browser"))
         .stderr(predicates::str::contains(format!(
             "continue_with={CONV_ID} web_url=https://app.example.com/c/{CONV_ID}"
         )));
+    assert_eq!(api.requests().len(), 2);
+}
+
+#[cfg(unix)]
+fn chat_approval_body(tool_call_id: &str, decidable: bool) -> String {
+    serde_json::json!({
+        "run_id": RUN_ID,
+        "status": "required_approval",
+        "web_url": format!("https://app.example.com/c/{CONV_ID}"),
+        "pending": {
+            "tool_call_id": tool_call_id,
+            "tool_name": "Update a note",
+            "reason": "The run needs approval to edit your note.",
+            "arguments": format!("Change {tool_call_id}"),
+            "decidable": decidable,
+        },
+    })
+    .to_string()
+}
+
+#[cfg(unix)]
+fn chat_prompt_on_a_tty(api: &RecordingApi, answers: &[u8]) -> (u32, String) {
+    use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+
+    let pair = native_pty_system()
+        .openpty(PtySize {
+            rows: 24,
+            cols: 120,
+            pixel_width: 0,
+            pixel_height: 0,
+        })
+        .unwrap();
+    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_cloudthinker"));
+    cmd.args(["chat", "-p", "update a note", "--timeout", "12"]);
+    cmd.env("CLOUDTHINKER_TOKEN", "test-access-token");
+    cmd.env("CLOUDTHINKER_URL", &api.base_url);
+    cmd.env("CLOUDTHINKER_NO_UPDATE_CHECK", "1");
+    cmd.env_remove("CLOUDTHINKER_WORKSPACE");
+    let mut child = pair.slave.spawn_command(cmd).unwrap();
+    drop(pair.slave);
+    let mut writer = pair.master.take_writer().unwrap();
+    writer.write_all(answers).unwrap();
+
+    let mut output = Vec::new();
+    let reader = pair.master.try_clone_reader().unwrap();
+    let _ = reader.take(MAX_PTY_OUTPUT).read_to_end(&mut output);
+    let status = child.wait().unwrap();
+    (
+        status.exit_code(),
+        String::from_utf8_lossy(&output).into_owned(),
+    )
+}
+
+#[cfg(unix)]
+#[test]
+fn chat_terminal_records_each_decision_once_and_keeps_waiting() {
+    let parked = || status_body("required_approval", "", "");
+    let decision =
+        |decision| serde_json::json!({"run_id": RUN_ID, "decision": decision}).to_string();
+    let api = RecordingApi::start(vec![
+        ("202 Accepted", submitted_body()),
+        ("200 OK", parked()),
+        ("200 OK", chat_approval_body("first", true)),
+        ("202 Accepted", decision("approve")),
+        ("200 OK", parked()),
+        ("200 OK", chat_approval_body("first", true)),
+        ("200 OK", parked()),
+        ("200 OK", chat_approval_body("second", true)),
+        ("202 Accepted", decision("decline")),
+        (
+            "200 OK",
+            status_body("succeeded", "One change applied.", ""),
+        ),
+    ]);
+    let (status, output) = chat_prompt_on_a_tty(&api, b"y\nn\n");
+    assert_eq!(status, 0, "{output}");
+    assert_eq!(output.matches("Approve [y]").count(), 2);
+    assert!(output.contains("Change first"));
+    assert!(output.contains("Change second"));
+    assert!(output.contains("One change applied."));
+    let requests = api.requests();
+    let decision_path = format!("POST /api/v1/agent-cli/runs/{RUN_ID}/decision ");
+    let posted: Vec<_> = requests
+        .iter()
+        .filter(|request| request.starts_with(&decision_path))
+        .map(|request| request.split("\r\n\r\n").nth(1).unwrap())
+        .collect();
+    assert_eq!(
+        posted,
+        [
+            r#"{"tool_call_id":"first","decision":"approve"}"#,
+            r#"{"tool_call_id":"second","decision":"decline"}"#,
+        ],
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn chat_terminal_leaves_browser_only_requests_for_the_browser() {
+    let api = RecordingApi::start(vec![
+        ("202 Accepted", submitted_body()),
+        ("200 OK", status_body("required_approval", "", "")),
+        ("200 OK", chat_approval_body("browser-only", false)),
+    ]);
+    let (status, output) = chat_prompt_on_a_tty(&api, b"y\n");
+    assert_eq!(status, 5, "{output}");
+    assert!(output.contains("Open the run in your browser"));
+    assert!(!output.contains("Approve [y]"));
+    assert_eq!(api.requests().len(), 3);
 }
 
 // CA-CLI-16: `chat status` of a terminal run renders it and exits 0.
@@ -1525,6 +1638,60 @@ fn ca_cli_16_status_of_terminal_run_exits_0() {
         .success()
         .stdout(predicates::str::contains("succeeded"))
         .stdout(predicates::str::contains("cached answer"));
+}
+
+#[test]
+fn chat_uses_the_selected_saved_workspace_login_to_start_and_read_runs() {
+    let home = tempfile::tempdir().unwrap();
+    let run = serde_json::json!({
+        "run_id": RUN_ID,
+        "conversation_id": CONV_ID,
+        "status": "succeeded",
+        "answer": "workspace reply",
+        "web_url": format!("https://app.example.com/c/{CONV_ID}"),
+    });
+    let api = RecordingApi::start(vec![
+        ("202 Accepted", run.to_string()),
+        ("200 OK", run.to_string()),
+        ("200 OK", "[]".into()),
+    ]);
+    seed_credentials(
+        home.path(),
+        &api.base_url,
+        Some(PROD_WORKSPACE),
+        &[
+            (DEV_WORKSPACE, "Dev", FAR_FUTURE),
+            (PROD_WORKSPACE, "Prod", FAR_FUTURE),
+        ],
+    );
+
+    stored_login_cli(&api.base_url, home.path())
+        .args(["--workspace", "Dev", "chat", "-p", "Say hello"])
+        .assert()
+        .success()
+        .stdout("workspace reply\n");
+    stored_login_cli(&api.base_url, home.path())
+        .args(["--workspace", "Dev", "chat", "ls", "--limit", "1", "--json"])
+        .assert()
+        .success();
+
+    let requests = api.requests();
+    assert_eq!(requests.len(), 3);
+    assert!(requests[0].starts_with("POST /api/v1/cli/runs "));
+    assert!(requests[1].starts_with(&format!("GET /api/v1/cli/runs/{RUN_ID} ")));
+    assert!(requests[2].starts_with("GET /api/v1/cli/runs?limit=1 "));
+    for request in &requests {
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("authorization: bearer access-dev")
+        );
+    }
+    let (_, body) = requests[0].split_once("\r\n\r\n").unwrap();
+    let payload: serde_json::Value = serde_json::from_str(body).unwrap();
+    assert_eq!(payload["prompt"], "Say hello");
+    assert_eq!(payload["selection"]["option_id"], "mode:pro");
+    assert!(uuid::Uuid::parse_str(payload["idempotency_key"].as_str().unwrap()).is_ok());
 }
 
 // Usage: `chat` with neither a prompt nor `status` exits 2.

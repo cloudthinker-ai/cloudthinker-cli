@@ -2,13 +2,15 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use cloudthinker_client::{
-    ConversationSearchQuery, ConversationSearchStatus, CtClient, CtError, RunStatus, RunView,
+    ConversationSearchQuery, ConversationSearchStatus, CtClient, CtError, CtResult,
+    RunApprovalDecision, RunPendingApproval, RunStatus, RunView,
 };
 use uuid::Uuid;
 
+use crate::engine::confirm;
 use crate::engine::exit::{self, ExitCode};
 use crate::engine::output::{self, ChatEnvelope, ChatSubmittedEnvelope};
 use crate::engine::watch::{Poll, WatchConfig, watch};
@@ -131,6 +133,7 @@ pub async fn run_prompt(options: PromptOptions<'_>) -> ExitCode {
         options.timeout_secs,
         &format!("cloudthinker chat status {run_id}"),
         interrupted,
+        !options.json && confirm::interactive(),
     )
     .await
 }
@@ -169,44 +172,137 @@ async fn wait_for_run(
     timeout_secs: u64,
     resume: &str,
     interrupted: Interrupted,
+    decide_here: bool,
 ) -> ExitCode {
-    let live = (!json).then(|| output::live_status(&waiting_line(None)));
-    let cfg = WatchConfig::for_run(Duration::from_secs(timeout_secs));
+    let timeout = Duration::from_secs(timeout_secs);
     let outcome = tokio::select! {
-        outcome = watch(
-            async || {
-                let view = client.get_run(run_id).await?;
-                if let Some(live) = &live {
-                    live.set_message(waiting_line(Some(view.status)));
-                }
-                if view.status.is_terminal() {
-                    Ok(Poll::Terminal(view))
-                } else {
-                    Ok(Poll::Pending)
-                }
-            },
-            &cfg,
-        ) => outcome,
+        outcome = tokio::time::timeout(timeout, watch_run(client, run_id, json, decide_here, timeout)) => outcome,
         () = interrupted => {
-            drop(live);
             output::progress(&format!(
                 "Stopped waiting. The run continues server-side — resume with: cloudthinker chat status {run_id} --wait"
             ));
             return ExitCode::Interrupted;
         }
     };
-    drop(live);
 
     match outcome {
-        Ok(view) => finish(&view, json),
-        Err(CtError::Timeout(_)) => {
+        Ok(Ok(view)) => finish(&view, json),
+        Ok(Err(CtError::Timeout(_))) | Err(_) => {
             output::progress(&format!(
                 "Timed out. The run continues server-side — resume with: {resume}"
             ));
             ExitCode::Timeout
         }
-        Err(err) => exit::report(&err),
+        Ok(Err(err)) => exit::report(&err),
     }
+}
+
+struct ApprovalAttempt {
+    tool_call_id: String,
+    accepted: bool,
+}
+
+async fn watch_run(
+    client: &CtClient,
+    run_id: Uuid,
+    json: bool,
+    decide_here: bool,
+    timeout: Duration,
+) -> CtResult<RunView> {
+    let started = Instant::now();
+    let mut previous: Option<ApprovalAttempt> = None;
+    loop {
+        let live = (!json).then(|| output::live_status(&waiting_line(None)));
+        let cfg = WatchConfig::for_run(timeout.saturating_sub(started.elapsed()));
+        let (view, pending) = watch(
+            async || {
+                let view = client.get_run(run_id).await?;
+                if let Some(live) = &live {
+                    live.set_message(waiting_line(Some(view.status)));
+                }
+                if !view.status.is_terminal() {
+                    return Ok(Poll::Pending);
+                }
+                if view.status != RunStatus::RequiredApproval || !decide_here {
+                    return Ok(Poll::Terminal((view, None)));
+                }
+                let approval = match client.get_run_approval(run_id).await {
+                    Ok(approval) => approval,
+                    Err(CtError::Api {
+                        status: 403 | 404, ..
+                    }) => {
+                        return Ok(Poll::Terminal((view, None)));
+                    }
+                    Err(error) => return Err(error),
+                };
+                if approval.status != RunStatus::RequiredApproval {
+                    return Ok(Poll::Pending);
+                }
+                if let Some(previous) = &previous
+                    && approval
+                        .pending
+                        .as_ref()
+                        .is_none_or(|pending| pending.tool_call_id == previous.tool_call_id)
+                {
+                    return if previous.accepted {
+                        Ok(Poll::Pending)
+                    } else {
+                        Ok(Poll::Terminal((view, None)))
+                    };
+                }
+                Ok(Poll::Terminal((
+                    view,
+                    approval.pending.filter(|pending| pending.decidable),
+                )))
+            },
+            &cfg,
+        )
+        .await?;
+        drop(live);
+
+        let Some(pending) = pending else {
+            return Ok(view);
+        };
+        let Some((tool_call_id, decision)) = ask_run_decision(pending).await else {
+            return Ok(view);
+        };
+        let accepted = match client
+            .decide_run_approval(run_id, &tool_call_id, decision)
+            .await
+        {
+            Ok(()) => true,
+            Err(CtError::Api { status: 409, .. }) => false,
+            Err(CtError::Api { status: 403, .. }) => {
+                output::progress("Ask someone with approval access to open the run.");
+                return Ok(view);
+            }
+            Err(_) => {
+                output::progress(
+                    "Could not confirm your choice. Check the request in your browser.",
+                );
+                return Ok(view);
+            }
+        };
+        previous = Some(ApprovalAttempt {
+            tool_call_id,
+            accepted,
+        });
+    }
+}
+
+async fn ask_run_decision(pending: RunPendingApproval) -> Option<(String, RunApprovalDecision)> {
+    let (send, receive) = tokio::sync::oneshot::channel();
+    // An input read can outlive the wait. Keep it off Tokio's blocking pool so
+    // a timeout or Ctrl-C can exit without waiting for another line of input.
+    std::thread::Builder::new()
+        .spawn(move || {
+            let choice = output::prompt_run_approval(&pending);
+            if let Ok(Some(decision)) = choice {
+                let _ = send.send((pending.tool_call_id, decision));
+            }
+        })
+        .ok()?;
+    receive.await.ok()
 }
 
 fn waiting_line(status: Option<RunStatus>) -> String {
@@ -241,6 +337,7 @@ pub async fn run_status(
             timeout_secs,
             &format!("cloudthinker chat status {run_id} --wait"),
             listen_for_interrupt(),
+            false,
         )
         .await;
     }
@@ -336,10 +433,10 @@ fn finish(view: &RunView, json: bool) -> ExitCode {
         RunStatus::RequiredApproval => {
             if !json {
                 match &view.web_url {
-                    Some(url) => output::progress(&format!(
-                        "Approval required. Approve in your browser: {url}"
-                    )),
-                    None => output::progress("Approval required. Open CloudThinker to approve."),
+                    Some(url) => {
+                        output::progress(&format!("Open the run in your browser to decide: {url}"))
+                    }
+                    None => output::progress("Open the run in CloudThinker to decide."),
                 }
             }
             ExitCode::ApprovalRequired

@@ -1,3 +1,5 @@
+import { createInterface } from "node:readline";
+
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { type Component, matchesKey, type TuiMouseEvent, type TuiMouseEventResult, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 
@@ -23,6 +25,54 @@ export interface ApprovalRequest {
 
 function clean(text: string): string[] {
 	return text.split("\n").map((line) => sanitizeTerminalText(line).trimEnd());
+}
+
+export function hasPrintApprovalTerminal(mode: string | undefined): boolean {
+	return mode === "print" &&
+		process.stdin.isTTY === true &&
+		process.stdout.isTTY === true &&
+		process.stderr.isTTY === true;
+}
+
+let printApprovalQueue = Promise.resolve();
+
+export function askPrintApproval(
+	request: Omit<ApprovalRequest, "choices">,
+	signal?: AbortSignal,
+): Promise<"approve" | "decline" | "browser"> {
+	const decision = printApprovalQueue.then(async (): Promise<"approve" | "decline" | "browser"> => {
+		signal?.throwIfAborted();
+		const details = [
+			request.title,
+			...clean(request.reasoning),
+			...clean(request.connections),
+			...clean(request.script).map((line) => `  ${line}`),
+			...(request.webUrl ? [`Browser: ${sanitizeTerminalText(request.webUrl)}`] : []),
+			"Approve [y], decline [n], or press Enter to decide in your browser: ",
+		];
+		process.stderr.write(details.join("\n"));
+		const line = await new Promise<string | undefined>((resolve) => {
+			const input = createInterface({ input: process.stdin, terminal: false });
+			const abort = () => input.close();
+			input.once("close", () => {
+				signal?.removeEventListener("abort", abort);
+				resolve(undefined);
+			});
+			input.once("line", (answer) => {
+				resolve(answer);
+				input.close();
+			});
+			signal?.addEventListener("abort", abort, { once: true });
+			if (signal?.aborted) abort();
+		});
+		signal?.throwIfAborted();
+		const answer = line?.trim().toLowerCase();
+		if (answer === "y" || answer === "yes") return "approve";
+		if (answer === "n" || answer === "no") return "decline";
+		return "browser";
+	});
+	printApprovalQueue = decision.then(() => {}, () => {});
+	return decision;
 }
 
 interface Layout {

@@ -3,6 +3,7 @@ import { type Static, Type } from "typebox";
 import type { AgentToolResult, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 
+import { sanitizeTerminalText } from "../awareness.ts";
 import {
 	CloudThinkerApiError,
 	type RunApproval,
@@ -27,7 +28,7 @@ import {
 	resultBody,
 	summaryComponent,
 } from "./render.ts";
-import { ApprovalPrompt } from "./approval-prompt.ts";
+import { ApprovalPrompt, askPrintApproval, hasPrintApprovalTerminal } from "./approval-prompt.ts";
 import {
 	APPROVAL_NOTIFICATION,
 	APPROVE_HERE,
@@ -164,8 +165,20 @@ async function askRunInTerminal(
 	ctx: Pick<ExtensionContext, "hasUI" | "ui"> & Partial<Pick<ExtensionContext, "mode">>,
 	pending: RunPendingApproval,
 	webUrl: string | null,
+	signal?: AbortSignal,
 ): Promise<RunAnswer> {
 	const reasoning = pending.reason || `CloudThinker Agent wants to run ${pending.tool_name}.`;
+	if (hasPrintApprovalTerminal(ctx.mode)) {
+		return {
+			decision: await askPrintApproval({
+				title: RUN_APPROVAL_TITLE,
+				reasoning,
+				connections: pending.tool_name,
+				script: pending.arguments,
+				webUrl: webUrl ?? "",
+			}, signal),
+		};
+	}
 	let choice: string | undefined;
 	if (ctx.mode === "tui") {
 		terminalNotify(APPROVAL_NOTIFICATION);
@@ -204,7 +217,7 @@ export async function approveRunInTerminal(options: RunApprovalOptions): Promise
 	const intervalMs = options.intervalMs ?? POLL_INTERVAL_MS;
 	const maxWaitMs = options.maxWaitMs ?? MAX_WAIT_MS;
 	let state = options.state;
-	while (ctx.hasUI && state.status === "required_approval") {
+	while ((ctx.hasUI || hasPrintApprovalTerminal(ctx.mode)) && state.status === "required_approval") {
 		const approval = await client.getRunApproval(state.run_id, signal);
 		const pending = approval.pending;
 		if (approval.status !== "required_approval") {
@@ -212,7 +225,7 @@ export async function approveRunInTerminal(options: RunApprovalOptions): Promise
 			continue;
 		}
 		if (!pending?.decidable) return state;
-		const answer = await askRunInTerminal(ctx, pending, approval.web_url ?? state.web_url);
+		const answer = await askRunInTerminal(ctx, pending, approval.web_url ?? state.web_url, signal);
 		if (answer.decision === "browser") return state;
 		try {
 			await client.decideRun(
@@ -334,7 +347,10 @@ export function registerAsk(runtime: CloudThinkerRuntime): void {
 					client: runtime.client,
 					ctx,
 					state: polled,
-					warn: (message) => runtime.notify(message, "warning"),
+					warn: (message) => {
+						if (hasPrintApprovalTerminal(ctx.mode)) process.stderr.write(`${sanitizeTerminalText(message)}\n`);
+						else runtime.notify(message, "warning");
+					},
 					signal,
 					onTick,
 				});

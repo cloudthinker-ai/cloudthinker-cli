@@ -584,7 +584,7 @@ fn build_body(input: &BodyInput) -> CtResult<Option<Vec<u8>>> {
     Ok(Some(bytes))
 }
 
-fn check_idempotency_key(key: &str) -> CtResult<String> {
+pub(super) fn check_idempotency_key(key: &str) -> CtResult<String> {
     let valid = (1..=MAX_HEADER_BYTES).contains(&key.len())
         && key
             .bytes()

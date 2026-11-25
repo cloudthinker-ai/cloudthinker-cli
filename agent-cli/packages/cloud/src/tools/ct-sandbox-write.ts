@@ -7,10 +7,11 @@ import type {
 	Theme,
 } from "@earendil-works/pi-coding-agent";
 
+import { sanitizeTerminalText } from "../awareness.ts";
 import { type CloudWrite, CloudThinkerApiError, type WriteOutcome } from "../client.ts";
 import { terminalNotify } from "../notify.ts";
 import { APPROVAL_KEY, AUTO_MODE_OFF_REASON, type CloudThinkerRuntime } from "../runtime.ts";
-import { type ApprovalChoice, ApprovalPrompt } from "./approval-prompt.ts";
+import { type ApprovalChoice, ApprovalPrompt, askPrintApproval, hasPrintApprovalTerminal } from "./approval-prompt.ts";
 import { DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS, renderExecution } from "./ct-sandbox-read.ts";
 import { CT_ASK, CT_SANDBOX_READ, CT_SANDBOX_WRITE, READ_TASK_OUTPUT } from "./names.ts";
 import {
@@ -58,16 +59,15 @@ const parameters = Type.Object({
 	script: Type.Optional(
 		Type.String({
 			description:
-				"ONE state-changing shell command to run on the workspace machine: create, " +
-				"delete, apply, scale, restart, rotate, put, tag. The Connection's CLI " +
-				"is already installed and authenticated.",
+				"One command that changes cloud state or uses a Connection tool marked approval-required. " +
+				"The Connection's CLI or SDK is available on the workspace machine.",
 		}),
 	),
 	reasoning: Type.Optional(
 		Type.String({
 			description:
-				"One plain-language sentence for the human approver: what this " +
-				"changes and why it is needed right now. No tool names, no jargon.",
+				"One plain-language sentence for the approver: what this does " +
+				"and why it is needed now. No tool names or jargon.",
 		}),
 	),
 	timeout: Type.Optional(
@@ -94,13 +94,13 @@ const parameters = Type.Object({
 type Params = Static<typeof parameters>;
 
 const description = [
-	"Run ONE state-changing command on the workspace machine, CloudThinker's computer in the cloud, with a workspace Connection's credential injected.",
+	"Run one command that changes cloud state or uses a Connection tool marked approval-required, using the Connection on the workspace machine.",
 	"The workspace decides whether it runs: a command an active workspace Rule allows runs at once; anything else pauses until a human approves it, in this terminal or in the browser, then runs here.",
 	"",
 	"The credential stays in the cloud. You never see it, you only get stdout back.",
-	`Read-only lookups (describe, list, get, logs) belong in ${CT_SANDBOX_READ}; open-ended, multi-step cloud work belongs in ${CT_ASK}.`,
+	`Use ${CT_SANDBOX_READ} for reads that need no approval. Use ${CT_ASK} for open-ended, multi-step cloud work. Skip disabled tools.`,
 	"",
-	"Name the ONE command that makes the change; the approval card is where the human confirms it. Never batch several changes into one script.",
+	"Name the one command to approve. Never batch several operations into one script.",
 	"If the result says the write is still waiting, tell the user and stop; call this tool again later with only write_id to pick it up. Never re-send the same script while a write is waiting.",
 	"If the result says declined or denied, do not retry it and do not work around it. Tell the user the reason.",
 ].join("\n");
@@ -198,7 +198,19 @@ async function chooseDecision(
 export async function askInTerminal(
 	ctx: Pick<ExtensionContext, "hasUI" | "ui"> & Partial<Pick<ExtensionContext, "mode">>,
 	write: CloudWrite,
+	signal?: AbortSignal,
 ): Promise<TerminalAnswer> {
+	if (hasPrintApprovalTerminal(ctx.mode)) {
+		return {
+			decision: await askPrintApproval({
+				title: APPROVAL_TITLE,
+				reasoning: write.reasoning,
+				connections: write.connection_list.join(", ") || "no Connection",
+				script: write.script,
+				webUrl: write.web_url,
+			}, signal),
+		};
+	}
 	if (!ctx.hasUI) return { decision: "browser" };
 	const choice = await chooseDecision(ctx, write, DECISION_OPTIONS);
 	if (choice === APPROVE_HERE) return { decision: "approve" };
@@ -223,7 +235,7 @@ export async function decideInTerminal(
 	warn: (message: string) => void,
 	signal?: AbortSignal,
 ): Promise<CloudWrite | undefined> {
-	const answer = await askInTerminal(ctx, write);
+	const answer = await askInTerminal(ctx, write, signal);
 	if (answer.decision === "browser") return undefined;
 	try {
 		return await client.decideWrite(
@@ -233,7 +245,7 @@ export async function decideInTerminal(
 		);
 	} catch (error) {
 		if (!(error instanceof CloudThinkerApiError) || error.status !== 403) throw error;
-		warn(NOT_AN_APPROVER_MESSAGE);
+		warn(error.code === "AGENT_CLI_APPROVER_REQUIRED" ? error.message : NOT_AN_APPROVER_MESSAGE);
 		return undefined;
 	}
 }
@@ -355,10 +367,14 @@ async function awaitApprovalIfNeeded(call: WriteCall, outcome: WriteOutcome): Pr
 		runtime.client,
 		ctx,
 		outcome.write,
-		(message) => runtime.notify(message, "warning"),
+		(message) => {
+			if (ctx.hasUI) runtime.notify(sanitizeTerminalText(message), "warning");
+			else process.stderr.write(`${sanitizeTerminalText(message)} ${sanitizeTerminalText(outcome.write.web_url)}\n`);
+		},
 		signal,
 	);
 	if (decided) return { write: decided, execution: null };
+	if (hasPrintApprovalTerminal(ctx.mode)) return outcome;
 	runtime.awaitApproval(outcome.write.id, outcome.write.web_url, WRITE_SUBJECT, "");
 	if (ctx.hasUI) ctx.ui.setWorkingMessage(WRITE_WORKING_MESSAGE);
 	else process.stderr.write(`waiting for approval in the browser → ${outcome.write.web_url}\n`);
@@ -392,9 +408,9 @@ export function registerSandboxWrite(runtime: CloudThinkerRuntime): void {
 		label: "Cloud write",
 		description,
 		promptSnippet:
-			"Run one state-changing command on the workspace machine once the workspace approves it",
+			"Run a cloud command through the workspace approval rules",
 		promptGuidelines: [
-			`Route every state-changing cloud command through ${CT_SANDBOX_WRITE}, one command per call. A human may have to approve it, in the terminal or in the browser, before it runs.`,
+			`Route each cloud change or approval-required Connection call through ${CT_SANDBOX_WRITE}, one command per call.`,
 		],
 		parameters,
 		execute: async (

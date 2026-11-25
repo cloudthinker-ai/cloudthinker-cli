@@ -1,3 +1,9 @@
+## [0.13.4]
+
+- The CLI uses the same workspace permissions as web Chat when it reads from your Cloudflare Connection.
+- Approve or decline chat actions in the terminal and keep waiting for the answer.
+- Use your saved workspace login to start and check chat runs.
+
 ## [0.13.3]
 
 The CLI prints the session id and how to return when the agent screen closes.
