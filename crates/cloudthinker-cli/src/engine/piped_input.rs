@@ -54,18 +54,21 @@ fn combine(prompt: &str, data: &[u8]) -> Result<String, String> {
 }
 
 fn within_limit(prompt: String) -> Result<String, String> {
-    let length = prompt.chars().count();
-    if length > PROMPT_LIMIT_CHARS {
-        return Err(format!(
-            "the prompt with its piped input has {length} characters; the limit is {PROMPT_LIMIT_CHARS}. Send less input, for example with `tail -n 200`"
-        ));
+    if prompt.chars().count() > PROMPT_LIMIT_CHARS {
+        return Err(limit_error());
     }
     Ok(prompt)
 }
 
+fn limit_error() -> String {
+    format!(
+        "the prompt with its piped input is too long; the limit is {PROMPT_LIMIT_CHARS} characters. Send less input, for example with `tail -n 200`"
+    )
+}
+
 fn read_stdin(first_byte_wait: Option<Duration>) -> Result<Option<Vec<u8>>, String> {
     let (started_tx, started_rx) = mpsc::channel::<()>();
-    let (done_tx, done_rx) = mpsc::channel::<std::io::Result<Vec<u8>>>();
+    let (done_tx, done_rx) = mpsc::channel::<Result<Vec<u8>, String>>();
     let received = Arc::new(AtomicUsize::new(0));
     let counter = Arc::clone(&received);
     std::thread::spawn(move || {
@@ -88,12 +91,13 @@ fn read_stdin(first_byte_wait: Option<Duration>) -> Result<Option<Vec<u8>>, Stri
                         .filter(|byte| (**byte & 0xC0) != 0x80)
                         .count();
                     if chars > PROMPT_LIMIT_CHARS {
-                        break;
+                        let _ = done_tx.send(Err(limit_error()));
+                        return;
                     }
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
                 Err(error) => {
-                    let _ = done_tx.send(Err(error));
+                    let _ = done_tx.send(Err(format!("could not read stdin: {error}")));
                     return;
                 }
             }
@@ -116,8 +120,7 @@ fn read_stdin(first_byte_wait: Option<Duration>) -> Result<Option<Vec<u8>>, Stri
         other => other,
     };
     match finished {
-        Ok(Ok(data)) => Ok(Some(data)),
-        Ok(Err(error)) => Err(format!("could not read stdin: {error}")),
+        Ok(result) => result.map(Some),
         Err(_) => Err("could not read stdin".into()),
     }
 }

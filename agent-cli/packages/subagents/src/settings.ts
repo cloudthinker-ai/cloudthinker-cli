@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { NO_FALLBACK } from "./agent-types.ts";
 import type { AgentMentionMode, JoinMode, ViewerMarkdownMode, WidgetMode } from "./types.ts";
+import { errorText } from "./error-text.ts";
 
 export interface SubagentsSettings {
   maxConcurrent?: number;
@@ -482,7 +483,7 @@ function readSettingsFile(path: string): SubagentsSettings {
   try {
     return sanitize(JSON.parse(readFileSync(path, "utf-8")));
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
+    const reason = errorText(err);
     console.warn(`[pi-subagents] Ignoring malformed settings at ${path}: ${reason}`);
     return {};
   }

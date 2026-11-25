@@ -35,6 +35,7 @@ import type {
 } from "./types.ts";
 import { addUsage } from "./usage.ts";
 import { isWorktreeIsolationEnabled } from "./worktree.ts";
+import { errorText } from "./error-text.ts";
 
 /**
  * Hard ceiling on nesting for every branch: main session = 0, its subagents = 1,
@@ -357,7 +358,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
         );
         return textResult(formatRecord(record, "inline"), record.status === "error");
       } catch (err) {
-        return textResult(err instanceof Error ? err.message : String(err), true);
+        return textResult(errorText(err), true);
       }
     },
   });
@@ -412,7 +413,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
       try {
         await record.session.steer(params.message);
       } catch (err) {
-        return textResult(`Failed to steer nested agent: ${err instanceof Error ? err.message : String(err)}`, true);
+        return textResult(`Failed to steer nested agent: ${errorText(err)}`, true);
       }
       return textResult(`Steering message sent to nested agent ${params.agent_id}.`);
     },

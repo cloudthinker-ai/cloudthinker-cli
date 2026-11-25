@@ -14,7 +14,7 @@ pub fn emit_public_operations(table: &OperationTable, json: bool) -> Result<(), 
 }
 
 fn render_operations(out: &mut impl Write, table: &OperationTable) -> Result<(), String> {
-    write_line(out, "COMMAND\tOPERATION\tMETHOD\tSCOPE")?;
+    write_line(out, "COMMAND\tOPERATION\tMETHOD\tPERMISSION")?;
     for op in &table.operations {
         write_line(
             out,
@@ -23,7 +23,7 @@ fn render_operations(out: &mut impl Write, table: &OperationTable) -> Result<(),
                 terminal_text(&op.cli.words().join(" ")),
                 terminal_text(&op.id),
                 op.method,
-                terminal_text(op.scope.as_deref().unwrap_or("none")),
+                terminal_text(op.permission.as_deref().unwrap_or("none")),
             ),
         )?;
     }

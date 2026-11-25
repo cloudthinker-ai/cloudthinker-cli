@@ -551,15 +551,22 @@ operating system's config directory, with mode 0600.
 
 Every CloudThinker public API operation is a command. The CLI reads the
 operation list from the server's public API spec, so a new operation needs no
-CLI update:
+CLI update. Set `WORKSPACE_ID` and `REVIEW_ID` to the IDs you want to use.
 
 ```sh
-cloudthinker api --list                                   # every operation, its command and scope
-cloudthinker resolve incidents list --status open --all   # cloudthinker <module> <resource> <verb>
-cloudthinker review reviews get <review-id> -w <workspace-id>
+cloudthinker api --list
+cloudthinker resolve incidents list --status OPEN --all
+cloudthinker review reviews get "$REVIEW_ID" -w "$WORKSPACE_ID"
 cloudthinker chat runs list --status running
-cloudthinker resolve incidents update <incident-id> --set status=resolved --etag <etag>
-cloudthinker api GET /v1/workspaces/<workspace-id>/resolve/incidents --query status=open
+cloudthinker api GET "/v1/workspaces/$WORKSPACE_ID/resolve/incidents" --query status=OPEN
+```
+
+To resolve an incident, set `INCIDENT_ID` to its ID. Run the first command
+and set `ETAG` to the value it prints, including the quotes if shown.
+
+```sh
+cloudthinker resolve incidents get "$INCIDENT_ID"
+cloudthinker resolve incidents update "$INCIDENT_ID" --set status=RESOLVED --etag "$ETAG"
 ```
 
 - Path IDs are positional; query parameters are flags. `--all` follows
@@ -568,7 +575,7 @@ cloudthinker api GET /v1/workspaces/<workspace-id>/resolve/incidents --query sta
   login is used.
 - Writes send an `Idempotency-Key` (pass `--key` to retry safely).
   A response `ETag` is printed on stderr; pass it back with `--etag`.
-- A write runs when your token's scopes allow it. An operation the server
+- A write runs when your token's role and your workspace role allow it. An operation the server
   marks for confirmation (`x-confirm` in the spec, every delete by default)
   asks `Run <METHOD> <path> (<operation>)? [y/N]` on a terminal; any answer
   but `y` or `yes` cancels it (exit 1). Pass `--yes` (`-y`) to skip the

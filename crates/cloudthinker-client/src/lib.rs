@@ -46,6 +46,10 @@ pub use cli_config::{
     CliConfig, URL_ENV_VAR, cli_config_path, effective_default_url, resolve_base_url,
 };
 pub use client::{
+    APPROVALS_DEFAULT_LIMIT, APPROVALS_MAX_LIMIT, ApprovalKind, ApprovalListQuery, ApprovalObject,
+    ApprovalPage, ApprovalPerson, ApprovalSourceStatus, ApprovalState, ApprovalView, Unreported,
+};
+pub use client::{
     AgentChatSelection, AgentKind, AgentMatch, AgentView, Agents, CliIdentity, ConnectionDetail,
     ConnectionDisconnect, ConnectionDisconnectPhase, ConnectionKind, ConnectionLocation,
     ConnectionMatch, ConnectionStatus, ConnectionTest, ConnectionTestPhase, ConnectionView,
@@ -77,11 +81,11 @@ pub use client::{
     ConversationSearchMatchMode, ConversationSearchQuery, ConversationSearchScope,
     ConversationSearchStatus, ConversationSearchTimeField,
 };
-pub use client::{ConversationTrace, TRACE_MAX_MESSAGES};
 pub use client::{
     ConnectionEvidence, Diagnosis, DoctorCoverage, DoctorWire, DoctorWireCheck, OriginSource,
     ServerCheck, ServerEvidence, diagnose,
 };
+pub use client::{ConversationTrace, TRACE_MAX_MESSAGES};
 pub use client::{
     LocalReviewContext, LocalReviewContextRequest, LocalReviewFindingIn, LocalReviewSeverity,
     LocalReviewStored, LocalReviewUpload,

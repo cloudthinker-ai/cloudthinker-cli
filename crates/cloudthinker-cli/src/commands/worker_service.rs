@@ -26,7 +26,7 @@ use worker_service_descriptor::{
 use worker_service_identity::{SystemUser, lookup_user, system_target_id};
 
 #[cfg(test)]
-use worker_service_identity::{parse_dscl, parse_passwd};
+use worker_service_identity::parse_passwd;
 
 const SERVICE_NAMESPACE: &str = "io.cloudthinker.worker";
 

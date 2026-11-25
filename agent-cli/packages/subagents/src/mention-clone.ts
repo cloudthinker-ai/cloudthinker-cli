@@ -66,6 +66,7 @@ import {
 import { runInChildSessionContext } from "./child-context.ts";
 import { agentMentionReminder } from "./mention.ts";
 import type { SubagentType, ThinkingLevel } from "./types.ts";
+import { errorText } from "./error-text.ts";
 
 export interface MentionCloneOptions {
   /** The MAIN session's context — what the spawn is attributed to, and the
@@ -183,7 +184,7 @@ export async function runMentionClone(opts: MentionCloneOptions): Promise<Mentio
     // renderer produces, where the reminder trails the message it is about.
     await session.prompt(`${message}\n\n${agentMentionReminder(type)}`);
   } catch (err) {
-    return { spawned, error: err instanceof Error ? err.message : String(err) };
+    return { spawned, error: errorText(err) };
   } finally {
     if (getSubagentHost() && session) await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
     session?.dispose?.();

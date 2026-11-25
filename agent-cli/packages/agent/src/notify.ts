@@ -1,4 +1,4 @@
-import { SettingsManager, getAgentDir, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { TuiAltScreen } from "@earendil-works/pi-tui";
 
 import {
@@ -10,7 +10,7 @@ import {
 	terminalNotify,
 } from "@cloudthinker/cloud/src/notify.ts";
 
-import { readSetting } from "./pi-settings.ts";
+import { readAgentSetting } from "./pi-settings.ts";
 
 export const NOTIFY_SETTING = "notifications";
 
@@ -19,8 +19,7 @@ export function turnDoneText(elapsedMs: number): string {
 }
 
 export function configuredNotifications(cwd: string, projectTrusted: boolean): boolean {
-	const settings = SettingsManager.create(cwd, getAgentDir(), { projectTrusted });
-	return readSetting(settings, NOTIFY_SETTING, (value): value is boolean => typeof value === "boolean", true);
+	return readAgentSetting(cwd, projectTrusted, NOTIFY_SETTING, (value): value is boolean => typeof value === "boolean", true);
 }
 
 interface FocusScreen {

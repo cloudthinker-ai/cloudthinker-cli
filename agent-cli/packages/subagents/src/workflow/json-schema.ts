@@ -29,6 +29,7 @@
  */
 
 import { Check, Errors } from "typebox/value";
+import { errorText } from "../error-text.ts";
 
 /** Largest schema we will accept, serialized. */
 const MAX_SCHEMA_BYTES = 64 * 1024;
@@ -91,7 +92,7 @@ export function compileJsonSchema(schema: unknown): SchemaCompilation {
     return {
       ok: false,
       message: `agent() opts.schema is not a schema this runtime can validate: ${
-        error instanceof Error ? error.message : String(error)
+        errorText(error)
       }`,
     };
   }
@@ -106,7 +107,7 @@ function checkAgainst(schema: Record<string, unknown>, value: unknown): true | s
   } catch (error) {
     // Reported rather than thrown: a schema that compiled but trips on a
     // particular value must fail that call, not the run.
-    return `the value could not be validated: ${error instanceof Error ? error.message : String(error)}`;
+    return `the value could not be validated: ${errorText(error)}`;
   }
   if (valid) return true;
 

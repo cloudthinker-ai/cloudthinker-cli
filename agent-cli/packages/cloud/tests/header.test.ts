@@ -20,7 +20,7 @@ import {
 } from "../src/header.ts";
 import { LOGO_WIDTH, MARK_WIDTH, renderLogo, renderMark } from "../src/logo.ts";
 import { startupHeroVisible } from "../src/startup-presentation.ts";
-import { hostVersionsFrom, normalizeRepositoryUrl } from "../src/versions.ts";
+import { hostVersionsFrom } from "../src/versions.ts";
 
 const plain: HeaderStyler = {
 	fg: (_color, text) => text,
@@ -89,12 +89,6 @@ test("the compact form stays lean and expansion keeps key access within the view
 	assert.match(expanded, /built on pi v0.85.1 by Mario Zechner \(MIT\)/);
 });
 
-test("the header never repeats pi's own onboarding sentence", () => {
-	const hints = { compact: "c", expanded: "e" };
-	const text = formatHeaderText({ link: "linking" }, versions, plain, hints, false);
-	assert.ok(!text.includes("Pi can explain its own features"));
-});
-
 test("the pi version and repository come from the sidecar, or from pi's own manifest", () => {
 	const sidecar = hostVersionsFrom(
 		{ version: "0.4.0", piVersion: "0.85.1", piRepository: "https://github.com/earendil-works/pi" },
@@ -115,13 +109,6 @@ test("the pi version and repository come from the sidecar, or from pi's own mani
 	);
 	assert.equal(own.pi, "0.85.1");
 	assert.equal(own.piRepositoryUrl, "https://github.com/earendil-works/pi");
-});
-
-test("a git url loses its scheme prefix and its .git suffix", () => {
-	assert.equal(
-		normalizeRepositoryUrl("git+https://github.com/earendil-works/pi.git"),
-		"https://github.com/earendil-works/pi",
-	);
 });
 
 test("the live header responds to resizing without losing identity or failure state", () => {

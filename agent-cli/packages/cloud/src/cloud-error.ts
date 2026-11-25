@@ -14,12 +14,12 @@ export interface CloudFailure {
 	retry: boolean;
 }
 
-function message(error: unknown): string {
+export function errorText(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
 export function classifyCloudError(error: unknown): CloudFailure {
-	const detail = message(error);
+	const detail = errorText(error);
 	const status = error instanceof CloudThinkerApiError ? error.status : undefined;
 	if (status === 401) {
 		return { kind: "signed-out", label: "signed out", cause: "You are signed out of CloudThinker", action: `run \`cloudthinker login\` in a terminal, then ${RETRY_COMMAND}`, detail, retry: false };

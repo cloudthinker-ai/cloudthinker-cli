@@ -222,12 +222,8 @@ async function readJson(path: string): Promise<unknown> {
 }
 
 export async function readIndex(path: string): Promise<SkillIndex> {
-	try {
-		const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
-		return typeof parsed === "object" && parsed !== null ? (parsed as SkillIndex) : {};
-	} catch {
-		return {};
-	}
+	const parsed = await readJson(path);
+	return typeof parsed === "object" && parsed !== null ? (parsed as SkillIndex) : {};
 }
 
 async function writeIndex(path: string, index: SkillIndex): Promise<void> {

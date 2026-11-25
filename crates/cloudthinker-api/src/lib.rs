@@ -5061,8 +5061,8 @@ pub mod types {
     ///steers, it never narrows targets.
     ///
     ///`worktree_name` is the directory name the run's git worktree clones to
-    ///(same value `app.shared.utils.repo_path_utils.worktree_dir_name`
-    ///produces for `_repository_roots`) — `_change_focus_line` renders
+    ///(the repo config entry's `checkout_dir_name()`, the same folder
+    ///`_repository_roots` uses) — `_change_focus_line` renders
     ///`./<worktree_name>/`, not `repository_identity` (a GitLab identity is a
     ///numeric project ID, useless prose for the agent). Defaults to `""` so
     ///rows persisted before this field existed still validate; `_change_focus_
@@ -5087,9 +5087,8 @@ pub mod types {
     /// agent diffs these refs (`git diff\nbase...head`) — the backend only
     /// resolves them. NOT a scope fence: it\nsteers, it never narrows
     /// targets.\n\n`worktree_name` is the directory name the run's git worktree
-    /// clones to\n(same value
-    /// `app.shared.utils.repo_path_utils.worktree_dir_name`\nproduces for
-    /// `_repository_roots`) — `_change_focus_line`
+    /// clones to\n(the repo config entry's `checkout_dir_name()`, the same
+    /// folder\n`_repository_roots` uses) — `_change_focus_line`
     /// renders\n`./<worktree_name>/`, not `repository_identity` (a GitLab
     /// identity is a\nnumeric project ID, useless prose for the agent).
     /// Defaults to `\"\"` so\nrows persisted before this field existed still
@@ -8395,6 +8394,9 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "scorecard_publication": {
+    ///      "$ref": "#/components/schemas/ScorecardPublicationStatus"
+    ///    },
     ///    "severity_counts": {
     ///      "$ref": "#/components/schemas/CodeReviewSeverityCounts"
     ///    },
@@ -8555,6 +8557,8 @@ pub mod types {
         pub rules_cited_count: i64,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub score: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub scorecard_publication: ::std::option::Option<ScorecardPublicationStatus>,
         pub severity_counts: CodeReviewSeverityCounts,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub source_branch: ::std::option::Option<::std::string::String>,
@@ -31047,6 +31051,85 @@ pub mod types {
                 .map_err(|e: self::error::ConversionError| {
                     <D::Error as ::serde::de::Error>::custom(e.to_string())
                 })
+        }
+    }
+
+    ///`ScorecardPublicationStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ScorecardPublicationStatus",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "waiting",
+    ///    "failed"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ScorecardPublicationStatus {
+        #[serde(rename = "waiting")]
+        Waiting,
+        #[serde(rename = "failed")]
+        Failed,
+    }
+
+    impl ::std::fmt::Display for ScorecardPublicationStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Waiting => f.write_str("waiting"),
+                Self::Failed => f.write_str("failed"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ScorecardPublicationStatus {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "waiting" => Ok(Self::Waiting),
+                "failed" => Ok(Self::Failed),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ScorecardPublicationStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ScorecardPublicationStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ScorecardPublicationStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
 

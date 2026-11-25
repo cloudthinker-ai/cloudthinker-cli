@@ -368,9 +368,20 @@ fn ca_lr_08_git_operational_error_uses_job_failed_exit() {
 
 /// A canned HTTP/1.1 server: 202 on submit, a fixed body on status GET.
 fn public_token_reply(request: &str) -> Option<String> {
+    token_reply(request, false)
+}
+
+/// The token check as production answers before the workspace-role change:
+/// `scopes` and no `role`. `legacy` picks that shape.
+fn token_reply(request: &str, legacy: bool) -> Option<String> {
     request.starts_with("GET /api/public/v1/token ").then(|| {
+        let access = if legacy {
+            r#""scopes":["incidents:read"]"#
+        } else {
+            r#""role":"VIEWER""#
+        };
         let body = format!(
-            r#"{{"token_id":"{RUN_ID}","user_id":"{CONV_ID}","client":"cli","scopes":[],"workspace_ids":["{RUN_ID}"],"expires_at":null}}"#
+            r#"{{"token_id":"{RUN_ID}","user_id":"{CONV_ID}","client":"cli",{access},"workspace_ids":["{RUN_ID}"],"expires_at":null}}"#
         );
         format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -462,6 +473,10 @@ struct RecordingApi {
 
 impl RecordingApi {
     fn start(responses: Vec<(&str, String)>) -> Self {
+        Self::start_with_token_shape(responses, false)
+    }
+
+    fn start_with_token_shape(responses: Vec<(&str, String)>, legacy_token: bool) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
         listener.set_nonblocking(true).unwrap();
@@ -480,7 +495,7 @@ impl RecordingApi {
                     Ok((mut socket, _)) => {
                         let data = read_request(&mut socket);
                         let request = String::from_utf8_lossy(&data).into_owned();
-                        if let Some(reply) = public_token_reply(&request) {
+                        if let Some(reply) = token_reply(&request, legacy_token) {
                             let _ = socket.write_all(reply.as_bytes());
                             continue;
                         }
@@ -870,6 +885,25 @@ fn cyber_probe_ingest_reports_missing_reason_before_authentication() {
 }
 
 const WHOAMI_BODY: &str = r#"{"user_id":"22222222-2222-4222-8222-222222222222","user_email":"duc@example.com","workspace_id":"11111111-1111-4111-8111-111111111111","workspace_name":"Production","organization_id":null}"#;
+
+/// A token check from a server that predates workspace roles answers with
+/// scopes and no role; `login --token` still signs in and shows the scopes.
+#[test]
+fn login_token_accepts_a_server_that_sends_scopes_without_a_role() {
+    let api = RecordingApi::start_with_token_shape(vec![], true);
+    let config = tempfile::tempdir().unwrap();
+    let token = format!("ct_pat_{}", "a".repeat(46));
+
+    cli(&api.base_url)
+        .env_remove("CLOUDTHINKER_TOKEN")
+        .env("CLOUDTHINKER_CONFIG_DIR", config.path())
+        .env("CLOUDTHINKER_CLI_NO_LOGIN", "1")
+        .args(["login", "--token"])
+        .write_stdin(token)
+        .assert()
+        .success()
+        .stderr(predicates::str::contains("Scopes: incidents:read"));
+}
 
 #[test]
 fn whoami_prints_one_live_identity_line() {
@@ -2225,6 +2259,31 @@ fn workspace_from_the_environment_still_conflicts_with_the_token_variable() {
         .stdout("")
         .stderr(predicates::str::contains(
             "--workspace cannot be used with CLOUDTHINKER_TOKEN",
+        ));
+}
+
+// A CI template that expands an unset variable leaves it empty; that is "not set".
+#[test]
+fn a_blank_workspace_variable_counts_as_unset() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+
+    cli(&api.base_url)
+        .env("CLOUDTHINKER_WORKSPACE", "")
+        .arg("whoami")
+        .assert()
+        .success();
+}
+
+#[test]
+fn a_blank_workspace_flag_is_refused_by_name() {
+    let api = MockApi::start(WHOAMI_BODY.into());
+
+    cli(&api.base_url)
+        .args(["--workspace", "", "whoami"])
+        .assert()
+        .code(2)
+        .stderr(predicates::str::contains(
+            "`workspace` needs a non-blank value",
         ));
 }
 
@@ -3694,6 +3753,419 @@ fn incident_status_reads_one_snapshot_times_out_and_reports_unknown_ids() {
         .stderr(predicates::str::contains("incident not found"));
 }
 
+const APPROVAL_ID: &str = "55555555-5555-4555-8555-555555555555";
+
+fn approval_json(status: &str, decider: Option<&str>) -> serde_json::Value {
+    serde_json::json!({
+        "id": APPROVAL_ID,
+        "kind": "agent_cli_write",
+        "status": status,
+        "title": "Scale payments-api to 6 replicas",
+        "action": {"tool": "bash", "summary": "kubectl scale deploy/payments-api --replicas 6"},
+        "conversation_id": CONV_ID,
+        "incident_id": null,
+        "requested_by_user_id": RUN_ID,
+        "requester": "Steve Tran",
+        "reason": "Rule: Ask first",
+        "two_person": true,
+        "decider": decider,
+        "decided_at": decider.map(|_| "2026-11-07T02:26:05Z"),
+        "created_at": "2026-11-07T02:25:02Z",
+        "expires_at": "2026-11-07T03:25:02Z",
+        "url": "https://app.example.com/chat?conversationId=c"
+    })
+}
+
+fn approval_page(items: Vec<serde_json::Value>, next_cursor: Option<&str>) -> String {
+    serde_json::json!({"items": items, "next_cursor": next_cursor}).to_string()
+}
+
+fn json_lines(stdout: &[u8]) -> Vec<serde_json::Value> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+#[test]
+fn approvals_list_renders_table_json_filters_and_next_page_hint() {
+    let api = RecordingApi::start(vec![
+        (
+            "200 OK",
+            approval_page(vec![approval_json("pending", None)], Some("page-2")),
+        ),
+        (
+            "200 OK",
+            approval_page(vec![approval_json("pending", None)], None),
+        ),
+        ("200 OK", approval_page(vec![], None)),
+    ]);
+    cli(&api.base_url)
+        .args([
+            "approvals",
+            "list",
+            "--kind",
+            "subagent",
+            "--kind",
+            "agent-cli-write",
+            "--limit",
+            "5",
+            "--cursor",
+            "page-1",
+        ])
+        .assert()
+        .success()
+        .stdout(predicates::str::starts_with(
+            "REQUEST ID\tKIND\tASKED AT\tEXPIRES AT\tREQUESTER\tTITLE\n",
+        ))
+        .stdout(predicates::str::contains(APPROVAL_ID))
+        .stdout(predicates::str::contains("agent CLI write"))
+        .stdout(predicates::str::contains(
+            "Scale payments-api to 6 replicas",
+        ))
+        .stderr(predicates::str::contains("--cursor page-2"));
+
+    let output = cli(&api.base_url)
+        .args(["approvals", "ls", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(value["next_cursor"], serde_json::Value::Null);
+    let item = &value["items"][0];
+    assert_eq!(item["request_id"], APPROVAL_ID);
+    assert_eq!(item["state"], "pending");
+    assert_eq!(item["source_status"], "pending");
+    assert_eq!(item["object"]["ref"], CONV_ID);
+    assert_eq!(item["object"]["incident"], false);
+    assert_eq!(item["requester"]["name"], "Steve Tran");
+    for absent in [
+        "id",
+        "approver",
+        "routing",
+        "escalate_at",
+        "plan_revision",
+        "terraform_plan_sha256",
+        "scope",
+        "decided_by",
+        "decided_surface",
+        "decided_at",
+        "decision",
+        "deliveries",
+        "advisor",
+    ] {
+        assert!(
+            item.get(absent).is_some_and(serde_json::Value::is_null),
+            "{absent} must be an explicit null"
+        );
+    }
+
+    cli(&api.base_url)
+        .args(["approvals", "list"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr(predicates::str::contains(
+            "No approval requests wait for you.",
+        ));
+
+    let requests = api.requests();
+    assert!(requests[0].starts_with("GET /api/public/v1/workspaces/"));
+    assert!(requests[0].contains("/approvals/requests?"));
+    assert!(requests[0].contains("limit=5"));
+    assert!(requests[0].contains("cursor=page-1"));
+    assert!(requests[0].contains("kind=agent_cli_write&kind=subagent"));
+    assert!(requests[1].contains("limit=20"));
+}
+
+#[test]
+fn approvals_list_rejects_bad_arguments_without_http() {
+    let api = RecordingApi::start(vec![]);
+    for args in [
+        vec!["approvals", "list", "--limit", "0"],
+        vec!["approvals", "list", "--limit", "101"],
+        vec!["approvals", "list", "--kind", "pr"],
+        vec!["approvals", "list", "--cursor", ""],
+        vec!["approvals", "watch", "not-a-uuid"],
+        vec!["approvals", "watch", APPROVAL_ID, "--interval", "0"],
+    ] {
+        cli(&api.base_url).args(&args).assert().code(2);
+    }
+    assert!(api.requests().is_empty());
+}
+
+#[test]
+fn approvals_keep_the_public_api_resource_and_errors_keep_the_exit_contract() {
+    let unauthorized = MockApi::start_with_status(
+        "401 Unauthorized",
+        serde_json::json!({"detail": "expired"}).to_string(),
+    );
+    cli(&unauthorized.base_url)
+        .args(["approvals", "list"])
+        .assert()
+        .code(3);
+    let forbidden = MockApi::start_with_status(
+        "403 Forbidden",
+        serde_json::json!({"detail": "missing scope"}).to_string(),
+    );
+    cli(&forbidden.base_url)
+        .args(["approvals", "watch", APPROVAL_ID])
+        .assert()
+        .code(3);
+    let broken = MockApi::start("{\"items\": 7}".into());
+    cli(&broken.base_url)
+        .args(["approvals", "list"])
+        .assert()
+        .code(1);
+
+    cli("http://127.0.0.1:9")
+        .args(["approvals", "--help"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("list"))
+        .stdout(predicates::str::contains("watch"));
+}
+
+fn public_get(operation_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "parameters": [{"name": "workspace_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "get": {
+            "operationId": operation_id,
+            "summary": "s",
+            "x-permission": "agent_policy:view",
+            "x-audience": "public",
+            "responses": {"200": {"description": "ok"}}
+        }
+    })
+}
+
+/// Production still serves the 1.0.0 public spec, which names the permission
+/// `x-scope`; the same CLI must read it beside the `x-permission` spec.
+#[test]
+fn api_check_reads_a_spec_that_names_the_permission_x_scope() {
+    let root = tempfile::tempdir().unwrap();
+    let mut operation = public_get("chat.runs.list");
+    let permission = operation["get"]
+        .as_object_mut()
+        .unwrap()
+        .remove("x-permission");
+    operation["get"]["x-scope"] = permission.unwrap();
+    let spec = root.path().join("production.json");
+    std::fs::write(
+        &spec,
+        serde_json::json!({"paths": {
+            "/v1/workspaces/{workspace_id}/chat/runs": operation,
+        }})
+        .to_string(),
+    )
+    .unwrap();
+    cli("http://127.0.0.1:9")
+        .args(["api", "--check"])
+        .arg(&spec)
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "1 public operations, no command collisions",
+        ));
+}
+
+#[test]
+fn api_check_lets_approvals_carry_public_resources_and_still_reports_collisions() {
+    let root = tempfile::tempdir().unwrap();
+    let clean = root.path().join("clean.json");
+    std::fs::write(
+        &clean,
+        serde_json::json!({"paths": {
+            "/v1/workspaces/{workspace_id}/approvals/requests": public_get("approvals.requests.list"),
+            "/v1/workspaces/{workspace_id}/chat/runs": public_get("chat.runs.list"),
+        }})
+        .to_string(),
+    )
+    .unwrap();
+    cli("http://127.0.0.1:9")
+        .args(["api", "--check"])
+        .arg(&clean)
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "2 public operations, no command collisions",
+        ));
+
+    let colliding = root.path().join("colliding.json");
+    std::fs::write(
+        &colliding,
+        serde_json::json!({"paths": {
+            "/v1/workspaces/{workspace_id}/approvals/list": public_get("approvals.list.get"),
+            "/v1/workspaces/{workspace_id}/incident/things": public_get("incident.things.list"),
+        }})
+        .to_string(),
+    )
+    .unwrap();
+    cli("http://127.0.0.1:9")
+        .args(["api", "--check"])
+        .arg(&colliding)
+        .assert()
+        .code(1)
+        .stderr(predicates::str::contains(
+            "`cloudthinker approvals list` is already a hand-made command",
+        ))
+        .stderr(predicates::str::contains(
+            "`cloudthinker incident` is a hand-made command that does not take public API resources",
+        ));
+}
+
+#[test]
+fn approvals_watch_polls_until_approved_and_prints_one_json_line_per_state() {
+    let api = RecordingApi::start(vec![
+        ("200 OK", approval_json("pending", None).to_string()),
+        ("200 OK", approval_json("pending", None).to_string()),
+        (
+            "200 OK",
+            approval_json("executed", Some("Linh Tran")).to_string(),
+        ),
+    ]);
+    let output = cli(&api.base_url)
+        .args([
+            "approvals",
+            "watch",
+            APPROVAL_ID,
+            "--json",
+            "--interval",
+            "1",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .clone();
+    let lines = json_lines(&output.stdout);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0]["state"], "pending");
+    assert_eq!(lines[1]["state"], "approved");
+    assert_eq!(lines[1]["source_status"], "executed");
+    assert_eq!(lines[1]["decided_by"]["name"], "Linh Tran");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("Waiting for a decision"));
+    let requests = api.requests();
+    assert_eq!(requests.len(), 3);
+    assert!(requests[0].contains(&format!("/approvals/requests/{APPROVAL_ID} ")));
+}
+
+#[test]
+fn approvals_watch_exits_one_when_declined_and_reads_a_decided_request_once() {
+    let api = RecordingApi::start(vec![
+        ("200 OK", approval_json("pending", None).to_string()),
+        (
+            "200 OK",
+            approval_json("denied", Some("Linh Tran")).to_string(),
+        ),
+    ]);
+    cli(&api.base_url)
+        .args(["approvals", "watch", APPROVAL_ID, "--interval", "1"])
+        .assert()
+        .code(1)
+        .stdout(predicates::str::contains(
+            "state:     pending, no decision yet",
+        ))
+        .stdout(predicates::str::contains(
+            "state:     declined by Linh Tran at 2026-11-07T02:26:05+00:00",
+        ))
+        .stderr(predicates::str::contains(
+            "Not approved: the request was declined.",
+        ));
+
+    for (status, code, state) in [
+        ("approved", 0, "approved"),
+        ("expired", 1, "expired"),
+        ("stale", 1, "superseded"),
+    ] {
+        let decided = RecordingApi::start(vec![(
+            "200 OK",
+            approval_json(status, Some("Linh Tran")).to_string(),
+        )]);
+        let output = cli(&decided.base_url)
+            .args(["approvals", "watch", APPROVAL_ID, "--json"])
+            .assert()
+            .code(code)
+            .get_output()
+            .stdout
+            .clone();
+        let lines = json_lines(&output);
+        assert_eq!(lines.len(), 1, "{status}");
+        assert_eq!(lines[0]["state"], state);
+        assert_eq!(decided.requests().len(), 1);
+    }
+}
+
+#[test]
+fn approvals_watch_times_out_and_reports_unknown_ids() {
+    let pending = MockApi::start(approval_json("pending", None).to_string());
+    cli(&pending.base_url)
+        .args(["approvals", "watch", APPROVAL_ID, "--timeout", "0"])
+        .assert()
+        .code(4)
+        .stderr(predicates::str::contains(format!(
+            "cloudthinker approvals watch {APPROVAL_ID}"
+        )));
+
+    let missing = MockApi::start_with_status(
+        "404 Not Found",
+        serde_json::json!({"detail": "approval_not_found"}).to_string(),
+    );
+    cli(&missing.base_url)
+        .args(["approvals", "watch", APPROVAL_ID])
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(predicates::str::contains(format!(
+            "approval request not found: {APPROVAL_ID}"
+        )));
+}
+
+#[cfg(unix)]
+#[test]
+fn ctrl_c_stops_the_approval_watch_and_leaves_the_request_open() {
+    use std::io::BufRead;
+    use std::process::Stdio;
+
+    let api = MockApi::start(approval_json("pending", None).to_string());
+    let mut child = std::process::Command::new(assert_cmd::cargo::cargo_bin("cloudthinker"))
+        .env("CLOUDTHINKER_TOKEN", "test-access-token")
+        .env("CLOUDTHINKER_URL", &api.base_url)
+        .env_remove("CLOUDTHINKER_WORKSPACE")
+        .args(["approvals", "watch", APPROVAL_ID, "--json"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stderr = std::io::BufReader::new(child.stderr.take().unwrap());
+    let mut line = String::new();
+    while !line.contains("Waiting for a decision") {
+        line.clear();
+        assert!(stderr.read_line(&mut line).unwrap() > 0, "no waiting line");
+    }
+    rustix::process::kill_process(
+        rustix::process::Pid::from_child(&child),
+        rustix::process::Signal::INT,
+    )
+    .unwrap();
+    let mut rest = String::new();
+    stderr.read_to_string(&mut rest).unwrap();
+    let status = child.wait().unwrap();
+    let mut stdout = String::new();
+    child
+        .stdout
+        .take()
+        .unwrap()
+        .read_to_string(&mut stdout)
+        .unwrap();
+
+    assert_eq!(status.code(), Some(130), "{rest}");
+    assert_eq!(json_lines(stdout.as_bytes())[0]["state"], "pending");
+    assert!(rest.contains("the request stays open"), "{rest}");
+}
+
 #[test]
 fn recommendations_ls_renders_savings_json_and_status_filter() {
     let recommendation = serde_json::json!({
@@ -3795,10 +4267,18 @@ mod remote {
             write_script(
                 &dir.join("cloudthinker-agent"),
                 "#!/bin/bash\n\
-                 trap 'echo REDRAW' USR2\n\
+                 announce_session() {\n\
+                   if [ -f \"$HOME/agent-session-id\" ]; then\n\
+                     printf '\\033]6973;'\n\
+                     sleep 0.05\n\
+                     printf '%s\\007' \"$(cat \"$HOME/agent-session-id\")\"\n\
+                   fi\n\
+                 }\n\
+                 trap 'announce_session; echo REDRAW' USR2\n\
                  trap 'exit 130' TERM\n\
                  trap 'echo \"SIZE $(stty size)\"' WINCH\n\
                  echo \"$$\" > \"$CLOUDTHINKER_REMOTE_READY\"\n\
+                 announce_session\n\
                  echo \"started remote=$CLOUDTHINKER_REMOTE update=$CLOUDTHINKER_NO_UPDATE_CHECK term=$TERM_PROGRAM\"\n\
                  echo \"host=$CLOUDTHINKER_REMOTE_HOST_PID\"\n\
                  echo \"cwd=$(pwd)\"\n\
@@ -4286,6 +4766,54 @@ mod remote {
         std::thread::sleep(Duration::from_millis(300));
         assert!(pid_alive(&agent), "the agent died on an agent detach");
         assert!(pid_alive(&host), "the host died on an agent detach");
+    }
+
+    #[test]
+    fn ca_cli_remote_shows_the_session_id_after_detach_disconnect_and_exit() {
+        const INITIAL_ID: &str = "01935987-f4a3-7000-8000-000000000001";
+        const NEXT_ID: &str = "01935987-f4a3-7000-8000-000000000002";
+        let fixture = Fixture::new();
+        let app = fixture.folder("app");
+        let id_path = fixture.home().join("agent-session-id");
+        std::fs::write(&id_path, INITIAL_ID).unwrap();
+
+        let mut client = fixture.open(&app);
+        client.wait_for("started remote=1");
+        client.send(DETACH_KEY);
+        assert_eq!(client.exit_code(), 0);
+        let hint =
+            format!("Session {INITIAL_ID} is still running. Return with cloudthinker remote");
+        client.wait_for(&hint);
+        let output = client.text();
+        assert_eq!(output.matches(&hint).count(), 1);
+        assert!(output.find(tty_reset()).unwrap() < output.find(&hint).unwrap());
+
+        std::fs::write(&id_path, NEXT_ID).unwrap();
+        let mut reattached = fixture.open(&app);
+        reattached.wait_for("REDRAW");
+        let mark = reattached.mark();
+        fixture.link(&app, false);
+        fixture.drop_links();
+        reattached.wait_after(mark, "Connection lost");
+        reattached.send(b"\x03");
+        assert_eq!(reattached.exit_code(), 0);
+        reattached.wait_for(&format!(
+            "Left session {NEXT_ID}. Return with cloudthinker remote"
+        ));
+
+        fixture.link(&app, true);
+        let mut reattached = fixture.open(&app);
+        reattached.wait_for("REDRAW");
+        reattached.send(b"quit\r");
+        assert_eq!(reattached.exit_code(), 1);
+        reattached.wait_for(&format!(
+            "Session {NEXT_ID} ended. Resume with cloudthinker remote"
+        ));
+        assert!(
+            reattached
+                .text()
+                .contains(&format!("-- --session {NEXT_ID}"))
+        );
     }
 
     #[test]

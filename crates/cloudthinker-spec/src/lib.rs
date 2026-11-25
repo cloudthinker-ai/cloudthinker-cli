@@ -85,8 +85,11 @@ struct RawOperation {
     request_body: Option<RawBody>,
     #[serde(default)]
     responses: BTreeMap<String, RawResponse>,
+    #[serde(rename = "x-permission")]
+    permission: Option<String>,
+    /// What servers before the workspace-role change call `x-permission`.
     #[serde(rename = "x-scope")]
-    scope: Option<String>,
+    legacy_scope: Option<String>,
     #[serde(rename = "x-confirm", default)]
     confirm: bool,
     #[serde(rename = "x-audience")]
@@ -207,7 +210,7 @@ pub struct Operation {
     pub body: Option<Body>,
     pub response: Option<String>,
     pub paginated: bool,
-    pub scope: Option<String>,
+    pub permission: Option<String>,
     pub confirm: bool,
     pub deprecated: bool,
     pub summary: Option<String>,
@@ -313,7 +316,7 @@ impl fmt::Display for Issue {
                 "a path with {{{WORKSPACE_PARAM}}} must start with {WORKSPACE_PREFIX}"
             ),
             Problem::WorkspacelessNotRead => {
-                write!(f, "an operation without {{{WORKSPACE_PARAM}}} must be a GET with no x-scope")
+                write!(f, "an operation without {{{WORKSPACE_PARAM}}} must be a GET with no x-permission")
             }
             Problem::ModuleMismatch { path_module } => {
                 write!(
@@ -448,6 +451,7 @@ fn build_operation(
 ) -> Result<Operation, Vec<Problem>> {
     let mut problems = Vec::new();
     let mut push = |problem| problems.push(problem);
+    let permission = raw.permission.as_deref().or(raw.legacy_scope.as_deref());
 
     let Some(id) = raw.operation_id.as_deref() else {
         return Err(vec![Problem::MissingOperationId]);
@@ -458,7 +462,7 @@ fn build_operation(
     };
     match path.strip_prefix(WORKSPACE_PREFIX) {
         None if !workspace_scoped => {
-            if method != Method::Get || raw.scope.is_some() {
+            if method != Method::Get || permission.is_some() {
                 push(Problem::WorkspacelessNotRead);
             }
         }
@@ -466,7 +470,7 @@ fn build_operation(
         Some(rest) => {
             let mut segments = rest.split('/');
             let path_module = segments.next().unwrap_or_default();
-            let path_resource = segments.next().unwrap_or_default();
+            let path_resource = segments.next().unwrap_or(path_module);
             if path_module != module {
                 push(Problem::ModuleMismatch {
                     path_module: path_module.to_string(),
@@ -480,8 +484,8 @@ fn build_operation(
         }
     }
 
-    if workspace_scoped && raw.scope.as_deref().is_none_or(str::is_empty) {
-        push(Problem::MissingExtension("x-scope"));
+    if workspace_scoped && permission.is_none_or(str::is_empty) {
+        push(Problem::MissingExtension("x-permission"));
     }
     if raw.audience.as_deref() != Some("public") {
         push(Problem::NotPublicAudience);
@@ -597,7 +601,7 @@ fn build_operation(
         body,
         response: response_schema.and_then(schema_name),
         paginated,
-        scope: raw.scope.clone(),
+        permission: permission.map(str::to_owned),
         confirm: raw.confirm,
         deprecated: raw.deprecated,
         summary: raw.summary.clone(),

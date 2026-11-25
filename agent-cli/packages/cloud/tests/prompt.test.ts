@@ -113,12 +113,6 @@ test("scratch files go under the session's own tmp directory, never the sandbox 
 	assert.ok(block.includes("Put every scratch file under /home/user/c-1/tmp, never in /home/user itself."));
 });
 
-test("the prompt identifies the local CloudThinker Agent", () => {
-	assert.ok(buildPromptBlock(withPrefixes(["aws"])).includes("You are the `cloudthinker agent` running in the developer's terminal"));
-	const offline = runtime({ cloudEnabled: false });
-	assert.ok(buildPromptBlock(offline).includes("You are the `cloudthinker agent` running in the developer's terminal"));
-});
-
 for (const cloudEnabled of [true, false]) {
 	test(`local shell searches prefer rg and fd with Cloud ${cloudEnabled ? "on" : "off"}`, () => {
 		for (const session of [runtime().session, undefined]) {

@@ -8,6 +8,7 @@ import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { projectRoot, userRoot, workspaceRoot } from "./roots.ts";
 import { BUILTIN_TOOL_NAMES } from "./agent-types.ts";
 import type { AgentConfig, IsolationMode, MemoryScope, ThinkingLevel } from "./types.ts";
+import { errorText } from "./error-text.ts";
 
 /**
  * The one thing a declared `name:` may not contain, matching Claude Code
@@ -23,6 +24,20 @@ import type { AgentConfig, IsolationMode, MemoryScope, ThinkingLevel } from "./t
  * and a file must be able to override one.
  */
 const RESERVED_IN_TYPE = ":";
+
+export interface AgentDirectory {
+  dir: string;
+  location: "project" | "workspace" | "personal";
+  loadAs: "project" | "global";
+}
+
+export function agentDirectories(cwd: string): AgentDirectory[] {
+  return [
+    { dir: projectRoot(cwd, "agents"), location: "project", loadAs: "project" },
+    { dir: workspaceRoot(cwd, "agents"), location: "workspace", loadAs: "project" },
+    { dir: userRoot("agents"), location: "personal", loadAs: "global" },
+  ];
+}
 
 /**
  * Scan for custom agent .md files from multiple locations.
@@ -43,14 +58,10 @@ const RESERVED_IN_TYPE = ":";
  * filename clash, and `warnSkippedOverride` reports the substitution.
  */
 export function loadCustomAgents(cwd: string, strict = false): Map<string, AgentConfig> {
-  const globalDir = userRoot("agents");
-  const workspaceProjectDir = workspaceRoot(cwd, "agents");
-  const projectDir = projectRoot(cwd, "agents");
-
   const agents = new Map<string, AgentConfig>();
-  loadFromDir(globalDir, agents, "global", strict);            // lowest priority
-  loadFromDir(workspaceProjectDir, agents, "project", strict); // shared workspace
-  loadFromDir(projectDir, agents, "project", strict);          // highest priority (overwrites)
+  for (const entry of agentDirectories(cwd).reverse()) {
+    loadFromDir(entry.dir, agents, entry.loadAs, strict);
+  }
 
   warnedLastLoad = warnedThisLoad;
   warnedThisLoad = new Set();
@@ -175,7 +186,7 @@ function readAgentFile(path: string, strict: boolean): { frontmatter: Record<str
   try {
     return parseAgentFrontmatter<Record<string, unknown>>(readFileSync(path, "utf-8"));
   } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
+    const reason = errorText(err);
     if (strict) throw new Error(`${path}: ${reason}`);
     warnIfNew(`Skipping agent file ${path}: ${reason}`);
     return undefined;

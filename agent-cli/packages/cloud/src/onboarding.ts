@@ -6,25 +6,25 @@ import { getPackageDir } from "@earendil-works/pi-coding-agent";
 
 export const TOUR_OFFER = "New here? /skill:tour helps you get started with Local and Cloud";
 
-export function bundledTourPath(packageDir: string = getPackageDir()): string {
-	const bundled = join(packageDir, ".agents", "skills", "tour", "SKILL.md");
+function bundledSkillPath(name: string, packageDir: string, moduleUrl: string): string {
+	const bundled = join(packageDir, ".agents", "skills", name, "SKILL.md");
 	if (existsSync(bundled)) return bundled;
-	return fileURLToPath(new URL("../../agent/.agents/skills/tour/SKILL.md", import.meta.url));
+	return fileURLToPath(new URL(`../../agent/.agents/skills/${name}/SKILL.md`, moduleUrl));
+}
+
+export function bundledTourPath(packageDir: string = getPackageDir()): string {
+	return bundledSkillPath("tour", packageDir, import.meta.url);
 }
 
 export function bundledDoctorPath(packageDir: string = getPackageDir()): string {
-	const bundled = join(packageDir, ".agents", "skills", "doctor", "SKILL.md");
-	if (existsSync(bundled)) return bundled;
-	return fileURLToPath(new URL("../../agent/.agents/skills/doctor/SKILL.md", import.meta.url));
+	return bundledSkillPath("doctor", packageDir, import.meta.url);
 }
 
 export function bundledReviewSetupPath(
 	packageDir: string = getPackageDir(),
 	moduleUrl: string = import.meta.url,
 ): string {
-	const bundled = join(packageDir, ".agents", "skills", "review-setup", "SKILL.md");
-	if (existsSync(bundled)) return bundled;
-	const mirrored = fileURLToPath(new URL("../../agent/.agents/skills/review-setup/SKILL.md", moduleUrl));
-	if (existsSync(mirrored)) return mirrored;
+	const local = bundledSkillPath("review-setup", packageDir, moduleUrl);
+	if (existsSync(local)) return local;
 	return fileURLToPath(new URL("../../../../executor/app/skills/public/review-setup/SKILL.md", moduleUrl));
 }

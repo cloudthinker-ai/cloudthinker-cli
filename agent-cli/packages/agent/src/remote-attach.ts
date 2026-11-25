@@ -1,6 +1,8 @@
 import { renameSync, writeFileSync } from "node:fs";
 
-import { InteractiveMode } from "@earendil-works/pi-coding-agent";
+import { InteractiveMode, type SessionManager } from "@earendil-works/pi-coding-agent";
+
+import { announceRemoteSession } from "./session-recovery.ts";
 
 export const REMOTE_ATTACH_SIGNAL = "SIGUSR2";
 export const REDRAW_COALESCE_MS = 100;
@@ -15,7 +17,7 @@ export interface RemoteAttachUi {
 }
 
 export interface RemoteAttachPrototype {
-	setupKeyHandlers?: (this: { ui: RemoteAttachUi }) => void;
+	setupKeyHandlers?: (this: { ui: RemoteAttachUi; sessionManager?: Pick<SessionManager, "getSessionId"> }) => void;
 }
 
 export function redrawOnAttach(ui: RemoteAttachUi): () => void {
@@ -52,7 +54,11 @@ export function wrapRemoteAttach(prototype: RemoteAttachPrototype, env: RemoteEn
 		setupKeyHandlers.call(this);
 		if (installed) return;
 		installed = true;
-		process.on(REMOTE_ATTACH_SIGNAL, redrawOnAttach(this.ui));
+		const redraw = redrawOnAttach(this.ui);
+		process.on(REMOTE_ATTACH_SIGNAL, () => {
+			if (this.sessionManager) announceRemoteSession(this.sessionManager);
+			redraw();
+		});
 		const ready = env.CLOUDTHINKER_REMOTE_READY;
 		if (!ready) return;
 		try {

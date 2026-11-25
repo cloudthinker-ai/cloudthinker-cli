@@ -26,6 +26,7 @@ import { BUILTIN_TOOL_NAMES, getAgentConfig, getAllTypes, getAvailableTypes, get
 import { inChildSessionContext } from "./child-context.ts";
 import { type RpcHandle, registerRpcHandlers } from "./cross-extension-rpc.ts";
 import { loadCustomAgents } from "./custom-agents.ts";
+import { errorText } from "./error-text.ts";
 import { GroupJoinManager } from "./group-join.ts";
 import { isolationParam, resolveAgentInvocationConfig, resolveJoinMode } from "./invocation-config.ts";
 import { describeMention, handleBase, isReservedHandle, parseMention, resolveHandleToType, stripAgentPrefix } from "./mention.ts";
@@ -84,6 +85,11 @@ function textResult(msg: string, details?: AgentDetails) {
   return { content: [{ type: "text" as const, text: msg }], details: details as any };
 }
 
+function firstText(result: { content?: readonly { type: string; text?: string }[] }): string {
+  const block = result.content?.[0];
+  return block?.type === "text" ? block.text ?? "" : "";
+}
+
 export function renderRunningAgentStatus(
   frame: string,
   statsText: string,
@@ -100,6 +106,13 @@ export function renderRunningAgentStatus(
 function formatLifetimeTokens(o: { lifetimeUsage: LifetimeUsage }): string {
   const t = getLifetimeTotal(o.lifetimeUsage);
   return t > 0 ? formatTokens(t) : "";
+}
+
+function usageTags(turnCount: number | undefined, maxTurns: number | null | undefined, toolUses: number): string[] {
+  const tags: string[] = [];
+  if (turnCount != null && turnCount > 0) tags.push(formatTurns(turnCount, maxTurns));
+  if (toolUses > 0) tags.push(`${toolUses} tool use${toolUses === 1 ? "" : "s"}`);
+  return tags;
 }
 
 /**
@@ -325,8 +338,7 @@ export default function (pi: ExtensionAPI) {
 
         // Line 2: stats
         const parts: string[] = [];
-        if (d.turnCount > 0) parts.push(formatTurns(d.turnCount, d.maxTurns));
-        if (d.toolUses > 0) parts.push(`${d.toolUses} tool use${d.toolUses === 1 ? "" : "s"}`);
+        parts.push(...usageTags(d.turnCount, d.maxTurns, d.toolUses));
         if (d.totalTokens > 0) parts.push(formatTokens(d.totalTokens));
         if (showCost) {
           const costText = formatCost(d.totalCost ?? 0);
@@ -1006,7 +1018,7 @@ export default function (pi: ExtensionAPI) {
         // The type is already settled above, so what is left is a spawn-time
         // failure: a strict worktree-isolation error, an unusable cwd.
         ctx.ui.notify(
-          `Could not resume ${target}: ${err instanceof Error ? err.message : String(err)}`,
+          `Could not resume ${target}: ${errorText(err)}`,
           "warning",
         );
       }
@@ -1060,7 +1072,7 @@ export default function (pi: ExtensionAPI) {
             ctx.ui.notify(`Started ${label} directly — ${result.error}`, "warning");
           } catch (err) {
             ctx.ui.notify(
-              `Could not start ${label}: ${err instanceof Error ? err.message : String(err)}`,
+              `Could not start ${label}: ${errorText(err)}`,
               "error",
             );
           }
@@ -1084,7 +1096,7 @@ export default function (pi: ExtensionAPI) {
       await manager.awaitStartup(id);
       ctx.ui.notify(`Started @${handleBase(type)}`, "info");
     } catch (err) {
-      ctx.ui.notify(`Could not start @${handleBase(type)}: ${err instanceof Error ? err.message : String(err)}`, "error");
+      ctx.ui.notify(`Could not start @${handleBase(type)}: ${errorText(err)}`, "error");
     }
     return { action: "handled" };
   });
@@ -1546,7 +1558,7 @@ Brief the agent like a colleague who just walked into the room: state what you a
         if (text) return renderToolDescriptionTemplate(text);
         console.warn(`[pi-subagents] ${path} is empty — ignoring`);
       } catch (err) {
-        console.warn(`[pi-subagents] failed to read ${path}: ${err instanceof Error ? err.message : String(err)}`);
+        console.warn(`[pi-subagents] failed to read ${path}: ${errorText(err)}`);
       }
     }
     return undefined;
@@ -1657,7 +1669,7 @@ Brief the agent like a colleague who just walked into the room: state what you a
 
     renderResult(result, { expanded, isPartial }, theme, renderContext) {
       const details = result.details as AgentDetails | undefined;
-      const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+      const text = firstText(result);
       // Pi reports pre-execution failures (extension block, abort, argument
       // validation) as `{ content: [reason], details: {} }` with isError set —
       // no status to render, so show the reason instead of inventing one (#199).
@@ -1670,10 +1682,7 @@ Brief the agent like a colleague who just walked into the room: state what you a
         const parts: string[] = [];
         if (d.modelName) parts.push(d.modelName);
         if (d.tags) parts.push(...d.tags);
-        if (d.turnCount != null && d.turnCount > 0) {
-          parts.push(formatTurns(d.turnCount, d.maxTurns));
-        }
-        if (d.toolUses > 0) parts.push(`${d.toolUses} tool use${d.toolUses === 1 ? "" : "s"}`);
+        parts.push(...usageTags(d.turnCount, d.maxTurns, d.toolUses));
         if (d.tokens) parts.push(d.tokens);
         if (showCost) {
           const costText = formatCost(d.cost ?? 0);
@@ -1704,7 +1713,7 @@ Brief the agent like a colleague who just walked into the room: state what you a
         line += " " + theme.fg("dim", "·") + " " + theme.fg("dim", duration);
 
         if (expanded) {
-          const resultText = result.content[0]?.type === "text" ? result.content[0].text : "";
+          const resultText = firstText(result);
           if (resultText) {
             const lines = resultText.split("\n").slice(0, 50);
             for (const l of lines) {
@@ -1949,7 +1958,7 @@ Brief the agent like a colleague who just walked into the room: state what you a
             `Manage via /agents → Scheduled jobs.`,
           );
         } catch (err) {
-          return textResult(err instanceof Error ? err.message : String(err));
+          return textResult(errorText(err));
         }
       }
 
@@ -2372,7 +2381,7 @@ Brief the agent like a colleague who just walked into the room: state what you a
       });
       completeWorkflowTask(task, result);
     } catch (err) {
-      failWorkflowTask(task, err instanceof Error ? err.message : String(err));
+      failWorkflowTask(task, errorText(err));
     }
   }
 
@@ -2469,7 +2478,7 @@ Brief the agent like a colleague who just walked into the room: state what you a
     },
 
     renderResult(result, _options, theme, renderContext) {
-      const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+      const text = firstText(result);
       const taskId = (result.details as { taskId?: string } | undefined)?.taskId;
       const task = taskId !== undefined ? workflowTasks.get(taskId) : undefined;
       // No task means the run predates this session (a reloaded transcript) or
@@ -2537,7 +2546,7 @@ Brief the agent like a colleague who just walked into the room: state what you a
       try {
         meta = extractMeta(resolved.script).meta;
       } catch (err) {
-        return textResult(err instanceof Error ? err.message : String(err));
+        return textResult(errorText(err));
       }
 
       const active = [...workflowTasks.values()].find((task) => {
@@ -2568,7 +2577,7 @@ Brief the agent like a colleague who just walked into the room: state what you a
       } catch (err) {
         savedPath = undefined;
         journalPath = undefined;
-        console.warn(`[pi-subagents] could not persist workflow script: ${err instanceof Error ? err.message : String(err)}`);
+        console.warn(`[pi-subagents] could not persist workflow script: ${errorText(err)}`);
       }
 
       const replay = resumeFrom !== undefined ? readJournal(resumeFrom.journalPath) : undefined;
@@ -2735,7 +2744,7 @@ Brief the agent like a colleague who just walked into the room: state what you a
     try {
       script = readFileSync(path, "utf-8");
     } catch (err) {
-      report(`Could not read ${path}: ${err instanceof Error ? err.message : String(err)}`, "warning");
+      report(`Could not read ${path}: ${errorText(err)}`, "warning");
       return;
     }
 
@@ -2743,7 +2752,7 @@ Brief the agent like a colleague who just walked into the room: state what you a
     try {
       meta = extractMeta(script).meta;
     } catch (err) {
-      report(err instanceof Error ? err.message : String(err), "warning");
+      report(errorText(err), "warning");
       return;
     }
 
@@ -2912,7 +2921,7 @@ Brief the agent like a colleague who just walked into the room: state what you a
           `Current state: ${stateParts.join(" · ")}`,
         );
       } catch (err) {
-        return textResult(`Failed to steer agent: ${err instanceof Error ? err.message : String(err)}`);
+        return textResult(`Failed to steer agent: ${errorText(err)}`);
       }
     },
   }));

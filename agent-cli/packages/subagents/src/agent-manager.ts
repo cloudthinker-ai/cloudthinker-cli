@@ -26,6 +26,7 @@ import type { AgentInvocation, AgentRecord, AgentTombstone, IsolationMode, Menti
 import { addUsage, type LifetimeUsage } from "./usage.ts";
 import type { CompiledSchema } from "./workflow/json-schema.ts";
 import { cleanupWorktree, createWorktree, isWorktreeIsolationEnabled, pruneWorktrees, } from "./worktree.ts";
+import { errorText } from "./error-text.ts";
 
 export type OnAgentComplete = (record: AgentRecord) => void;
 export type OnAgentStart = (record: AgentRecord) => void;
@@ -630,7 +631,7 @@ export class AgentManager {
           // session about it — the same failure reported twice.
           if (queuedPool === "foreground") record.resultConsumed = true;
           record.status = "error";
-          record.error = err instanceof Error ? err.message : String(err);
+          record.error = errorText(err);
           record.completedAt = Date.now();
           this.onComplete?.(record);
         } else {
@@ -912,7 +913,7 @@ export class AgentManager {
         if (record.status !== "stopped") {
           record.status = "error";
         }
-        record.error = err instanceof Error ? err.message : String(err);
+        record.error = errorText(err);
         record.completedAt ??= Date.now();
 
         detach();
@@ -1153,7 +1154,7 @@ export class AgentManager {
               start();
             } catch (err) {
               record.status = "error";
-              record.error = err instanceof Error ? err.message : String(err);
+              record.error = errorText(err);
               record.completedAt = Date.now();
               this.onComplete?.(record);
             }
@@ -1199,7 +1200,7 @@ export class AgentManager {
       record.completedAt = Date.now();
     } catch (err) {
       record.status = "error";
-      record.error = err instanceof Error ? err.message : String(err);
+      record.error = errorText(err);
       record.completedAt = Date.now();
     }
 
@@ -1298,7 +1299,7 @@ export class AgentManager {
       .catch((err) => {
         if (record.status !== "stopped") {
           record.status = "error";
-          record.error = err instanceof Error ? err.message : String(err);
+          record.error = errorText(err);
         }
         record.completedAt ??= Date.now();
         settle();

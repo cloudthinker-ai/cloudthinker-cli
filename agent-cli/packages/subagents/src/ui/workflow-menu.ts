@@ -18,6 +18,7 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { AgentRecord } from "../types.ts";
 import { pauseWorkflowTask, resumeWorkflowTask, type WorkflowTask } from "../workflow/task.ts";
 import { WorkflowDialog } from "./workflow-dialog.ts";
+import { errorText } from "../error-text.ts";
 
 /** Everything the menu and the inspector need from the extension around them. */
 export interface WorkflowMenuDeps {
@@ -132,7 +133,7 @@ export async function showWorkflowDialog(
             // rejection out of a detached promise.
             void deps.viewAgentConversation(ctx, record)
               .catch(err => ctx.ui.notify(
-                `Could not open the conversation: ${err instanceof Error ? err.message : String(err)}`,
+                `Could not open the conversation: ${errorText(err)}`,
                 "warning",
               ))
               .finally(() => overlay?.setHidden(false));

@@ -357,8 +357,15 @@ async fn start(
         folder: String::new(),
         size: window_size().unwrap_or(FALLBACK_SIZE),
         session: None,
+        agent_session: AgentSession::default(),
+        departure: Departure::Disconnected,
     };
-    client.run(&mut signals).await
+    let code = client.run(&mut signals).await;
+    client.leave_raw();
+    if let Some(id) = &client.agent_session.id {
+        say(&client.recovery_line(id));
+    }
+    code
 }
 
 struct Plan {
@@ -399,6 +406,16 @@ struct Client {
     folder: String,
     size: Size,
     session: Option<u64>,
+    agent_session: AgentSession,
+    departure: Departure,
+}
+
+#[derive(Clone, Copy)]
+enum Departure {
+    Detached,
+    Ended,
+    Replaced,
+    Disconnected,
 }
 
 impl Client {
@@ -544,7 +561,9 @@ impl Client {
                 }
                 Pause::Leave => {
                     self.leave_raw();
-                    say(&detached_message(&self.folder, self.launch.back()));
+                    if self.agent_session.id.is_none() {
+                        say(&detached_message(&self.folder, self.launch.back()));
+                    }
                     return Some(ExitCode::Ok);
                 }
             }
@@ -669,7 +688,15 @@ impl Client {
             return Some(Attempt::Done(code));
         }
         let terminal = self.terminal.as_ref()?;
-        let end = session(link, signals, terminal, &mut self.size).await;
+        self.agent_session.tail.clear();
+        let end = session(
+            link,
+            signals,
+            terminal,
+            &mut self.size,
+            &mut self.agent_session,
+        )
+        .await;
         Some(self.finish(end))
     }
 
@@ -833,27 +860,52 @@ impl Client {
     }
 
     fn finish(&mut self, end: End) -> Attempt {
-        let (line, code) = match end {
+        let (departure, code) = match end {
             End::Lost => return Attempt::Lost,
-            End::Exited(code) => (
-                Some(ended_message(&self.folder, self.launch.back())),
-                agent_exit(code),
-            ),
-            End::Detached => (
-                Some(detached_message(&self.folder, self.launch.back())),
-                ExitCode::Ok,
-            ),
-            End::Replaced => (
-                Some("Attached from another terminal".to_string()),
-                ExitCode::Ok,
-            ),
-            End::Stopped(code) => (None, code),
+            End::Exited(code) => (Departure::Ended, agent_exit(code)),
+            End::Detached => (Departure::Detached, ExitCode::Ok),
+            End::Replaced => (Departure::Replaced, ExitCode::Ok),
+            End::Stopped(code) => (Departure::Disconnected, code),
         };
+        self.departure = departure;
         self.leave_raw();
-        if let Some(line) = line {
-            say(&line);
+        if self.agent_session.id.is_none() {
+            match departure {
+                Departure::Ended => say(&ended_message(&self.folder, self.launch.back())),
+                Departure::Detached => say(&detached_message(&self.folder, self.launch.back())),
+                Departure::Replaced => say("Attached from another terminal"),
+                Departure::Disconnected => {}
+            }
         }
         Attempt::Done(code)
+    }
+
+    fn recovery_line(&self, id: &str) -> String {
+        let back = if self.launch.here {
+            HERE_RETURN.to_string()
+        } else if let Some(plan) = &self.plan {
+            format!(
+                "{REMOTE_RETURN} {} --name {}",
+                shell_word(&self.launch.target),
+                shell_word(&plan.hello.name)
+            )
+        } else {
+            REMOTE_RETURN.to_string()
+        };
+        match self.departure {
+            Departure::Ended if self.launch.here => {
+                format!("Session {id} ended. Resume with cloudthinker agent --session {id}")
+            }
+            Departure::Ended => format!(
+                "Session {id} ended. Resume with {back} --cwd {} -- --session {id}",
+                shell_word(&self.folder)
+            ),
+            Departure::Detached => format!("Session {id} is still running. Return with {back}"),
+            Departure::Replaced => {
+                format!("Session {id} opened in another terminal. Return with {back}")
+            }
+            Departure::Disconnected => format!("Left session {id}. Return with {back}"),
+        }
     }
 
     async fn confirm(&self, question: &str, stop: &mut StopSignals) -> Result<bool, ExitCode> {
@@ -1077,6 +1129,7 @@ async fn session(
     signals: &mut Signals,
     terminal: &RawTerminal,
     size: &mut Size,
+    agent_session: &mut AgentSession,
 ) -> End {
     let mut keys = Keys::default();
     if let Some(current) = window_size() {
@@ -1123,6 +1176,9 @@ async fn session(
             }
             Step::Frame(frame) => {
                 heartbeat = Instant::now() + HEARTBEAT;
+                if let Frame::Output(bytes) = &frame {
+                    agent_session.observe(bytes);
+                }
                 if let Some(end) = show(frame, terminal).await {
                     return end;
                 }
@@ -1140,6 +1196,48 @@ async fn session(
         if !sent {
             return End::Lost;
         }
+    }
+}
+
+#[derive(Default)]
+struct AgentSession {
+    id: Option<String>,
+    tail: Vec<u8>,
+}
+
+impl AgentSession {
+    fn observe(&mut self, bytes: &[u8]) {
+        // The agent announces its ID inside the PTY stream, so older hosts can relay it.
+        const START: &[u8] = b"\x1b]6973;";
+        const MAX_ID: usize = 128;
+        const MAX_TAIL: usize = START.len() + MAX_ID;
+        let previous_len = self.tail.len();
+        self.tail.extend_from_slice(bytes);
+        for (offset, prefix) in self.tail.windows(START.len()).enumerate().rev() {
+            if prefix != START {
+                continue;
+            }
+            let start = offset + START.len();
+            let payload = &self.tail[start..];
+            let Some(end) = payload.iter().take(MAX_ID + 1).position(|&byte| byte == 7) else {
+                continue;
+            };
+            if start + end < previous_len {
+                break;
+            }
+            let id = &payload[..end];
+            if id.first().is_some_and(u8::is_ascii_alphanumeric)
+                && id.last().is_some_and(u8::is_ascii_alphanumeric)
+                && id
+                    .iter()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(byte))
+                && let Ok(id) = std::str::from_utf8(id)
+            {
+                self.id = Some(id.to_string());
+                break;
+            }
+        }
+        self.tail.drain(..self.tail.len().saturating_sub(MAX_TAIL));
     }
 }
 

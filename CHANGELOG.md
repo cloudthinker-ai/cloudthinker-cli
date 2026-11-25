@@ -1,3 +1,32 @@
+## [0.13.3]
+
+The CLI prints the session id and how to return when the agent screen closes.
+
+- Copy the session ID and return command when you leave a local or remote agent.
+- `cloudthinker login --token` shows the token's workspace role (Viewer, Developer or Admin) instead of a list of scopes.
+- Public API command help and `cloudthinker api` name the workspace permission each operation needs, such as `incidents:edit`, instead of a token scope.
+- `GET /v1/token` still returns `scopes` for older clients. The field is deprecated and now lists the same values as `permissions`: what the token can use after the owner's current role applies.
+- Add `cloudthinker approvals list` to see the pending approval requests you can answer, with `--kind`, `--limit`, `--cursor` and `--json`.
+- Add `cloudthinker approvals watch <request-id>` to follow one request until a person approves (exit 0), declines, or it expires or is superseded (exit 1). `--timeout` exits 4, Ctrl-C exits 130 and leaves the request open, and `--json` prints one line per state.
+- `cloudthinker approvals requests list|get` from the public API keep working beside the new commands.
+- `cloudthinker api --check` no longer reports every module that takes public API resources as a collision.
+- `cloudthinker chat -p` now refuses a prompt of only whitespace instead of sending an empty run.
+- When the server's API description is newer than this CLI, the error now says to run `cloudthinker update`.
+- A blank `CLOUDTHINKER_WORKSPACE` or `CLOUDTHINKER_URL` (what a CI template leaves when a variable is unset) now counts as not set; a blank `--workspace` or `--url` flag says it needs a value.
+- `cloudthinker login --token` and every command that signs in with `CLOUDTHINKER_TOKEN` also work on a server that still reports token scopes instead of a workspace role; `login --token` then prints `Scopes:` where it would print `Role:`.
+- The CLI reads the public API description from servers that name an operation's permission `x-scope` as well as `x-permission`, so one CLI works on every CloudThinker server.
+- Piped input over the 50,000-character limit now says the prompt is too long instead of printing a character count that was only a partial read.
+- Chat rejects piped input that exceeds the read limit instead of sending an incomplete prompt when the cutoff falls in whitespace.
+- Use `--all` to read many small API pages faster.
+- `cloudthinker doctor` tells you to sign in again when API commands reject your saved login.
+- Restore the check that builds the Linux Worker tests.
+- Help, version, and the bundled guide open faster.
+- Public API help and guides show valid status filters and how to pass IDs and ETags.
+- Enter a prompt before continuing a chat. The CLI checks the prompt before looking up the conversation.
+- Pass a workspace ID or leave out `--workspace`. Named API commands reject blank workspace values.
+- Lists fetched with `--all` stop at 10,000 items or fewer. Use the returned cursor to fetch the next page.
+- Restore the CLI formatting check before release.
+
 ## [0.13.2]
 
 - This is the first stable release since 0.12.2. It also ships every change listed under 0.13.1 and 0.13.0, which were never published as stable releases. The main additions: a command for every CloudThinker public API operation and `cloudthinker api`, `cloudthinker login --token` for CI and scripts, `cloudthinker doctor` checks with a fix for each problem, and `cloudthinker review` findings shared with the pull request review.

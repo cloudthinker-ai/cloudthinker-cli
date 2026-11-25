@@ -149,16 +149,33 @@ diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive
 index 3a9ad2517397f38048fcebbea0ecb8c830c9ef02..ddba65c966e8670c26e204ef3088ed67e0972fc2 100644
 --- a/dist/modes/interactive/interactive-mode.js
 +++ b/dist/modes/interactive/interactive-mode.js
-@@ -174,7 +174,7 @@ export function formatResumeCommand(sessionManager) {
+@@ -174,9 +174,11 @@ export function formatResumeCommand(sessionManager) {
      const sessionFile = sessionManager.getSessionFile();
-     if (!sessionFile || !fs.existsSync(sessionFile))
+-    if (!sessionFile || !fs.existsSync(sessionFile))
++    if (!sessionFile)
          return undefined;
 -    const args = [APP_NAME];
-+    const args = [APP_NAME, "agent"];
++    const args = ["cloudthinker", "agent"];
      if (!sessionManager.usesDefaultSessionDir()) {
          args.push("--session-dir", quoteIfNeeded(sessionManager.getSessionDir()));
      }
-@@ -4005,6 +4005,7 @@ export class InteractiveMode {
+-    args.push("--session", sessionManager.getSessionId());
++    const explicitPath = (path.dirname(sessionFile) !== sessionManager.getSessionDir() || !sessionFile.endsWith(".jsonl"))
++        && fs.existsSync(sessionFile);
++    args.push("--session", quoteIfNeeded(explicitPath ? sessionFile : sessionManager.getSessionId()));
+     return args.join(" ");
+@@ -3444,10 +3446,6 @@ export class InteractiveMode {
+         await this.ui.terminal.drainInput(1000);
+         this.stop();
+         await this.runtimeHost.dispose();
+-        const resumeCommand = formatResumeCommand(this.sessionManager);
+-        if (resumeCommand) {
+-            process.stdout.write(`${chalk.dim("To resume this session:")} ${resumeCommand}\n`);
+-        }
+         process.exit(0);
+     }
+     emergencyTerminalExit() {
+@@ -4005,6 +4003,7 @@ export class InteractiveMode {
                  outputPad: this.settingsManager.getOutputPad(),
                  autocompleteMaxVisible: this.settingsManager.getAutocompleteMaxVisible(),
                  quietStartup: this.settingsManager.getQuietStartup(),
@@ -166,7 +183,7 @@ index 3a9ad2517397f38048fcebbea0ecb8c830c9ef02..ddba65c966e8670c26e204ef3088ed67
                  clearOnShrink: this.settingsManager.getClearOnShrink(),
                  showTerminalProgress: this.settingsManager.getShowTerminalProgress(),
                  tuiMode: this.ui.mode,
-@@ -4112,6 +4113,9 @@ export class InteractiveMode {
+@@ -4112,6 +4111,9 @@ export class InteractiveMode {
                  onQuietStartupChange: (quiet) => {
                      this.settingsManager.setQuietStartup(quiet);
                  },
@@ -192,3 +209,128 @@ index beea0e8287b6c403ba7b1855c3f0dd6161afdd72..dd1dc125d7dcc2486c49e25f14ca7c27
          }
          if (mode === "text") {
              const state = session.state;
+diff --git a/dist/core/session-manager.d.ts b/dist/core/session-manager.d.ts
+--- a/dist/core/session-manager.d.ts
++++ b/dist/core/session-manager.d.ts
+@@ -245,6 +245,7 @@
+     usesDefaultSessionDir(): boolean;
+     getSessionId(): string;
+     getSessionFile(): string | undefined;
++    saveSession(): void;
+     /**
+      * A new session file is created only once the session contains a user or assistant message.
+      * Setup entries alone (model, thinking level, system prompt) stay in memory so opening and
+diff --git a/dist/core/session-manager.js b/dist/core/session-manager.js
+--- a/dist/core/session-manager.js
++++ b/dist/core/session-manager.js
+@@ -1,14 +1,21 @@
+ import { getCurrentSystemMessage, uuidv7, } from "@earendil-works/pi-ai";
+ import { randomUUID } from "crypto";
+-import { appendFileSync, closeSync, createReadStream, existsSync, mkdirSync, openSync, readdirSync, readSync, statSync, writeFileSync, } from "fs";
++import { appendFileSync, closeSync, createReadStream, existsSync, mkdirSync, openSync, readdirSync, readSync, renameSync, rmSync, statSync, writeFileSync, } from "fs";
+ import { readdir, stat } from "fs/promises";
+-import { basename, join, resolve } from "path";
++import { basename, dirname, join, resolve } from "path";
+ import { createInterface } from "readline";
+ import { StringDecoder } from "string_decoder";
+ import { APP_NAME, getAgentDir as getDefaultAgentDir, getSessionsDir } from "../config.js";
+ import { normalizePath, resolvePath } from "../utils/paths.js";
+ import { createBranchSummaryMessage, createCompactionSummaryMessage, createCustomMessage, } from "./messages.js";
+ export const CURRENT_SESSION_VERSION = 3;
++const SESSION_RECOVERY_DIR = ".cloudthinker-recovery";
++function sessionFilename(timestamp, id) {
++    return `${timestamp.replace(/[:.]/g, "-")}_${id}.jsonl`;
++}
++function recoveryPath(dir, id) {
++    return join(dir, SESSION_RECOVERY_DIR, `${id}.jsonl`);
++}
+ function createSessionId() {
+     return uuidv7();
+ }
+@@ -709,8 +716,7 @@
+         this.leafId = null;
+         this.flushed = false;
+         if (this.persist) {
+-            const fileTimestamp = timestamp.replace(/[:.]/g, "-");
+-            this.sessionFile = join(this.getSessionDir(), `${fileTimestamp}_${this.sessionId}.jsonl`);
++            this.sessionFile = join(this.getSessionDir(), sessionFilename(timestamp, this.sessionId));
+         }
+         return this.sessionFile;
+     }
+@@ -791,6 +797,23 @@
+     _hasConversation() {
+         return this.fileEntries.some((e) => e.type === "message" && (e.message.role === "user" || e.message.role === "assistant"));
+     }
++    saveSession() {
++        if (!this.persist || !this.sessionFile || (this.flushed && existsSync(this.sessionFile)))
++            return;
++        assertValidSessionId(this.sessionId);
++        // A session with no messages can reopen by ID without showing up in history.
++        const file = recoveryPath(this.getSessionDir(), this.sessionId);
++        mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
++        const staging = `${file}.${randomUUID()}.tmp`;
++        try {
++            const entries = this.fileEntries.map((entry) => JSON.stringify(entry)).join("\n");
++            writeFileSync(staging, entries + "\n", { mode: 0o600, flag: "wx" });
++            renameSync(staging, file);
++        }
++        finally {
++            rmSync(staging, { force: true });
++        }
++    }
+     _persist(entry) {
+         if (!this.persist || !this.sessionFile)
+             return;
+@@ -807,6 +830,13 @@
+                 closeSync(fd);
+             }
+             this.flushed = true;
++            try {
++                assertValidSessionId(this.sessionId);
++                rmSync(recoveryPath(this.getSessionDir(), this.sessionId), { force: true });
++            }
++            catch {
++                // The saved transcript wins exact ID lookup even if cleanup fails.
++            }
+         }
+         else {
+             appendFileSync(this.sessionFile, `${JSON.stringify(entry)}\n`);
+@@ -1343,8 +1373,24 @@
+         }
+         const cwd = cwdOverride ?? (header ? getSessionHeaderCwd(header) : undefined) ?? process.cwd();
+         // If no sessionDir provided, derive from file's parent directory
+-        const dir = sessionDir ? normalizePath(sessionDir) : resolve(resolvedPath, "..");
+-        return new SessionManager(cwd, dir, resolvedPath, true, undefined, preloadedFileEntries);
++        const recovered = basename(dirname(resolvedPath)) === SESSION_RECOVERY_DIR;
++        const dir = sessionDir ? normalizePath(sessionDir) : resolve(resolvedPath, recovered ? "../.." : "..");
++        const manager = new SessionManager(cwd, dir, resolvedPath, true, undefined, preloadedFileEntries);
++        if (recovered) {
++            const sessionHeader = manager.getHeader();
++            if (!sessionHeader)
++                throw new Error("The saved session could not be reopened.");
++            assertValidSessionId(sessionHeader.id);
++            if (recoveryPath(dir, sessionHeader.id) !== resolvedPath)
++                throw new Error("The saved session could not be reopened.");
++            const timestamp = new Date(sessionHeader.timestamp).toISOString();
++            const sessionFile = join(dir, sessionFilename(timestamp, sessionHeader.id));
++            if (existsSync(sessionFile))
++                return SessionManager.open(sessionFile, dir, cwdOverride);
++            manager.sessionFile = sessionFile;
++            manager.flushed = false;
++        }
++        return manager;
+     }
+     /**
+      * Continue the most recent session, or create new if none.
+@@ -1434,6 +1480,11 @@
+                     continue;
+                 return path;
+             }
++            assertValidSessionId(id);
++            const recovered = recoveryPath(dir, id);
++            const header = readSessionHeaderForDiscovery(recovered);
++            if (header?.id === id && (!filterCwd || sessionCwdMatches(getSessionHeaderCwd(header), resolvedCwd)))
++                return recovered;
+         }
+         catch {
+             // Exact session discovery is best-effort, matching list().

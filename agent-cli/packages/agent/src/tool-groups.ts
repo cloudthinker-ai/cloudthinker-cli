@@ -7,6 +7,7 @@ import { AssistantMessageComponent } from "../node_modules/@earendil-works/pi-co
 import { ToolExecutionComponent } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/components/tool-execution.js";
 import { theme } from "../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js";
 import { pointer } from "./awareness.ts";
+import { plural } from "./terminal-copy.ts";
 import { toolOutputMode } from "./verbosity.ts";
 
 export const GROUP_TOOLS = ["read", "grep", "find", "ls"];
@@ -67,19 +68,15 @@ function groupable(child: unknown): child is ToolLike {
 		&& (child as unknown as ToolLike).result?.isError !== true;
 }
 
-function plural(count: number, one: string, many: string): string {
-	return `${count} ${count === 1 ? one : many}`;
-}
-
 export function groupSummary(members: readonly Pick<ToolLike, "toolName" | "args" | "result">[]): string {
 	const unique = (tool: string, key: string) =>
 		new Set(members.filter((member) => member.toolName === tool).map((member) => String(member.args?.[key] ?? member.args?.file_path ?? ""))).size;
 	const count = (tool: string) => members.filter((member) => member.toolName === tool).length;
 	const parts = [
-		count("read") > 0 ? `read ${plural(unique("read", "path"), "file", "files")}` : "",
-		count("grep") > 0 ? `searched ${plural(count("grep"), "pattern", "patterns")}` : "",
-		count("find") > 0 ? `looked up ${plural(count("find"), "file pattern", "file patterns")}` : "",
-		count("ls") > 0 ? `listed ${plural(unique("ls", "path"), "folder", "folders")}` : "",
+		count("read") > 0 ? `read ${plural(unique("read", "path"), "file")}` : "",
+		count("grep") > 0 ? `searched ${plural(count("grep"), "pattern")}` : "",
+		count("find") > 0 ? `looked up ${plural(count("find"), "file pattern")}` : "",
+		count("ls") > 0 ? `listed ${plural(unique("ls", "path"), "folder")}` : "",
 	].filter(Boolean);
 	const text = parts.join(", ");
 	const running = members.some((member) => member.result === undefined);

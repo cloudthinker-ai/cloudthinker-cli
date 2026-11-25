@@ -314,11 +314,11 @@ fn verb_command(op: &Operation, name: String) -> Command {
     let mut cmd = Command::new(name)
         .about(operation_summary(op))
         .after_help(format!(
-            "Operation {} · {} {} · scope {}",
+            "Operation {} · {} {} · permission {}",
             op.id,
             op.method,
             op.path,
-            op.scope.as_deref().unwrap_or("none")
+            op.permission.as_deref().unwrap_or("none")
         ));
     if op.workspace_scoped {
         cmd = cmd.arg(workspace_arg());
@@ -408,6 +408,13 @@ fn workspace_arg() -> Arg {
         .short('w')
         .long(ARG_WORKSPACE)
         .value_name("WORKSPACE_ID")
+        .value_parser(|value: &str| {
+            if value.trim().is_empty() {
+                Err("Pass a workspace ID or leave out --workspace.")
+            } else {
+                Ok(value.to_owned())
+            }
+        })
         .help("Workspace to call; defaults to the workspace of your login")
 }
 
@@ -673,7 +680,9 @@ pub fn check(root: &Command, path: &std::path::Path) -> ExitCode {
         Ok(table) => table,
         Err(err) => return exit::report(&err),
     };
-    let collisions = collisions(root, &table);
+    let mut root = root.clone();
+    root.build();
+    let collisions = collisions(&root, &table);
     for collision in &collisions {
         output::eprintln_error(collision);
     }

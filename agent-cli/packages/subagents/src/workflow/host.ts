@@ -43,6 +43,7 @@ import type { AgentRecord, ThinkingLevel } from "../types.ts";
 import { getLifetimeTotal } from "../usage.ts";
 import type { WorkflowGateResult, WorkflowHost, WorkflowSpawnResult } from "./runtime.ts";
 import { resolveWorkflowSource } from "./saved.ts";
+import { errorText } from "../error-text.ts";
 
 /**
  * Wall-clock bound on a `gate` command. Generous — a gate is routinely a test
@@ -292,7 +293,7 @@ export function createWorkflowHost(deps: WorkflowHostOptions): WorkflowHost {
               try {
                 gate = await executeGate(command, worktreePath);
               } catch (error) {
-                gate = { ok: false, output: error instanceof Error ? error.message : String(error) };
+                gate = { ok: false, output: errorText(error) };
               }
             };
 
@@ -356,7 +357,7 @@ export function createWorkflowHost(deps: WorkflowHostOptions): WorkflowHost {
         // Strict worktree isolation rejects out of `awaitStartup` — the child
         // never ran. That is this agent's failure, not the run's: the script
         // sees `null` and its siblings carry on.
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        return { ok: false, error: errorText(error) };
       }
     },
 

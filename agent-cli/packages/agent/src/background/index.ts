@@ -218,7 +218,7 @@ export function registerBackgroundCommands(pi: ExtensionAPI): void {
 			});
 			const result = await createBashToolDefinition(ctx.cwd, { operations, commandPrefix: shell.commandPrefix }).execute(toolCallId, params, signal, onUpdate, ctx);
 			if (!moved) return result;
-			const text = result.content.filter((item) => item.type === "text").map((item) => item.text).join("\n");
+			const text = contentText(result.content);
 			return {
 				content: [{ type: "text" as const, text: movedText(text, moved, timeoutSeconds) }],
 				details: { ...(result.details ?? {}), backgroundTaskId: moved.id },
@@ -286,8 +286,12 @@ function completionMessage(tasks: BackgroundTaskSummary[]) {
 	};
 }
 
+function contentText(content: readonly { type: string; text?: string }[]): string {
+	return content.filter((item) => item.type === "text").map((item) => item.text ?? "").join("\n");
+}
+
 function resultText(result: { content: { type: string; text?: string }[]; details?: unknown }, expanded: boolean, theme: Theme, action: string | undefined, isError: boolean): string {
-	const text = result.content.filter((item) => item.type === "text").map((item) => item.text ?? "").join("\n");
+	const text = contentText(result.content);
 	const details = (result.details ?? {}) as { task?: BackgroundTaskSummary; tasks?: BackgroundTaskSummary | BackgroundTaskSummary[]; text?: string };
 	if (isError) return indent(theme.fg("error", expanded ? sanitizeTerminalText(text) : oneLine(text, 320)));
 	if (action === "start") return "";

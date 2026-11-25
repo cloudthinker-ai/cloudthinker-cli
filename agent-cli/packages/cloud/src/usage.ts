@@ -98,6 +98,8 @@ export function sessionPanelLines(
 	if (identity.name) lines.push(`Name: ${sanitizeTerminalText(identity.name)}`);
 	lines.push(`File: ${identity.file === undefined ? "in memory" : sanitizeTerminalText(identity.file)}`);
 	lines.push(`ID: ${sanitizeTerminalText(identity.id)}`);
+	lines.push("cloudthinker agent -c · continue the last session in this folder");
+	lines.push("cloudthinker agent -r · pick a session");
 	lines.push(identity.webUrl ? `Mirror: ${sanitizeTerminalText(identity.webUrl)}` : "Mirror: not linked");
 	lines.push("");
 	lines.push("Messages");

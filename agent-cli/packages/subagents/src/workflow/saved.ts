@@ -43,6 +43,7 @@ import { projectRoot, userRoot, workspaceRoot } from "../roots.ts";
 import { isSymlink, isUnsafeName, safeReadFile } from "../memory.ts";
 import { hasMetaDeclaration } from "./meta.ts";
 import { MAX_SCRIPT_LENGTH } from "./runtime.ts";
+import { errorText } from "../error-text.ts";
 
 /** Extension a saved workflow file carries. */
 const WORKFLOW_EXTENSION = ".js";
@@ -127,7 +128,7 @@ export function resolveWorkflowSource(
     } catch (err) {
       return {
         ok: false,
-        message: `Could not read workflow script "${resolved}": ${err instanceof Error ? err.message : String(err)}`,
+        message: `Could not read workflow script "${resolved}": ${errorText(err)}`,
       };
     }
   }

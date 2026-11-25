@@ -240,7 +240,7 @@ export class BackgroundCommandManager {
 			for (const task of this.tasks.values()) {
 				if (task.state !== "running") task.completionDelivered = true;
 			}
-			void this.persist().catch((error: unknown) => process.emitWarning(`Unable to save background recovery status: ${error instanceof Error ? error.message : String(error)}`));
+			void this.persist().catch((error: unknown) => process.emitWarning(`Unable to save background recovery status: ${errorText(error)}`));
 		}
 		return notices;
 	}
@@ -323,7 +323,7 @@ export class BackgroundCommandManager {
 			task.completionDelivered = true;
 			tasks.push(this.publicTask(task));
 		}
-		if (tasks.length > 0) void this.persist().catch((error: unknown) => process.emitWarning(`Unable to save background completion status: ${error instanceof Error ? error.message : String(error)}`));
+		if (tasks.length > 0) void this.persist().catch((error: unknown) => process.emitWarning(`Unable to save background completion status: ${errorText(error)}`));
 		return tasks;
 	}
 
@@ -376,7 +376,7 @@ export class BackgroundCommandManager {
 			exitCode = result.exitCode;
 			state = exitCode === 0 ? "succeeded" : "failed";
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorText(error);
 			state = task.state === "cancelled" || controller.signal.aborted ? "cancelled" : message.startsWith("timeout:") ? "timed_out" : "failed";
 			exitCode = null;
 			if (state === "failed") onData(Buffer.from(`${message}\n`));
@@ -402,7 +402,7 @@ export class BackgroundCommandManager {
 				this.changed();
 			}
 			this.running.delete(task.id);
-			if (task.state !== "cancelled") void Promise.resolve(this.options.onTerminal?.(this.publicTask(task))).catch((error: unknown) => process.emitWarning(`Background completion notification failed: ${error instanceof Error ? error.message : String(error)}`));
+			if (task.state !== "cancelled") void Promise.resolve(this.options.onTerminal?.(this.publicTask(task))).catch((error: unknown) => process.emitWarning(`Background completion notification failed: ${errorText(error)}`));
 		}
 	}
 
@@ -505,7 +505,7 @@ export class BackgroundCommandManager {
 		task.finishedAt = task.finishedAt ?? Date.now();
 		if (task.persistenceErrorReported) return;
 		task.persistenceErrorReported = true;
-		this.appendOutput(task, Buffer.from(`Unable to save background command state: ${error instanceof Error ? error.message : String(error)}\n`));
+		this.appendOutput(task, Buffer.from(`Unable to save background command state: ${errorText(error)}\n`));
 	}
 
 	private changed(): void {
@@ -518,7 +518,7 @@ export class BackgroundCommandManager {
 			const task = terminal.shift()!;
 			this.tasks.delete(task.id);
 			const logPath = this.logPath(task.id);
-			void rm(logPath, { force: true }).catch((error: unknown) => process.emitWarning(`Unable to delete background command log ${logPath}: ${error instanceof Error ? error.message : String(error)}`));
+			void rm(logPath, { force: true }).catch((error: unknown) => process.emitWarning(`Unable to delete background command log ${logPath}: ${errorText(error)}`));
 		}
 	}
 
@@ -534,10 +534,18 @@ export class BackgroundCommandManager {
 	}
 }
 
+function hasCode(error: unknown, code: string): boolean {
+	return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}
+
 function isMissingFile(error: unknown): boolean {
-	return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+	return hasCode(error, "ENOENT");
 }
 
 function isLocked(error: unknown): boolean {
-	return typeof error === "object" && error !== null && "code" in error && error.code === "ELOCKED";
+	return hasCode(error, "ELOCKED");
+}
+
+function errorText(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }

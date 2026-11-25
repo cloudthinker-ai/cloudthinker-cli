@@ -30,6 +30,10 @@ export function resolveCloudEnabled(
 
 const INTRO_FILE = "intro-version";
 
+export function isMissingFile(error: unknown): boolean {
+	return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
 export function introDue(version: string, everyLaunch: boolean): boolean {
 	const agentDir = getAgentDir();
 	try {
@@ -41,7 +45,7 @@ export function introDue(version: string, everyLaunch: boolean): boolean {
 	try {
 		return readFileSync(join(agentDir, INTRO_FILE), "utf8") !== version;
 	} catch (error) {
-		return error instanceof Error && "code" in error && error.code === "ENOENT";
+		return isMissingFile(error);
 	}
 }
 

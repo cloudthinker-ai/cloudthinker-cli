@@ -104,10 +104,13 @@ async fn log_in_token(base_url: &str) -> ExitCode {
             String::new()
         }
     ));
-    output::progress(&format!(
-        "Scopes: {}",
-        output::terminal_text(&found.scopes.join(", "))
-    ));
+    match &found.role {
+        Some(role) => output::progress(&format!("Role: {}", output::terminal_text(role))),
+        None => output::progress(&format!(
+            "Scopes: {}",
+            output::terminal_text(&found.scopes.join(", "))
+        )),
+    }
     if let Some(expires_at) = found.expires_at {
         output::progress(&format!("The token expires at {expires_at}."));
     }

@@ -24,6 +24,7 @@ import { applyNotifySettingGuard } from "./notify-setting.ts";
 import { extractAddDirs, registerAddDirs } from "./add-dir.ts";
 import { extractMaxTurns, registerMaxTurns } from "./max-turns.ts";
 import { registerRemoteDetach } from "./remote-leave.ts";
+import { announceRemoteSession } from "./session-recovery.ts";
 import { registerScrollPill } from "./scroll-pill.ts";
 import { AGENT_HELP, checkSurface } from "./surface.ts";
 import bundledSubagents from "./subagents.ts";
@@ -87,7 +88,14 @@ await main([...themes, ...tuiMode, ...modelScopeArgs(argv), ...argv], {
 		{ name: "notify", factory: (pi) => { registerNotifications(pi); } },
 		{ name: "add-dir", factory: (pi) => { registerAddDirs(pi, addDirs.dirs, getAgentDir()); } },
 		{ name: "max-turns", factory: (pi) => { registerMaxTurns(pi, turnLimit.limit); } },
-		{ name: "remote", factory: (pi) => { registerRemoteDetach(pi); } },
+		{ name: "remote", factory: (pi) => {
+			registerRemoteDetach(pi);
+			if (process.env.CLOUDTHINKER_REMOTE === "1") {
+				pi.on("session_start", (_event, ctx) => {
+					if (ctx.mode === "tui") announceRemoteSession(ctx.sessionManager);
+				});
+			}
+		} },
 		...(localReview ? [] : [
 			{ name: "subagents", factory: bundledSubagents },
 			{ name: "btw", factory: bundledBtw },

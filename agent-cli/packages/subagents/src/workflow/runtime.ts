@@ -20,6 +20,7 @@ import { type CompiledSchema, compileJsonSchema } from "./json-schema.ts";
 import { extractMeta, type WorkflowMeta } from "./meta.ts";
 import type { WorkflowAgentEntry, WorkflowEntry } from "./progress.ts";
 import { WORKER_SOURCE } from "./worker-source.ts";
+import { errorText } from "../error-text.ts";
 
 /** Matches the `script` field's `maxLength` in the tool schema. */
 export const MAX_SCRIPT_LENGTH = 524_288;
@@ -1073,7 +1074,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<Workflow
               }
             }
           } catch (error) {
-            result = { ok: false, error: error instanceof Error ? error.message : String(error) };
+            result = { ok: false, error: errorText(error) };
           } finally {
             inflight.delete(agentId);
             live.started = false;
@@ -1167,7 +1168,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<Workflow
       try {
         source = await loadWorkflow(ref);
       } catch (error) {
-        respond(callId, false, undefined, error instanceof Error ? error.message : String(error));
+        respond(callId, false, undefined, errorText(error));
         return;
       }
       if (!source.ok) {
@@ -1182,7 +1183,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<Workflow
           body: child.body,
         });
       } catch (error) {
-        respond(callId, false, undefined, error instanceof Error ? error.message : String(error));
+        respond(callId, false, undefined, errorText(error));
       }
     }
 
@@ -1226,7 +1227,7 @@ export async function runWorkflow(options: RunWorkflowOptions): Promise<Workflow
     });
 
     worker.on("error", error => {
-      finish({ status: "failed", error: error instanceof Error ? error.message : String(error) });
+      finish({ status: "failed", error: errorText(error) });
     });
 
     worker.on("exit", () => {

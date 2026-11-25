@@ -71,6 +71,9 @@ pub struct PromptOptions<'a> {
 
 /// Submit a prompt, watch to a terminal state, print the result.
 pub async fn run_prompt(options: PromptOptions<'_>) -> ExitCode {
+    if let Err(error) = CtClient::validate_prompt(options.prompt) {
+        return exit::report(&error);
+    }
     let client = match build_client(options.base_url, options.workspace) {
         Ok(client) => client,
         Err(err) => return exit::report(&err),

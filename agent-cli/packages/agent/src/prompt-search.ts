@@ -4,10 +4,11 @@ import { createInterface } from "node:readline";
 import { join } from "node:path";
 
 import { InteractiveMode, type Theme } from "@earendil-works/pi-coding-agent";
-import { type Component, decodeKittyPrintable, matchesKey, type TUI, truncateToWidth } from "@earendil-works/pi-tui";
+import { type Component, matchesKey, type TUI, truncateToWidth } from "@earendil-works/pi-tui";
 
 import { sanitizeTerminalText } from "@cloudthinker/cloud/src/awareness.ts";
 
+import { printableKey } from "./search-view.ts";
 import { KEYBINDINGS } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js";
 
 export const PROMPT_SEARCH = "app.prompt.search";
@@ -136,7 +137,7 @@ export class PromptSearch implements Component {
 		else if (matchesKey(data, "down")) this.selected = Math.max(0, this.selected - 1);
 		else if (matchesKey(data, "backspace")) this.query = this.query.slice(0, -1);
 		else {
-			const printable = decodeKittyPrintable(data) ?? (data.length === 1 && data >= " " ? data : undefined);
+			const printable = printableKey(data);
 			if (!printable) return;
 			this.query += printable;
 			this.selected = 0;

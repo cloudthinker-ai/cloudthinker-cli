@@ -6,6 +6,7 @@ import { Container, truncateToWidth } from "@earendil-works/pi-tui";
 import { type Static, Type } from "typebox";
 
 import { terminalNotify } from "../notify.ts";
+import { isMissingFile } from "../settings.ts";
 import { ApprovalPrompt } from "./approval-prompt.ts";
 import { text } from "./shared.ts";
 
@@ -98,7 +99,7 @@ function readGlobal(): SettingsObject {
 	try {
 		raw = readFileSync(path, "utf8");
 	} catch (error) {
-		if (error instanceof Error && "code" in error && error.code === "ENOENT") return {};
+		if (isMissingFile(error)) return {};
 		throw error;
 	}
 	if (raw.trim() === "") return {};

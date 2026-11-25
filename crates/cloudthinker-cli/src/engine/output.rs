@@ -22,6 +22,8 @@ use serde::Serialize;
 use uuid::Uuid;
 
 mod agents;
+mod approvals;
+pub use approvals::{emit_approval_page, emit_approval_watch};
 mod connections;
 mod conversation_search;
 pub use conversation_search::emit_conversation_search;

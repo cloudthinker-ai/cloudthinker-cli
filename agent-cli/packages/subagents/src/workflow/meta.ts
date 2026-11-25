@@ -19,6 +19,7 @@
  */
 
 import { createContext, Script } from "node:vm";
+import { errorText } from "../error-text.ts";
 
 /** A phase declared up front, so the UI can show it before any agent runs. */
 export interface WorkflowPhaseMeta {
@@ -250,7 +251,7 @@ export function extractMeta(source: string): MetaExtraction {
     value = new Script(`(${fragment})`, { filename: "workflow-meta.js" })
       .runInContext(createContext({}), { timeout: META_EVAL_TIMEOUT_MS });
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
+    const detail = errorText(error);
     if (/timed out|Script execution/i.test(detail)) {
       fail(
         `\`meta\` did not finish evaluating within ${META_EVAL_TIMEOUT_MS}ms — it must be a literal, not a computation.\n` +

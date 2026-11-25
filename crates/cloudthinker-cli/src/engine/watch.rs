@@ -41,6 +41,15 @@ impl WatchConfig {
             overall_timeout,
         }
     }
+
+    pub fn every(interval: Duration, overall_timeout: Duration) -> Self {
+        Self {
+            base_delay: interval,
+            max_delay: interval,
+            factor: 1.0,
+            ..Self::for_run(overall_timeout)
+        }
+    }
 }
 
 /// Poll `fetch` until it returns `Terminal`, the deadline passes, or transport

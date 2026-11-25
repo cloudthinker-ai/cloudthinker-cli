@@ -178,9 +178,17 @@ function paletteFor(styler: HeaderStyler): Palette {
 	return luminance !== undefined && luminance < 0.5 ? LIGHT_PALETTE : DARK_PALETTE;
 }
 
+function peakColor(palette: Palette): Rgb {
+	return palette[palette.length - 1]!;
+}
+
+function noiseColor(palette: Palette): Rgb {
+	return palette === DARK_PALETTE ? [66, 82, 98] : [176, 186, 196];
+}
+
 function paint(art: Art, styler: HeaderStyler, monochrome: boolean, ascii: boolean, lit?: number): string[] {
 	const palette = paletteFor(styler);
-	const peak = palette[palette.length - 1]!;
+	const peak = peakColor(palette);
 	return art.glyphs.map((row, y) => {
 		const glyphs = Array.from(row.padEnd(art.width));
 		if (monochrome) return glyphs.map((glyph) => glyph === " " || !ascii ? glyph : asciiGlyph(glyph)).join("");
@@ -259,8 +267,8 @@ function dotsOf(art: Art): readonly Dot[] {
 export function renderLogoIntro(styler: HeaderStyler, large: boolean, width: number, frame: number): string[] {
 	const art = large ? HERO_120 : HERO_80;
 	const palette = paletteFor(styler);
-	const peak = palette[palette.length - 1]!;
-	const noise: Rgb = palette === DARK_PALETTE ? [66, 82, 98] : [176, 186, 196];
+	const peak = peakColor(palette);
+	const noise = noiseColor(palette);
 	const progress = Math.min(1, frame / (INTRO_FRAMES - 1));
 	const left = Math.max(0, Math.floor((width - art.width) / 2));
 	const rows = art.glyphs.length;
@@ -319,7 +327,7 @@ export function renderIntroVeil(styler: HeaderStyler, width: number, rows: numbe
 	const progress = Math.min(1, frame / (INTRO_FRAMES - 1));
 	const wipe = Math.max(0, (progress - 0.7) / 0.3);
 	const height = Math.round(rows * (1 - wipe * wipe * (3 - 2 * wipe)));
-	const [r, g, b] = paletteFor(styler) === DARK_PALETTE ? [66, 82, 98] : [176, 186, 196];
+	const [r, g, b] = noiseColor(paletteFor(styler));
 	const dust = ink(r, g, b);
 	return Array.from({ length: height }, (_, index) => {
 		const y = rows - height + index;

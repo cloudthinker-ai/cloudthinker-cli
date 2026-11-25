@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -84,6 +85,9 @@ pub struct TokenView {
     pub token_id: Uuid,
     pub user_id: Uuid,
     pub client: String,
+    /// Absent on servers that predate workspace roles; they send `scopes`.
+    pub role: Option<String>,
+    #[serde(default)]
     pub scopes: Vec<String>,
     pub workspace_ids: Vec<Uuid>,
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -326,7 +330,7 @@ impl CtClient {
         }
         let mut query = call.query.clone();
         let mut merged: Vec<serde_json::Value> = Vec::new();
-        let mut seen_cursors = Vec::new();
+        let mut seen_cursors = HashSet::new();
         loop {
             let reply = self
                 .public_send(call, &query, body.as_deref(), idempotency_key.as_deref())
@@ -345,9 +349,23 @@ impl CtClient {
             }
             let page: PageShape = serde_json::from_value(document)
                 .map_err(|_| CtError::Usage("--all needs a list operation".into()))?;
-            merged.extend(page.items);
-            let cursor = match page.next_cursor {
-                Some(cursor) if merged.len() < MAX_ITEMS => cursor,
+            let page_fits = page.items.len() <= MAX_ITEMS - merged.len();
+            let next_cursor = if page_fits {
+                merged.extend(page.items);
+                page.next_cursor
+            } else {
+                if merged.is_empty() {
+                    return Err(CtError::Protocol(
+                        "The first page exceeds 10,000 items. Try a smaller page size.".into(),
+                    ));
+                }
+                query
+                    .iter()
+                    .find(|param| param.name == "cursor")
+                    .map(|param| param.value.clone())
+            };
+            let cursor = match next_cursor {
+                Some(cursor) if page_fits && merged.len() < MAX_ITEMS => cursor,
                 next_cursor => {
                     let document = serde_json::to_value(MergedPage {
                         items: merged,
@@ -361,7 +379,7 @@ impl CtClient {
                     });
                 }
             };
-            if seen_cursors.contains(&cursor) {
+            if !seen_cursors.insert(cursor.clone()) {
                 return Err(CtError::Protocol(format!(
                     "the server repeated cursor {cursor}"
                 )));
@@ -369,9 +387,8 @@ impl CtClient {
             query.retain(|q| q.name != "cursor");
             query.push(QueryValue {
                 name: "cursor".into(),
-                value: cursor.clone(),
+                value: cursor,
             });
-            seen_cursors.push(cursor);
         }
     }
 
@@ -618,7 +635,9 @@ pub fn read_public_spec_file(path: &std::path::Path) -> CtResult<OperationTable>
 fn parse_spec(bytes: &[u8]) -> CtResult<OperationTable> {
     cloudthinker_spec::parse(bytes).map_err(|error| match error {
         SpecError::Json(_) | SpecError::Invalid(_) => {
-            CtError::Protocol(format!("refusing the public API spec: {error}"))
+            CtError::Protocol(format!(
+                "refusing the public API spec: {error}; this CLI may be older than the server, so run `cloudthinker update`"
+            ))
         }
     })
 }
@@ -647,4 +666,194 @@ fn now_unix() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod pagination_tests {
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    use serde_json::json;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
+
+    use super::*;
+    use crate::test_support::{MockTokenStore, stored};
+
+    #[derive(Clone)]
+    struct Pages {
+        count: usize,
+        size: usize,
+        cycle: bool,
+        empty_first: bool,
+    }
+
+    fn cursor(index: usize) -> String {
+        format!("{}-{index:08}", "opaque".repeat(30))
+    }
+
+    impl Respond for Pages {
+        fn respond(&self, request: &Request) -> ResponseTemplate {
+            let index = request
+                .url
+                .query_pairs()
+                .find(|(key, _)| key == "cursor")
+                .and_then(|(_, value)| value.rsplit('-').next()?.parse::<usize>().ok())
+                .unwrap_or(0);
+            let next = if self.cycle && index == self.count - 1 {
+                Some(cursor(1))
+            } else if index + 1 < self.count {
+                Some(cursor(index + 1))
+            } else {
+                None
+            };
+            let items = if self.empty_first && index == 0 {
+                Vec::new()
+            } else {
+                (index * self.size..(index + 1) * self.size).collect::<Vec<_>>()
+            };
+            ResponseTemplate::new(200)
+                .insert_header("X-Request-Id", format!("pagination-fixture-{index}"))
+                .insert_header("ETag", "fixture-etag")
+                .set_body_json(json!({"items": items, "next_cursor": next}))
+        }
+    }
+
+    async fn fixture(pages: Pages) -> (MockServer, CtClient, PublicCall) {
+        let server = MockServer::builder()
+            .disable_request_recording()
+            .start()
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/public/v1/workspaces/test/items"))
+            .respond_with(pages)
+            .mount(&server)
+            .await;
+        let client = CtClient::new(
+            server.uri(),
+            Arc::new(MockTokenStore::read_only(Some(stored("fixture", "unused")))),
+        )
+        .unwrap();
+        let call = PublicCall {
+            method: Method::Get,
+            path: "/v1/workspaces/test/items".into(),
+            query: Vec::new(),
+            body: BodyInput::default(),
+            idempotency_key: None,
+            if_match: None,
+            all_pages: true,
+        };
+        (server, client, call)
+    }
+
+    #[tokio::test]
+    async fn pagination_preserves_order_and_empty_pages() {
+        let (_server, client, mut call) = fixture(Pages {
+            count: 4,
+            size: 3,
+            cycle: false,
+            empty_first: true,
+        })
+        .await;
+        let reply = client.public_call(&call).await.unwrap();
+        assert_eq!(
+            reply.body.0,
+            json!({"items": (3..12).collect::<Vec<_>>(), "next_cursor": null})
+        );
+        assert_eq!(reply.request_id.as_deref(), Some("pagination-fixture-3"));
+        assert_eq!(reply.etag, None);
+        call.all_pages = false;
+        let reply = client.public_call(&call).await.unwrap();
+        assert_eq!(reply.body.0, json!({"items": [], "next_cursor": cursor(1)}));
+        assert_eq!(reply.request_id.as_deref(), Some("pagination-fixture-0"));
+        assert_eq!(reply.etag.as_deref(), Some("fixture-etag"));
+    }
+
+    #[tokio::test]
+    async fn pagination_rejects_a_non_adjacent_cursor_cycle() {
+        let (_server, client, call) = fixture(Pages {
+            count: 4,
+            size: 1,
+            cycle: true,
+            empty_first: false,
+        })
+        .await;
+        let error = client.public_call(&call).await.unwrap_err();
+        assert!(
+            matches!(error, CtError::Protocol(message) if message == format!("the server repeated cursor {}", cursor(1)))
+        );
+    }
+
+    #[tokio::test]
+    async fn pagination_retains_the_item_limit_and_resume_cursor() {
+        let (_server, client, call) = fixture(Pages {
+            count: 102,
+            size: 100,
+            cycle: false,
+            empty_first: false,
+        })
+        .await;
+        let reply = client.public_call(&call).await.unwrap();
+        assert_eq!(
+            reply.body.0,
+            json!({"items": (0..10_000).collect::<Vec<_>>(), "next_cursor": cursor(100)})
+        );
+    }
+
+    #[tokio::test]
+    async fn pagination_resumes_at_the_first_whole_page_over_the_limit() {
+        let (_server, client, mut call) = fixture(Pages {
+            count: 103,
+            size: 99,
+            cycle: false,
+            empty_first: false,
+        })
+        .await;
+        let reply = client.public_call(&call).await.unwrap();
+        assert_eq!(
+            reply.body.0,
+            json!({"items": (0..9_999).collect::<Vec<_>>(), "next_cursor": cursor(101)})
+        );
+
+        call.query.push(QueryValue {
+            name: "cursor".into(),
+            value: reply.body.0["next_cursor"].as_str().unwrap().into(),
+        });
+        let reply = client.public_call(&call).await.unwrap();
+        assert_eq!(
+            reply.body.0,
+            json!({"items": (9_999..10_197).collect::<Vec<_>>(), "next_cursor": null})
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "release-mode HTTP boundary benchmark; run explicitly with --ignored --nocapture"]
+    async fn pagination_benchmark() {
+        for (count, size) in [(100, 100), (1000, 10), (10_000, 1)] {
+            let (_server, client, call) = fixture(Pages {
+                count,
+                size,
+                cycle: false,
+                empty_first: false,
+            })
+            .await;
+            let expected =
+                json!({"items": (0..count * size).collect::<Vec<_>>(), "next_cursor": null});
+            let mut times = Vec::new();
+            for run in 0..6 {
+                let started = Instant::now();
+                let reply = client.public_call(&call).await.unwrap();
+                let elapsed = started.elapsed();
+                assert_eq!(reply.body.0, expected);
+                if run > 0 {
+                    times.push(elapsed.as_secs_f64() * 1000.0);
+                }
+            }
+            times.sort_by(f64::total_cmp);
+            println!(
+                "pages={count} items_per_page={size} median_ms={:.3} samples_ms={times:?}",
+                times[2]
+            );
+        }
+    }
 }

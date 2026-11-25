@@ -2,6 +2,7 @@
 
 pub mod agent;
 pub mod agents;
+pub mod approvals;
 pub mod auth;
 #[cfg(unix)]
 pub mod bg_shim;

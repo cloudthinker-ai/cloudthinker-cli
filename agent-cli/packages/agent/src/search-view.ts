@@ -16,10 +16,14 @@ export function stepMatch(current: number, count: number, direction: 1 | -1): nu
 	return (current + direction + count) % count;
 }
 
+export function printableKey(data: string): string | undefined {
+	return decodeKittyPrintable(data) ?? (data.length === 1 && data >= " " ? data : undefined);
+}
+
 export function handleSearchKey(query: string, data: string): SearchKey {
 	if (matchesKey(data, "escape")) return { kind: "cancel" };
 	if (matchesKey(data, "enter") || matchesKey(data, "return")) return { kind: "confirm" };
 	if (matchesKey(data, "backspace")) return { kind: "query", query: query.slice(0, -1) };
-	const printable = decodeKittyPrintable(data) ?? (data.length === 1 && data >= " " ? data : undefined);
+	const printable = printableKey(data);
 	return printable ? { kind: "query", query: query + printable } : undefined;
 }

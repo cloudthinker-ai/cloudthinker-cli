@@ -450,6 +450,17 @@ async fn collect(
             return;
         }
     };
+    if prepared.source == CredentialSource::Stored
+        && let Ok(access) = snapshot.access_token().await
+        && matches!(snapshot.token_view(&access).await, Err(CtError::Auth(_)))
+    {
+        report.checks[api_index] = with_http(
+            check("api", Status::Fail, "API commands need a new login")
+                .fix(Fix::Run(login_command(&origin)))
+                .cause(Cause::Auth),
+            401,
+        );
+    }
     let local = LocalSet::new();
     local
         .run_until(collect_connections(

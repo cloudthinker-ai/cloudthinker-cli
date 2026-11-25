@@ -26,6 +26,7 @@ use clap::parser::ValueSource;
 use clap::{Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use cloudthinker_client::OriginSource;
 use cloudthinker_client::{
+    APPROVALS_DEFAULT_LIMIT, APPROVALS_MAX_LIMIT, ApprovalKind, ApprovalListQuery,
     ConversationSearchMatchMode, ConversationSearchQuery, ConversationSearchTimeField,
     CyberFindingStatus, CyberIntensity, CyberSeverity, CyberTriageState, FindingFilter,
     IncidentStatus, PolicyImportMode, PolicyImportOptions, RecommendationStatus,
@@ -93,6 +94,25 @@ impl From<IncidentStatusArg> for IncidentStatus {
             IncidentStatusArg::FalseAlarm => IncidentStatus::FalseAlarm,
             IncidentStatusArg::Resolved => IncidentStatus::Resolved,
             IncidentStatusArg::AutoResolved => IncidentStatus::AutoResolved,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum ApprovalKindArg {
+    AgentCliWrite,
+    ChatToolCall,
+    Subagent,
+    RunbookExecution,
+}
+
+impl From<ApprovalKindArg> for ApprovalKind {
+    fn from(value: ApprovalKindArg) -> Self {
+        match value {
+            ApprovalKindArg::AgentCliWrite => ApprovalKind::AgentCliWrite,
+            ApprovalKindArg::ChatToolCall => ApprovalKind::ChatToolCall,
+            ApprovalKindArg::Subagent => ApprovalKind::Subagent,
+            ApprovalKindArg::RunbookExecution => ApprovalKind::RunbookExecution,
         }
     }
 }
@@ -218,7 +238,7 @@ struct Cli {
 
 #[derive(Debug, Args)]
 struct ApiArgs {
-    /// List every public operation with its command, name, method and scope.
+    /// List every public operation with its command, name, method and permission.
     #[arg(long, conflicts_with = "args")]
     list: bool,
     /// Print the --list table as JSON.
@@ -249,6 +269,8 @@ enum Command {
     Review(ReviewArgs),
     /// List incidents, or wait for one to be resolved; for on-call scripts and CI.
     Incident(IncidentArgs),
+    /// List the approval requests that wait for you, or follow one until a person decides.
+    Approvals(ApprovalsArgs),
     /// List cost and efficiency recommendations with their monthly savings.
     Recommendations(RecommendationsArgs),
     /// List your workspace's Connections, check their tests, retry or disconnect one, or open the page to add one.
@@ -286,7 +308,7 @@ enum Command {
     Cyber(CyberArgs),
     /// Call any CloudThinker public API operation by name, or by method and path.
     #[command(
-        after_help = "Examples:\n  cloudthinker api --list\n  cloudthinker api resolve.incidents.list --status open\n  cloudthinker api GET /v1/workspaces/<workspace-id>/resolve/incidents --query status=open\n  cloudthinker api resolve.incidents.update <incident-id> --set status=resolved --etag <etag>\n\nPublic API commands also run as cloudthinker <module> <resource> <verb>, for example cloudthinker resolve incidents list --all. An operation the server marks for confirmation, such as a delete, asks [y/N] on a terminal; pass --yes to skip the question, and without a terminal it refuses unless --yes is given (exit 2)."
+        after_help = "Examples:\n  cloudthinker api --list\n  cloudthinker api resolve.incidents.list --status OPEN\n  cloudthinker api GET \"/v1/workspaces/$WORKSPACE_ID/resolve/incidents\" --query status=OPEN\n  cloudthinker api resolve.incidents.update --help\n\nSet WORKSPACE_ID to your workspace ID before running the GET example.\n\nPublic API commands also run as cloudthinker <module> <resource> <verb>, for example cloudthinker resolve incidents list --all. An operation the server marks for confirmation, such as a delete, asks [y/N] on a terminal; pass --yes to skip the question, and without a terminal it refuses unless --yes is given (exit 2)."
     )]
     Api(ApiArgs),
     #[command(external_subcommand)]
@@ -1078,6 +1100,51 @@ enum ReviewSub {
 
 #[derive(Debug, Args)]
 #[command(
+    after_help = "Examples:\n  cloudthinker approvals list\n  cloudthinker approvals list --kind runbook-execution --json\n  cloudthinker approvals watch <REQUEST_ID> --timeout 1800 --json\n\nApprove or decline in CloudThinker: each request carries its web link (url).\n\nExit codes for watch: 0 once a person approves; 1 when the request is declined, expired, or superseded, or no request has that ID; 4 on timeout; 130 when you stop watching (the request stays open)."
+)]
+struct ApprovalsArgs {
+    #[command(subcommand)]
+    command: ApprovalsSub,
+}
+
+#[derive(Debug, Subcommand)]
+enum ApprovalsSub {
+    /// List the pending approval requests you can answer, oldest first.
+    #[command(visible_alias = "ls")]
+    List {
+        /// Only show requests of this kind; repeat to allow several.
+        #[arg(long, value_enum)]
+        kind: Vec<ApprovalKindArg>,
+        /// Maximum number of requests on this page.
+        #[arg(long, default_value_t = APPROVALS_DEFAULT_LIMIT, value_parser = clap::value_parser!(u64).range(1..=APPROVALS_MAX_LIMIT))]
+        limit: u64,
+        /// Show the next page: the next_cursor value from the previous page, with the same filters.
+        #[arg(long)]
+        cursor: Option<String>,
+        /// Print JSON on stdout instead of text.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Follow one approval request until it is approved, declined, expired, or superseded.
+    Watch {
+        /// The request ID shown by `approvals list`.
+        request_id: Uuid,
+        /// Print one JSON object per line on stdout: the first state, then the decided state.
+        #[arg(long)]
+        json: bool,
+        /// Stop watching after this many seconds (the request stays open).
+        #[arg(long, default_value_t = DEFAULT_TIMEOUT_SECS)]
+        timeout: u64,
+        /// Seconds between checks.
+        #[arg(long, default_value_t = commands::approvals::DEFAULT_POLL_SECS, value_parser = clap::value_parser!(u64).range(commands::approvals::MIN_POLL_SECS..=commands::approvals::MAX_POLL_SECS))]
+        interval: u64,
+    },
+    #[command(external_subcommand)]
+    Public(Vec<String>),
+}
+
+#[derive(Debug, Args)]
+#[command(
     after_help = "Examples:\n  cloudthinker incident ls --status investigating\n  cloudthinker incident status <INCIDENT_ID> --wait --timeout 1800 --json\n\nExit codes: 0 once the incident closes (resolved, auto resolved, false alarm, or the NOT_FOUND status); 4 on timeout; 1 when no incident has that ID."
 )]
 struct IncidentArgs {
@@ -1332,29 +1399,76 @@ struct UpdateArgs {
     json: bool,
 }
 
-#[tokio::main]
-async fn main() -> std::process::ExitCode {
+fn main() -> std::process::ExitCode {
     let mut command = Cli::command();
     if std::env::args()
         .skip(1)
         .any(|arg| matches!(arg.as_str(), "-h" | "--help" | "help"))
     {
-        let base_url = resolve_base_url(std::env::var(cloudthinker_client::URL_ENV_VAR).ok());
+        let base_url = resolve_base_url(
+            std::env::var(cloudthinker_client::URL_ENV_VAR)
+                .ok()
+                .filter(|url| !url.trim().is_empty()),
+        );
         command = commands::public_api::annotate_help(command, &base_url);
     }
     let matches = command.get_matches();
     let origin_source = origin_source(&matches);
-    let cli = match Cli::from_arg_matches(&matches) {
+    let mut cli = match Cli::from_arg_matches(&matches) {
         Ok(cli) => cli,
         Err(error) => error.exit(),
     };
-    dispatch(cli, origin_source).await.process()
+    drop_blank_env_selectors(&matches, &mut cli);
+    if let Some(module) = cli.skill {
+        if cli.command.is_some() {
+            engine::output::eprintln_error("--skill cannot be combined with a command");
+            return ExitCode::Usage.process();
+        }
+        return engine::exit::finish_output(engine::output::print_document(module.document()))
+            .process();
+    }
+    match tokio::runtime::Runtime::new() {
+        Ok(runtime) => runtime.block_on(dispatch(cli, origin_source)).process(),
+        Err(error) => {
+            engine::output::eprintln_error(&format!(
+                "CloudThinker could not start ({error}). Try again."
+            ));
+            ExitCode::JobFailed.process()
+        }
+    }
+}
+
+/// A CI template that expands an unset variable leaves `CLOUDTHINKER_URL=` or
+/// `CLOUDTHINKER_WORKSPACE=` empty; that means "not set", not an address or a
+/// workspace named ``. A blank flag typed on the command line is an error that
+/// says so, not a lookup for an empty name.
+fn drop_blank_env_selectors(matches: &clap::ArgMatches, cli: &mut Cli) {
+    for (id, value) in [("url", &mut cli.url), ("workspace", &mut cli.workspace)] {
+        if !value.as_deref().is_some_and(|v| v.trim().is_empty()) {
+            continue;
+        }
+        if matches.value_source(id) == Some(ValueSource::CommandLine) {
+            Cli::command()
+                .error(
+                    clap::error::ErrorKind::InvalidValue,
+                    format!("`{id}` needs a non-blank value"),
+                )
+                .exit();
+        }
+        *value = None;
+    }
 }
 
 fn origin_source(matches: &clap::ArgMatches) -> OriginSource {
     match matches.value_source("url") {
         Some(ValueSource::CommandLine) => OriginSource::Flag,
-        Some(ValueSource::EnvVariable) => OriginSource::Environment,
+        Some(ValueSource::EnvVariable)
+            if matches
+                .get_one::<String>("url")
+                .is_some_and(|url| !url.trim().is_empty()) =>
+        {
+            OriginSource::Environment
+        }
         _ if cloudthinker_client::CliConfig::load_default()
             .saved_url()
             .is_some() =>
@@ -1379,6 +1493,7 @@ fn shows_update_notice(command: &Command) -> bool {
         Command::Chat(_)
             | Command::Review(_)
             | Command::Incident(_)
+            | Command::Approvals(_)
             | Command::Recommendations(_)
             | Command::Connections(_)
             | Command::Agents(_)
@@ -1408,19 +1523,6 @@ async fn public_command(
 }
 
 async fn dispatch(cli: Cli, origin_source: OriginSource) -> ExitCode {
-    if let Some(module) = cli.skill {
-        if cli.command.is_some() {
-            engine::output::eprintln_error("--skill cannot be combined with a command");
-            return ExitCode::Usage;
-        }
-        return match engine::output::print_document(module.document()) {
-            Ok(()) => ExitCode::Ok,
-            Err(error) => {
-                engine::output::eprintln_error(&error);
-                ExitCode::JobFailed
-            }
-        };
-    }
     let base_url = resolve_base_url(cli.url);
     let workspace = cli.workspace;
     let yes = cli.yes;
@@ -1655,6 +1757,42 @@ async fn run_command(
                     json,
                     wait,
                     timeout,
+                )
+                .await
+            }
+        },
+        Command::Approvals(args) => match args.command {
+            ApprovalsSub::Public(argv) => {
+                public_command(base_url, workspace.as_deref(), yes, Some("approvals"), argv).await
+            }
+            ApprovalsSub::List {
+                kind,
+                limit,
+                cursor,
+                json,
+            } => {
+                let query = ApprovalListQuery {
+                    kinds: kind.into_iter().map(ApprovalKind::from).collect(),
+                    limit,
+                    cursor,
+                };
+                commands::approvals::run_list(base_url, workspace.as_deref(), &query, json).await
+            }
+            ApprovalsSub::Watch {
+                request_id,
+                json,
+                timeout,
+                interval,
+            } => {
+                commands::approvals::run_watch(
+                    base_url,
+                    workspace.as_deref(),
+                    request_id,
+                    json,
+                    commands::approvals::WatchTiming {
+                        timeout_secs: timeout,
+                        interval_secs: interval,
+                    },
                 )
                 .await
             }

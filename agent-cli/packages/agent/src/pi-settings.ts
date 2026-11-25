@@ -1,4 +1,4 @@
-import type { SettingsManager } from "@earendil-works/pi-coding-agent";
+import { SettingsManager, getAgentDir } from "@earendil-works/pi-coding-agent";
 
 export function mergedSettings(
 	settings: Pick<SettingsManager, "getGlobalSettings" | "getProjectSettings">,
@@ -14,4 +14,15 @@ export function readSetting<T>(
 ): T {
 	const value = mergedSettings(settings)[key];
 	return isValid(value) ? value : fallback;
+}
+
+export function readAgentSetting<T>(
+	cwd: string,
+	projectTrusted: boolean,
+	key: string,
+	isValid: (value: unknown) => value is T,
+	fallback: T,
+): T {
+	const settings = SettingsManager.create(cwd, getAgentDir(), { projectTrusted });
+	return readSetting(settings, key, isValid, fallback);
 }

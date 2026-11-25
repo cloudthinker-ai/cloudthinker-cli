@@ -27,15 +27,17 @@
 
 import { existsSync } from "node:fs";
 import { join, sep } from "node:path";
-import { parseAgentFrontmatter } from "./custom-agents.ts";
-import { projectRoot, userRoot, workspaceRoot } from "./roots.ts";
+import { agentDirectories, parseAgentFrontmatter, type AgentDirectory } from "./custom-agents.ts";
 import type { AgentConfig } from "./types.ts";
 
-export type AgentFileLocation = "project" | "workspace" | "personal";
+export type AgentFileLocation = AgentDirectory["location"];
 
-export const projectAgentsDir = (cwd: string = process.cwd()) => projectRoot(cwd, "agents");
-export const workspaceAgentsDir = (cwd: string = process.cwd()) => workspaceRoot(cwd, "agents");
-export const personalAgentsDir = () => userRoot("agents");
+const agentDirFor = (location: AgentFileLocation, cwd: string) =>
+  agentDirectories(cwd).find((entry) => entry.location === location)!.dir;
+
+export const projectAgentsDir = (cwd: string = process.cwd()) => agentDirFor("project", cwd);
+export const workspaceAgentsDir = (cwd: string = process.cwd()) => agentDirFor("workspace", cwd);
+export const personalAgentsDir = () => agentDirFor("personal", process.cwd());
 
 /**
  * Find the file path of a custom agent by name, in discovery-precedence order
@@ -47,12 +49,10 @@ export function findAgentFile(
   name: string,
   cwd: string = process.cwd(),
 ): { path: string; location: AgentFileLocation } | undefined {
-  const projectPath = join(projectAgentsDir(cwd), `${name}.md`);
-  if (existsSync(projectPath)) return { path: projectPath, location: "project" };
-  const workspacePath = join(workspaceAgentsDir(cwd), `${name}.md`);
-  if (existsSync(workspacePath)) return { path: workspacePath, location: "workspace" };
-  const personalPath = join(personalAgentsDir(), `${name}.md`);
-  if (existsSync(personalPath)) return { path: personalPath, location: "personal" };
+  for (const { dir, location } of agentDirectories(cwd)) {
+    const path = join(dir, `${name}.md`);
+    if (existsSync(path)) return { path, location };
+  }
   return undefined;
 }
 
@@ -88,9 +88,8 @@ export function locateAgentFile(
  * widening the type for a case that has no better answer.
  */
 function classifyAgentDir(path: string, cwd: string): AgentFileLocation {
-  if (path.startsWith(projectAgentsDir(cwd) + sep)) return "project";
-  if (path.startsWith(workspaceAgentsDir(cwd) + sep)) return "workspace";
-  return "personal";
+  const match = agentDirectories(cwd).find(({ dir }) => path.startsWith(dir + sep));
+  return match?.location ?? "personal";
 }
 
 export type DisableOutcome = "disabled" | "already-disabled" | "no-frontmatter";

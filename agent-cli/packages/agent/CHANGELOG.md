@@ -1,3 +1,8 @@
+## [0.13.3]
+
+- Internal cleanup: shared helpers replace duplicated code; no behaviour change.
+- Copy the session ID and resume command from your terminal when the agent closes or pauses.
+
 ## [0.13.2]
 
 - Internal: shared row, header, mirror and transcript helpers; no behavior change.

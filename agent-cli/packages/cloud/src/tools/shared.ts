@@ -1,6 +1,7 @@
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 
 import { CloudThinkerApiError } from "../client.ts";
+import { errorText } from "../cloud-error.ts";
 import type { CloudThinkerRuntime } from "../runtime.ts";
 
 export function text<T>(body: string, details: T): AgentToolResult<T> {
@@ -70,5 +71,5 @@ export function explain(
 			"Use one of the connected prefixes, or ask the user to connect the provider in CloudThinker.",
 		].join(" ");
 	}
-	return error instanceof Error ? error.message : String(error);
+	return errorText(error);
 }

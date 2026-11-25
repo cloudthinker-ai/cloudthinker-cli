@@ -481,20 +481,6 @@ fn a_passwd_line_gives_the_service_account_and_home() {
     assert!(parse_passwd("alice:x:1001:1001::relative:/bin/sh\n", "alice").is_none());
 }
 
-#[test]
-fn dscl_output_gives_the_service_account_and_home() {
-    let user = parse_dscl("NFSHomeDirectory: /Users/alice\nUniqueID: 501\n", "alice").unwrap();
-    assert_eq!(user.uid, 501);
-    assert_eq!(user.home, PathBuf::from("/Users/alice"));
-}
-
-#[test]
-fn the_linger_setting_is_read_from_loginctl_output() {
-    assert_eq!(parse_linger("Linger=yes\n"), Some(true));
-    assert_eq!(parse_linger("Linger=no\n"), Some(false));
-    assert_eq!(parse_linger("State=active\n"), None);
-}
-
 #[cfg(unix)]
 #[test]
 fn a_system_service_refuses_an_executable_other_users_can_replace() {

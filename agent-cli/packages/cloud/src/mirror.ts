@@ -107,7 +107,7 @@ export class SessionMirror {
 				this.pendingEntryIds.delete(entryId);
 			}
 		}
-		this.pendingCount = this.pendingEntryIds.size;
+		this.recountPending();
 		this.linked = true;
 		this.clearBackoff();
 	}
@@ -158,7 +158,7 @@ export class SessionMirror {
 		let generation = request.generation;
 		if (!this.isCurrentLink(generation, conversationId)) return;
 		if (!this.linked) {
-			this.pendingCount = this.pendingEntryIds.size;
+			this.recountPending();
 			if (this.now() < this.nextAttemptAt) {
 				this.report(true);
 				return;
@@ -174,7 +174,7 @@ export class SessionMirror {
 			const entry = this.outboxEntries.get(entryId);
 			if (entry) outstanding.push(entry);
 		}
-		this.pendingCount = this.pendingEntryIds.size;
+		this.recountPending();
 		if (outstanding.length === 0) {
 			await this.clearOutbox(conversationId, generation);
 			if (!this.isCurrentLink(generation, conversationId)) return;
@@ -197,11 +197,11 @@ export class SessionMirror {
 					if (!this.isCurrentLink(generation, conversationId)) return;
 					this.rejected = new Set(rejectedForDelivery);
 					for (const item of chunk) this.pendingEntryIds.delete(item.entry_id);
-					this.pendingCount = this.pendingEntryIds.size;
+					this.recountPending();
 					continue;
 				}
 				if (!this.isCurrentLink(generation, conversationId)) throw error;
-				this.pendingCount = this.pendingEntryIds.size;
+				this.recountPending();
 				this.delayNextAttempt();
 				this.report(true);
 				throw error;
@@ -211,11 +211,11 @@ export class SessionMirror {
 				this.acknowledged.add(entry.entry_id);
 				this.pendingEntryIds.delete(entry.entry_id);
 			}
-			this.pendingCount = this.pendingEntryIds.size;
+			this.recountPending();
 		}
 		await this.clearOutbox(conversationId, generation);
 		if (!this.isCurrentLink(generation, conversationId)) return;
-		this.pendingCount = this.pendingEntryIds.size;
+		this.recountPending();
 		this.clearBackoff();
 		this.report(false);
 	}
@@ -228,6 +228,10 @@ export class SessionMirror {
 		this.outboxEntries.clear();
 		this.outboxConversationId = undefined;
 		this.pendingCount = 0;
+	}
+
+	private recountPending(): void {
+		this.pendingCount = this.pendingEntryIds.size;
 	}
 
 	private clearBackoff(): void {
@@ -291,14 +295,14 @@ export class SessionMirror {
 				this.outboxEntries.set(entry.entry_id, entry);
 				this.pendingEntryIds.add(entry.entry_id);
 			}
-			this.pendingCount = this.pendingEntryIds.size;
+			this.recountPending();
 		});
 	}
 
 	private async clearOutbox(conversationId: string, generation: number): Promise<void> {
 		await this.outbox.withOperation(async () => {
 			if (!this.isCurrentLink(generation, conversationId)) return;
-			this.pendingCount = this.pendingEntryIds.size;
+			this.recountPending();
 			if (this.pendingCount > 0) {
 				return;
 			}

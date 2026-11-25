@@ -1,3 +1,8 @@
+## [0.13.3]
+
+- Internal cleanup: shared helpers replace duplicated code; no behaviour change.
+- Type /session to see your session ID and commands for returning to a session.
+
 ## [0.13.2]
 
 - Internal: shared row, header, mirror and transcript helpers; no behavior change.

@@ -24,6 +24,7 @@ import { resolveSpawnType } from "./agent-types.ts";
 import { resolveModel } from "./model-resolver.ts";
 import type { ScheduleStore } from "./schedule-store.ts";
 import type { IsolationMode, ScheduledSubagent, SubagentType, ThinkingLevel } from "./types.ts";
+import { errorText } from "./error-text.ts";
 
 /** Event emitted on `pi.events` for cross-extension consumers. */
 export type ScheduleChangeEvent =
@@ -195,7 +196,7 @@ export class SubagentScheduler {
         this.jobs.set(job.id, cron);
       }
     } catch (err) {
-      this.emit({ type: "error", jobId: job.id, error: err instanceof Error ? err.message : String(err) });
+      this.emit({ type: "error", jobId: job.id, error: errorText(err) });
     }
   }
 
@@ -273,7 +274,7 @@ export class SubagentScheduler {
         },
       });
     } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
+      const error = errorText(err);
       store.update(id, { lastRun: new Date().toISOString(), lastStatus: "error" });
       this.emit({ type: "error", jobId: id, error });
       return;

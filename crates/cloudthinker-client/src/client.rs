@@ -22,6 +22,7 @@ use crate::error::{CtError, CtResult, to_ct_error};
 use crate::retry::classify;
 
 mod agents;
+mod approvals;
 mod connections;
 mod conversation_search;
 mod cyber;
@@ -37,6 +38,10 @@ mod workspaces;
 #[cfg(test)]
 use crate::review_url::{MrCoordinates, MrProvider};
 pub use agents::{AgentChatSelection, AgentKind, AgentMatch, AgentView, Agents};
+pub use approvals::{
+    APPROVALS_DEFAULT_LIMIT, APPROVALS_MAX_LIMIT, ApprovalKind, ApprovalListQuery, ApprovalObject,
+    ApprovalPage, ApprovalPerson, ApprovalSourceStatus, ApprovalState, ApprovalView, Unreported,
+};
 pub use connections::{
     ConnectionDetail, ConnectionDisconnect, ConnectionDisconnectPhase, ConnectionKind,
     ConnectionLocation, ConnectionMatch, ConnectionStatus, ConnectionTest, ConnectionTestPhase,
@@ -345,6 +350,15 @@ impl CtClient {
 
     // -- authenticated calls -------------------------------------------------
 
+    pub fn validate_prompt(prompt: &str) -> CtResult<()> {
+        if prompt.trim().is_empty() || prompt.chars().count() > 50_000 {
+            return Err(CtError::Usage(
+                "Enter a non-blank prompt of up to 50,000 characters.".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub async fn submit_run(
         &self,
         prompt: &str,
@@ -362,9 +376,7 @@ impl CtClient {
         selected_agent_reference: Option<&str>,
         idempotency_key: Option<&str>,
     ) -> CtResult<SubmittedRun> {
-        if !(1..=50_000).contains(&prompt.chars().count()) {
-            return Err(CtError::Usage("prompt must be 1–50000 characters".into()));
-        }
+        Self::validate_prompt(prompt)?;
         let agent = selected_agent_reference.map(str::trim);
         if agent.is_some_and(str::is_empty) {
             return Err(CtError::Usage("--agent must not be empty".into()));

@@ -1661,7 +1661,7 @@
         "type": "string"
       },
       "ChangeFocusTarget": {
-        "description": "One backend-derived change-focus target for one attached repo.\n\nprovider/repository_identity name WHICH attached repo (an App may attach\nseveral). `head_ref` is the commit SHA this run scanned (the durable\nper-repo cursor the next run reads); `base_ref` is the prior successful\nrun's `head_ref`, or \"\" on a first/unchanged run. `base_state` co-carries\nWHY `base_ref` is empty (or not) \u2014 `first_run`, `unchanged`, or\n`provider_unsupported` all render as `base_ref==\"\"`, but only `base_state`\ndistinguishes them (Gap #3); it defaults to `\"incremental\"` so rows stored\nbefore this field existed still validate. The run clones a real git\nworktree per repo, so the agent diffs these refs (`git diff\nbase...head`) \u2014 the backend only resolves them. NOT a scope fence: it\nsteers, it never narrows targets.\n\n`worktree_name` is the directory name the run's git worktree clones to\n(same value `app.shared.utils.repo_path_utils.worktree_dir_name`\nproduces for `_repository_roots`) \u2014 `_change_focus_line` renders\n`./<worktree_name>/`, not `repository_identity` (a GitLab identity is a\nnumeric project ID, useless prose for the agent). Defaults to `\"\"` so\nrows persisted before this field existed still validate; `_change_focus_\nline` falls back to `repository_identity` when empty (legacy rows still\nrender something, just not a worktree path).",
+        "description": "One backend-derived change-focus target for one attached repo.\n\nprovider/repository_identity name WHICH attached repo (an App may attach\nseveral). `head_ref` is the commit SHA this run scanned (the durable\nper-repo cursor the next run reads); `base_ref` is the prior successful\nrun's `head_ref`, or \"\" on a first/unchanged run. `base_state` co-carries\nWHY `base_ref` is empty (or not) \u2014 `first_run`, `unchanged`, or\n`provider_unsupported` all render as `base_ref==\"\"`, but only `base_state`\ndistinguishes them (Gap #3); it defaults to `\"incremental\"` so rows stored\nbefore this field existed still validate. The run clones a real git\nworktree per repo, so the agent diffs these refs (`git diff\nbase...head`) \u2014 the backend only resolves them. NOT a scope fence: it\nsteers, it never narrows targets.\n\n`worktree_name` is the directory name the run's git worktree clones to\n(the repo config entry's `checkout_dir_name()`, the same folder\n`_repository_roots` uses) \u2014 `_change_focus_line` renders\n`./<worktree_name>/`, not `repository_identity` (a GitLab identity is a\nnumeric project ID, useless prose for the agent). Defaults to `\"\"` so\nrows persisted before this field existed still validate; `_change_focus_\nline` falls back to `repository_identity` when empty (legacy rows still\nrender something, just not a worktree path).",
         "properties": {
           "base_ref": {
             "title": "Base Ref",
@@ -2927,6 +2927,10 @@
             "nullable": true,
             "title": "Score",
             "type": "integer"
+          },
+          "scorecard_publication": {
+            "$ref": "#/components/schemas/ScorecardPublicationStatus",
+            "nullable": true
           },
           "severity_counts": {
             "$ref": "#/components/schemas/CodeReviewSeverityCounts"
@@ -9319,6 +9323,14 @@
         ],
         "title": "ScopedWorkspaceLink",
         "type": "object"
+      },
+      "ScorecardPublicationStatus": {
+        "enum": [
+          "waiting",
+          "failed"
+        ],
+        "title": "ScorecardPublicationStatus",
+        "type": "string"
       },
       "ScriptRun": {
         "additionalProperties": false,
