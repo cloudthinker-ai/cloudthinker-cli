@@ -1,3 +1,15 @@
+## [0.13.6]
+
+- Ask for approval in the terminal with `agent -p` when you redirect the answer, and show who can approve when you need someone else.
+- Includes the changes prepared for 0.13.5.
+- Refresh the surface API bindings and patch the CLI's URL and QUIC dependencies.
+- Show a short hint when the connection type is invalid, even after a long paste.
+- The CLI shows the status saved by Connection Test.
+- Keep Cyber app listing compatible with the current backend and refresh the Review response schema.
+- Blank `agent -p` prompts and `cloud exec` commands now tell you what to enter.
+- `cloud exec` tells you when a script file is too large, even if it contains Unicode text.
+- Refresh the saved API schema for the new Connection status fields.
+
 ## [0.13.5]
 
 - Run `cloudthinker update` even when GitHub limits update checks from a shared network.

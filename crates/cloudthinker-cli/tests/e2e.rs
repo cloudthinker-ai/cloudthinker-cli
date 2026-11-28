@@ -5404,6 +5404,7 @@ fn builtin_row(id: &str, prefix: &str, alias: Option<&str>, installed: bool) -> 
         "is_sandbox_supported": true,
         "connection_env_type": "production",
         "status": "connected",
+        "catalog_status": if installed { "connected" } else { "not_connected" },
         "status_message": "",
         "auth_type": "STATIC",
         "can_retry": true,

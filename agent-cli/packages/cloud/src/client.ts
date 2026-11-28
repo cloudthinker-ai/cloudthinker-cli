@@ -242,6 +242,8 @@ export interface CloudWrite {
 	return_code: number | null;
 	expires_at: string;
 	web_url: string;
+	can_respond?: boolean | null;
+	approval_instructions?: string | null;
 }
 
 export interface WriteOutcome {

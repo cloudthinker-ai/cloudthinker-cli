@@ -57,14 +57,14 @@ Use `critical`, `high`, `medium`, `low`, or `info` for severity. Keep
 finding IDs. Use these five nonempty body headings in order:
 
 ```markdown
-## Attack Flow
+## Attack flow
 ## Description
 ## Evidence
 ## Impact
 ## Remediation
 ```
 
-Attack Flow holds a Mermaid diagram. Description holds what the vulnerability
+Attack flow holds a Mermaid diagram. Description holds what the vulnerability
 is. Evidence holds the redacted request and the raw captured response in a
 fence. Paste the response bytes that show the leak. Do not paraphrase them.
 Impact holds the business and technical consequence. Remediation holds the

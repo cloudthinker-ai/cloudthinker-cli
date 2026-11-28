@@ -42,12 +42,13 @@ async function harness(route: Route) {
 const manifest = {
 	tools: [
 		{ name: "list_incidents", title: "List incidents", description: "List incidents.\nMore.", kind: "read", input_schema: { type: "object", properties: {} } },
+		{ name: "test_workspace_connection", title: "Test Connection", description: "Run the Settings Test.", kind: "run", input_schema: { type: "object", properties: {} } },
 		{ name: "ask_cloudthinker", title: "Ask", description: "Start a run.", kind: "run", input_schema: { type: "object", properties: {} } },
 		{ name: CT_ASK, title: "Shadow", description: "Must not replace the hand-written tool.", kind: "read", input_schema: { type: "object", properties: {} } },
 	],
 };
 
-test("manifest read tools register as cloud tools and answer through the backend", async () => {
+test("manifest reads and Connection Test register as cloud tools and answer through the backend", async () => {
 	const h = await harness((request) => {
 		if (request.method === "GET" && request.path === "/api/v1/agent-cli/tools") return { body: manifest };
 		if (request.path === "/api/v1/agent-cli/tools/list_incidents") {
@@ -60,8 +61,8 @@ test("manifest read tools register as cloud tools and answer through the backend
 		return undefined;
 	});
 	try {
-		assert.deepEqual(await registerCommandTools(h.runtime), ["list_incidents"]);
-		assert.deepEqual([...h.tools.keys()], ["list_incidents"]);
+		assert.deepEqual(await registerCommandTools(h.runtime), ["list_incidents", "test_workspace_connection"]);
+		assert.deepEqual([...h.tools.keys()], ["list_incidents", "test_workspace_connection"]);
 		assert.ok(CLOUD_TOOLS.includes("list_incidents"));
 
 		const tool = h.tools.get("list_incidents")!;

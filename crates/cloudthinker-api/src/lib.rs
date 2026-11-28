@@ -38,6 +38,90 @@ pub mod types {
         }
     }
 
+    ///`AddAccountBlock`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "AddAccountBlock",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "one_account_per_workspace",
+    ///    "plan_required",
+    ///    "no_permission"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum AddAccountBlock {
+        #[serde(rename = "one_account_per_workspace")]
+        OneAccountPerWorkspace,
+        #[serde(rename = "plan_required")]
+        PlanRequired,
+        #[serde(rename = "no_permission")]
+        NoPermission,
+    }
+
+    impl ::std::fmt::Display for AddAccountBlock {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::OneAccountPerWorkspace => f.write_str("one_account_per_workspace"),
+                Self::PlanRequired => f.write_str("plan_required"),
+                Self::NoPermission => f.write_str("no_permission"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for AddAccountBlock {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "one_account_per_workspace" => Ok(Self::OneAccountPerWorkspace),
+                "plan_required" => Ok(Self::PlanRequired),
+                "no_permission" => Ok(Self::NoPermission),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for AddAccountBlock {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for AddAccountBlock {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for AddAccountBlock {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///The workspace's Auto Mode as the terminal shows it at session start.
     ///
     /// <details><summary>JSON schema</summary>
@@ -717,8 +801,8 @@ pub mod types {
     ///200 for `GET /agent-cli/executions/{task_id}`.
     ///
     ///`next_cursor` is the `since` for the next poll. An id that names no task
-    /// of this conversation answers `unknown` with empty output rather than a
-    /// 404, so the endpoint is not an existence oracle for another
+    /// of this conversation answers `unknown` with empty output rather than
+    /// a 404, so the endpoint is not an existence oracle for another
     /// conversation's tasks.
     ///
     /// <details><summary>JSON schema</summary>
@@ -1111,10 +1195,18 @@ pub mod types {
     ///    "web_url"
     ///  ],
     ///  "properties": {
+    ///    "approval_instructions": {
+    ///      "title": "Approval Instructions",
+    ///      "description": "How the requester can get this write approved.",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "can_respond": {
     ///      "title": "Can Respond",
-    ///      "description": "Whether the caller may approve this write. Set only
-    /// on a session list read while the write waits for approval.",
+    ///      "description": "Whether the caller may approve this pending
+    /// write.",
     ///      "type": [
     ///        "boolean",
     ///        "null"
@@ -1257,8 +1349,10 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct AgentCliWritePublic {
-        ///Whether the caller may approve this write. Set only on a session
-        /// list read while the write waits for approval.
+        ///How the requester can get this write approved.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub approval_instructions: ::std::option::Option<::std::string::String>,
+        ///Whether the caller may approve this pending write.
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub can_respond: ::std::option::Option<bool>,
         pub connection_list: ::std::vec::Vec<::std::string::String>,
@@ -2584,6 +2678,13 @@ pub mod types {
     ///    "domain_verification": {
     ///      "$ref": "#/components/schemas/AppDomainVerificationPublic"
     ///    },
+    ///    "duplicate_target": {
+    ///      "title": "Duplicate Target",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "frameworks": {
     ///      "title": "Frameworks",
     ///      "type": "array",
@@ -2616,6 +2717,24 @@ pub mod types {
     ///        "null"
     ///      ],
     ///      "format": "date-time"
+    ///    },
+    ///    "last_finished_run_at": {
+    ///      "title": "Last Finished Run At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
+    ///    "last_finished_run_message": {
+    ///      "title": "Last Finished Run Message",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "last_finished_run_result": {
+    ///      "$ref": "#/components/schemas/RunResult"
     ///    },
     ///    "mode_capabilities": {
     ///      "title": "Mode Capabilities",
@@ -2714,6 +2833,8 @@ pub mod types {
         pub default_jev_enabled: bool,
         pub default_selection: SavedSelection,
         pub domain_verification: AppDomainVerificationPublic,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub duplicate_target: ::std::option::Option<bool>,
         pub frameworks: ::std::vec::Vec<OwaspFramework>,
         pub id: ::uuid::Uuid,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -2723,6 +2844,12 @@ pub mod types {
         pub jev_available: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub last_completed_run_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub last_finished_run_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub last_finished_run_message: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub last_finished_run_result: ::std::option::Option<RunResult>,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub mode_capabilities: ::std::vec::Vec<ModeCapability>,
         pub name: ::std::string::String,
@@ -2913,6 +3040,95 @@ pub mod types {
     }
 
     impl ::std::convert::TryFrom<::std::string::String> for AppSetupStep {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`AppStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "App Status",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "ready",
+    ///    "running",
+    ///    "pending",
+    ///    "stale"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum AppStatus {
+        #[serde(rename = "ready")]
+        Ready,
+        #[serde(rename = "running")]
+        Running,
+        #[serde(rename = "pending")]
+        Pending,
+        #[serde(rename = "stale")]
+        Stale,
+    }
+
+    impl ::std::fmt::Display for AppStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Ready => f.write_str("ready"),
+                Self::Running => f.write_str("running"),
+                Self::Pending => f.write_str("pending"),
+                Self::Stale => f.write_str("stale"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for AppStatus {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "ready" => Ok(Self::Ready),
+                "running" => Ok(Self::Running),
+                "pending" => Ok(Self::Pending),
+                "stale" => Ok(Self::Stale),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for AppStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for AppStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for AppStatus {
         type Error = self::error::ConversionError;
         fn try_from(
             value: ::std::string::String,
@@ -3313,6 +3529,82 @@ pub mod types {
         pub token: ::std::string::String,
     }
 
+    ///`AssetType`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Asset Type",
+    ///  "type": "string",
+    ///  "maxLength": 64
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct AssetType(::std::string::String);
+    impl ::std::ops::Deref for AssetType {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+
+    impl ::std::convert::From<AssetType> for ::std::string::String {
+        fn from(value: AssetType) -> Self {
+            value.0
+        }
+    }
+
+    impl ::std::str::FromStr for AssetType {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 64usize {
+                return Err("longer than 64 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for AssetType {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for AssetType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for AssetType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl<'de> ::serde::Deserialize<'de> for AssetType {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+
     ///`AssignmentLease`
     ///
     /// <details><summary>JSON schema</summary>
@@ -3570,9 +3862,9 @@ pub mod types {
     ///Durability class for an Cyber gray-box credential.
     ///
     ///session — pasted browser session material from cURL; useful for
-    /// immediate          run-now only because it may expire or logout before a
-    /// schedule fires. durable — long-lived token/header material that may be
-    /// reused by scheduled runs.
+    /// immediate          run-now only because it may expire or logout
+    /// before a schedule fires. durable — long-lived token/header material
+    /// that may be reused by scheduled runs.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -3671,10 +3963,10 @@ pub mod types {
     ///not_required — run launched in a mode that never attempts auth
     /// (black-box). unverified   — gray/white-box run launched but auth was
     /// never confirmed               (default until the agent proves login
-    /// succeeded). authenticated — the agent confirmed the credential logged in
-    /// successfully. degraded     — auth was attempted but failed/expired
-    /// mid-run; the run               continued unauthenticated rather than
-    /// aborting.
+    /// succeeded). authenticated — the agent confirmed the credential
+    /// logged in successfully. degraded     — auth was attempted but
+    /// failed/expired mid-run; the run               continued
+    /// unauthenticated rather than aborting.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -4481,8 +4773,9 @@ pub mod types {
     ///Detail response for a single connection — adds SSH-specific fields.
     ///
     ///Fingerprints and the endpoint triple are server-computed from the
-    /// decrypted env (backend-kit/conventions.md); never exposed on the list
-    /// tier because they are only needed on the single-connection view.
+    /// decrypted env (backend-kit/conventions.md); never exposed on the
+    /// list tier because they are only needed on the single-connection
+    /// view.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -4501,6 +4794,7 @@ pub mod types {
     ///    "is_sandbox_supported",
     ///    "name",
     ///    "prefix",
+    ///    "status",
     ///    "updated_at"
     ///  ],
     ///  "properties": {
@@ -4518,6 +4812,10 @@ pub mod types {
     ///        "type": "string"
     ///      }
     ///    },
+    ///    "approval_tool_count": {
+    ///      "title": "Approval Tool Count",
+    ///      "type": "integer"
+    ///    },
     ///    "auth_type": {
     ///      "$ref": "#/components/schemas/AuthType"
     ///    },
@@ -4530,6 +4828,23 @@ pub mod types {
     ///      "title": "Can Retry",
     ///      "default": true,
     ///      "type": "boolean"
+    ///    },
+    ///    "catalog": {
+    ///      "$ref": "#/components/schemas/ConnectionCatalogPresentation"
+    ///    },
+    ///    "catalog_status": {
+    ///      "title": "BuiltinConnectionDetail_catalog_status",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "enum": [
+    ///        "connected",
+    ///        "testing",
+    ///        "disconnecting",
+    ///        "error",
+    ///        "not_connected"
+    ///      ]
     ///    },
     ///    "costops_auto_refresh_enabled": {
     ///      "title": "Costops Auto Refresh Enabled",
@@ -4549,6 +4864,9 @@ pub mod types {
     ///        "string",
     ///        "null"
     ///      ]
+    ///    },
+    ///    "failure_kind": {
+    ///      "$ref": "#/components/schemas/ConnectFailureReason"
     ///    },
     ///    "has_code_review_setup": {
     ///      "title": "Has Code Review Setup",
@@ -4586,6 +4904,10 @@ pub mod types {
     ///      "title": "Name",
     ///      "type": "string"
     ///    },
+    ///    "needs_reach_check": {
+    ///      "title": "Needs Reach Check",
+    ///      "type": "boolean"
+    ///    },
     ///    "prefix": {
     ///      "title": "Prefix",
     ///      "type": "string"
@@ -4598,6 +4920,36 @@ pub mod types {
     ///      "default": false,
     ///      "type": "boolean"
     ///    },
+    ///    "provider_state": {
+    ///      "$ref": "#/components/schemas/ConnectionProviderState"
+    ///    },
+    ///    "recovery_action": {
+    ///      "$ref": "#/components/schemas/ConnectionRecoveryAction"
+    ///    },
+    ///    "setup_outline": {
+    ///      "title": "Setup Outline",
+    ///      "description": "Short connect steps derived from the connect form
+    /// fields",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "setup_steps": {
+    ///      "title": "Setup Steps",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ConnectionSetupStep"
+    ///      }
+    ///    },
+    ///    "sign_in_label": {
+    ///      "title": "Sign In Label",
+    ///      "description": "How the user signs in to the provider",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "status": {
     ///      "$ref": "#/components/schemas/ConnectionStatus"
     ///    },
@@ -4606,10 +4958,45 @@ pub mod types {
     ///      "default": "",
     ///      "type": "string"
     ///    },
+    ///    "test_needed": {
+    ///      "title": "Test Needed",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "tool_count": {
+    ///      "title": "Tool Count",
+    ///      "type": "integer"
+    ///    },
     ///    "updated_at": {
     ///      "title": "Updated At",
     ///      "type": "string",
     ///      "format": "date-time"
+    ///    },
+    ///    "used_in": {
+    ///      "title": "Used In",
+    ///      "description": "Products that use this saved Connection in this
+    /// workspace now, in Resolve, Review, Optimize, Cyber order. Empty for a
+    /// catalog row.",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ConnectionProduct"
+    ///      }
+    ///    },
+    ///    "write_enabled": {
+    ///      "title": "Write Enabled",
+    ///      "description": "Whether this saved Connection's write tool is on",
+    ///      "type": "boolean"
+    ///    },
+    ///    "write_tool_name": {
+    ///      "title": "Write Tool Name",
+    ///      "description": "Name of this saved Connection's write tool, or None
+    /// when it has none",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
     ///    }
     ///  }
     ///}
@@ -4622,17 +5009,25 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub aliases: ::std::vec::Vec<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub approval_tool_count: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub auth_type: ::std::option::Option<AuthType>,
         #[serde(default)]
         pub can_enable_costops_on_connect: bool,
         #[serde(default = "defaults::default_bool::<true>")]
         pub can_retry: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub catalog: ::std::option::Option<ConnectionCatalogPresentation>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub catalog_status: ::std::option::Option<BuiltinConnectionDetailCatalogStatus>,
         #[serde(default)]
         pub costops_auto_refresh_enabled: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub description: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub documentation_url: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub failure_kind: ::std::option::Option<ConnectFailureReason>,
         #[serde(default)]
         pub has_code_review_setup: bool,
         pub id: ::uuid::Uuid,
@@ -4645,16 +5040,137 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub locations: ::std::vec::Vec<ConnectionLocation>,
         pub name: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub needs_reach_check: ::std::option::Option<bool>,
         pub prefix: ::std::string::String,
         ///Whether this deployment's Connection rollout policy keeps this
         /// prefix below production. This is not live production configuration.
         #[serde(default)]
         pub production_policy_gated: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub status: ::std::option::Option<ConnectionStatus>,
+        pub provider_state: ::std::option::Option<ConnectionProviderState>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub recovery_action: ::std::option::Option<ConnectionRecoveryAction>,
+        ///Short connect steps derived from the connect form fields
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub setup_outline: ::std::vec::Vec<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub setup_steps: ::std::vec::Vec<ConnectionSetupStep>,
+        ///How the user signs in to the provider
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub sign_in_label: ::std::option::Option<::std::string::String>,
+        pub status: ConnectionStatus,
         #[serde(default)]
         pub status_message: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub test_needed: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub tool_count: ::std::option::Option<i64>,
         pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        ///Products that use this saved Connection in this workspace now, in
+        /// Resolve, Review, Optimize, Cyber order. Empty for a catalog row.
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub used_in: ::std::vec::Vec<ConnectionProduct>,
+        ///Whether this saved Connection's write tool is on
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub write_enabled: ::std::option::Option<bool>,
+        ///Name of this saved Connection's write tool, or None when it has none
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub write_tool_name: ::std::option::Option<::std::string::String>,
+    }
+
+    ///`BuiltinConnectionDetailCatalogStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "BuiltinConnectionDetail_catalog_status",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "connected",
+    ///    "testing",
+    ///    "disconnecting",
+    ///    "error",
+    ///    "not_connected"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum BuiltinConnectionDetailCatalogStatus {
+        #[serde(rename = "connected")]
+        Connected,
+        #[serde(rename = "testing")]
+        Testing,
+        #[serde(rename = "disconnecting")]
+        Disconnecting,
+        #[serde(rename = "error")]
+        Error,
+        #[serde(rename = "not_connected")]
+        NotConnected,
+    }
+
+    impl ::std::fmt::Display for BuiltinConnectionDetailCatalogStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Connected => f.write_str("connected"),
+                Self::Testing => f.write_str("testing"),
+                Self::Disconnecting => f.write_str("disconnecting"),
+                Self::Error => f.write_str("error"),
+                Self::NotConnected => f.write_str("not_connected"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for BuiltinConnectionDetailCatalogStatus {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "connected" => Ok(Self::Connected),
+                "testing" => Ok(Self::Testing),
+                "disconnecting" => Ok(Self::Disconnecting),
+                "error" => Ok(Self::Error),
+                "not_connected" => Ok(Self::NotConnected),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for BuiltinConnectionDetailCatalogStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for BuiltinConnectionDetailCatalogStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for BuiltinConnectionDetailCatalogStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
     }
 
     ///202 response shape for `DELETE /builtin-connection/{id}`.
@@ -4748,6 +5264,7 @@ pub mod types {
     ///    "is_sandbox_supported",
     ///    "name",
     ///    "prefix",
+    ///    "status",
     ///    "updated_at"
     ///  ],
     ///  "properties": {
@@ -4765,6 +5282,10 @@ pub mod types {
     ///        "type": "string"
     ///      }
     ///    },
+    ///    "approval_tool_count": {
+    ///      "title": "Approval Tool Count",
+    ///      "type": "integer"
+    ///    },
     ///    "auth_type": {
     ///      "$ref": "#/components/schemas/AuthType"
     ///    },
@@ -4777,6 +5298,23 @@ pub mod types {
     ///      "title": "Can Retry",
     ///      "default": true,
     ///      "type": "boolean"
+    ///    },
+    ///    "catalog": {
+    ///      "$ref": "#/components/schemas/ConnectionCatalogPresentation"
+    ///    },
+    ///    "catalog_status": {
+    ///      "title": "BuiltinConnectionPublic_catalog_status",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "enum": [
+    ///        "connected",
+    ///        "testing",
+    ///        "disconnecting",
+    ///        "error",
+    ///        "not_connected"
+    ///      ]
     ///    },
     ///    "costops_auto_refresh_enabled": {
     ///      "title": "Costops Auto Refresh Enabled",
@@ -4796,6 +5334,9 @@ pub mod types {
     ///        "string",
     ///        "null"
     ///      ]
+    ///    },
+    ///    "failure_kind": {
+    ///      "$ref": "#/components/schemas/ConnectFailureReason"
     ///    },
     ///    "has_code_review_setup": {
     ///      "title": "Has Code Review Setup",
@@ -4824,6 +5365,10 @@ pub mod types {
     ///      "title": "Name",
     ///      "type": "string"
     ///    },
+    ///    "needs_reach_check": {
+    ///      "title": "Needs Reach Check",
+    ///      "type": "boolean"
+    ///    },
     ///    "prefix": {
     ///      "title": "Prefix",
     ///      "type": "string"
@@ -4836,6 +5381,36 @@ pub mod types {
     ///      "default": false,
     ///      "type": "boolean"
     ///    },
+    ///    "provider_state": {
+    ///      "$ref": "#/components/schemas/ConnectionProviderState"
+    ///    },
+    ///    "recovery_action": {
+    ///      "$ref": "#/components/schemas/ConnectionRecoveryAction"
+    ///    },
+    ///    "setup_outline": {
+    ///      "title": "Setup Outline",
+    ///      "description": "Short connect steps derived from the connect form
+    /// fields",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "type": "string"
+    ///      }
+    ///    },
+    ///    "setup_steps": {
+    ///      "title": "Setup Steps",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ConnectionSetupStep"
+    ///      }
+    ///    },
+    ///    "sign_in_label": {
+    ///      "title": "Sign In Label",
+    ///      "description": "How the user signs in to the provider",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "status": {
     ///      "$ref": "#/components/schemas/ConnectionStatus"
     ///    },
@@ -4844,10 +5419,45 @@ pub mod types {
     ///      "default": "",
     ///      "type": "string"
     ///    },
+    ///    "test_needed": {
+    ///      "title": "Test Needed",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "tool_count": {
+    ///      "title": "Tool Count",
+    ///      "type": "integer"
+    ///    },
     ///    "updated_at": {
     ///      "title": "Updated At",
     ///      "type": "string",
     ///      "format": "date-time"
+    ///    },
+    ///    "used_in": {
+    ///      "title": "Used In",
+    ///      "description": "Products that use this saved Connection in this
+    /// workspace now, in Resolve, Review, Optimize, Cyber order. Empty for a
+    /// catalog row.",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ConnectionProduct"
+    ///      }
+    ///    },
+    ///    "write_enabled": {
+    ///      "title": "Write Enabled",
+    ///      "description": "Whether this saved Connection's write tool is on",
+    ///      "type": "boolean"
+    ///    },
+    ///    "write_tool_name": {
+    ///      "title": "Write Tool Name",
+    ///      "description": "Name of this saved Connection's write tool, or None
+    /// when it has none",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
     ///    }
     ///  }
     ///}
@@ -4860,17 +5470,25 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub aliases: ::std::vec::Vec<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub approval_tool_count: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub auth_type: ::std::option::Option<AuthType>,
         #[serde(default)]
         pub can_enable_costops_on_connect: bool,
         #[serde(default = "defaults::default_bool::<true>")]
         pub can_retry: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub catalog: ::std::option::Option<ConnectionCatalogPresentation>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub catalog_status: ::std::option::Option<BuiltinConnectionPublicCatalogStatus>,
         #[serde(default)]
         pub costops_auto_refresh_enabled: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub description: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub documentation_url: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub failure_kind: ::std::option::Option<ConnectFailureReason>,
         #[serde(default)]
         pub has_code_review_setup: bool,
         pub id: ::uuid::Uuid,
@@ -4879,16 +5497,137 @@ pub mod types {
         pub is_multi_instance_capable: bool,
         pub is_sandbox_supported: bool,
         pub name: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub needs_reach_check: ::std::option::Option<bool>,
         pub prefix: ::std::string::String,
         ///Whether this deployment's Connection rollout policy keeps this
         /// prefix below production. This is not live production configuration.
         #[serde(default)]
         pub production_policy_gated: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub status: ::std::option::Option<ConnectionStatus>,
+        pub provider_state: ::std::option::Option<ConnectionProviderState>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub recovery_action: ::std::option::Option<ConnectionRecoveryAction>,
+        ///Short connect steps derived from the connect form fields
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub setup_outline: ::std::vec::Vec<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub setup_steps: ::std::vec::Vec<ConnectionSetupStep>,
+        ///How the user signs in to the provider
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub sign_in_label: ::std::option::Option<::std::string::String>,
+        pub status: ConnectionStatus,
         #[serde(default)]
         pub status_message: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub test_needed: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub tool_count: ::std::option::Option<i64>,
         pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        ///Products that use this saved Connection in this workspace now, in
+        /// Resolve, Review, Optimize, Cyber order. Empty for a catalog row.
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub used_in: ::std::vec::Vec<ConnectionProduct>,
+        ///Whether this saved Connection's write tool is on
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub write_enabled: ::std::option::Option<bool>,
+        ///Name of this saved Connection's write tool, or None when it has none
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub write_tool_name: ::std::option::Option<::std::string::String>,
+    }
+
+    ///`BuiltinConnectionPublicCatalogStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "BuiltinConnectionPublic_catalog_status",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "connected",
+    ///    "testing",
+    ///    "disconnecting",
+    ///    "error",
+    ///    "not_connected"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum BuiltinConnectionPublicCatalogStatus {
+        #[serde(rename = "connected")]
+        Connected,
+        #[serde(rename = "testing")]
+        Testing,
+        #[serde(rename = "disconnecting")]
+        Disconnecting,
+        #[serde(rename = "error")]
+        Error,
+        #[serde(rename = "not_connected")]
+        NotConnected,
+    }
+
+    impl ::std::fmt::Display for BuiltinConnectionPublicCatalogStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Connected => f.write_str("connected"),
+                Self::Testing => f.write_str("testing"),
+                Self::Disconnecting => f.write_str("disconnecting"),
+                Self::Error => f.write_str("error"),
+                Self::NotConnected => f.write_str("not_connected"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for BuiltinConnectionPublicCatalogStatus {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "connected" => Ok(Self::Connected),
+                "testing" => Ok(Self::Testing),
+                "disconnecting" => Ok(Self::Disconnecting),
+                "error" => Ok(Self::Error),
+                "not_connected" => Ok(Self::NotConnected),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for BuiltinConnectionPublicCatalogStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for BuiltinConnectionPublicCatalogStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for BuiltinConnectionPublicCatalogStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
     }
 
     ///`BuiltinConnectionsPublic`
@@ -4921,6 +5660,17 @@ pub mod types {
     ///      "items": {
     ///        "type": "string"
     ///      }
+    ///    },
+    ///    "removable_demo_id": {
+    ///      "title": "Removable Demo Id",
+    ///      "description": "Connected demo row this workspace no longer needs
+    /// because a connected production row of the same prefix or any cloud
+    /// exists",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
     ///    }
     ///  }
     ///}
@@ -4933,6 +5683,10 @@ pub mod types {
         pub data: ::std::vec::Vec<BuiltinConnectionPublic>,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub popular_prefixes: ::std::vec::Vec<::std::string::String>,
+        ///Connected demo row this workspace no longer needs because a
+        /// connected production row of the same prefix or any cloud exists
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub removable_demo_id: ::std::option::Option<::uuid::Uuid>,
     }
 
     ///WHY a target's `base_ref` is empty or set — resolves the `base_ref==""`
@@ -5052,13 +5806,14 @@ pub mod types {
     ///several). `head_ref` is the commit SHA this run scanned (the durable
     ///per-repo cursor the next run reads); `base_ref` is the prior successful
     ///run's `head_ref`, or "" on a first/unchanged run. `base_state`
-    /// co-carries WHY `base_ref` is empty (or not) — `first_run`, `unchanged`,
-    /// or `provider_unsupported` all render as `base_ref==""`, but only
-    /// `base_state` distinguishes them (Gap #3); it defaults to `"incremental"`
-    /// so rows stored before this field existed still validate. The run clones
-    /// a real git worktree per repo, so the agent diffs these refs (`git diff
-    ///base...head`) — the backend only resolves them. NOT a scope fence: it
-    ///steers, it never narrows targets.
+    /// co-carries WHY `base_ref` is empty (or not) — `first_run`,
+    /// `unchanged`, or `provider_unsupported` all render as `base_ref==""`,
+    /// but only `base_state` distinguishes them (Gap #3); it defaults to
+    /// `"incremental"` so rows stored before this field existed still
+    /// validate. The run clones a real git worktree per repo, so the agent
+    /// diffs these refs (`git diff base...head`) — the backend only
+    /// resolves them. NOT a scope fence: it steers, it never narrows
+    /// targets.
     ///
     ///`worktree_name` is the directory name the run's git worktree clones to
     ///(the repo config entry's `checkout_dir_name()`, the same folder
@@ -7503,8 +8258,8 @@ pub mod types {
     ///Unresolved findings per cited-Learning category in the review summary.
     ///
     ///A finding joins a category by citing a Learning of that category, so
-    /// only Learning-citing findings count here (mirrors the "Learnings cited"
-    /// row, not "Findings"). Counts are UNRESOLVED only, matching
+    /// only Learning-citing findings count here (mirrors the "Learnings
+    /// cited" row, not "Findings"). Counts are UNRESOLVED only, matching
     /// `severity_counts` — a fixed finding is not work left to do.
     ///
     /// <details><summary>JSON schema</summary>
@@ -7604,8 +8359,9 @@ pub mod types {
     ///
     ///Extends rather than widening `CodeReviewFindingPublic`: that schema also
     ///serves pipeline findings, which are not anchored to an `old_string` and
-    /// so can never carry a snapshot. Adding the fields there would hand every
-    ///consumer three columns that are permanently null on half the rows.
+    /// so can never carry a snapshot. Adding the fields there would hand
+    /// every consumer three columns that are permanently null on half the
+    /// rows.
     ///
     ///All three are absent together or present together — a finding anchored
     /// by `posting_range` has no snapshot row, and the card falls back to
@@ -7930,8 +8686,9 @@ pub mod types {
         ///The developer accepted this finding and kept the code as it is.
         ///
         ///Distinct from `withdrawn`: the finding was correct. A client that
-        /// showed both as one "closed without a fix" state would be telling the
-        /// reader the review made a mistake it did not make.
+        /// showed both as one "closed without a fix" state would be
+        /// telling the reader the review made a mistake it did not
+        /// make.
         pub acknowledged: bool,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub acknowledged_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
@@ -8214,6 +8971,13 @@ pub mod types {
     ///        "null"
     ///      ]
     ///    },
+    ///    "failure_retry_pending": {
+    ///      "title": "Failure Retry Pending",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "files_changed": {
     ///      "title": "Files Changed",
     ///      "default": 0,
@@ -8349,6 +9113,13 @@ pub mod types {
     ///    },
     ///    "provider": {
     ///      "$ref": "#/components/schemas/CodeReviewProvider"
+    ///    },
+    ///    "queue_position": {
+    ///      "title": "Queue Position",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
     ///    },
     ///    "repository_name": {
     ///      "title": "Repository Name",
@@ -8496,6 +9267,8 @@ pub mod types {
         pub failure_next_step: ::std::option::Option<::std::string::String>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub failure_reason: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub failure_retry_pending: ::std::option::Option<bool>,
         #[serde(default)]
         pub files_changed: i64,
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
@@ -8543,6 +9316,8 @@ pub mod types {
         #[serde(default)]
         pub pipelines_supported: bool,
         pub provider: CodeReviewProvider,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub queue_position: ::std::option::Option<i64>,
         pub repository_name: ::std::string::String,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub repository_path: ::std::option::Option<::std::string::String>,
@@ -8783,8 +9558,8 @@ pub mod types {
     ///
     ///Severity is chosen over specialist deliberately: FAST reviews write
     ///`specialist='main_agent'` for every finding, so a specialist breakdown
-    /// reads 100% "other" on them. Severity is set on every finding in every
-    /// review mode.
+    /// reads 100% "other" on them. Severity is set on every finding in
+    /// every review mode.
     ///
     ///Counts are UNRESOLVED only, matching `unresolved_findings_count` and the
     ///verdict rules — a fixed finding is not work left to do.
@@ -9127,6 +9902,582 @@ pub mod types {
         }
     }
 
+    ///`ConnectBlock`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectBlock",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "plan_required"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ConnectBlock {
+        #[serde(rename = "plan_required")]
+        PlanRequired,
+    }
+
+    impl ::std::fmt::Display for ConnectBlock {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::PlanRequired => f.write_str("plan_required"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ConnectBlock {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "plan_required" => Ok(Self::PlanRequired),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ConnectBlock {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ConnectBlock {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ConnectBlock {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`ConnectFailureReason`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectFailureReason",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "invalid_address",
+    ///    "configuration_invalid",
+    ///    "missing_credentials",
+    ///    "credentials_in_address",
+    ///    "unreachable",
+    ///    "timeout",
+    ///    "private_network_unreachable",
+    ///    "tls_failed",
+    ///    "invalid_ca_certificate",
+    ///    "http_only",
+    ///    "https_required",
+    ///    "redirect",
+    ///    "credentials_rejected",
+    ///    "permission_missing",
+    ///    "provider_license_required",
+    ///    "not_found",
+    ///    "rate_limited",
+    ///    "provider_unavailable",
+    ///    "platform_unavailable",
+    ///    "request_rejected",
+    ///    "invalid_response",
+    ///    "response_too_large",
+    ///    "network_blocked",
+    ///    "no_tools",
+    ///    "read_unavailable",
+    ///    "read_inputs_invalid",
+    ///    "read_response_invalid",
+    ///    "server_identity_unverified",
+    ///    "sign_in_expired",
+    ///    "tools_start_failed",
+    ///    "tools_start_timeout",
+    ///    "tools_busy",
+    ///    "test_timeout",
+    ///    "test_cancelled",
+    ///    "test_failed"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ConnectFailureReason {
+        #[serde(rename = "invalid_address")]
+        InvalidAddress,
+        #[serde(rename = "configuration_invalid")]
+        ConfigurationInvalid,
+        #[serde(rename = "missing_credentials")]
+        MissingCredentials,
+        #[serde(rename = "credentials_in_address")]
+        CredentialsInAddress,
+        #[serde(rename = "unreachable")]
+        Unreachable,
+        #[serde(rename = "timeout")]
+        Timeout,
+        #[serde(rename = "private_network_unreachable")]
+        PrivateNetworkUnreachable,
+        #[serde(rename = "tls_failed")]
+        TlsFailed,
+        #[serde(rename = "invalid_ca_certificate")]
+        InvalidCaCertificate,
+        #[serde(rename = "http_only")]
+        HttpOnly,
+        #[serde(rename = "https_required")]
+        HttpsRequired,
+        #[serde(rename = "redirect")]
+        Redirect,
+        #[serde(rename = "credentials_rejected")]
+        CredentialsRejected,
+        #[serde(rename = "permission_missing")]
+        PermissionMissing,
+        #[serde(rename = "provider_license_required")]
+        ProviderLicenseRequired,
+        #[serde(rename = "not_found")]
+        NotFound,
+        #[serde(rename = "rate_limited")]
+        RateLimited,
+        #[serde(rename = "provider_unavailable")]
+        ProviderUnavailable,
+        #[serde(rename = "platform_unavailable")]
+        PlatformUnavailable,
+        #[serde(rename = "request_rejected")]
+        RequestRejected,
+        #[serde(rename = "invalid_response")]
+        InvalidResponse,
+        #[serde(rename = "response_too_large")]
+        ResponseTooLarge,
+        #[serde(rename = "network_blocked")]
+        NetworkBlocked,
+        #[serde(rename = "no_tools")]
+        NoTools,
+        #[serde(rename = "read_unavailable")]
+        ReadUnavailable,
+        #[serde(rename = "read_inputs_invalid")]
+        ReadInputsInvalid,
+        #[serde(rename = "read_response_invalid")]
+        ReadResponseInvalid,
+        #[serde(rename = "server_identity_unverified")]
+        ServerIdentityUnverified,
+        #[serde(rename = "sign_in_expired")]
+        SignInExpired,
+        #[serde(rename = "tools_start_failed")]
+        ToolsStartFailed,
+        #[serde(rename = "tools_start_timeout")]
+        ToolsStartTimeout,
+        #[serde(rename = "tools_busy")]
+        ToolsBusy,
+        #[serde(rename = "test_timeout")]
+        TestTimeout,
+        #[serde(rename = "test_cancelled")]
+        TestCancelled,
+        #[serde(rename = "test_failed")]
+        TestFailed,
+    }
+
+    impl ::std::fmt::Display for ConnectFailureReason {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::InvalidAddress => f.write_str("invalid_address"),
+                Self::ConfigurationInvalid => f.write_str("configuration_invalid"),
+                Self::MissingCredentials => f.write_str("missing_credentials"),
+                Self::CredentialsInAddress => f.write_str("credentials_in_address"),
+                Self::Unreachable => f.write_str("unreachable"),
+                Self::Timeout => f.write_str("timeout"),
+                Self::PrivateNetworkUnreachable => f.write_str("private_network_unreachable"),
+                Self::TlsFailed => f.write_str("tls_failed"),
+                Self::InvalidCaCertificate => f.write_str("invalid_ca_certificate"),
+                Self::HttpOnly => f.write_str("http_only"),
+                Self::HttpsRequired => f.write_str("https_required"),
+                Self::Redirect => f.write_str("redirect"),
+                Self::CredentialsRejected => f.write_str("credentials_rejected"),
+                Self::PermissionMissing => f.write_str("permission_missing"),
+                Self::ProviderLicenseRequired => f.write_str("provider_license_required"),
+                Self::NotFound => f.write_str("not_found"),
+                Self::RateLimited => f.write_str("rate_limited"),
+                Self::ProviderUnavailable => f.write_str("provider_unavailable"),
+                Self::PlatformUnavailable => f.write_str("platform_unavailable"),
+                Self::RequestRejected => f.write_str("request_rejected"),
+                Self::InvalidResponse => f.write_str("invalid_response"),
+                Self::ResponseTooLarge => f.write_str("response_too_large"),
+                Self::NetworkBlocked => f.write_str("network_blocked"),
+                Self::NoTools => f.write_str("no_tools"),
+                Self::ReadUnavailable => f.write_str("read_unavailable"),
+                Self::ReadInputsInvalid => f.write_str("read_inputs_invalid"),
+                Self::ReadResponseInvalid => f.write_str("read_response_invalid"),
+                Self::ServerIdentityUnverified => f.write_str("server_identity_unverified"),
+                Self::SignInExpired => f.write_str("sign_in_expired"),
+                Self::ToolsStartFailed => f.write_str("tools_start_failed"),
+                Self::ToolsStartTimeout => f.write_str("tools_start_timeout"),
+                Self::ToolsBusy => f.write_str("tools_busy"),
+                Self::TestTimeout => f.write_str("test_timeout"),
+                Self::TestCancelled => f.write_str("test_cancelled"),
+                Self::TestFailed => f.write_str("test_failed"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ConnectFailureReason {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "invalid_address" => Ok(Self::InvalidAddress),
+                "configuration_invalid" => Ok(Self::ConfigurationInvalid),
+                "missing_credentials" => Ok(Self::MissingCredentials),
+                "credentials_in_address" => Ok(Self::CredentialsInAddress),
+                "unreachable" => Ok(Self::Unreachable),
+                "timeout" => Ok(Self::Timeout),
+                "private_network_unreachable" => Ok(Self::PrivateNetworkUnreachable),
+                "tls_failed" => Ok(Self::TlsFailed),
+                "invalid_ca_certificate" => Ok(Self::InvalidCaCertificate),
+                "http_only" => Ok(Self::HttpOnly),
+                "https_required" => Ok(Self::HttpsRequired),
+                "redirect" => Ok(Self::Redirect),
+                "credentials_rejected" => Ok(Self::CredentialsRejected),
+                "permission_missing" => Ok(Self::PermissionMissing),
+                "provider_license_required" => Ok(Self::ProviderLicenseRequired),
+                "not_found" => Ok(Self::NotFound),
+                "rate_limited" => Ok(Self::RateLimited),
+                "provider_unavailable" => Ok(Self::ProviderUnavailable),
+                "platform_unavailable" => Ok(Self::PlatformUnavailable),
+                "request_rejected" => Ok(Self::RequestRejected),
+                "invalid_response" => Ok(Self::InvalidResponse),
+                "response_too_large" => Ok(Self::ResponseTooLarge),
+                "network_blocked" => Ok(Self::NetworkBlocked),
+                "no_tools" => Ok(Self::NoTools),
+                "read_unavailable" => Ok(Self::ReadUnavailable),
+                "read_inputs_invalid" => Ok(Self::ReadInputsInvalid),
+                "read_response_invalid" => Ok(Self::ReadResponseInvalid),
+                "server_identity_unverified" => Ok(Self::ServerIdentityUnverified),
+                "sign_in_expired" => Ok(Self::SignInExpired),
+                "tools_start_failed" => Ok(Self::ToolsStartFailed),
+                "tools_start_timeout" => Ok(Self::ToolsStartTimeout),
+                "tools_busy" => Ok(Self::ToolsBusy),
+                "test_timeout" => Ok(Self::TestTimeout),
+                "test_cancelled" => Ok(Self::TestCancelled),
+                "test_failed" => Ok(Self::TestFailed),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ConnectFailureReason {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ConnectFailureReason {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ConnectFailureReason {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`ConnectionCatalogPresentation`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectionCatalogPresentation",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "provider_name",
+    ///    "provider_prefix"
+    ///  ],
+    ///  "properties": {
+    ///    "account_details": {
+    ///      "title": "ConnectionCatalogPresentation_account_details",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "enum": [
+    ///        "github",
+    ///        "gitlab"
+    ///      ]
+    ///    },
+    ///    "can_replace_credentials": {
+    ///      "title": "Can Replace Credentials",
+    ///      "default": true,
+    ///      "type": "boolean"
+    ///    },
+    ///    "oauth_recovery": {
+    ///      "title": "Oauth Recovery",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "provider_description": {
+    ///      "title": "Provider Description",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "provider_name": {
+    ///      "title": "Provider Name",
+    ///      "type": "string"
+    ///    },
+    ///    "provider_prefix": {
+    ///      "title": "Provider Prefix",
+    ///      "type": "string"
+    ///    },
+    ///    "token_editor": {
+    ///      "title": "ConnectionCatalogPresentation_token_editor",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "enum": [
+    ///        "token",
+    ///        "credentials"
+    ///      ]
+    ///    },
+    ///    "token_recovery": {
+    ///      "title": "Token Recovery",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "variant_order": {
+    ///      "title": "Variant Order",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct ConnectionCatalogPresentation {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub account_details: ::std::option::Option<ConnectionCatalogPresentationAccountDetails>,
+        #[serde(default = "defaults::default_bool::<true>")]
+        pub can_replace_credentials: bool,
+        #[serde(default)]
+        pub oauth_recovery: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub provider_description: ::std::option::Option<::std::string::String>,
+        pub provider_name: ::std::string::String,
+        pub provider_prefix: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub token_editor: ::std::option::Option<ConnectionCatalogPresentationTokenEditor>,
+        #[serde(default)]
+        pub token_recovery: bool,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub variant_order: ::std::option::Option<i64>,
+    }
+
+    ///`ConnectionCatalogPresentationAccountDetails`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectionCatalogPresentation_account_details",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "github",
+    ///    "gitlab"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ConnectionCatalogPresentationAccountDetails {
+        #[serde(rename = "github")]
+        Github,
+        #[serde(rename = "gitlab")]
+        Gitlab,
+    }
+
+    impl ::std::fmt::Display for ConnectionCatalogPresentationAccountDetails {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Github => f.write_str("github"),
+                Self::Gitlab => f.write_str("gitlab"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ConnectionCatalogPresentationAccountDetails {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "github" => Ok(Self::Github),
+                "gitlab" => Ok(Self::Gitlab),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ConnectionCatalogPresentationAccountDetails {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String>
+        for ConnectionCatalogPresentationAccountDetails
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String>
+        for ConnectionCatalogPresentationAccountDetails
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`ConnectionCatalogPresentationTokenEditor`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectionCatalogPresentation_token_editor",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "token",
+    ///    "credentials"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ConnectionCatalogPresentationTokenEditor {
+        #[serde(rename = "token")]
+        Token,
+        #[serde(rename = "credentials")]
+        Credentials,
+    }
+
+    impl ::std::fmt::Display for ConnectionCatalogPresentationTokenEditor {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Token => f.write_str("token"),
+                Self::Credentials => f.write_str("credentials"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ConnectionCatalogPresentationTokenEditor {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "token" => Ok(Self::Token),
+                "credentials" => Ok(Self::Credentials),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ConnectionCatalogPresentationTokenEditor {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ConnectionCatalogPresentationTokenEditor {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ConnectionCatalogPresentationTokenEditor {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///`ConnectionDisconnectPhase`
     ///
     /// <details><summary>JSON schema</summary>
@@ -9186,9 +10537,9 @@ pub mod types {
     ///Phase report for an in-flight or recently-finished disconnect job.
     ///
     ///Connection id IS the job id. Backed by Redis (key
-    /// `conn:disconnect:{id}`) with 1h TTL. A 404 on the status endpoint after
-    /// the connection row is deleted = terminal `succeeded` from the FE's
-    /// perspective.
+    /// `conn:disconnect:{id}`) with 1h TTL. A 404 on the status endpoint
+    /// after the connection row is deleted = terminal `succeeded` from the
+    /// FE's perspective.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -9280,6 +10631,381 @@ pub mod types {
         pub value: ::std::string::String,
     }
 
+    ///`ConnectionProduct`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectionProduct",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "Resolve",
+    ///    "Review",
+    ///    "Optimize",
+    ///    "Cyber"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ConnectionProduct {
+        Resolve,
+        Review,
+        Optimize,
+        Cyber,
+    }
+
+    impl ::std::fmt::Display for ConnectionProduct {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Resolve => f.write_str("Resolve"),
+                Self::Review => f.write_str("Review"),
+                Self::Optimize => f.write_str("Optimize"),
+                Self::Cyber => f.write_str("Cyber"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ConnectionProduct {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "Resolve" => Ok(Self::Resolve),
+                "Review" => Ok(Self::Review),
+                "Optimize" => Ok(Self::Optimize),
+                "Cyber" => Ok(Self::Cyber),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ConnectionProduct {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ConnectionProduct {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ConnectionProduct {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`ConnectionProviderState`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectionProviderState",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "provider_prefix"
+    ///  ],
+    ///  "properties": {
+    ///    "account_count": {
+    ///      "title": "Account Count",
+    ///      "description": "Saved accounts of this provider that are
+    /// installed",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "account_noun": {
+    ///      "title": "Account Noun",
+    ///      "description": "Word for one account of this provider: account,
+    /// project, subscription or connection",
+    ///      "default": "connection",
+    ///      "type": "string"
+    ///    },
+    ///    "add_account_block": {
+    ///      "$ref": "#/components/schemas/AddAccountBlock"
+    ///    },
+    ///    "connect_block": {
+    ///      "$ref": "#/components/schemas/ConnectBlock"
+    ///    },
+    ///    "connected_count": {
+    ///      "title": "Connected Count",
+    ///      "description": "Installed accounts of this provider that are
+    /// connected",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
+    ///    "display_alias": {
+    ///      "title": "Display Alias",
+    ///      "description": "Alias of the one installed account; None with
+    /// several or none",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "has_disconnecting": {
+    ///      "title": "Has Disconnecting",
+    ///      "description": "Whether an installed account is being removed",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "has_error": {
+    ///      "title": "Has Error",
+    ///      "description": "Whether an installed account has failed",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "has_testing": {
+    ///      "title": "Has Testing",
+    ///      "description": "Whether an installed account is being tested",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "multi_account": {
+    ///      "title": "Multi Account",
+    ///      "description": "Whether this provider holds several accounts: a
+    /// multi-account provider or one with hosting variants",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "provider_prefix": {
+    ///      "title": "Provider Prefix",
+    ///      "type": "string"
+    ///    },
+    ///    "section": {
+    ///      "$ref": "#/components/schemas/SavedConnectionSection"
+    ///    },
+    ///    "used_in": {
+    ///      "title": "Used In",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/ConnectionProduct"
+    ///      }
+    ///    },
+    ///    "write_enabled": {
+    ///      "title": "Write Enabled",
+    ///      "description": "Whether any installed account has its write tool
+    /// on",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct ConnectionProviderState {
+        ///Saved accounts of this provider that are installed
+        #[serde(default)]
+        pub account_count: i64,
+        ///Word for one account of this provider: account, project,
+        /// subscription or connection
+        #[serde(default = "defaults::connection_provider_state_account_noun")]
+        pub account_noun: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub add_account_block: ::std::option::Option<AddAccountBlock>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub connect_block: ::std::option::Option<ConnectBlock>,
+        ///Installed accounts of this provider that are connected
+        #[serde(default)]
+        pub connected_count: i64,
+        ///Alias of the one installed account; None with several or none
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub display_alias: ::std::option::Option<::std::string::String>,
+        ///Whether an installed account is being removed
+        #[serde(default)]
+        pub has_disconnecting: bool,
+        ///Whether an installed account has failed
+        #[serde(default)]
+        pub has_error: bool,
+        ///Whether an installed account is being tested
+        #[serde(default)]
+        pub has_testing: bool,
+        ///Whether this provider holds several accounts: a multi-account
+        /// provider or one with hosting variants
+        #[serde(default)]
+        pub multi_account: bool,
+        pub provider_prefix: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub section: ::std::option::Option<SavedConnectionSection>,
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub used_in: ::std::vec::Vec<ConnectionProduct>,
+        ///Whether any installed account has its write tool on
+        #[serde(default)]
+        pub write_enabled: bool,
+    }
+
+    ///`ConnectionRecoveryAction`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectionRecoveryAction",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "retry",
+    ///    "edit",
+    ///    "replace_credentials",
+    ///    "reconnect"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ConnectionRecoveryAction {
+        #[serde(rename = "retry")]
+        Retry,
+        #[serde(rename = "edit")]
+        Edit,
+        #[serde(rename = "replace_credentials")]
+        ReplaceCredentials,
+        #[serde(rename = "reconnect")]
+        Reconnect,
+    }
+
+    impl ::std::fmt::Display for ConnectionRecoveryAction {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Retry => f.write_str("retry"),
+                Self::Edit => f.write_str("edit"),
+                Self::ReplaceCredentials => f.write_str("replace_credentials"),
+                Self::Reconnect => f.write_str("reconnect"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ConnectionRecoveryAction {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "retry" => Ok(Self::Retry),
+                "edit" => Ok(Self::Edit),
+                "replace_credentials" => Ok(Self::ReplaceCredentials),
+                "reconnect" => Ok(Self::Reconnect),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ConnectionRecoveryAction {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ConnectionRecoveryAction {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ConnectionRecoveryAction {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    ///`ConnectionSetupStep`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectionSetupStep",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "title"
+    ///  ],
+    ///  "properties": {
+    ///    "action_label": {
+    ///      "title": "Action Label",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "field_key": {
+    ///      "title": "Field Key",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "script": {
+    ///      "title": "Script",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "title": {
+    ///      "title": "Title",
+    ///      "type": "string"
+    ///    },
+    ///    "url": {
+    ///      "title": "Url",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct ConnectionSetupStep {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub action_label: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub field_key: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub script: ::std::option::Option<::std::string::String>,
+        pub title: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub url: ::std::option::Option<::std::string::String>,
+    }
+
     ///`ConnectionStatus`
     ///
     /// <details><summary>JSON schema</summary>
@@ -9333,6 +11059,95 @@ pub mod types {
     impl ::std::fmt::Display for ConnectionStatus {
         fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
             self.0.fmt(f)
+        }
+    }
+
+    ///`ConnectionStep`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectionStep",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "test",
+    ///    "tool_call",
+    ///    "health_check",
+    ///    "sign_in"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum ConnectionStep {
+        #[serde(rename = "test")]
+        Test,
+        #[serde(rename = "tool_call")]
+        ToolCall,
+        #[serde(rename = "health_check")]
+        HealthCheck,
+        #[serde(rename = "sign_in")]
+        SignIn,
+    }
+
+    impl ::std::fmt::Display for ConnectionStep {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Test => f.write_str("test"),
+                Self::ToolCall => f.write_str("tool_call"),
+                Self::HealthCheck => f.write_str("health_check"),
+                Self::SignIn => f.write_str("sign_in"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for ConnectionStep {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "test" => Ok(Self::Test),
+                "tool_call" => Ok(Self::ToolCall),
+                "health_check" => Ok(Self::HealthCheck),
+                "sign_in" => Ok(Self::SignIn),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for ConnectionStep {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for ConnectionStep {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for ConnectionStep {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
 
@@ -9433,6 +11248,9 @@ pub mod types {
     ///        "null"
     ///      ],
     ///      "format": "date-time"
+    ///    },
+    ///    "verdict": {
+    ///      "$ref": "#/components/schemas/ConnectionVerdict"
     ///    }
     ///  }
     ///}
@@ -9447,14 +11265,69 @@ pub mod types {
         pub phase: ConnectionTestPhase,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub started_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub verdict: ::std::option::Option<ConnectionVerdict>,
+    }
+
+    ///`ConnectionVerdict`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "ConnectionVerdict",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "kind",
+    ///    "step"
+    ///  ],
+    ///  "properties": {
+    ///    "http_status": {
+    ///      "title": "Http Status",
+    ///      "type": [
+    ///        "integer",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "kind": {
+    ///      "$ref": "#/components/schemas/ConnectFailureReason"
+    ///    },
+    ///    "may_have_applied": {
+    ///      "title": "May Have Applied",
+    ///      "default": false,
+    ///      "type": "boolean"
+    ///    },
+    ///    "provider_detail_redacted": {
+    ///      "title": "Provider Detail Redacted",
+    ///      "default": "",
+    ///      "type": "string"
+    ///    },
+    ///    "step": {
+    ///      "$ref": "#/components/schemas/ConnectionStep"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct ConnectionVerdict {
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub http_status: ::std::option::Option<i64>,
+        pub kind: ConnectFailureReason,
+        #[serde(default)]
+        pub may_have_applied: bool,
+        #[serde(default)]
+        pub provider_detail_redacted: ::std::string::String,
+        pub step: ConnectionStep,
     }
 
     ///A short-lived presigned GET for one context file, plus what it renders
     /// as.
     ///
     ///``content_type`` is derived from the filename, NOT read from storage —
-    /// every context object is stored as ``application/octet-stream``, so the
-    /// stored value tells the client nothing about how to preview the file.
+    /// every context object is stored as ``application/octet-stream``, so
+    /// the stored value tells the client nothing about how to preview the
+    /// file.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -11397,6 +13270,11 @@ pub mod types {
     ///    "total": {
     ///      "title": "Total",
     ///      "type": "integer"
+    ///    },
+    ///    "verification_skipped": {
+    ///      "title": "Verification Skipped",
+    ///      "default": false,
+    ///      "type": "boolean"
     ///    }
     ///  }
     ///}
@@ -11406,6 +13284,8 @@ pub mod types {
     pub struct CyberDomainListResponse {
         pub data: ::std::vec::Vec<CyberDomainPublic>,
         pub total: i64,
+        #[serde(default)]
+        pub verification_skipped: bool,
     }
 
     ///Workspace-owned Cyber domain verification record.
@@ -15181,8 +17061,9 @@ pub mod types {
     /// capture is bounded text the backend already redacted at sync. It
     /// therefore needs no ``url`` and no second request, and it renders
     /// identically in the UI and in every PDF export.
-    /// ``request_truncated``/``response_truncated`` tell the renderer to mark
-    /// an excerpt so a bounded field never reads as the whole exchange.
+    /// ``request_truncated``/``response_truncated`` tell the renderer to
+    /// mark an excerpt so a bounded field never reads as the whole
+    /// exchange.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -16259,9 +18140,10 @@ pub mod types {
     ///
     ///A screenshot the agent saved via the `evidence` browser verb and
     /// referenced in the finding markdown; sync uploaded the .png to S3.
-    /// ``url`` is a short-lived presigned GET the FE renders inline — the raw
-    /// S3 key is never exposed. ``url`` is None only if the presign could not
-    /// be minted (the FE hides that entry rather than showing a broken image).
+    /// ``url`` is a short-lived presigned GET the FE renders inline — the
+    /// raw S3 key is never exposed. ``url`` is None only if the presign
+    /// could not be minted (the FE hides that entry rather than
+    /// showing a broken image).
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -16393,9 +18275,9 @@ pub mod types {
     ///`manually_resolved` splits the one status the two axes share. A RESOLVED
     ///finding is either a scan's PoC-replay proof or a human's own verdict,
     /// and only the second one a human may undo — so the FE cannot decide
-    /// whether to offer Reopen without it. It is a derived bool, not the raw
-    ///`manually_resolved_by` UUID, because the FE renders the choice, not the
-    ///actor.
+    /// whether to offer Reopen without it. It is a derived bool, not the
+    /// raw `manually_resolved_by` UUID, because the FE renders the choice,
+    /// not the actor.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -16537,6 +18419,14 @@ pub mod types {
     ///      "title": "Finding Type",
     ///      "type": "string"
     ///    },
+    ///    "first_seen_at": {
+    ///      "title": "First Seen At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
     ///    "first_seen_run": {
     ///      "title": "First Seen Run",
     ///      "type": "string",
@@ -16598,6 +18488,9 @@ pub mod types {
     ///    },
     ///    "triage_state": {
     ///      "$ref": "#/components/schemas/TriageState"
+    ///    },
+    ///    "verification_provenance": {
+    ///      "$ref": "#/components/schemas/FindingVerificationProvenancePublic"
     ///    }
     ///  }
     ///}
@@ -16631,6 +18524,8 @@ pub mod types {
         #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
         pub evidence: ::std::vec::Vec<FindingEvidencePublic>,
         pub finding_type: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub first_seen_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub first_seen_run: ::uuid::Uuid,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub fix_pr: ::std::option::Option<FindingFixPrPublic>,
@@ -16651,6 +18546,8 @@ pub mod types {
         pub title: ::std::string::String,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub triage_state: ::std::option::Option<TriageState>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub verification_provenance: ::std::option::Option<FindingVerificationProvenancePublic>,
     }
 
     ///Provider publication state for the durable finding admission record.
@@ -16834,13 +18731,13 @@ pub mod types {
     ///Mirrored 1:1 from the finding's folder in app-memory/ at sync()
     ///(open/ or confirmed/ → confirmed, resolved/ or fixed/ → fixed,
     /// dismissed/ → dismissed, needs-verification/ → needs_verification). A
-    /// confirmed finding is a reproduced, proven vulnerability — there is no
-    /// verified/regressed/stale nuance. NEEDS_VERIFICATION is a lead the agent
-    /// could not confirm (it needs a second tenant's session, an admin console
-    /// with no signup, or an unreachable state), so instead of silently
-    /// dropping it he parks it here for a human to reconfirm. It is NOT proven
-    /// (never counted as a confirmed finding) and NOT closed (never counted as
-    /// fixed/dismissed).
+    /// confirmed finding is a reproduced, proven vulnerability — there is
+    /// no verified/regressed/stale nuance. NEEDS_VERIFICATION is a lead the
+    /// agent could not confirm (it needs a second tenant's session, an
+    /// admin console with no signup, or an unreachable state), so instead
+    /// of silently dropping it he parks it here for a human to reconfirm.
+    /// It is NOT proven (never counted as a confirmed finding)
+    /// and NOT closed (never counted as fixed/dismissed).
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -16966,6 +18863,7 @@ pub mod types {
     ///  "type": "string",
     ///  "enum": [
     ///    "active",
+    ///    "needs_attention",
     ///    "confirmed",
     ///    "needs_verification",
     ///    "in_progress",
@@ -16992,6 +18890,8 @@ pub mod types {
     pub enum FindingTab {
         #[serde(rename = "active")]
         Active,
+        #[serde(rename = "needs_attention")]
+        NeedsAttention,
         #[serde(rename = "confirmed")]
         Confirmed,
         #[serde(rename = "needs_verification")]
@@ -17012,6 +18912,7 @@ pub mod types {
         fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
             match *self {
                 Self::Active => f.write_str("active"),
+                Self::NeedsAttention => f.write_str("needs_attention"),
                 Self::Confirmed => f.write_str("confirmed"),
                 Self::NeedsVerification => f.write_str("needs_verification"),
                 Self::InProgress => f.write_str("in_progress"),
@@ -17028,6 +18929,7 @@ pub mod types {
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
             match value {
                 "active" => Ok(Self::Active),
+                "needs_attention" => Ok(Self::NeedsAttention),
                 "confirmed" => Ok(Self::Confirmed),
                 "needs_verification" => Ok(Self::NeedsVerification),
                 "in_progress" => Ok(Self::InProgress),
@@ -17121,6 +19023,11 @@ pub mod types {
     ///      "default": 0,
     ///      "type": "integer"
     ///    },
+    ///    "needs_attention": {
+    ///      "title": "Needs Attention",
+    ///      "default": 0,
+    ///      "type": "integer"
+    ///    },
     ///    "needs_verification": {
     ///      "title": "Needs Verification",
     ///      "default": 0,
@@ -17151,6 +19058,8 @@ pub mod types {
         #[serde(default)]
         pub in_progress: i64,
         #[serde(default)]
+        pub needs_attention: i64,
+        #[serde(default)]
         pub needs_verification: i64,
     }
 
@@ -17166,8 +19075,117 @@ pub mod types {
                 fixed: Default::default(),
                 history: Default::default(),
                 in_progress: Default::default(),
+                needs_attention: Default::default(),
                 needs_verification: Default::default(),
             }
+        }
+    }
+
+    ///`FindingVerificationProvenancePublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FindingVerificationProvenancePublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "status"
+    ///  ],
+    ///  "properties": {
+    ///    "status": {
+    ///      "title": "FindingVerificationProvenancePublic_status",
+    ///      "type": "string",
+    ///      "enum": [
+    ///        "unverified",
+    ///        "self_verified"
+    ///      ]
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct FindingVerificationProvenancePublic {
+        pub status: FindingVerificationProvenancePublicStatus,
+    }
+
+    ///`FindingVerificationProvenancePublicStatus`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "FindingVerificationProvenancePublic_status",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "unverified",
+    ///    "self_verified"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum FindingVerificationProvenancePublicStatus {
+        #[serde(rename = "unverified")]
+        Unverified,
+        #[serde(rename = "self_verified")]
+        SelfVerified,
+    }
+
+    impl ::std::fmt::Display for FindingVerificationProvenancePublicStatus {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Unverified => f.write_str("unverified"),
+                Self::SelfVerified => f.write_str("self_verified"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for FindingVerificationProvenancePublicStatus {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "unverified" => Ok(Self::Unverified),
+                "self_verified" => Ok(Self::SelfVerified),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for FindingVerificationProvenancePublicStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for FindingVerificationProvenancePublicStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for FindingVerificationProvenancePublicStatus {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
 
@@ -17993,10 +20011,10 @@ pub mod types {
     ///intensity survives a later change to the App's default).
     ///
     ///``ultra`` has the same destructive-probing allowance as ``full`` but
-    /// also turns on the saturation loop: the agent keeps hunting new attack
-    /// surface in further passes until one complete pass adds no new finding or
-    /// surface record (the `cyber-scan-modes-ultra` depth leaf). It is the
-    /// highest blast radius.
+    /// also turns on the saturation loop: the agent keeps hunting new
+    /// attack surface in further passes until one complete pass adds no new
+    /// finding or surface record (the `cyber-scan-modes-ultra` depth leaf).
+    /// It is the highest blast radius.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -21197,12 +23215,19 @@ pub mod types {
     ///    "status_message"
     ///  ],
     ///  "properties": {
+    ///    "approval_tool_count": {
+    ///      "title": "Approval Tool Count",
+    ///      "type": "integer"
+    ///    },
     ///    "description": {
     ///      "title": "Description",
     ///      "type": [
     ///        "string",
     ///        "null"
     ///      ]
+    ///    },
+    ///    "failure_kind": {
+    ///      "$ref": "#/components/schemas/ConnectFailureReason"
     ///    },
     ///    "id": {
     ///      "title": "Id",
@@ -21220,12 +23245,29 @@ pub mod types {
     ///      "title": "Prefix",
     ///      "type": "string"
     ///    },
+    ///    "recovery_action": {
+    ///      "$ref": "#/components/schemas/ConnectionRecoveryAction"
+    ///    },
+    ///    "section": {
+    ///      "$ref": "#/components/schemas/SavedConnectionSection"
+    ///    },
     ///    "status": {
     ///      "$ref": "#/components/schemas/ConnectionStatus"
     ///    },
     ///    "status_message": {
     ///      "title": "Status Message",
     ///      "type": "string"
+    ///    },
+    ///    "test_needed": {
+    ///      "title": "Test Needed",
+    ///      "type": [
+    ///        "boolean",
+    ///        "null"
+    ///      ]
+    ///    },
+    ///    "tool_count": {
+    ///      "title": "Tool Count",
+    ///      "type": "integer"
     ///    }
     ///  }
     ///}
@@ -21234,13 +23276,25 @@ pub mod types {
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct McpConnectionPublic {
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub approval_tool_count: ::std::option::Option<i64>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub description: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub failure_kind: ::std::option::Option<ConnectFailureReason>,
         pub id: ::uuid::Uuid,
         pub mcp_transport_type: McpTransportType,
         pub name: ::std::string::String,
         pub prefix: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub recovery_action: ::std::option::Option<ConnectionRecoveryAction>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub section: ::std::option::Option<SavedConnectionSection>,
         pub status: ConnectionStatus,
         pub status_message: ::std::string::String,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub test_needed: ::std::option::Option<bool>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub tool_count: ::std::option::Option<i64>,
     }
 
     ///`McpConnectionsPublic`
@@ -23390,6 +25444,175 @@ pub mod types {
         pub reason_kind: CloseReasonKind,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub target_status: ::std::option::Option<RecommendationStatus>,
+    }
+
+    ///`PentestFailureCode`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "PentestFailureCode",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "cancelled",
+    ///    "stop_requested",
+    ///    "time_limit",
+    ///    "abandoned",
+    ///    "local_cli_lost",
+    ///    "stalled",
+    ///    "login_rejected",
+    ///    "login_failed",
+    ///    "source_attach_failed",
+    ///    "sandbox_unavailable",
+    ///    "scope_changed",
+    ///    "resume_failed",
+    ///    "dispatch_lost",
+    ///    "findings_unsaved",
+    ///    "coverage_incomplete",
+    ///    "agent_blocked",
+    ///    "finalization_failed",
+    ///    "approval_expired",
+    ///    "unexpected",
+    ///    "execution_failed"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum PentestFailureCode {
+        #[serde(rename = "cancelled")]
+        Cancelled,
+        #[serde(rename = "stop_requested")]
+        StopRequested,
+        #[serde(rename = "time_limit")]
+        TimeLimit,
+        #[serde(rename = "abandoned")]
+        Abandoned,
+        #[serde(rename = "local_cli_lost")]
+        LocalCliLost,
+        #[serde(rename = "stalled")]
+        Stalled,
+        #[serde(rename = "login_rejected")]
+        LoginRejected,
+        #[serde(rename = "login_failed")]
+        LoginFailed,
+        #[serde(rename = "source_attach_failed")]
+        SourceAttachFailed,
+        #[serde(rename = "sandbox_unavailable")]
+        SandboxUnavailable,
+        #[serde(rename = "scope_changed")]
+        ScopeChanged,
+        #[serde(rename = "resume_failed")]
+        ResumeFailed,
+        #[serde(rename = "dispatch_lost")]
+        DispatchLost,
+        #[serde(rename = "findings_unsaved")]
+        FindingsUnsaved,
+        #[serde(rename = "coverage_incomplete")]
+        CoverageIncomplete,
+        #[serde(rename = "agent_blocked")]
+        AgentBlocked,
+        #[serde(rename = "finalization_failed")]
+        FinalizationFailed,
+        #[serde(rename = "approval_expired")]
+        ApprovalExpired,
+        #[serde(rename = "unexpected")]
+        Unexpected,
+        #[serde(rename = "execution_failed")]
+        ExecutionFailed,
+    }
+
+    impl ::std::fmt::Display for PentestFailureCode {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Cancelled => f.write_str("cancelled"),
+                Self::StopRequested => f.write_str("stop_requested"),
+                Self::TimeLimit => f.write_str("time_limit"),
+                Self::Abandoned => f.write_str("abandoned"),
+                Self::LocalCliLost => f.write_str("local_cli_lost"),
+                Self::Stalled => f.write_str("stalled"),
+                Self::LoginRejected => f.write_str("login_rejected"),
+                Self::LoginFailed => f.write_str("login_failed"),
+                Self::SourceAttachFailed => f.write_str("source_attach_failed"),
+                Self::SandboxUnavailable => f.write_str("sandbox_unavailable"),
+                Self::ScopeChanged => f.write_str("scope_changed"),
+                Self::ResumeFailed => f.write_str("resume_failed"),
+                Self::DispatchLost => f.write_str("dispatch_lost"),
+                Self::FindingsUnsaved => f.write_str("findings_unsaved"),
+                Self::CoverageIncomplete => f.write_str("coverage_incomplete"),
+                Self::AgentBlocked => f.write_str("agent_blocked"),
+                Self::FinalizationFailed => f.write_str("finalization_failed"),
+                Self::ApprovalExpired => f.write_str("approval_expired"),
+                Self::Unexpected => f.write_str("unexpected"),
+                Self::ExecutionFailed => f.write_str("execution_failed"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for PentestFailureCode {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "cancelled" => Ok(Self::Cancelled),
+                "stop_requested" => Ok(Self::StopRequested),
+                "time_limit" => Ok(Self::TimeLimit),
+                "abandoned" => Ok(Self::Abandoned),
+                "local_cli_lost" => Ok(Self::LocalCliLost),
+                "stalled" => Ok(Self::Stalled),
+                "login_rejected" => Ok(Self::LoginRejected),
+                "login_failed" => Ok(Self::LoginFailed),
+                "source_attach_failed" => Ok(Self::SourceAttachFailed),
+                "sandbox_unavailable" => Ok(Self::SandboxUnavailable),
+                "scope_changed" => Ok(Self::ScopeChanged),
+                "resume_failed" => Ok(Self::ResumeFailed),
+                "dispatch_lost" => Ok(Self::DispatchLost),
+                "findings_unsaved" => Ok(Self::FindingsUnsaved),
+                "coverage_incomplete" => Ok(Self::CoverageIncomplete),
+                "agent_blocked" => Ok(Self::AgentBlocked),
+                "finalization_failed" => Ok(Self::FinalizationFailed),
+                "approval_expired" => Ok(Self::ApprovalExpired),
+                "unexpected" => Ok(Self::Unexpected),
+                "execution_failed" => Ok(Self::ExecutionFailed),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for PentestFailureCode {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for PentestFailureCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for PentestFailureCode {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
     }
 
     ///`PentestMomentumAssessment`
@@ -28583,9 +30806,9 @@ pub mod types {
     ///
     ///A single glance signal next to the verdict: LIGHT changes can be
     /// skimmed, HEAVY ones deserve a careful pass. Derived from diff size
-    /// (files + lines) in `domain/review_effort.py`, NOT the AI quality `score`
-    /// — a small change can be low-quality and a huge one clean, so effort and
-    /// score are orthogonal axes.
+    /// (files + lines) in `domain/review_effort.py`, NOT the AI quality
+    /// `score` — a small change can be low-quality and a huge one clean, so
+    /// effort and score are orthogonal axes.
     ///
     ///Absent (NULL on the detail) when no diff-stats were ever recorded, so
     /// the badge stays hidden rather than mislabelling an unmeasured MR as
@@ -28811,6 +31034,100 @@ pub mod types {
             Self {
                 refresh_token: Default::default(),
             }
+        }
+    }
+
+    ///`RosterSort`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "Roster Sort",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "app",
+    ///    "status",
+    ///    "risk",
+    ///    "last",
+    ///    "added"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum RosterSort {
+        #[serde(rename = "app")]
+        App,
+        #[serde(rename = "status")]
+        Status,
+        #[serde(rename = "risk")]
+        Risk,
+        #[serde(rename = "last")]
+        Last,
+        #[serde(rename = "added")]
+        Added,
+    }
+
+    impl ::std::fmt::Display for RosterSort {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::App => f.write_str("app"),
+                Self::Status => f.write_str("status"),
+                Self::Risk => f.write_str("risk"),
+                Self::Last => f.write_str("last"),
+                Self::Added => f.write_str("added"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for RosterSort {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "app" => Ok(Self::App),
+                "status" => Ok(Self::Status),
+                "risk" => Ok(Self::Risk),
+                "last" => Ok(Self::Last),
+                "added" => Ok(Self::Added),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for RosterSort {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for RosterSort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for RosterSort {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
         }
     }
 
@@ -29185,13 +31502,14 @@ pub mod types {
     /// FE renders only the kinds each stream can emit). FIXED and DISMISSED
     ///(false-positive) are kept distinct — folding dismissed into fixed would
     ///report a false-positive dismissal as a real fix in the run badge and
-    /// stats. NEEDS_VERIFICATION is its OWN kind — never ADDED (which reads as
-    /// a confirmed finding in the "N discovered" count) and never MODIFIED
-    /// (which would hide the unconfirmed lead) — so a lead Oliver parked for
-    /// human reconfirm surfaces truthfully. Surface items only ever appear
-    /// (added) or change provenance/properties (modified) — there is no
-    /// stale/removed transition, because a black-box probe can never prove an
-    /// endpoint is gone (freshness lives in `last_seen_run`).
+    /// stats. NEEDS_VERIFICATION is its OWN kind — never ADDED (which reads
+    /// as a confirmed finding in the "N discovered" count) and never
+    /// MODIFIED (which would hide the unconfirmed lead) — so a lead Oliver
+    /// parked for human reconfirm surfaces truthfully. Surface items only
+    /// ever appear (added) or change provenance/properties (modified) —
+    /// there is no stale/removed transition, because a black-box probe can
+    /// never prove an endpoint is gone (freshness
+    /// lives in `last_seen_run`).
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -29299,11 +31617,11 @@ pub mod types {
     ///The machine where the run executes.
     ///
     ///``cloud`` — the worker + OpenSandbox pipeline
-    /// (``run_pentest_scan_task``). ``local`` — the developer's Mac through a
-    /// bound ``cloudthinker agent`` session; the backend never enqueues a scan
-    /// task for a local row, and the local session settles it through the same
-    /// ``finalize_run`` CAS. Exactly one host is live per run; there is no
-    /// failover between them.
+    /// (``run_pentest_scan_task``). ``local`` — the developer's Mac through
+    /// a bound ``cloudthinker agent`` session; the backend never enqueues a
+    /// scan task for a local row, and the local session settles it through
+    /// the same ``finalize_run`` CAS. Exactly one host is live per run;
+    /// there is no failover between them.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -29451,6 +31769,45 @@ pub mod types {
         pub login_proven: ::std::option::Option<bool>,
         pub reason: ::std::option::Option<::std::string::String>,
         pub role: ::std::string::String,
+    }
+
+    ///`RunHistoryPagePublic`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "RunHistoryPagePublic",
+    ///  "type": "object",
+    ///  "required": [
+    ///    "data",
+    ///    "total"
+    ///  ],
+    ///  "properties": {
+    ///    "data": {
+    ///      "title": "Data",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/RunPublic"
+    ///      }
+    ///    },
+    ///    "meta": {
+    ///      "$ref": "#/components/schemas/PaginationMeta"
+    ///    },
+    ///    "total": {
+    ///      "title": "Total",
+    ///      "type": "integer"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct RunHistoryPagePublic {
+        pub data: ::std::vec::Vec<RunPublic>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub meta: ::std::option::Option<PaginationMeta>,
+        pub total: i64,
     }
 
     ///Request body for POST /appsec/apps/{app_id}/runs.
@@ -29670,41 +32027,6 @@ pub mod types {
         }
     }
 
-    ///Response shape for GET /appsec/apps/{app_id}/runs.
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "title": "RunListResponse",
-    ///  "description": "Response shape for GET /appsec/apps/{app_id}/runs.",
-    ///  "type": "object",
-    ///  "required": [
-    ///    "data",
-    ///    "total"
-    ///  ],
-    ///  "properties": {
-    ///    "data": {
-    ///      "title": "Data",
-    ///      "type": "array",
-    ///      "items": {
-    ///        "$ref": "#/components/schemas/RunPublic"
-    ///      }
-    ///    },
-    ///    "total": {
-    ///      "title": "Total",
-    ///      "type": "integer"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct RunListResponse {
-        pub data: ::std::vec::Vec<RunPublic>,
-        pub total: i64,
-    }
-
     ///Response shape for a single PentestRun — only client-rendered fields.
     ///
     /// <details><summary>JSON schema</summary>
@@ -29818,6 +32140,9 @@ pub mod types {
     ///    },
     ///    "execution_host": {
     ///      "$ref": "#/components/schemas/RunExecutionHost"
+    ///    },
+    ///    "failure_code": {
+    ///      "$ref": "#/components/schemas/PentestFailureCode"
     ///    },
     ///    "findings_confirmed": {
     ///      "title": "Findings Confirmed",
@@ -29955,8 +32280,30 @@ pub mod types {
     ///      "type": "string",
     ///      "format": "date-time"
     ///    },
+    ///    "stop_message": {
+    ///      "title": "Stop Message",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
+    ///    },
     ///    "stop_rule": {
     ///      "$ref": "#/components/schemas/InvestigationStopRule"
+    ///    },
+    ///    "stopped_by": {
+    ///      "title": "Stopped By",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "uuid"
+    ///    },
+    ///    "stopped_by_name": {
+    ///      "title": "Stopped By Name",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ]
     ///    },
     ///    "surface_delta": {
     ///      "title": "Surface Delta",
@@ -30003,6 +32350,8 @@ pub mod types {
         pub duration_elapsed_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub execution_host: ::std::option::Option<RunExecutionHost>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub failure_code: ::std::option::Option<PentestFailureCode>,
         #[serde(default)]
         pub findings_confirmed: i64,
         #[serde(default)]
@@ -30049,7 +32398,13 @@ pub mod types {
         pub selection: SavedSelection,
         pub started_at: ::chrono::DateTime<::chrono::offset::Utc>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub stop_message: ::std::option::Option<::std::string::String>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub stop_rule: ::std::option::Option<InvestigationStopRule>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub stopped_by: ::std::option::Option<::uuid::Uuid>,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub stopped_by_name: ::std::option::Option<::std::string::String>,
         pub surface_delta: ::serde_json::Map<::std::string::String, ::serde_json::Value>,
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
         pub team_member_limit: ::std::option::Option<TeamMemberLimit>,
@@ -30062,9 +32417,9 @@ pub mod types {
     ///Lifecycle only — NOT a verdict. A finished run is SUCCESS whether or not
     /// it found vulnerabilities; the "found something" signal lives in the
     /// run's finding counts (FE colors the count), never a distinct result
-    /// value. FAILED means the run could not complete honestly (sync failure,
-    /// missing owner, unexpected error) — its findings may be unwritten, so it
-    /// must not read SUCCESS.
+    /// value. FAILED means the run could not complete honestly (sync
+    /// failure, missing owner, unexpected error) — its findings may be
+    /// unwritten, so it must not read SUCCESS.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -30472,6 +32827,90 @@ pub mod types {
         }
     }
 
+    ///`SavedConnectionSection`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "title": "SavedConnectionSection",
+    ///  "type": "string",
+    ///  "enum": [
+    ///    "needs_attention",
+    ///    "in_progress",
+    ///    "connected"
+    ///  ]
+    ///}
+    /// ```
+    /// </details>
+    #[derive(
+        :: serde :: Deserialize,
+        :: serde :: Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum SavedConnectionSection {
+        #[serde(rename = "needs_attention")]
+        NeedsAttention,
+        #[serde(rename = "in_progress")]
+        InProgress,
+        #[serde(rename = "connected")]
+        Connected,
+    }
+
+    impl ::std::fmt::Display for SavedConnectionSection {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::NeedsAttention => f.write_str("needs_attention"),
+                Self::InProgress => f.write_str("in_progress"),
+                Self::Connected => f.write_str("connected"),
+            }
+        }
+    }
+
+    impl ::std::str::FromStr for SavedConnectionSection {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "needs_attention" => Ok(Self::NeedsAttention),
+                "in_progress" => Ok(Self::InProgress),
+                "connected" => Ok(Self::Connected),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+
+    impl ::std::convert::TryFrom<&str> for SavedConnectionSection {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<&::std::string::String> for SavedConnectionSection {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: &::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
+    impl ::std::convert::TryFrom<::std::string::String> for SavedConnectionSection {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+
     ///`SavedSelection`
     ///
     /// <details><summary>JSON schema</summary>
@@ -30670,26 +33109,27 @@ pub mod types {
     ///Per-run change-focus policy: incremental|full.
     ///
     ///incremental — focus on the git diff between the prior SUCCESSFUL run's
-    /// HEAD              and this run's HEAD (the historic always-on white-box
-    ///              behaviour). `_derive_diff_focus` keeps each repo's
-    /// `base_ref`              so the agent diffs `base...head`.
+    /// HEAD              and this run's HEAD (the historic always-on
+    /// white-box              behaviour). `_derive_diff_focus` keeps each
+    /// repo's `base_ref`              so the agent diffs `base...head`.
     ///full        — a deep sweep: `_derive_diff_focus` FORCES `base_ref=""` on
     ///              every target so no diff is rendered and the whole worktree
-    /// is              scanned. The cursor `head_ref` is still recorded so the
-    /// NEXT              incremental run has a base to diff from.
+    /// is              scanned. The cursor `head_ref` is still recorded so
+    /// the NEXT              incremental run has a base to diff from.
     ///
     ///DEFAULT for both manual and scheduled runs is INCREMENTAL (the use case,
-    /// not the column, is the source of that default). MOOT for gray/black-box
-    /// runs: they clone no worktree, so there is nothing to diff and scan_mode
-    /// is inert.
+    /// not the column, is the source of that default). MOOT for
+    /// gray/black-box runs: they clone no worktree, so there is nothing to
+    /// diff and scan_mode is inert.
     ///
     ///INVARIANT (first run): on an App with NO prior SUCCESS run,
     ///`launch_run_with_outcome` COERCES this column to FULL regardless of what
-    /// the caller asked for — interactive or scheduled. INCREMENTAL means "diff
-    /// since the last successful run"; with no prior success there is no base,
-    /// so the value would lie to both the user and the agent. A schedule's
-    /// frozen INCREMENTAL is therefore honoured only from its first
-    /// post-success fire onward; the schedule row itself is never rewritten.
+    /// the caller asked for — interactive or scheduled. INCREMENTAL means
+    /// "diff since the last successful run"; with no prior success there is
+    /// no base, so the value would lie to both the user and the agent. A
+    /// schedule's frozen INCREMENTAL is therefore honoured only from its
+    /// first post-success fire onward; the schedule row itself is never
+    /// rewritten.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -31365,7 +33805,7 @@ pub mod types {
     ///{
     ///  "title": "Search",
     ///  "type": "string",
-    ///  "maxLength": 200
+    ///  "maxLength": 256
     ///}
     /// ```
     /// </details>
@@ -31388,8 +33828,8 @@ pub mod types {
     impl ::std::str::FromStr for Search {
         type Err = self::error::ConversionError;
         fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            if value.chars().count() > 200usize {
-                return Err("longer than 200 characters".into());
+            if value.chars().count() > 256usize {
+                return Err("longer than 256 characters".into());
             }
             Ok(Self(value.to_string()))
         }
@@ -31576,8 +34016,8 @@ pub mod types {
     ///Five-value ladder ordered from most to least urgent. Used by Pulse
     /// signals, Incidents, notifications, analytics, and the frontend.
     /// Collectors without ground-truth severity (for example, external
-    /// messaging channels) emit ``None`` and let the LLM classifier populate
-    /// this field asynchronously.
+    /// messaging channels) emit ``None`` and let the LLM classifier
+    /// populate this field asynchronously.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -32288,13 +34728,14 @@ pub mod types {
     ///
     ///Drives how the detail page tints the finding's lines: a newly-added file
     ///reads as green (its lines are additions, matching the provider's own
-    /// diff), a modified file reads as a red "current" line the fix replaces.
-    /// Stored as its string value in a VARCHAR column, never a native Postgres
-    /// enum, so UPPER()/LOWER() and enum-type migrations (DB-02) never enter
-    /// the picture.
+    /// diff), a modified file reads as a red "current" line the fix
+    /// replaces. Stored as its string value in a VARCHAR column, never a
+    /// native Postgres enum, so UPPER()/LOWER() and enum-type migrations
+    /// (DB-02) never enter the picture.
     ///
     ///Absent (NULL) when the file's status could not be determined at review
-    /// time, or for a `posting_range` finding that has no snapshot row at all.
+    /// time, or for a `posting_range` finding that has no snapshot row at
+    /// all.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -32525,8 +34966,8 @@ pub mod types {
     ///Response shape for GET /appsec/apps/{app_id}/surface.
     ///
     ///`data`/`meta` describe the current page of ACTIVE surface items;
-    /// `counts` carries the full per-asset-type active totals (independent of
-    /// pagination) so the summary chips stay accurate across pages.
+    /// `counts` carries the full per-asset-type active totals (independent
+    /// of pagination) so the summary chips stay accurate across pages.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -32643,6 +35084,14 @@ pub mod types {
     ///      "type": "string",
     ///      "format": "uuid"
     ///    },
+    ///    "last_tested_at": {
+    ///      "title": "Last Tested At",
+    ///      "type": [
+    ///        "string",
+    ///        "null"
+    ///      ],
+    ///      "format": "date-time"
+    ///    },
     ///    "locator": {
     ///      "title": "Locator",
     ///      "type": "string"
@@ -32678,6 +35127,8 @@ pub mod types {
         pub first_seen_run: ::uuid::Uuid,
         pub id: ::uuid::Uuid,
         pub last_seen_run: ::uuid::Uuid,
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub last_tested_at: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
         pub locator: ::std::string::String,
         #[serde(default)]
         pub open_finding_count: i64,
@@ -32734,7 +35185,10 @@ pub mod types {
     ///  "type": "string",
     ///  "enum": [
     ///    "locator",
-    ///    "created_at"
+    ///    "created_at",
+    ///    "open_issues",
+    ///    "status",
+    ///    "last_tested"
     ///  ]
     ///}
     /// ```
@@ -32756,6 +35210,12 @@ pub mod types {
         Locator,
         #[serde(rename = "created_at")]
         CreatedAt,
+        #[serde(rename = "open_issues")]
+        OpenIssues,
+        #[serde(rename = "status")]
+        Status,
+        #[serde(rename = "last_tested")]
+        LastTested,
     }
 
     impl ::std::fmt::Display for SurfaceSort {
@@ -32763,6 +35223,9 @@ pub mod types {
             match *self {
                 Self::Locator => f.write_str("locator"),
                 Self::CreatedAt => f.write_str("created_at"),
+                Self::OpenIssues => f.write_str("open_issues"),
+                Self::Status => f.write_str("status"),
+                Self::LastTested => f.write_str("last_tested"),
             }
         }
     }
@@ -32773,6 +35236,9 @@ pub mod types {
             match value {
                 "locator" => Ok(Self::Locator),
                 "created_at" => Ok(Self::CreatedAt),
+                "open_issues" => Ok(Self::OpenIssues),
+                "status" => Ok(Self::Status),
+                "last_tested" => Ok(Self::LastTested),
                 _ => Err("invalid value".into()),
             }
         }
@@ -34474,20 +36940,20 @@ pub mod types {
     ///How well the MR satisfies its linked ticket's acceptance criteria.
     ///
     ///Only meaningful when the review found a linked Jira/Linear ticket and
-    /// read its acceptance criteria (the reviewer already fetches these via the
-    ///reviewing-jira / reviewing-linear skill). Absent (NULL) when no ticket
-    /// was linked — the detail's compliance card then hides rather than
-    /// claiming coverage it never assessed.
+    /// read its acceptance criteria (the reviewer already fetches these via
+    /// the reviewing-jira / reviewing-linear skill). Absent (NULL) when no
+    /// ticket was linked — the detail's compliance card then hides rather
+    /// than claiming coverage it never assessed.
     ///
     ///Stored as its string value in a VARCHAR column, never a native Postgres
     ///enum, so UPPER()/LOWER() and enum-type migrations (DB-02) never enter
     /// the picture — same treatment as the sibling SnapshotFileChangeType.
-    /// Lives here (data/models) rather than in api/schemas so the column can be
-    /// typed with it and the write path stops passing bare strings; api/schemas
-    /// re-exports it for the response model. The agent-facing tool declares the
-    /// same value set as an inline Literal (the repo prefers inline Literals in
-    /// model-visible schemas over $ref/$defs); a parity test pins the two
-    /// equal.
+    /// Lives here (data/models) rather than in api/schemas so the column
+    /// can be typed with it and the write path stops passing bare strings;
+    /// api/schemas re-exports it for the response model. The agent-facing
+    /// tool declares the same value set as an inline Literal (the repo
+    /// prefers inline Literals in model-visible schemas over $ref/$defs); a
+    /// parity test pins the two equal.
     ///
     /// <details><summary>JSON schema</summary>
     ///
@@ -35001,17 +37467,18 @@ pub mod types {
     ///
     ///Answers "is a person working this?", which `FindingStatus` cannot: a
     /// finding is equally CONFIRMED whether nobody has looked at it or an
-    /// engineer has been fixing it all week. The two axes compose into the UI's
-    /// triage rail (open+NONE = "needs triage", open+IN_PROGRESS,
-    /// open+AWAITING_RETEST, resolved = "verified fixed"). A human reconfirming
-    /// a NEEDS_VERIFICATION lead reuses AWAITING_RETEST — it flags the finding
-    /// for the next scan, no new TriageState value is minted for it.
+    /// engineer has been fixing it all week. The two axes compose into the
+    /// UI's triage rail (open+NONE = "needs triage", open+IN_PROGRESS,
+    /// open+AWAITING_RETEST, resolved = "verified fixed"). A human
+    /// reconfirming a NEEDS_VERIFICATION lead reuses AWAITING_RETEST — it
+    /// flags the finding for the next scan, no new TriageState value is
+    /// minted for it.
     ///
     ///Ownership is strictly split: the agent owns `status` (mirrored from the
     ///app-memory folder at sync()), a human owns this. A human value can never
-    /// sit in `status` — sync() rewrites that column from the tree every run
-    /// and would destroy it. AWAITING_RETEST is a LABEL, not a trigger: it
-    /// flags the finding for the next scan, it does not launch one.
+    /// sit in `status` — sync() rewrites that column from the tree every
+    /// run and would destroy it. AWAITING_RETEST is a LABEL, not a trigger:
+    /// it flags the finding for the next scan, it does not launch one.
     ///
     ///Cleared to NONE by sync() when the agent resolves the finding — the
     /// question this was tracking is settled.
@@ -36896,6 +39363,10 @@ pub mod types {
             super::CompletionStopRuleKind::Completion
         }
 
+        pub(super) fn connection_provider_state_account_noun() -> ::std::string::String {
+            "connection".to_string()
+        }
+
         pub(super) fn cyber_report_preferences_instructions(
         ) -> super::CyberReportPreferencesInstructions {
             super::CyberReportPreferencesInstructions("".to_string())
@@ -37659,8 +40130,16 @@ impl Client {
     ///Sends a `GET` request to `/api/v1/appsec/apps/`
     pub async fn appsec_list_apps<'a>(
         &'a self,
+        app_status: Option<types::AppStatus>,
         archived: Option<bool>,
+        order: Option<types::SortOrder>,
+        page: Option<::std::num::NonZeroU64>,
+        roster_sort: Option<types::RosterSort>,
+        running_first: Option<bool>,
+        search: Option<&'a types::Search>,
         sort: Option<types::AppListSort>,
+        take: Option<::std::num::NonZeroU64>,
+        target_type: Option<types::TargetType>,
         workspace_id: Option<&'a ::serde_json::Value>,
     ) -> Result<ResponseValue<types::AppListResponse>, Error<()>> {
         let url = format!("{}/api/v1/appsec/apps/", self.baseurl,);
@@ -37677,8 +40156,28 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new(
+                "app_status",
+                &app_status,
+            ))
             .query(&progenitor_client::QueryParam::new("archived", &archived))
+            .query(&progenitor_client::QueryParam::new("order", &order))
+            .query(&progenitor_client::QueryParam::new("page", &page))
+            .query(&progenitor_client::QueryParam::new(
+                "roster_sort",
+                &roster_sort,
+            ))
+            .query(&progenitor_client::QueryParam::new(
+                "running_first",
+                &running_first,
+            ))
+            .query(&progenitor_client::QueryParam::new("search", &search))
             .query(&progenitor_client::QueryParam::new("sort", &sort))
+            .query(&progenitor_client::QueryParam::new("take", &take))
+            .query(&progenitor_client::QueryParam::new(
+                "target_type",
+                &target_type,
+            ))
             .query(&progenitor_client::QueryParam::new(
                 "workspace_id",
                 &workspace_id,
@@ -38018,8 +40517,8 @@ impl Client {
     ///
     ///`status` is repeatable (`?status=confirmed&status=needs_verification`).
     /// The table sends one value; the triage board's `In progress` and
-    /// `Awaiting retest` columns send two, because a human may work a parked
-    /// lead on the triage axis while its agent-owned `status` stays
+    /// `Awaiting retest` columns send two, because a human may work a
+    /// parked lead on the triage axis while its agent-owned `status` stays
     /// `needs_verification`.
     ///
     ///Sends a `GET` request to `/api/v1/appsec/apps/{app_id}/findings`
@@ -38097,18 +40596,18 @@ impl Client {
     ///Export matching findings, or an exact selected subset, as one PDF.
     ///
     ///Deliberately takes no `page`/`take`: the export covers the whole
-    /// filtered set, not the page the client happens to have loaded. Board view
-    /// omits `status` (each board column IS a status set), which reads here as
-    /// "all".
+    /// filtered set, not the page the client happens to have loaded. Board
+    /// view omits `status` (each board column IS a status set), which reads
+    /// here as "all".
     ///
     ///`status` is repeatable, matching the list endpoint exactly. The table
-    /// sends the one status it is filtered by; keeping the two endpoints on the
-    /// same shape is what lets the workspace hand its list filters straight to
-    /// the export without translating them.
+    /// sends the one status it is filtered by; keeping the two endpoints on
+    /// the same shape is what lets the workspace hand its list filters
+    /// straight to the export without translating them.
     ///
     ///Optional finding_ids intersect those filters before paging. Every
-    /// selected ID must belong to this App and match the filters, or the export
-    /// is refused.
+    /// selected ID must belong to this App and match the filters, or the
+    /// export is refused.
     ///
     ///Sends a `POST` request to
     /// `/api/v1/appsec/apps/{app_id}/findings/export-pdf`
@@ -38182,8 +40681,10 @@ impl Client {
     pub async fn appsec_list_runs<'a>(
         &'a self,
         app_id: &'a ::uuid::Uuid,
+        page: Option<::std::num::NonZeroU64>,
+        take: Option<::std::num::NonZeroU64>,
         workspace_id: Option<&'a ::serde_json::Value>,
-    ) -> Result<ResponseValue<types::RunListResponse>, Error<()>> {
+    ) -> Result<ResponseValue<types::RunHistoryPagePublic>, Error<()>> {
         let url = format!(
             "{}/api/v1/appsec/apps/{}/runs",
             self.baseurl,
@@ -38202,6 +40703,8 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new("page", &page))
+            .query(&progenitor_client::QueryParam::new("take", &take))
             .query(&progenitor_client::QueryParam::new(
                 "workspace_id",
                 &workspace_id,
@@ -38274,12 +40777,15 @@ impl Client {
     pub async fn appsec_list_surface<'a>(
         &'a self,
         app_id: &'a ::uuid::Uuid,
+        asset_type: Option<&'a types::AssetType>,
         change: Option<types::RunChangeGroup>,
+        include_options: Option<bool>,
         page: Option<::std::num::NonZeroU64>,
         run_id: Option<&'a ::uuid::Uuid>,
         search: Option<&'a types::Search>,
         sort: Option<types::SurfaceSort>,
         sort_dir: Option<types::SortOrder>,
+        source: Option<types::SurfaceSource>,
         surface_status: Option<types::SurfaceStatus>,
         take: Option<::std::num::NonZeroU64>,
         undocumented: Option<bool>,
@@ -38303,12 +40809,21 @@ impl Client {
                 ::reqwest::header::ACCEPT,
                 ::reqwest::header::HeaderValue::from_static("application/json"),
             )
+            .query(&progenitor_client::QueryParam::new(
+                "asset_type",
+                &asset_type,
+            ))
             .query(&progenitor_client::QueryParam::new("change", &change))
+            .query(&progenitor_client::QueryParam::new(
+                "include_options",
+                &include_options,
+            ))
             .query(&progenitor_client::QueryParam::new("page", &page))
             .query(&progenitor_client::QueryParam::new("run_id", &run_id))
             .query(&progenitor_client::QueryParam::new("search", &search))
             .query(&progenitor_client::QueryParam::new("sort", &sort))
             .query(&progenitor_client::QueryParam::new("sort_dir", &sort_dir))
+            .query(&progenitor_client::QueryParam::new("source", &source))
             .query(&progenitor_client::QueryParam::new(
                 "surface_status",
                 &surface_status,
@@ -39218,7 +41733,7 @@ impl Client {
 
     ///Retry Builtin Connection
     ///
-    ///Re-run the connection test for an existing builtin connection.
+    ///Start or follow a test for an existing built-in connection.
     ///
     ///Reuses the credentials already stored encrypted on the row — the request
     ///body carries no credential surface, so retry is safe for any caller with
@@ -39459,7 +41974,8 @@ impl Client {
     ///
     ///Declared BEFORE /merge-requests/{merge_request_id} - FastAPI matches
     /// path segments in registration order, so a route below that one would
-    /// swallow "lookup" as a UUID path param and 422 instead of matching here.
+    /// swallow "lookup" as a UUID path param and 422 instead of matching
+    /// here.
     ///
     ///Sends a `GET` request to `/api/v1/code-review/merge-requests/lookup`
     ///
@@ -40533,8 +43049,8 @@ impl Client {
     ///
     ///This is a best-effort operation that always succeeds. The refresh token
     /// is read from the httpOnly cookie first, falling back to the body for
-    /// legacy clients. Auth cookies are always cleared. If the refresh token is
-    /// invalid or already revoked, we still return success.
+    /// legacy clients. Auth cookies are always cleared. If the refresh
+    /// token is invalid or already revoked, we still return success.
     ///
     ///Sends a `POST` request to `/api/v1/login/logout`
     pub async fn login_logout<'a>(
@@ -40578,8 +43094,8 @@ impl Client {
     ///
     ///The refresh token is read from the httpOnly cookie first, falling back
     /// to the request body for legacy header-based clients during the
-    /// migration. The organization_id is derived from the workspace_id. If no
-    /// workspace is provided, falls back to the user's oldest active
+    /// migration. The organization_id is derived from the workspace_id. If
+    /// no workspace is provided, falls back to the user's oldest active
     /// organization membership.
     ///
     ///Sends a `POST` request to `/api/v1/login/refresh`
@@ -40663,8 +43179,8 @@ impl Client {
     ///
     ///Returns 202 immediately after flipping the row to
     /// ``status=DISCONNECTING`` and enqueueing the Celery disconnect job.
-    /// Frontend polls ``GET /mcp-connection/{id}/disconnect-status`` until the
-    /// row 404s (terminal succeeded) or the phase reaches ``failed``.
+    /// Frontend polls ``GET /mcp-connection/{id}/disconnect-status`` until
+    /// the row 404s (terminal succeeded) or the phase reaches ``failed``.
     ///
     ///Sends a `DELETE` request to `/api/v1/mcp-connection/{mcp_conn_id}`
     pub async fn mcp_connection_delete_mcp_connection<'a>(
@@ -40714,9 +43230,9 @@ impl Client {
     ///Return the current phase of an MCP connection's async test job.
     ///
     ///Reads from Redis (``conn:test:{id}`` key, 1h TTL); falls back to
-    /// deriving phase from the row's persisted status when Redis is empty. See
-    ///``resolve_connection_phase_status`` for the workspace-scoping and
-    ///cache-warming contract.
+    /// deriving phase from the row's persisted status when Redis is empty.
+    /// See ``resolve_connection_phase_status`` for the workspace-scoping
+    /// and cache-warming contract.
     ///
     ///Sends a `GET` request to
     /// `/api/v1/mcp-connection/{mcp_conn_id}/test-status`

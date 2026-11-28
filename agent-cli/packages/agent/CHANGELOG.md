@@ -1,3 +1,7 @@
+## [0.13.6]
+
+- A blank `agent -p` prompt now asks you to enter a question.
+
 ## [0.13.3]
 
 - Internal cleanup: shared helpers replace duplicated code; no behaviour change.

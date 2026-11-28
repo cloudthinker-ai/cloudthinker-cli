@@ -198,9 +198,7 @@ macro_rules! builtin_view {
             name: row.name,
             prefix: row.prefix,
             alias: row.alias.filter(|alias| !alias.is_empty()),
-            status: row
-                .status
-                .map_or(ConnectionStatus::Unknown, ConnectionStatus::from),
+            status: row.status.into(),
             status_message: non_empty(row.status_message),
             auth: row.auth_type.map(auth_label),
             can_retry: row.can_retry,
@@ -376,7 +374,7 @@ pub fn validate_connect_prefix(prefix: &str) -> CtResult<()> {
         Ok(())
     } else {
         Err(CtError::Usage(format!(
-            "`{prefix}` is not a connection prefix; use lowercase letters, digits, `_` or `-` (at most {CONNECT_PREFIX_MAX_LEN})"
+            "Use 1 to {CONNECT_PREFIX_MAX_LEN} lowercase letters, digits, underscores, or hyphens for the connection type."
         )))
     }
 }

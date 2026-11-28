@@ -1,6 +1,15 @@
 {
   "components": {
     "schemas": {
+      "AddAccountBlock": {
+        "enum": [
+          "one_account_per_workspace",
+          "plan_required",
+          "no_permission"
+        ],
+        "title": "AddAccountBlock",
+        "type": "string"
+      },
       "AgentCliAutoMode": {
         "description": "The workspace's Auto Mode as the terminal shows it at session start.",
         "properties": {
@@ -342,8 +351,14 @@
       "AgentCliWritePublic": {
         "description": "One cloud write from a local session, as the terminal and the viewer read it.",
         "properties": {
+          "approval_instructions": {
+            "description": "How the requester can get this write approved.",
+            "nullable": true,
+            "title": "Approval Instructions",
+            "type": "string"
+          },
           "can_respond": {
-            "description": "Whether the caller may approve this write. Set only on a session list read while the write waits for approval.",
+            "description": "Whether the caller may approve this pending write.",
             "nullable": true,
             "title": "Can Respond",
             "type": "boolean"
@@ -832,6 +847,11 @@
           "domain_verification": {
             "$ref": "#/components/schemas/AppDomainVerificationPublic"
           },
+          "duplicate_target": {
+            "nullable": true,
+            "title": "Duplicate Target",
+            "type": "boolean"
+          },
           "frameworks": {
             "items": {
               "$ref": "#/components/schemas/OwaspFramework"
@@ -860,6 +880,21 @@
             "nullable": true,
             "title": "Last Completed Run At",
             "type": "string"
+          },
+          "last_finished_run_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Last Finished Run At",
+            "type": "string"
+          },
+          "last_finished_run_message": {
+            "nullable": true,
+            "title": "Last Finished Run Message",
+            "type": "string"
+          },
+          "last_finished_run_result": {
+            "$ref": "#/components/schemas/RunResult",
+            "nullable": true
           },
           "mode_capabilities": {
             "items": {
@@ -1385,6 +1420,10 @@
             "title": "Aliases",
             "type": "array"
           },
+          "approval_tool_count": {
+            "title": "Approval Tool Count",
+            "type": "integer"
+          },
           "auth_type": {
             "$ref": "#/components/schemas/AuthType"
           },
@@ -1397,6 +1436,22 @@
             "default": true,
             "title": "Can Retry",
             "type": "boolean"
+          },
+          "catalog": {
+            "$ref": "#/components/schemas/ConnectionCatalogPresentation",
+            "nullable": true
+          },
+          "catalog_status": {
+            "enum": [
+              "connected",
+              "testing",
+              "disconnecting",
+              "error",
+              "not_connected"
+            ],
+            "nullable": true,
+            "title": "BuiltinConnectionDetail_catalog_status",
+            "type": "string"
           },
           "costops_auto_refresh_enabled": {
             "default": false,
@@ -1412,6 +1467,10 @@
             "nullable": true,
             "title": "Documentation Url",
             "type": "string"
+          },
+          "failure_kind": {
+            "$ref": "#/components/schemas/ConnectFailureReason",
+            "nullable": true
           },
           "has_code_review_setup": {
             "default": false,
@@ -1448,6 +1507,10 @@
             "title": "Name",
             "type": "string"
           },
+          "needs_reach_check": {
+            "title": "Needs Reach Check",
+            "type": "boolean"
+          },
           "prefix": {
             "title": "Prefix",
             "type": "string"
@@ -1458,6 +1521,36 @@
             "title": "Production Policy Gated",
             "type": "boolean"
           },
+          "provider_state": {
+            "$ref": "#/components/schemas/ConnectionProviderState",
+            "description": "Provider-level state, the same on every row of one provider; set by the list endpoint",
+            "nullable": true
+          },
+          "recovery_action": {
+            "$ref": "#/components/schemas/ConnectionRecoveryAction",
+            "nullable": true
+          },
+          "setup_outline": {
+            "description": "Short connect steps derived from the connect form fields",
+            "items": {
+              "type": "string"
+            },
+            "title": "Setup Outline",
+            "type": "array"
+          },
+          "setup_steps": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionSetupStep"
+            },
+            "title": "Setup Steps",
+            "type": "array"
+          },
+          "sign_in_label": {
+            "description": "How the user signs in to the provider",
+            "nullable": true,
+            "title": "Sign In Label",
+            "type": "string"
+          },
           "status": {
             "$ref": "#/components/schemas/ConnectionStatus"
           },
@@ -1466,9 +1559,37 @@
             "title": "Status Message",
             "type": "string"
           },
+          "test_needed": {
+            "nullable": true,
+            "title": "Test Needed",
+            "type": "boolean"
+          },
+          "tool_count": {
+            "title": "Tool Count",
+            "type": "integer"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
+            "type": "string"
+          },
+          "used_in": {
+            "description": "Products that use this saved Connection in this workspace now, in Resolve, Review, Optimize, Cyber order. Empty for a catalog row.",
+            "items": {
+              "$ref": "#/components/schemas/ConnectionProduct"
+            },
+            "title": "Used In",
+            "type": "array"
+          },
+          "write_enabled": {
+            "description": "Whether this saved Connection's write tool is on",
+            "title": "Write Enabled",
+            "type": "boolean"
+          },
+          "write_tool_name": {
+            "description": "Name of this saved Connection's write tool, or None when it has none",
+            "nullable": true,
+            "title": "Write Tool Name",
             "type": "string"
           }
         },
@@ -1478,6 +1599,7 @@
           "prefix",
           "is_connected",
           "is_sandbox_supported",
+          "status",
           "updated_at"
         ],
         "title": "BuiltinConnectionDetail",
@@ -1531,6 +1653,10 @@
             "title": "Aliases",
             "type": "array"
           },
+          "approval_tool_count": {
+            "title": "Approval Tool Count",
+            "type": "integer"
+          },
           "auth_type": {
             "$ref": "#/components/schemas/AuthType"
           },
@@ -1543,6 +1669,22 @@
             "default": true,
             "title": "Can Retry",
             "type": "boolean"
+          },
+          "catalog": {
+            "$ref": "#/components/schemas/ConnectionCatalogPresentation",
+            "nullable": true
+          },
+          "catalog_status": {
+            "enum": [
+              "connected",
+              "testing",
+              "disconnecting",
+              "error",
+              "not_connected"
+            ],
+            "nullable": true,
+            "title": "BuiltinConnectionPublic_catalog_status",
+            "type": "string"
           },
           "costops_auto_refresh_enabled": {
             "default": false,
@@ -1558,6 +1700,10 @@
             "nullable": true,
             "title": "Documentation Url",
             "type": "string"
+          },
+          "failure_kind": {
+            "$ref": "#/components/schemas/ConnectFailureReason",
+            "nullable": true
           },
           "has_code_review_setup": {
             "default": false,
@@ -1586,6 +1732,10 @@
             "title": "Name",
             "type": "string"
           },
+          "needs_reach_check": {
+            "title": "Needs Reach Check",
+            "type": "boolean"
+          },
           "prefix": {
             "title": "Prefix",
             "type": "string"
@@ -1596,6 +1746,36 @@
             "title": "Production Policy Gated",
             "type": "boolean"
           },
+          "provider_state": {
+            "$ref": "#/components/schemas/ConnectionProviderState",
+            "description": "Provider-level state, the same on every row of one provider; set by the list endpoint",
+            "nullable": true
+          },
+          "recovery_action": {
+            "$ref": "#/components/schemas/ConnectionRecoveryAction",
+            "nullable": true
+          },
+          "setup_outline": {
+            "description": "Short connect steps derived from the connect form fields",
+            "items": {
+              "type": "string"
+            },
+            "title": "Setup Outline",
+            "type": "array"
+          },
+          "setup_steps": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionSetupStep"
+            },
+            "title": "Setup Steps",
+            "type": "array"
+          },
+          "sign_in_label": {
+            "description": "How the user signs in to the provider",
+            "nullable": true,
+            "title": "Sign In Label",
+            "type": "string"
+          },
           "status": {
             "$ref": "#/components/schemas/ConnectionStatus"
           },
@@ -1604,9 +1784,37 @@
             "title": "Status Message",
             "type": "string"
           },
+          "test_needed": {
+            "nullable": true,
+            "title": "Test Needed",
+            "type": "boolean"
+          },
+          "tool_count": {
+            "title": "Tool Count",
+            "type": "integer"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
+            "type": "string"
+          },
+          "used_in": {
+            "description": "Products that use this saved Connection in this workspace now, in Resolve, Review, Optimize, Cyber order. Empty for a catalog row.",
+            "items": {
+              "$ref": "#/components/schemas/ConnectionProduct"
+            },
+            "title": "Used In",
+            "type": "array"
+          },
+          "write_enabled": {
+            "description": "Whether this saved Connection's write tool is on",
+            "title": "Write Enabled",
+            "type": "boolean"
+          },
+          "write_tool_name": {
+            "description": "Name of this saved Connection's write tool, or None when it has none",
+            "nullable": true,
+            "title": "Write Tool Name",
             "type": "string"
           }
         },
@@ -1616,6 +1824,7 @@
           "prefix",
           "is_connected",
           "is_sandbox_supported",
+          "status",
           "updated_at"
         ],
         "title": "BuiltinConnectionPublic",
@@ -1641,6 +1850,13 @@
             },
             "title": "Popular Prefixes",
             "type": "array"
+          },
+          "removable_demo_id": {
+            "description": "Connected demo row this workspace no longer needs because a connected production row of the same prefix or any cloud exists",
+            "format": "uuid",
+            "nullable": true,
+            "title": "Removable Demo Id",
+            "type": "string"
           }
         },
         "required": [
@@ -2772,6 +2988,11 @@
             "title": "Failure Reason",
             "type": "string"
           },
+          "failure_retry_pending": {
+            "nullable": true,
+            "title": "Failure Retry Pending",
+            "type": "boolean"
+          },
           "files_changed": {
             "default": 0,
             "title": "Files Changed",
@@ -2890,6 +3111,11 @@
           },
           "provider": {
             "$ref": "#/components/schemas/CodeReviewProvider"
+          },
+          "queue_position": {
+            "nullable": true,
+            "title": "Queue Position",
+            "type": "integer"
           },
           "repository_name": {
             "title": "Repository Name",
@@ -3122,6 +3348,115 @@
         "title": "CompletionStopRule",
         "type": "object"
       },
+      "ConnectBlock": {
+        "enum": [
+          "plan_required"
+        ],
+        "title": "ConnectBlock",
+        "type": "string"
+      },
+      "ConnectFailureReason": {
+        "enum": [
+          "invalid_address",
+          "configuration_invalid",
+          "missing_credentials",
+          "credentials_in_address",
+          "unreachable",
+          "timeout",
+          "private_network_unreachable",
+          "tls_failed",
+          "invalid_ca_certificate",
+          "http_only",
+          "https_required",
+          "redirect",
+          "credentials_rejected",
+          "permission_missing",
+          "provider_license_required",
+          "not_found",
+          "rate_limited",
+          "provider_unavailable",
+          "platform_unavailable",
+          "request_rejected",
+          "invalid_response",
+          "response_too_large",
+          "network_blocked",
+          "no_tools",
+          "read_unavailable",
+          "read_inputs_invalid",
+          "read_response_invalid",
+          "server_identity_unverified",
+          "sign_in_expired",
+          "tools_start_failed",
+          "tools_start_timeout",
+          "tools_busy",
+          "test_timeout",
+          "test_cancelled",
+          "test_failed"
+        ],
+        "title": "ConnectFailureReason",
+        "type": "string"
+      },
+      "ConnectionCatalogPresentation": {
+        "properties": {
+          "account_details": {
+            "enum": [
+              "github",
+              "gitlab"
+            ],
+            "nullable": true,
+            "title": "ConnectionCatalogPresentation_account_details",
+            "type": "string"
+          },
+          "can_replace_credentials": {
+            "default": true,
+            "title": "Can Replace Credentials",
+            "type": "boolean"
+          },
+          "oauth_recovery": {
+            "default": false,
+            "title": "Oauth Recovery",
+            "type": "boolean"
+          },
+          "provider_description": {
+            "nullable": true,
+            "title": "Provider Description",
+            "type": "string"
+          },
+          "provider_name": {
+            "title": "Provider Name",
+            "type": "string"
+          },
+          "provider_prefix": {
+            "title": "Provider Prefix",
+            "type": "string"
+          },
+          "token_editor": {
+            "enum": [
+              "token",
+              "credentials"
+            ],
+            "nullable": true,
+            "title": "ConnectionCatalogPresentation_token_editor",
+            "type": "string"
+          },
+          "token_recovery": {
+            "default": false,
+            "title": "Token Recovery",
+            "type": "boolean"
+          },
+          "variant_order": {
+            "nullable": true,
+            "title": "Variant Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "provider_prefix",
+          "provider_name"
+        ],
+        "title": "ConnectionCatalogPresentation",
+        "type": "object"
+      },
       "ConnectionDisconnectPhase": {
         "title": "ConnectionDisconnectPhase",
         "type": "string"
@@ -3175,8 +3510,160 @@
         "title": "ConnectionLocation",
         "type": "object"
       },
+      "ConnectionProduct": {
+        "enum": [
+          "Resolve",
+          "Review",
+          "Optimize",
+          "Cyber"
+        ],
+        "title": "ConnectionProduct",
+        "type": "string"
+      },
+      "ConnectionProviderState": {
+        "properties": {
+          "account_count": {
+            "default": 0,
+            "description": "Saved accounts of this provider that are installed",
+            "title": "Account Count",
+            "type": "integer"
+          },
+          "account_noun": {
+            "default": "connection",
+            "description": "Word for one account of this provider: account, project, subscription or connection",
+            "title": "Account Noun",
+            "type": "string"
+          },
+          "add_account_block": {
+            "$ref": "#/components/schemas/AddAccountBlock",
+            "description": "Why the caller cannot add another account now, or None",
+            "nullable": true
+          },
+          "connect_block": {
+            "$ref": "#/components/schemas/ConnectBlock",
+            "description": "Why the workspace cannot connect this provider now, or None",
+            "nullable": true
+          },
+          "connected_count": {
+            "default": 0,
+            "description": "Installed accounts of this provider that are connected",
+            "title": "Connected Count",
+            "type": "integer"
+          },
+          "display_alias": {
+            "description": "Alias of the one installed account; None with several or none",
+            "nullable": true,
+            "title": "Display Alias",
+            "type": "string"
+          },
+          "has_disconnecting": {
+            "default": false,
+            "description": "Whether an installed account is being removed",
+            "title": "Has Disconnecting",
+            "type": "boolean"
+          },
+          "has_error": {
+            "default": false,
+            "description": "Whether an installed account has failed",
+            "title": "Has Error",
+            "type": "boolean"
+          },
+          "has_testing": {
+            "default": false,
+            "description": "Whether an installed account is being tested",
+            "title": "Has Testing",
+            "type": "boolean"
+          },
+          "multi_account": {
+            "default": false,
+            "description": "Whether this provider holds several accounts: a multi-account provider or one with hosting variants",
+            "title": "Multi Account",
+            "type": "boolean"
+          },
+          "provider_prefix": {
+            "title": "Provider Prefix",
+            "type": "string"
+          },
+          "section": {
+            "$ref": "#/components/schemas/SavedConnectionSection",
+            "description": "Saved section of this provider, or None when no account is saved",
+            "nullable": true
+          },
+          "used_in": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectionProduct"
+            },
+            "title": "Used In",
+            "type": "array"
+          },
+          "write_enabled": {
+            "default": false,
+            "description": "Whether any installed account has its write tool on",
+            "title": "Write Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "provider_prefix"
+        ],
+        "title": "ConnectionProviderState",
+        "type": "object"
+      },
+      "ConnectionRecoveryAction": {
+        "enum": [
+          "retry",
+          "edit",
+          "replace_credentials",
+          "reconnect"
+        ],
+        "title": "ConnectionRecoveryAction",
+        "type": "string"
+      },
+      "ConnectionSetupStep": {
+        "properties": {
+          "action_label": {
+            "nullable": true,
+            "title": "Action Label",
+            "type": "string"
+          },
+          "field_key": {
+            "nullable": true,
+            "title": "Field Key",
+            "type": "string"
+          },
+          "script": {
+            "nullable": true,
+            "title": "Script",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "nullable": true,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "ConnectionSetupStep",
+        "type": "object"
+      },
       "ConnectionStatus": {
         "title": "ConnectionStatus",
+        "type": "string"
+      },
+      "ConnectionStep": {
+        "enum": [
+          "test",
+          "tool_call",
+          "health_check",
+          "sign_in"
+        ],
+        "title": "ConnectionStep",
         "type": "string"
       },
       "ConnectionTestPhase": {
@@ -3204,12 +3691,47 @@
             "nullable": true,
             "title": "Started At",
             "type": "string"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/ConnectionVerdict",
+            "nullable": true
           }
         },
         "required": [
           "phase"
         ],
         "title": "ConnectionTestStatus",
+        "type": "object"
+      },
+      "ConnectionVerdict": {
+        "properties": {
+          "http_status": {
+            "nullable": true,
+            "title": "Http Status",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ConnectFailureReason"
+          },
+          "may_have_applied": {
+            "default": false,
+            "title": "May Have Applied",
+            "type": "boolean"
+          },
+          "provider_detail_redacted": {
+            "default": "",
+            "title": "Provider Detail Redacted",
+            "type": "string"
+          },
+          "step": {
+            "$ref": "#/components/schemas/ConnectionStep"
+          }
+        },
+        "required": [
+          "step",
+          "kind"
+        ],
+        "title": "ConnectionVerdict",
         "type": "object"
       },
       "ContextSourceContentUrl": {
@@ -3961,6 +4483,11 @@
           "total": {
             "title": "Total",
             "type": "integer"
+          },
+          "verification_skipped": {
+            "default": false,
+            "title": "Verification Skipped",
+            "type": "boolean"
           }
         },
         "required": [
@@ -5480,6 +6007,12 @@
             "title": "Finding Type",
             "type": "string"
           },
+          "first_seen_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "First Seen At",
+            "type": "string"
+          },
           "first_seen_run": {
             "format": "uuid",
             "title": "First Seen Run",
@@ -5537,6 +6070,10 @@
           },
           "triage_state": {
             "$ref": "#/components/schemas/TriageState"
+          },
+          "verification_provenance": {
+            "$ref": "#/components/schemas/FindingVerificationProvenancePublic",
+            "nullable": true
           }
         },
         "required": [
@@ -5595,6 +6132,7 @@
         "description": "Action tabs on an App's findings list.",
         "enum": [
           "active",
+          "needs_attention",
           "confirmed",
           "needs_verification",
           "in_progress",
@@ -5654,6 +6192,11 @@
             "title": "In Progress",
             "type": "integer"
           },
+          "needs_attention": {
+            "default": 0,
+            "title": "Needs Attention",
+            "type": "integer"
+          },
           "needs_verification": {
             "default": 0,
             "title": "Needs Verification",
@@ -5661,6 +6204,23 @@
           }
         },
         "title": "FindingTabCounts",
+        "type": "object"
+      },
+      "FindingVerificationProvenancePublic": {
+        "properties": {
+          "status": {
+            "enum": [
+              "unverified",
+              "self_verified"
+            ],
+            "title": "FindingVerificationProvenancePublic_status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "FindingVerificationProvenancePublic",
         "type": "object"
       },
       "FlushOutput": {
@@ -6838,10 +7398,18 @@
       },
       "MCPConnectionPublic": {
         "properties": {
+          "approval_tool_count": {
+            "title": "Approval Tool Count",
+            "type": "integer"
+          },
           "description": {
             "nullable": true,
             "title": "Description",
             "type": "string"
+          },
+          "failure_kind": {
+            "$ref": "#/components/schemas/ConnectFailureReason",
+            "nullable": true
           },
           "id": {
             "format": "uuid",
@@ -6859,12 +7427,28 @@
             "title": "Prefix",
             "type": "string"
           },
+          "recovery_action": {
+            "$ref": "#/components/schemas/ConnectionRecoveryAction",
+            "nullable": true
+          },
+          "section": {
+            "$ref": "#/components/schemas/SavedConnectionSection"
+          },
           "status": {
             "$ref": "#/components/schemas/ConnectionStatus"
           },
           "status_message": {
             "title": "Status Message",
             "type": "string"
+          },
+          "test_needed": {
+            "nullable": true,
+            "title": "Test Needed",
+            "type": "boolean"
+          },
+          "tool_count": {
+            "title": "Tool Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -7599,6 +8183,32 @@
         ],
         "title": "PendingCloseProposalPublic",
         "type": "object"
+      },
+      "PentestFailureCode": {
+        "enum": [
+          "cancelled",
+          "stop_requested",
+          "time_limit",
+          "abandoned",
+          "local_cli_lost",
+          "stalled",
+          "login_rejected",
+          "login_failed",
+          "source_attach_failed",
+          "sandbox_unavailable",
+          "scope_changed",
+          "resume_failed",
+          "dispatch_lost",
+          "findings_unsaved",
+          "coverage_incomplete",
+          "agent_blocked",
+          "finalization_failed",
+          "approval_expired",
+          "unexpected",
+          "execution_failed"
+        ],
+        "title": "PentestFailureCode",
+        "type": "string"
       },
       "PentestMomentumAssessment": {
         "additionalProperties": false,
@@ -8843,6 +9453,31 @@
         "title": "RunGeneratedAccountPublic",
         "type": "object"
       },
+      "RunHistoryPagePublic": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/RunPublic"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta",
+            "nullable": true
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "data"
+        ],
+        "title": "RunHistoryPagePublic",
+        "type": "object"
+      },
       "RunLaunchRequest": {
         "description": "Request body for POST /appsec/apps/{app_id}/runs.\n\nrun_scope narrows the App's scope for this run \u2014 MUST be \u2286 app.scope.\nOmit or pass null for a full-scope run. mode and intensity are\noptional \u2014 when omitted (None), the use case applies the backend default\n(Mode.BLACK / app.default_intensity). The default lives in\nlaunch_run only, not here. scan_mode is optional too \u2014 omitted (None)\ncoalesces to incremental in the use case (the single default source); pass\n\"full\" for a deep whole-worktree sweep (moot for gray/black).\n\nNote an App with NO prior SUCCESS run always runs \"full\": the use case\ncoerces scan_mode on a first run, so an explicit \"incremental\" here is\nhonoured only once a successful run exists to diff against.",
         "properties": {
@@ -8904,28 +9539,6 @@
           }
         },
         "title": "RunLaunchRequest",
-        "type": "object"
-      },
-      "RunListResponse": {
-        "description": "Response shape for GET /appsec/apps/{app_id}/runs.",
-        "properties": {
-          "data": {
-            "items": {
-              "$ref": "#/components/schemas/RunPublic"
-            },
-            "title": "Data",
-            "type": "array"
-          },
-          "total": {
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "total",
-          "data"
-        ],
-        "title": "RunListResponse",
         "type": "object"
       },
       "RunPublic": {
@@ -9000,6 +9613,10 @@
           },
           "execution_host": {
             "$ref": "#/components/schemas/RunExecutionHost"
+          },
+          "failure_code": {
+            "$ref": "#/components/schemas/PentestFailureCode",
+            "nullable": true
           },
           "findings_confirmed": {
             "default": 0,
@@ -9125,8 +9742,24 @@
             "title": "Started At",
             "type": "string"
           },
+          "stop_message": {
+            "nullable": true,
+            "title": "Stop Message",
+            "type": "string"
+          },
           "stop_rule": {
             "$ref": "#/components/schemas/InvestigationStopRule"
+          },
+          "stopped_by": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Stopped By",
+            "type": "string"
+          },
+          "stopped_by_name": {
+            "nullable": true,
+            "title": "Stopped By Name",
+            "type": "string"
           },
           "surface_delta": {
             "additionalProperties": true,
@@ -9231,6 +9864,15 @@
         ],
         "title": "RunStorageOperation",
         "type": "object"
+      },
+      "SavedConnectionSection": {
+        "enum": [
+          "needs_attention",
+          "in_progress",
+          "connected"
+        ],
+        "title": "SavedConnectionSection",
+        "type": "string"
       },
       "SavedSelection": {
         "additionalProperties": false,
@@ -9789,6 +10431,12 @@
             "title": "Last Seen Run",
             "type": "string"
           },
+          "last_tested_at": {
+            "format": "date-time",
+            "nullable": true,
+            "title": "Last Tested At",
+            "type": "string"
+          },
           "locator": {
             "title": "Locator",
             "type": "string"
@@ -9852,7 +10500,10 @@
         "description": "Sortable columns for the surface list endpoint.",
         "enum": [
           "locator",
-          "created_at"
+          "created_at",
+          "open_issues",
+          "status",
+          "last_tested"
         ],
         "title": "SurfaceSort",
         "type": "string"
@@ -11440,6 +12091,101 @@
           },
           {
             "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "nullable": true,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "take",
+            "required": false,
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "nullable": true,
+              "title": "Take",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "maxLength": 256,
+              "nullable": true,
+              "title": "Search",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "roster_sort",
+            "required": false,
+            "schema": {
+              "enum": [
+                "app",
+                "status",
+                "risk",
+                "last",
+                "added"
+              ],
+              "nullable": true,
+              "title": "Roster Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortOrder"
+            }
+          },
+          {
+            "in": "query",
+            "name": "running_first",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Running First",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "app_status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "ready",
+                "running",
+                "pending",
+                "stale"
+              ],
+              "nullable": true,
+              "title": "App Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/TargetType",
+              "nullable": true,
+              "title": "Target Type"
+            }
+          },
+          {
+            "in": "query",
             "name": "workspace_id",
             "required": false,
             "schema": {
@@ -12081,6 +12827,29 @@
           },
           {
             "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "take",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Take",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
             "name": "workspace_id",
             "required": false,
             "schema": {
@@ -12094,7 +12863,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RunListResponse"
+                  "$ref": "#/components/schemas/RunHistoryPagePublic"
                 }
               }
             },
@@ -12259,6 +13028,37 @@
             "schema": {
               "default": false,
               "title": "Undocumented",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "asset_type",
+            "required": false,
+            "schema": {
+              "maxLength": 64,
+              "nullable": true,
+              "title": "Asset Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SurfaceSource",
+              "nullable": true,
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_options",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Options",
               "type": "boolean"
             }
           },
@@ -13165,7 +13965,7 @@
     },
     "/api/v1/builtin-connection/{builtin_id}/retry": {
       "post": {
-        "description": "Re-run the connection test for an existing builtin connection.\n\nReuses the credentials already stored encrypted on the row \u2014 the request\nbody carries no credential surface, so retry is safe for any caller with\n`connectors:edit` who can already see the row.",
+        "description": "Start or follow a test for an existing built-in connection.\n\nReuses the credentials already stored encrypted on the row \u2014 the request\nbody carries no credential surface, so retry is safe for any caller with\n`connectors:edit` who can already see the row.",
         "operationId": "builtin-connection-retry_builtin_connection",
         "parameters": [
           {

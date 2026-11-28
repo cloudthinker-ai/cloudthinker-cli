@@ -13,7 +13,8 @@ export async function registerCommandTools(runtime: CloudThinkerRuntime): Promis
 	if (!tools) return [];
 	const added: string[] = [];
 	for (const tool of tools) {
-		if (tool.kind !== "read") continue;
+		const connectionTest = tool.kind === "run" && tool.name === "test_workspace_connection";
+		if (tool.kind !== "read" && !connectionTest) continue;
 		if (CLOUD_TOOLS.includes(tool.name) && !registered.has(tool.name)) continue;
 		registerCommandTool(runtime, tool);
 		registered.add(tool.name);

@@ -224,28 +224,35 @@ async fn dispatch(
 }
 
 async fn execute(client: &CtClient, args: ExecArgs) -> Result<CloudResult, CtError> {
+    const MAX_SCRIPT_BYTES: usize = 1_048_576;
+
     if let Some(write) = args.write {
         return client.cloud_run_write(args.session, write).await;
     }
-    let script = match (args.command, args.script_file) {
-        (Some(script), None) => script,
+    let script_bytes = match (args.command, args.script_file) {
+        (Some(script), None) => script.into_bytes(),
         (None, Some(path)) => {
             let file = tokio::fs::File::open(&path)
                 .await
                 .map_err(|error| CtError::Usage(format!("Cannot read script file: {error}")))?;
-            let mut script = String::new();
+            let mut script = Vec::new();
             use tokio::io::AsyncReadExt;
-            file.take(1_048_577)
-                .read_to_string(&mut script)
+            file.take((MAX_SCRIPT_BYTES + 1) as u64)
+                .read_to_end(&mut script)
                 .await
                 .map_err(|error| CtError::Usage(format!("Cannot read script file: {error}")))?;
             script
         }
         _ => return Err(CtError::Usage("Select --command or --script-file.".into())),
     };
-    if script.is_empty() || script.len() > 1_048_576 {
+    if script_bytes.len() > MAX_SCRIPT_BYTES {
+        return Err(CtError::Usage("Use a script of at most 1 MiB.".into()));
+    }
+    let script = String::from_utf8(script_bytes)
+        .map_err(|_| CtError::Usage("Save the script file as UTF-8 and try again.".into()))?;
+    if script.trim().is_empty() {
         return Err(CtError::Usage(
-            "Script must contain 1–1048576 UTF-8 bytes.".into(),
+            "Enter a command with --command or put one in the file passed to --script-file.".into(),
         ));
     }
     let write = matches!(args.mode.unwrap_or_default(), Mode::Write);

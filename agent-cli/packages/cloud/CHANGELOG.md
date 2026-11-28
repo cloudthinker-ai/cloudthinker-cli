@@ -1,3 +1,8 @@
+## [0.13.6]
+
+- Keep approved background writes ready to run when background execution is temporarily unavailable.
+- Ask the terminal agent to check a Connection. It includes Failed Connections and runs the same Test as Settings.
+
 ## [0.13.4]
 
 - Find Connection tools and read their guides from the terminal.

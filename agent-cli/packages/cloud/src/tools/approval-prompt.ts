@@ -30,7 +30,6 @@ function clean(text: string): string[] {
 export function hasPrintApprovalTerminal(mode: string | undefined): boolean {
 	return mode === "print" &&
 		process.stdin.isTTY === true &&
-		process.stdout.isTTY === true &&
 		process.stderr.isTTY === true;
 }
 

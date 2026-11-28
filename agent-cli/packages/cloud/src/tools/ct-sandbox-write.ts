@@ -274,7 +274,7 @@ export function renderWrite(outcome: WriteOutcome): string {
 	if (write.status === "required_approval") {
 		lines.push(
 			"",
-			"This write is waiting for a human to approve it. Tell the user to open the link above and decide,",
+			write.approval_instructions ?? "Open the link above to decide this write.",
 			`then call ${CT_SANDBOX_WRITE} again with only this write_id to run it.`,
 		);
 	} else if (write.status === "approved") {
@@ -363,18 +363,21 @@ async function resolveOutcome(call: WriteCall): Promise<WriteOutcome> {
 async function awaitApprovalIfNeeded(call: WriteCall, outcome: WriteOutcome): Promise<WriteOutcome> {
 	const { runtime, ctx, signal } = call;
 	if (outcome.write.status !== "required_approval") return outcome;
-	const decided = await decideInTerminal(
-		runtime.client,
-		ctx,
-		outcome.write,
-		(message) => {
-			if (ctx.hasUI) runtime.notify(sanitizeTerminalText(message), "warning");
-			else process.stderr.write(`${sanitizeTerminalText(message)} ${sanitizeTerminalText(outcome.write.web_url)}\n`);
-		},
-		signal,
-	);
-	if (decided) return { write: decided, execution: null };
-	if (hasPrintApprovalTerminal(ctx.mode)) return outcome;
+	const warn = (message: string) => {
+		const cleanMessage = sanitizeTerminalText(message);
+		const url = sanitizeTerminalText(outcome.write.web_url);
+		if (ctx.hasUI) runtime.notify(`${cleanMessage} ${url}`, "warning");
+		else process.stderr.write(`${cleanMessage} ${url}\n`);
+	};
+	if (outcome.write.can_respond === false) {
+		warn(outcome.write.approval_instructions ?? NOT_AN_APPROVER_MESSAGE);
+	} else if (ctx.mode === "print" && !hasPrintApprovalTerminal(ctx.mode)) {
+		warn("Open this link to decide the write, then resume it by ID.");
+	} else {
+		const decided = await decideInTerminal(runtime.client, ctx, outcome.write, warn, signal);
+		if (decided) return { write: decided, execution: null };
+	}
+	if (ctx.mode === "print") return outcome;
 	runtime.awaitApproval(outcome.write.id, outcome.write.web_url, WRITE_SUBJECT, "");
 	if (ctx.hasUI) ctx.ui.setWorkingMessage(WRITE_WORKING_MESSAGE);
 	else process.stderr.write(`waiting for approval in the browser → ${outcome.write.web_url}\n`);

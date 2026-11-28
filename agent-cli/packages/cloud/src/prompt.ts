@@ -73,6 +73,7 @@ export function buildPromptBlock(runtime: CloudThinkerRuntime): string {
 	);
 	if (runtime.autoMode) lines.push(approvalModeLine(runtime.autoMode.enabled));
 	lines.push(`Use ${CT_SANDBOX_READ} for bounded cloud investigations.`);
+	lines.push("Use list_connections for workspace Connection inventory, including Failed Connections. For a health check, call test_workspace_connection for each requested Connection and report what Test returns. Use these tools when available.");
 	lines.push(
 		`Call ${CT_ASK} for workspace memory or several dependent steps; delegated work runs on the workspace machine, human approval is required when requested, and ${CT_RUN_STATUS} resumes a paused run.`,
 	);

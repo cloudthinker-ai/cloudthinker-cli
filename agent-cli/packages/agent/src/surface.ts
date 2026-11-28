@@ -40,7 +40,7 @@ Project instructions come from AGENTS.md or CLAUDE.md in your repository.
 export const NO_SESSION_REFUSAL = "cloudthinker agent always keeps a session; --no-session is not supported";
 export const MODEL_REFUSAL = "cloudthinker agent runs CloudThinker Agent modes only: pick one with --model light, pro, or ultra (--list-models shows them)";
 export const THINKING_REFUSAL = "--thinking is not available: each agent mode carries its own reasoning, so pick a mode with --model light, pro, or ultra";
-export const PRINT_NEEDS_PROMPT = "-p needs a prompt: cloudthinker agent -p \"your question\", or pipe one in: echo \"your question\" | cloudthinker agent -p";
+export const PRINT_NEEDS_PROMPT = "Enter a prompt: cloudthinker agent -p \"your question\". To read from a pipe, use cloudthinker agent -p.";
 export const MAX_TURNS_VALUE = "--max-turns takes a whole number of 1 or more: cloudthinker agent -p \"your question\" --max-turns 5";
 export const MAX_TURNS_NEEDS_PRINT = "--max-turns works only with -p: cloudthinker agent -p \"your question\" --max-turns 5";
 export const ADD_DIR_VALUE = "--add-dir needs a folder: cloudthinker agent --add-dir ../other-repo";
@@ -92,14 +92,14 @@ export function checkSurface(argv: readonly string[], stdinIsTTY: boolean | unde
 	}
 	let print = false;
 	let maxTurns = false;
-	let prompt = separator !== -1 && separator < argv.length - 1;
+	const prompts = separator === -1 ? [] : argv.slice(separator + 1);
 	for (let index = 0; index < flags.length; index += 1) {
 		const arg = flags[index] as string;
 		const next = flags[index + 1];
 		if (arg === "--print" || arg === "-p") {
 			print = true;
 			if (next !== undefined && !next.startsWith("-")) {
-				prompt = true;
+				prompts.push(next);
 				index += 1;
 			}
 		} else if (arg === "--model") {
@@ -135,10 +135,12 @@ export function checkSurface(argv: readonly string[], stdinIsTTY: boolean | unde
 		} else if (arg.startsWith("-")) {
 			return { kind: "refuse", message: notAvailable(arg.split("=")[0] as string) };
 		} else {
-			prompt = true;
+			prompts.push(arg);
 		}
 	}
 	if (maxTurns && !print) return { kind: "refuse", message: MAX_TURNS_NEEDS_PRINT };
-	if (print && !prompt && stdinIsTTY) return { kind: "refuse", message: PRINT_NEEDS_PROMPT };
+	if (print && (stdinIsTTY || prompts.length > 0) && !prompts.some((prompt) => prompt.trim())) {
+		return { kind: "refuse", message: PRINT_NEEDS_PROMPT };
+	}
 	return { kind: "run" };
 }

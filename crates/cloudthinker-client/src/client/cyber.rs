@@ -851,7 +851,13 @@ impl CtClient {
     /// List the workspace Apps used by the setup flow.
     pub async fn cyber_list_apps(&self) -> CtResult<Vec<CyberApp>> {
         let response = self
-            .authed(async |c: cloudthinker_api::Client| c.appsec_list_apps(None, None, None).await)
+            .authed(async |c: cloudthinker_api::Client| {
+                // Leave pagination and roster filters unset to fetch the full list.
+                c.appsec_list_apps(
+                    None, None, None, None, None, None, None, None, None, None, None,
+                )
+                .await
+            })
             .await?;
         Ok(response.data.into_iter().map(CyberApp::from_api).collect())
     }

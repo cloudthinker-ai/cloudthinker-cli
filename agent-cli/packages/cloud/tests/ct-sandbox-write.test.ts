@@ -360,7 +360,7 @@ test("agent print mode sends a decision once and leaves browser approvals pendin
 		{ input: "y\n", allowed: false, status: "required_approval", calls: ["request", "approve:w-1"] },
 	] as const;
 	const stdin = Object.assign(new PassThrough(), { isTTY: true });
-	const stdout = Object.assign(new PassThrough(), { isTTY: true });
+	const stdout = new PassThrough();
 	const stderr = Object.assign(new PassThrough(), { isTTY: true });
 	t.mock.getter(process, "stdin", () => stdin as unknown as typeof process.stdin);
 	t.mock.getter(process, "stdout", () => stdout as unknown as typeof process.stdout);
@@ -409,6 +409,68 @@ test("agent print mode sends a decision once and leaves browser approvals pendin
 	assert.match(terminalText, /Browser: http:\/\/web/);
 	assert.match(terminalText, /Approve \[y\], decline \[n\]/);
 	assert.match(terminalText, /Ask Alex to approve this write in the browser\. http:\/\/web/);
+});
+
+test("agent print mode points a requester to their approver without trying to decide", async () => {
+	const pending = write("required_approval", {
+		can_respond: false,
+		approval_instructions: "Ask Alex to open the approval link in their browser.",
+	});
+	const { tool, ctx } = registered({
+		requestWrite: async () => ({ write: pending, execution: null }),
+		getWrite: async () => { throw new Error("print mode must not poll for approval"); },
+		decideWrite: async () => { throw new Error("the requester cannot decide this write"); },
+	});
+	const result = await tool.execute(
+		"call-1",
+		{ script: pending.script, reasoning: pending.reasoning },
+		undefined,
+		undefined,
+		{ ...ctx, mode: "print" },
+	);
+	assert.match(resultBody(result), /Ask Alex to open the approval link/);
+	assert.match(resultBody(result), /write_id: w-1/);
+});
+
+test("the interactive agent runs the write when a workspace approver decides in the browser", async () => {
+	const pending = write("required_approval", {
+		can_respond: false,
+		approval_instructions: "Ask Alex to open the approval link in their browser.",
+	});
+	const { tool, ctx } = registered({
+		requestWrite: async () => ({ write: pending, execution: null }),
+		getWrite: async () => write("approved", { decided_by_name: "Alex" }),
+		decideWrite: async () => { throw new Error("the requester cannot decide this write"); },
+		runWrite: async () => executed,
+	});
+	const result = await tool.execute(
+		"call-1",
+		{ script: pending.script, reasoning: pending.reasoning },
+		undefined,
+		undefined,
+		{ ...ctx, mode: "tui", hasUI: true },
+	);
+	assert.equal((result.details as WriteOutcome).write.status, "executed");
+	assert.match(resultBody(result), /tagged/);
+});
+
+test("agent print mode without a terminal returns the pending write immediately", async (t) => {
+	const stdin = new PassThrough();
+	t.mock.getter(process, "stdin", () => stdin as unknown as typeof process.stdin);
+	const pending = write("required_approval", { can_respond: true });
+	const { tool, ctx } = registered({
+		requestWrite: async () => ({ write: pending, execution: null }),
+		getWrite: async () => { throw new Error("print mode must not poll for approval"); },
+	});
+	const result = await tool.execute(
+		"call-1",
+		{ script: pending.script, reasoning: pending.reasoning },
+		undefined,
+		undefined,
+		{ ...ctx, mode: "print" },
+	);
+	assert.equal((result.details as WriteOutcome).write.status, "required_approval");
+	assert.match(resultBody(result), /web_url: http:\/\/web/);
 });
 
 test("a write the workspace allows runs on the first call and returns executed", async () => {
